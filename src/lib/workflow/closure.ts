@@ -6,6 +6,7 @@ import { uploadFile, moveFile, sha256Hex } from '@/lib/storage/files';
 import { queueNotification } from '@/lib/workflow/notifications';
 import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
 import { getRoundAllowance } from '@/lib/data/rounds';
+import { missingRequiredMenteeDocs } from '@/lib/workflow/case-documents';
 import { getBranding } from '@/lib/programs/data';
 import { fmt } from '@/lib/programs/branding';
 import type { WorkflowResult } from '@/lib/workflow/cases';
@@ -122,9 +123,13 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
   if (rounds.length < required) {
     return { ok: false, error: `필수 회차 ${required}회를 모두 등록한 뒤 종결을 요청할 수 있습니다. (현재 ${rounds.length}회, 승인된 추가 ${allowance.approvedExtra}회)` };
   }
-  const policy = (program?.closure_policy ?? {}) as { require_mentee_signature?: boolean };
+  const policy = (program?.closure_policy ?? {}) as { require_mentee_signature?: boolean; require_group_docs?: boolean };
   if (policy.require_mentee_signature && rounds.some((r) => !r.mentee_signed_at)) {
     return { ok: false, error: '모든 회차에 멘티 서명이 있어야 종결을 요청할 수 있습니다.' };
+  }
+  if (policy.require_group_docs) {
+    const missing = await missingRequiredMenteeDocs(caseId);
+    if (missing.length > 0) return { ok: false, error: `멘티 필수서류가 누락되어 종결을 요청할 수 없습니다: ${missing.join(', ')}` };
   }
 
   const content = obs ? normalizeObservation(obs.content) : EMPTY;

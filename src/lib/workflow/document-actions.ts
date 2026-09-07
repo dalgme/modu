@@ -40,10 +40,11 @@ export async function attachCaseDocumentAction(input: {
   staging: { stagingPath: string; fileName: string; mimeType: string };
   label?: string;
   mentorVisible: boolean;
+  docKey?: string;
 }): Promise<Result> {
   const actor = await actorForCase(input.caseId);
   if (!actor) return { ok: false, error: '이 케이스에 파일을 올릴 권한이 없습니다.' };
-  const r = await attachCaseDocument({ caseId: input.caseId, actor, staging: input.staging, label: input.label, mentorVisible: input.mentorVisible });
+  const r = await attachCaseDocument({ caseId: input.caseId, actor, staging: input.staging, label: input.label, mentorVisible: input.mentorVisible, docKey: input.docKey });
   if (r.ok) revalidate(input.caseId);
   return r;
 }

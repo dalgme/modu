@@ -2180,6 +2180,7 @@ export type Database = {
           created_at: string;
           document_type: string;
           id: string;
+          log_id: string | null;
           sha256: string;
           signer_name: string | null;
           signer_type: Database['public']['Enums']['signer_type'];
@@ -2191,6 +2192,7 @@ export type Database = {
           created_at?: string;
           document_type: string;
           id?: string;
+          log_id?: string | null;
           sha256: string;
           signer_name?: string | null;
           signer_type: Database['public']['Enums']['signer_type'];
@@ -2202,6 +2204,7 @@ export type Database = {
           created_at?: string;
           document_type?: string;
           id?: string;
+          log_id?: string | null;
           sha256?: string;
           signer_name?: string | null;
           signer_type?: Database['public']['Enums']['signer_type'];

@@ -456,6 +456,7 @@ create table survey_responses (
 | 0053 | 레거시 삭제(`contractors` `support_applications` `payment_applications` `approvals` `case_edit_grants`) + `app_settings`·`document_templates`·`notifications`·`audit_logs` 행사 범위 |
 | 0054 | `tag_catalog` + `mentor_profiles` + `mentee_profiles` + `match_recommendations` + `mentor_payment_docs` |
 | 0055 | 시드: 행사 `modu-2026`(발주처·용역사 기관명) + 그룹 A~D(회차 4) + 단가 + 한도 + 표준 만족도 양식 6문항 + 키워드 14개 + 주간 안내문 플레이스홀더화 |
+| 0057 | P5: `signatures.log_id`(회차 서명 연결, 회차×서명자 유니크) |
 | 0056 | P3: `documents.mentor_visible`·`uploaded_role` + 멘토 열람 RLS / `observation_reports`(웹 작성 초안, case_id PK) / `program_sms_settings`(행사별 문자 API, 봉투암호화, **RLS 정책 없음 = 서비스롤 전용**) + `program_sms_access_log` |
 
 ### 10-2. 코드 — 삭제
@@ -721,7 +722,7 @@ create table mentor_group_reviews (
 | P2 ✅ | 도메인 코어: 상태 v2·전이 상수·역할 라벨·행사/그룹 컨텍스트(쿠키)·허브·가드 + **레거시 삭제** → 빌드 그린 (2026-09-07) | 뼈대 |
 | P3 ✅ | 멘토 흐름: 회차 등록(웹/업로드, 검증 7항목·설정 한도)·사진·관찰의견서·종결 요청·추가 회차 요청·**중도 종료 요청** + **엑셀 일괄 등록**(멘토·멘티) + **멘티 서류 첨부(멘토 공개/비공개)** + **행사별 문자 API(§21)** → 3종 그린 (2026-09-07) | 멘토 완료 |
 | P4 ✅ | 정산: `computeSettlement`(기타소득·사업소득·없음, vitest 15건) + 예상/확정 동일 함수, 검수 승인(T6/T7)·확정 취소, 부분 정산(T10/T11a/T11b), 품의(T8/T8'·제출·철회·삭제), 발주처 정산 확인(T9 → closed), 지급 완료, 정산서 PDF(`settlement_statement`), 품의 엑셀, 멘토 통보(금액 포함) → 4종 그린 (2026-09-07) | 정산 완료 |
-| P5 | 멘티: 서명·만족도(양식 렌더)·멘토 변경 요청·필수서류 | 멘티 완료 |
+| P5 ✅ | 멘티: 회차 서명(0057 `signatures.log_id`, 서명 후 멘토 수정 잠금)·만족도 조사(문항 5종 렌더·검증·score 파생, 종결 요청 이후 1회)·멘토 변경 요청(운영사 수락 시 T3)·그룹 필수서류 슬롯(`req:`/`req1:` + 종결 게이트 `require_group_docs`) → 4종 그린 (2026-09-07) | 멘티 완료 |
 | P6 | 운영: **설정 페이지 9탭**(§16)·그룹 관리·승계 개설·이전 이력 탭·요청함(추가회차/멘토변경/중도종료)·**멘토 명단 지급서류 체크**(§15) | 운영 완료 |
 | P7 | 플랫폼: `programs` 콘솔·개설 마법사·복제·`/api/setup` 변경·브랜딩 동적화·문구 391줄 치환 · **AI 매칭 추천**(§14) | 다중 행사 |
 | P8 | Vercel 생성·환경변수(+`ANTHROPIC_API_KEY`)·부트스트랩·역할별 권한 격리 점검·문자 1건·PDF 1건 | 배포 |

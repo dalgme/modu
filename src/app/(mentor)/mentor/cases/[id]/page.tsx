@@ -4,7 +4,8 @@ import { requireMentor } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { getCaseById, getCaseStatusHistory, listPredecessorCases } from '@/lib/data/cases';
 import { getObservationReport, getObservationReportFile, getRoundAllowance, listPendingRequestsForCase, listRounds } from '@/lib/data/rounds';
-import { listCaseDocuments } from '@/lib/workflow/case-documents';
+import { listCaseDocuments, listRequiredDocSlots } from '@/lib/workflow/case-documents';
+import { RequiredDocsPanel } from '@/components/cases/required-docs-panel';
 import { normalizeObservation } from '@/lib/workflow/closure';
 import { resolveRate, kstDate } from '@/lib/settlement/rates';
 import { canTransition } from '@/lib/workflow/transitions';
@@ -30,7 +31,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   if (!item || item.program_id !== ctx.programId || item.mentorId !== profile.id) notFound();
 
   const today = kstDate(new Date());
-  const [history, predecessors, rounds, allowance, obs, obsFile, requests, docs, online, offline, settlements, statements, estimates] = await Promise.all([
+  const [history, predecessors, rounds, allowance, obs, obsFile, requests, docs, online, offline, settlements, statements, estimates, slots] = await Promise.all([
     getCaseStatusHistory(item.id),
     listPredecessorCases(item.id),
     listRounds(item.id),
@@ -44,6 +45,7 @@ export default async function Page({ params }: { params: { id: string } }) {
     listCaseSettlements(item.id),
     listStatementFiles(item.id),
     estimateSettlements(item.id, profile.id),
+    listRequiredDocSlots(item.id, 'mentor'),
   ]);
   const myEstimate = estimates[0] ?? null;
 
@@ -125,6 +127,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         )}
         <SettlementCard items={settlements.filter((s) => s.mentor_id === profile.id)} statements={statements} title="내 확정 정산" />
 
+        <RequiredDocsPanel caseId={item.id} slots={slots} viewerRole="mentor" canUpload={roundsEditable} />
         <CaseDocumentsPanel caseId={item.id} docs={docs} viewerRole="mentor" canUpload={roundsEditable} />
       </CaseDetailShell>
     </main>

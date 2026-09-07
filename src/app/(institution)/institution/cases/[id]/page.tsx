@@ -7,7 +7,10 @@ import { CaseDetailShell } from '@/components/cases/case-detail-shell';
 import { CaseDetailBackNav } from '@/components/cases/case-detail-back-nav';
 import { OperatorRequestButton } from '@/components/cases/operator-request-button';
 import { getObservationReportFile, listRounds } from '@/lib/data/rounds';
-import { listCaseDocuments } from '@/lib/workflow/case-documents';
+import { listCaseDocuments, listRequiredDocSlots } from '@/lib/workflow/case-documents';
+import { getCaseSurvey } from '@/lib/data/survey';
+import { RequiredDocsPanel } from '@/components/cases/required-docs-panel';
+import { SurveyResultCard } from '@/components/cases/survey-result-card';
 import { listCaseSettlements, listStatementFiles } from '@/lib/data/settlements';
 import { canTransition } from '@/lib/workflow/transitions';
 import { CaseDocumentsPanel } from '@/components/cases/case-documents-panel';
@@ -24,7 +27,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   const item = await getCaseById(params.id);
   if (!item || item.program_id !== ctx.programId) notFound();
 
-  const [history, predecessors, rounds, obsFile, docs, settlements, statements] = await Promise.all([
+  const [history, predecessors, rounds, obsFile, docs, settlements, statements, slots, survey] = await Promise.all([
     getCaseStatusHistory(item.id),
     listPredecessorCases(item.id),
     listRounds(item.id),
@@ -32,6 +35,8 @@ export default async function Page({ params }: { params: { id: string } }) {
     listCaseDocuments(item.id, 'institution'),
     listCaseSettlements(item.id),
     listStatementFiles(item.id),
+    listRequiredDocSlots(item.id, 'institution'),
+    getCaseSurvey(item.id),
   ]);
 
   return (
@@ -72,6 +77,8 @@ export default async function Page({ params }: { params: { id: string } }) {
             )}
           </CardContent>
         </Card>
+        <SurveyResultCard survey={survey} />
+        <RequiredDocsPanel caseId={item.id} slots={slots} viewerRole="institution" canUpload={false} />
         <CaseDocumentsPanel caseId={item.id} docs={docs} viewerRole="institution" canUpload={false} />
         <CaseEndPanel caseId={item.id} pendingWithdrawals={[]} canDecideWithdrawal={false} canForceEnd={false} canWithdrawCase={canTransition('withdraw_case', item.status)} hasActiveMentor={item.mentorId !== null} />
       </CaseDetailShell>

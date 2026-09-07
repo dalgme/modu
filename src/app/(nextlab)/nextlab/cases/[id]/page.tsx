@@ -1,10 +1,16 @@
 import { notFound } from 'next/navigation';
 
+import { createAdminClient } from '@/lib/supabase/admin';
+
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { getCaseById, getCaseStatusHistory, listMentorsForProgram, listPredecessorCases } from '@/lib/data/cases';
 import { getObservationReportFile, listPendingRequestsForCase, listRounds } from '@/lib/data/rounds';
-import { listCaseDocuments } from '@/lib/workflow/case-documents';
+import { listCaseDocuments, listRequiredDocSlots } from '@/lib/workflow/case-documents';
+import { getCaseSurvey } from '@/lib/data/survey';
+import { RequiredDocsPanel } from '@/components/cases/required-docs-panel';
+import { SurveyResultCard } from '@/components/cases/survey-result-card';
+import { MentorChangePanel } from '@/components/nextlab/mentor-change-panel';
 import { listCaseSettlements, listStatementFiles } from '@/lib/data/settlements';
 import { estimateSettlements } from '@/lib/settlement/settle';
 import { ClosureReviewPanel } from '@/components/settlement/closure-review-panel';
@@ -28,7 +34,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   const item = await getCaseById(params.id);
   if (!item || item.program_id !== ctx.programId) notFound();
 
-  const [history, predecessors, mentors, rounds, obsFile, requests, docs, settlements, statements, estimates] = await Promise.all([
+  const [history, predecessors, mentors, rounds, obsFile, requests, docs, settlements, statements, estimates, slots, survey, changeReqs] = await Promise.all([
     getCaseStatusHistory(item.id),
     listPredecessorCases(item.id),
     listMentorsForProgram(ctx.programId, item.support_type_id),
@@ -39,6 +45,9 @@ export default async function Page({ params }: { params: { id: string } }) {
     listCaseSettlements(item.id),
     listStatementFiles(item.id),
     estimateSettlements(item.id),
+    listRequiredDocSlots(item.id, 'nextlab'),
+    getCaseSurvey(item.id),
+    createAdminClient().from('mentor_change_requests').select('id, reason, created_at').eq('case_id', item.id).eq('status', 'pending').order('created_at'),
   ]);
   const pendingExt = requests.extensions.filter((r) => r.status === 'pending');
   const pendingWd = requests.withdrawals.filter((r) => r.status === 'pending');
@@ -85,6 +94,8 @@ export default async function Page({ params }: { params: { id: string } }) {
           </Card>
         )}
 
+        <MentorChangePanel requests={changeReqs.data ?? []} mentors={mentors.map((m) => ({ id: m.id, name: m.inGroup ? m.name : `${m.name} (그룹 외)` }))} currentMentorId={item.mentorId} />
+
         <CaseEndPanel
           caseId={item.id}
           pendingWithdrawals={pendingWd.map((r) => ({ id: r.id, reason: r.reason, created_at: r.created_at }))}
@@ -120,6 +131,8 @@ export default async function Page({ params }: { params: { id: string } }) {
           </CardContent>
         </Card>
 
+        <SurveyResultCard survey={survey} />
+        <RequiredDocsPanel caseId={item.id} slots={slots} viewerRole="nextlab" canUpload />
         <CaseDocumentsPanel caseId={item.id} docs={docs} viewerRole="nextlab" canUpload />
       </CaseDetailShell>
     </main>

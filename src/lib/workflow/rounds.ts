@@ -202,9 +202,10 @@ export async function updateRound(input: {
   photoPaths: string[];
 }): Promise<WorkflowResult> {
   const admin = createAdminClient();
-  const { data: log } = await admin.from('mentoring_logs').select('id, case_id, mentor_id, settlement_id, report_kind, cases!inner(status, program_id)').eq('id', input.logId).maybeSingle();
+  const { data: log } = await admin.from('mentoring_logs').select('id, case_id, mentor_id, settlement_id, report_kind, mentee_signed_at, cases!inner(status, program_id)').eq('id', input.logId).maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
   if (log.settlement_id) return { ok: false, error: '정산에 포함된 회차는 수정할 수 없습니다.' };
+  if (log.mentee_signed_at) return { ok: false, error: '멘티가 서명한 회차는 내용을 수정할 수 없습니다.' };
   const c = log.cases as unknown as { status: string; program_id: string };
   const denied = assertTransition('submit_round', c.status as never);
   if (denied) return { ok: false, error: denied };

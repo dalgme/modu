@@ -5,16 +5,30 @@ import type { Branding } from '@/lib/programs/branding';
 import { MenteeJourney } from '@/components/cases/mentee-journey';
 import { StatusBadge } from '@/components/cases/status-badge';
 import { formatDate } from '@/lib/utils/format';
+import { MentorChangeRequest } from '@/components/mentee/mentor-change-request';
+import { PenLine, ClipboardList, FileWarning, CheckCircle2 } from 'lucide-react';
 
 /** 멘티 대시보드 본문 — 현재 그룹 케이스의 여정 + 다른 그룹(승계) 케이스 목록 */
+export interface MenteeTodo {
+  unsignedRounds: number;
+  surveyOpen: boolean;
+  surveyDone: boolean;
+  missingDocs: string[];
+  canRequestChange: boolean;
+  pendingChange: { created_at: string; reason: string } | null;
+  lastDecision: { status: string; handled_at: string | null; handling_note: string | null } | null;
+}
+
 export function MenteeDashboardBody({
   name,
   cases,
   branding,
+  todo,
 }: {
   name: string;
   cases: CaseListItem[];
   branding: Branding;
+  todo?: MenteeTodo | null;
 }) {
   const [primary, ...others] = cases;
   return (
@@ -34,14 +48,35 @@ export function MenteeDashboardBody({
             requiredRounds={primary.requiredRounds}
             branding={branding}
           />
-          <div className="rounded-xl border bg-background p-4 text-sm shadow-sm">
-            <p>
-              담당 멘토: <b>{primary.mentorName ?? '배정 예정'}</b>
-            </p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              회차 서명·만족도 조사·멘토 변경 요청은 다음 단계(P5)에서 열립니다.
-            </p>
-          </div>
+          {todo && (
+            <div className="grid gap-2 sm:grid-cols-3">
+              <Link href="/mentee/rounds" className={`flex items-center gap-2 rounded-xl border p-3 text-sm shadow-sm ${todo.unsignedRounds > 0 ? 'border-amber-300 bg-amber-50/50' : 'bg-background'}`}>
+                <PenLine className="h-5 w-5 shrink-0 text-primary" />
+                <span>
+                  <b>회차 확인·서명</b>
+                  <br />
+                  <span className="text-xs text-muted-foreground">{todo.unsignedRounds > 0 ? `서명 대기 ${todo.unsignedRounds}회차` : `${primary.roundsDone}회차 모두 확인`}</span>
+                </span>
+              </Link>
+              <Link href="/mentee/survey" className={`flex items-center gap-2 rounded-xl border p-3 text-sm shadow-sm ${todo.surveyOpen ? 'border-amber-300 bg-amber-50/50' : 'bg-background'}`}>
+                {todo.surveyDone ? <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" /> : <ClipboardList className="h-5 w-5 shrink-0 text-primary" />}
+                <span>
+                  <b>만족도 조사</b>
+                  <br />
+                  <span className="text-xs text-muted-foreground">{todo.surveyDone ? '응답 완료' : todo.surveyOpen ? '참여해 주세요' : '종결 요청 후 열립니다'}</span>
+                </span>
+              </Link>
+              <Link href="/mentee/documents" className={`flex items-center gap-2 rounded-xl border p-3 text-sm shadow-sm ${todo.missingDocs.length > 0 ? 'border-amber-300 bg-amber-50/50' : 'bg-background'}`}>
+                {todo.missingDocs.length > 0 ? <FileWarning className="h-5 w-5 shrink-0 text-amber-600" /> : <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600" />}
+                <span>
+                  <b>내 서류</b>
+                  <br />
+                  <span className="text-xs text-muted-foreground">{todo.missingDocs.length > 0 ? `필수서류 누락: ${todo.missingDocs.join(', ')}` : '필수서류 제출 완료'}</span>
+                </span>
+              </Link>
+            </div>
+          )}
+          <MentorChangeRequest caseId={primary.id} mentorName={primary.mentorName} canRequest={!!todo?.canRequestChange} pending={todo?.pendingChange ?? null} lastDecision={todo?.lastDecision ?? null} />
         </>
       )}
 
