@@ -7,10 +7,6 @@ import { cn } from '@/lib/utils';
 
 const TABS = [
   { href: '/mentee/dashboard', label: '내 진행 현황' },
-  { href: '/mentee/pre-support', label: '지원신청(사전)' },
-  { href: '/mentee/post-support', label: '자금신청(사후)' },
-  { href: '/mentee/contractor-signatures', label: '공사업체 서명받기' },
-  { href: '/mentee/support-scope', label: '지원 영역·항목' },
   { href: '/mentee/inquiries', label: '문의하기·내역' },
 ];
 

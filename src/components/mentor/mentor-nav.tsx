@@ -7,9 +7,6 @@ import { cn } from '@/lib/utils';
 
 const TABS = [
   { href: '/mentor/dashboard', label: '대시보드' },
-  { href: '/mentor/board', label: '진행현황판' },
-  { href: '/mentor/tasks', label: '멘티별 업무진행' },
-  { href: '/mentor/support-scope', label: '지원 영역·항목' },
   { href: '/mentor/qna', label: '문의 및 요청하기' },
   { href: '/mentor/guide', label: '이용안내', tone: 'green' as const },
   { href: '/mentor/install', label: '📱 휴대폰 설치', tone: 'purple' as const },

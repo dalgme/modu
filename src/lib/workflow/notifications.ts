@@ -3,6 +3,8 @@ import type { DB } from '@/lib/workflow/audit';
 
 interface QueueNotificationInput {
   caseId?: string | null;
+  /** 케이스 없는 알림(품의 등)도 행사에 묶는다 */
+  programId?: string | null;
   recipientId?: string | null;
   recipientPhone?: string | null;
   triggerEvent: string;
@@ -20,6 +22,7 @@ export async function queueNotification(
 ): Promise<void> {
   await supabase.from('notifications').insert({
     case_id: input.caseId ?? null,
+    program_id: input.programId ?? null,
     recipient_id: input.recipientId ?? null,
     recipient_phone: input.recipientPhone ?? null,
     channel: 'alimtalk',

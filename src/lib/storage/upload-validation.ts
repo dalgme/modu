@@ -1,6 +1,11 @@
 import 'server-only';
 
-import type { UploadedDoc } from '@/lib/workflow/contractor';
+/** 검증을 통과한 업로드 파일 (매직바이트로 확인된 형식) */
+export interface UploadedDoc {
+  buffer: Buffer;
+  mimeType: string;
+  ext: string;
+}
 
 /** 파일당 최대 업로드 크기 (10MB) — 스토리지 남용/DoS 방지 */
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;

@@ -1,17 +1,19 @@
-import { listCases, listRecalledCases } from '@/lib/data/cases';
-import { type StaffCasesSearchParams } from '@/components/cases/staff-cases-view';
+import { requireInstitution } from '@/lib/auth/guards';
+import { requireContext } from '@/lib/programs/context';
+import { listCases } from '@/lib/data/cases';
 import { InstitutionDashboardBody } from '@/components/institution/institution-dashboard-body';
 
-export default async function Page({ searchParams }: { searchParams: StaffCasesSearchParams }) {
-  const [cases, recalled] = await Promise.all([listCases({}), listRecalledCases()]);
+export default async function Page() {
+  const profile = await requireInstitution();
+  const ctx = await requireContext(profile);
+  const cases = await listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined });
   return (
     <main className="flex flex-col gap-6">
       <InstitutionDashboardBody
         cases={cases}
-        recalled={recalled}
-        searchParams={searchParams}
         basePath="/institution/cases"
-        editBasePath="/institution/cases"
+        branding={ctx.branding}
+        groupName={ctx.group?.name ?? null}
       />
     </main>
   );

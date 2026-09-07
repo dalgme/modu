@@ -1,113 +1,66 @@
 import Link from 'next/link';
 
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
+import type { CaseListItem } from '@/lib/data/cases';
 import { StatusBadge } from '@/components/cases/status-badge';
 import { CaseStepNumbers } from '@/components/cases/case-step-numbers';
-import { CaseRowActions } from '@/components/cases/case-row-actions';
-import { CaseWithdrawButton } from '@/components/cases/case-withdraw-button';
-import { EditGrantBadge } from '@/components/cases/edit-grant-badge';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatDate } from '@/lib/utils/format';
-import type { CaseListItem } from '@/lib/data/cases';
+import type { Branding } from '@/lib/programs/branding';
 
-interface CaseTableProps {
-  items: CaseListItem[];
-  /** 상세 링크 기준 경로 (예: '/institution/cases', '/nextlab/cases') */
-  basePath: string;
-  /** 지원신청서 수동 접수 처리된 케이스ID 집합 (버튼 자리에 완료 표시용) */
-  manuallyReceivedIds?: Set<string>;
-  /** 임시 수정권한이 열려 있는 케이스ID 집합 */
-  editGrantCaseIds?: Set<string>;
-  /** 케이스ID → 멘토링 회차 수(일지 웹작성 + 업로드 보고서) */
-  roundCounts?: Map<string, number>;
-}
-
-/** 진흥원·넥스트랩 전체 케이스 테이블 */
+/** 케이스 목록 표 (스태프·멘토 공용). 행 클릭 → 상세. */
 export function CaseTable({
   items,
   basePath,
-  manuallyReceivedIds,
-  editGrantCaseIds,
-  roundCounts,
-}: CaseTableProps) {
+  branding,
+  showMentor = true,
+  showGroup = true,
+  emptyText = '케이스가 없습니다.',
+}: {
+  items: CaseListItem[];
+  basePath: string;
+  branding?: Branding;
+  showMentor?: boolean;
+  showGroup?: boolean;
+  emptyText?: string;
+}) {
   if (items.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
-        조건에 맞는 케이스가 없습니다.
-      </div>
-    );
+    return <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">{emptyText}</p>;
   }
-
   return (
-    <div className="rounded-lg border bg-card">
+    <div className="overflow-x-auto rounded-lg border bg-background">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>업체명 / 대표자</TableHead>
-            <TableHead>지원유형</TableHead>
+            <TableHead>멘티(기업·팀)</TableHead>
+            {showGroup && <TableHead>그룹</TableHead>}
+            {showMentor && <TableHead>담당 멘토</TableHead>}
+            <TableHead className="text-center">회차</TableHead>
+            <TableHead>단계</TableHead>
             <TableHead>상태</TableHead>
-            <TableHead>컨설팅</TableHead>
-            <TableHead>담당 멘토</TableHead>
-            <TableHead>등록일</TableHead>
-            <TableHead>수동 처리</TableHead>
-            <TableHead>종료/포기</TableHead>
+            <TableHead className="text-right">등록일</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {items.map((c) => (
-            <TableRow key={c.id} className="cursor-pointer">
+            <TableRow key={c.id}>
               <TableCell>
-                <Link href={`${basePath}/${c.id}`} className="block font-medium hover:underline">
+                <Link href={`${basePath}/${c.id}`} className="font-medium hover:underline">
                   {c.business_name}
                 </Link>
-                <span className="text-xs text-muted-foreground">{c.owner_name}</span>
+                <span className="ml-1.5 text-xs text-muted-foreground">{c.owner_name}</span>
               </TableCell>
-              <TableCell className="text-sm">{c.supportTypeName ?? '-'}</TableCell>
-              <TableCell>
-                <div className="flex flex-col gap-1.5">
-                  <CaseStepNumbers status={c.status} />
-                  <div className="flex flex-wrap items-center gap-1">
-                    <StatusBadge status={c.status} showStep />
-                    {editGrantCaseIds?.has(c.id) && <EditGrantBadge />}
-                  </div>
-                </div>
+              {showGroup && <TableCell className="text-sm">{c.supportTypeName ?? '-'}</TableCell>}
+              {showMentor && <TableCell className="text-sm">{c.mentorName ?? <span className="text-muted-foreground">미배정</span>}</TableCell>}
+              <TableCell className="text-center text-sm tabular-nums">
+                {c.roundsDone}/{c.requiredRounds}
               </TableCell>
               <TableCell>
-                {(() => {
-                  const n = roundCounts?.get(c.id) ?? 0;
-                  return (
-                    <span
-                      className={
-                        n > 0
-                          ? 'inline-flex items-center rounded-full bg-status-approved/15 px-2 py-0.5 text-xs font-semibold text-status-approved'
-                          : 'inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground'
-                      }
-                    >
-                      {n > 0 ? `${n}회차` : '미진행'}
-                    </span>
-                  );
-                })()}
-              </TableCell>
-              <TableCell className="text-sm">{c.mentorName ?? '미배정'}</TableCell>
-              <TableCell className="text-sm text-muted-foreground">
-                {formatDate(c.created_at)}
+                <CaseStepNumbers status={c.status} />
               </TableCell>
               <TableCell>
-                <CaseRowActions
-                  caseId={c.id}
-                  status={c.status}
-                  manuallyReceived={manuallyReceivedIds?.has(c.id) ?? false}
-                />
+                <StatusBadge status={c.status} branding={branding} short />
               </TableCell>
-              <TableCell>
-                <CaseWithdrawButton caseId={c.id} status={c.status} />
-              </TableCell>
+              <TableCell className="text-right text-xs text-muted-foreground">{formatDate(c.created_at)}</TableCell>
             </TableRow>
           ))}
         </TableBody>

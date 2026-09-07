@@ -1,310 +1,289 @@
-import { createClient } from '@/lib/supabase/server';
-import { logAudit } from '@/lib/workflow/audit';
+import 'server-only';
+
+import { createAdminClient } from '@/lib/supabase/admin';
 import { queueNotification } from '@/lib/workflow/notifications';
 import { inviteMentee } from '@/lib/auth/admin-accounts';
 import { toStoredPhone } from '@/lib/auth/identifier';
+import { assertTransition, assignTarget, TRANSITIONS } from '@/lib/workflow/transitions';
 import type { CaseFormInput } from '@/lib/validations/case';
 import type { TablesInsert } from '@/types/database';
 
-export interface CreateCaseInput extends CaseFormInput {
-  createdBy: string;
-  /** 선택된 지원유형 코드 (폐업정리 필수필드 검증용) */
-  supportTypeCode: 'management_improvement' | 'closure';
-}
-
 export type WorkflowResult = { ok: true; caseId: string } | { ok: false; error: string };
 
-/** 케이스 등록 결과(멘티 계정 자동발급 시 임시 자격증명 포함) */
+export interface CreateCaseInput extends CaseFormInput {
+  programId: string;
+  createdBy: string;
+  /** 승계 개설 시 이전 단계 케이스 */
+  predecessorCaseId?: string | null;
+  /** 이미 계정이 있는 멘티를 연결할 때 (승계) — 없으면 휴대폰으로 계정 자동 발급 */
+  menteeId?: string | null;
+}
+
 export type CreateCaseResult =
   | { ok: true; caseId: string; menteeCredential?: { email: string; tempPassword: string } }
   | { ok: false; error: string };
 
 /**
- * 케이스 등록 (워크플로우 1단계). status=registered.
- * 폐업정리면 전용 필드 필수 검증. case_status_history·audit_logs 기록.
- * 자격심사·선정 로직은 포함하지 않는다.
+ * T1 멘티(케이스) 등록 — status=registered. 운영사 전용(호출부 가드).
+ * 사업그룹은 반드시 같은 행사 소속이어야 한다(DB 트리거도 검사).
+ * 멘티 계정이 없으면 휴대폰 번호로 자동 발급하고, 행사 멤버십을 붙인다.
  */
 export async function createCase(input: CreateCaseInput): Promise<CreateCaseResult> {
-  if (input.supportTypeCode === 'closure') {
-    if (!input.closure_status) {
-      return { ok: false, error: '폐업정리는 폐업/폐업예정 구분이 필요합니다.' };
-    }
-    if (input.exclusive_area_pyeong === undefined) {
-      return { ok: false, error: '폐업정리는 전용면적(평)을 입력해야 합니다.' };
-    }
+  const admin = createAdminClient();
+
+  const { data: group } = await admin
+    .from('support_types')
+    .select('id, program_id, status')
+    .eq('id', input.support_type_id)
+    .maybeSingle();
+  if (!group || group.program_id !== input.programId) {
+    return { ok: false, error: '이 행사의 사업그룹이 아닙니다.' };
   }
+  if (group.status !== 'active') return { ok: false, error: '종료된 사업그룹에는 등록할 수 없습니다.' };
 
-  const supabase = createClient();
-
-  // 저장 형식 표준화(010-XXXX-XXXX) — 표시·검색 일관화. 로그인·임시비번은 숫자 정규화로 매칭.
   const storedPhone = toStoredPhone(input.phone) ?? input.phone;
-
   const insert: TablesInsert<'cases'> = {
+    program_id: input.programId,
     support_type_id: input.support_type_id,
     created_by: input.createdBy,
     status: 'registered',
     business_name: input.business_name,
     owner_name: input.owner_name,
-    business_reg_no: input.business_reg_no,
+    business_reg_no: input.business_reg_no ?? null,
     phone: storedPhone,
-    address: input.address,
+    address: input.address ?? null,
     email: input.email ?? null,
     business_type: input.business_type ?? null,
     item: input.item ?? null,
     opened_at: input.opened_at ?? null,
     employee_count: input.employee_count ?? null,
-    // 폐업정리 전용 (경영개선이면 무시)
-    closure_status: input.supportTypeCode === 'closure' ? (input.closure_status ?? null) : null,
-    closed_at: input.supportTypeCode === 'closure' ? (input.closed_at ?? null) : null,
-    revenue_last_year:
-      input.supportTypeCode === 'closure' ? (input.revenue_last_year ?? null) : null,
-    lease_deposit: input.supportTypeCode === 'closure' ? (input.lease_deposit ?? null) : null,
-    monthly_rent: input.supportTypeCode === 'closure' ? (input.monthly_rent ?? null) : null,
-    exclusive_area_pyeong:
-      input.supportTypeCode === 'closure' ? (input.exclusive_area_pyeong ?? null) : null,
+    predecessor_case_id: input.predecessorCaseId ?? null,
+    mentee_id: input.menteeId ?? null,
   };
 
-  const { data: created, error } = await supabase
-    .from('cases')
-    .insert(insert)
-    .select('id')
-    .single();
-  if (error || !created) {
-    return { ok: false, error: error?.message ?? '케이스 등록에 실패했습니다.' };
-  }
+  const { data: created, error } = await admin.from('cases').insert(insert).select('id').single();
+  if (error || !created) return { ok: false, error: error?.message ?? '멘티 등록에 실패했습니다.' };
 
-  await supabase.from('case_status_history').insert({
+  await admin.from('case_status_history').insert({
     case_id: created.id,
     from_status: null,
     to_status: 'registered',
     changed_by: input.createdBy,
-    note: '케이스 등록',
+    note: input.predecessorCaseId ? '멘티 등록(승계)' : '멘티 등록',
   });
-
-  await logAudit(supabase, {
-    actorId: input.createdBy,
+  await admin.from('audit_logs').insert({
+    actor_id: input.createdBy,
+    program_id: input.programId,
     action: 'case.create',
-    entityType: 'cases',
-    entityId: created.id,
-    metadata: { support_type_id: input.support_type_id },
+    entity_type: 'cases',
+    entity_id: created.id,
+    metadata: { support_type_id: input.support_type_id, predecessor_case_id: input.predecessorCaseId ?? null },
   });
 
-  // 멘티 로그인 계정 자동 발급 (진흥원 '플랫폼 등록' = 회원 등록).
-  // 이메일 없으면 합성 로그인ID 를 만들고, 멘티는 휴대폰 번호로 로그인한다(임시비번=휴대폰).
-  // 계정 발급 실패(중복 등)해도 케이스는 유지 — 넥스트랩이 초대 패널로 후처리 가능.
+  // 멘티 계정: 기존 계정 연결(승계) 또는 휴대폰 기반 자동 발급. 실패해도 케이스는 유지.
   let menteeCredential: { email: string; tempPassword: string } | undefined;
-  const phoneDigits = (input.phone ?? '').replace(/\D/g, '');
-  if (phoneDigits.length >= 10) {
-    const email = input.email?.trim() || `m-${created.id.slice(0, 8)}@mentee.local`;
-    try {
-      const res = await inviteMentee({
-        caseId: created.id,
-        email,
-        name: input.owner_name,
-        phone: storedPhone,
-        actorId: input.createdBy,
-      });
-      menteeCredential = { email: res.email, tempPassword: res.tempPassword };
-    } catch {
-      // 계정 발급 실패는 무시 (케이스는 정상 등록됨)
+  let menteeId = input.menteeId ?? null;
+  if (!menteeId) {
+    const phoneDigits = (input.phone ?? '').replace(/\D/g, '');
+    if (phoneDigits.length >= 10) {
+      const email = input.email?.trim() || `m-${created.id.slice(0, 8)}@mentee.local`;
+      try {
+        const res = await inviteMentee({
+          caseId: created.id,
+          email,
+          name: input.owner_name,
+          phone: storedPhone,
+          actorId: input.createdBy,
+        });
+        menteeCredential = { email: res.email, tempPassword: res.tempPassword };
+        const { data: row } = await admin.from('cases').select('mentee_id').eq('id', created.id).maybeSingle();
+        menteeId = row?.mentee_id ?? null;
+      } catch {
+        /* 계정 발급 실패는 무시 — 회원관리에서 초대 가능 */
+      }
     }
+  }
+  if (menteeId) {
+    await admin
+      .from('program_members')
+      .upsert({ program_id: input.programId, user_id: menteeId, is_active: true }, { onConflict: 'program_id,user_id' });
   }
 
   return { ok: true, caseId: created.id, menteeCredential };
 }
 
-/**
- * 멘토 배정 (워크플로우 2단계). registered → mentor_assigned.
- * 상태 전이 가드: registered 에서만 가능 (조건부 update 로 원자적 검증).
- */
-export async function assignMentor(
-  caseId: string,
-  mentorId: string,
-  actorId: string,
-): Promise<WorkflowResult> {
-  const supabase = createClient();
+/** 멘토가 이 행사의 활성 멤버(역할 mentor)인지 */
+async function assertMentorInProgram(programId: string, mentorId: string): Promise<string | null> {
+  const admin = createAdminClient();
+  const [{ data: user }, { data: member }] = await Promise.all([
+    admin.from('users').select('role, is_active').eq('id', mentorId).maybeSingle(),
+    admin
+      .from('program_members')
+      .select('id')
+      .eq('program_id', programId)
+      .eq('user_id', mentorId)
+      .eq('is_active', true)
+      .maybeSingle(),
+  ]);
+  if (!user || user.role !== 'mentor' || !user.is_active) return '멘토 계정이 아니거나 비활성 상태입니다.';
+  if (!member) return '이 행사에 소속되지 않은 멘토입니다. 회원관리에서 먼저 초대하세요.';
+  return null;
+}
 
-  const { data: existing } = await supabase
+/** 배정된 멘토를 그룹 명부(support_type_members)에도 올린다 (없으면 추가·비활성이면 재활성) */
+async function ensureGroupRoster(supportTypeId: string, mentorId: string): Promise<void> {
+  const admin = createAdminClient();
+  await admin
+    .from('support_type_members')
+    .upsert(
+      { support_type_id: supportTypeId, user_id: mentorId, member_role: 'mentor', is_active: true, left_at: null },
+      { onConflict: 'support_type_id,user_id' },
+    );
+}
+
+/**
+ * T2/T12 멘토 배정. registered → mentor_assigned, reassignment_pending → in_progress.
+ * 조건부 update 로 원자적 검증. 운영사 전용(호출부 가드).
+ */
+export async function assignMentor(caseId: string, mentorId: string, actorId: string): Promise<WorkflowResult> {
+  const admin = createAdminClient();
+  const { data: c } = await admin
     .from('cases')
-    .select('id, status, mentee_id')
+    .select('id, status, mentee_id, program_id, support_type_id')
     .eq('id', caseId)
     .maybeSingle();
-  if (!existing) {
-    return { ok: false, error: '케이스를 찾을 수 없습니다.' };
-  }
-  if (existing.status !== 'registered') {
-    return { ok: false, error: '멘토 배정은 대상자 등록 단계에서만 가능합니다.' };
-  }
+  if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
+  const denied = assertTransition('assign_mentor', c.status);
+  if (denied) return { ok: false, error: denied };
+  const memberErr = await assertMentorInProgram(c.program_id, mentorId);
+  if (memberErr) return { ok: false, error: memberErr };
 
-  // 배정 삽입
-  const { data: assignment, error: assignError } = await supabase
+  const { data: active } = await admin
+    .from('mentor_assignments')
+    .select('id')
+    .eq('case_id', caseId)
+    .eq('is_active', true)
+    .maybeSingle();
+  if (active) return { ok: false, error: '이미 활성 멘토가 있습니다. 재배정을 사용하세요.' };
+
+  const { data: assignment, error: assignError } = await admin
     .from('mentor_assignments')
     .insert({ case_id: caseId, mentor_id: mentorId, assigned_by: actorId, is_active: true })
     .select('id')
     .single();
-  if (assignError || !assignment) {
-    return { ok: false, error: assignError?.message ?? '멘토 배정에 실패했습니다.' };
-  }
+  if (assignError || !assignment) return { ok: false, error: assignError?.message ?? '멘토 배정에 실패했습니다.' };
 
-  // 상태 전이 (registered 인 동안만 — 동시성 가드)
-  const { data: updated } = await supabase
+  const to = assignTarget(c.status);
+  const { data: updated } = await admin
     .from('cases')
-    .update({ status: 'mentor_assigned' })
+    .update({ status: to })
     .eq('id', caseId)
-    .eq('status', 'registered')
+    .in('status', [...TRANSITIONS.assign_mentor.from])
     .select('id');
   if (!updated || updated.length === 0) {
-    // 다른 처리가 선행됨 → 방금 삽입한 배정 롤백
-    await supabase.from('mentor_assignments').update({ is_active: false }).eq('id', assignment.id);
+    await admin.from('mentor_assignments').update({ is_active: false }).eq('id', assignment.id);
     return { ok: false, error: '이미 처리된 케이스입니다. 새로고침 후 다시 시도하세요.' };
   }
 
-  await supabase.from('case_status_history').insert({
+  await ensureGroupRoster(c.support_type_id, mentorId);
+  await admin.from('case_status_history').insert({
     case_id: caseId,
-    from_status: 'registered',
-    to_status: 'mentor_assigned',
+    from_status: c.status,
+    to_status: to,
     changed_by: actorId,
-    note: '멘토 배정',
+    note: c.status === 'reassignment_pending' ? '멘토 재배정(잔여 회차 승계)' : '멘토 배정',
   });
-
-  // 알림 큐 등록 (멘토 + 멘티) — 실제 발송은 단계 13
-  await queueNotification(supabase, {
-    caseId,
-    recipientId: mentorId,
-    triggerEvent: 'mentor_assigned',
-  });
-  if (existing.mentee_id) {
-    await queueNotification(supabase, {
-      caseId,
-      recipientId: existing.mentee_id,
-      triggerEvent: 'mentor_assigned',
-    });
+  await queueNotification(admin, { caseId, programId: c.program_id, recipientId: mentorId, triggerEvent: 'mentor_assigned' });
+  if (c.mentee_id) {
+    await queueNotification(admin, { caseId, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'mentor_assigned' });
   }
-
-  await logAudit(supabase, {
-    actorId,
+  await admin.from('audit_logs').insert({
+    actor_id: actorId,
+    program_id: c.program_id,
     action: 'case.assign_mentor',
-    entityType: 'cases',
-    entityId: caseId,
-    metadata: { mentor_id: mentorId },
+    entity_type: 'cases',
+    entity_id: caseId,
+    metadata: { mentor_id: mentorId, from_status: c.status },
   });
-
   return { ok: true, caseId };
 }
 
 /**
- * 멘토 재배정. 이미 배정된 케이스의 담당 멘토를 다른 멘토로 교체한다.
- * 상태는 유지하고 현재 활성 배정을 비활성화한 뒤 새 배정을 활성으로 삽입한다.
- * (넥스트랩 담당자 전용 — 멘토 사정으로 담당자 변경이 필요한 경우)
+ * T3 멘토 교체(상태 유지). 현재 활성 배정을 종료(end_kind=reassigned)하고 새 배정을 만든다.
+ * 회차는 케이스 누적이라 승계된다. 이미 이행한 회차의 정산은 P4(부분 정산)에서 처리.
  */
-export async function reassignMentor(
-  caseId: string,
-  newMentorId: string,
-  actorId: string,
-): Promise<WorkflowResult> {
-  const supabase = createClient();
-
-  const { data: existing } = await supabase
+export async function reassignMentor(caseId: string, newMentorId: string, actorId: string, reason?: string): Promise<WorkflowResult> {
+  const admin = createAdminClient();
+  const { data: c } = await admin
     .from('cases')
-    .select('id, status, mentee_id')
+    .select('id, status, mentee_id, program_id, support_type_id')
     .eq('id', caseId)
     .maybeSingle();
-  if (!existing) {
-    return { ok: false, error: '케이스를 찾을 수 없습니다.' };
-  }
-  if (existing.status === 'registered') {
-    return { ok: false, error: '아직 멘토가 배정되지 않았습니다. 신규 배정을 사용하세요.' };
-  }
-  if (existing.status === 'withdrawn' || existing.status === 'rejected') {
-    return { ok: false, error: '종료된 케이스는 멘토를 재배정할 수 없습니다.' };
-  }
+  if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
+  const denied = assertTransition('reassign_mentor', c.status);
+  if (denied) return { ok: false, error: denied };
+  const memberErr = await assertMentorInProgram(c.program_id, newMentorId);
+  if (memberErr) return { ok: false, error: memberErr };
 
-  // 현재 활성 배정 조회
-  const { data: current } = await supabase
+  const { data: current } = await admin
     .from('mentor_assignments')
     .select('id, mentor_id')
     .eq('case_id', caseId)
     .eq('is_active', true)
     .maybeSingle();
-  if (!current) {
-    return { ok: false, error: '활성 멘토 배정이 없습니다. 신규 배정을 사용하세요.' };
-  }
-  if (current.mentor_id === newMentorId) {
-    return { ok: false, error: '현재 멘토와 동일합니다. 다른 멘토를 선택하세요.' };
-  }
+  if (!current) return { ok: false, error: '활성 멘토 배정이 없습니다. 신규 배정을 사용하세요.' };
+  if (current.mentor_id === newMentorId) return { ok: false, error: '현재 멘토와 동일합니다. 다른 멘토를 선택하세요.' };
 
-  // 기존 활성 배정 모두 비활성화
-  const { error: deactivateError } = await supabase
+  const now = new Date().toISOString();
+  const { error: endErr } = await admin
     .from('mentor_assignments')
-    .update({ is_active: false })
-    .eq('case_id', caseId)
-    .eq('is_active', true);
-  if (deactivateError) {
-    return { ok: false, error: deactivateError.message };
-  }
+    .update({ is_active: false, ended_at: now, ended_by: actorId, end_kind: 'reassigned', end_reason: reason ?? null })
+    .eq('id', current.id);
+  if (endErr) return { ok: false, error: endErr.message };
 
-  // 새 멘토 활성 배정 삽입
-  const { error: assignError } = await supabase
+  const { error: insErr } = await admin
     .from('mentor_assignments')
     .insert({ case_id: caseId, mentor_id: newMentorId, assigned_by: actorId, is_active: true });
-  if (assignError) {
-    // 롤백: 이전 멘토 다시 활성화
-    await supabase.from('mentor_assignments').update({ is_active: true }).eq('id', current.id);
-    return { ok: false, error: assignError.message };
+  if (insErr) {
+    await admin
+      .from('mentor_assignments')
+      .update({ is_active: true, ended_at: null, ended_by: null, end_kind: null, end_reason: null })
+      .eq('id', current.id);
+    return { ok: false, error: insErr.message };
   }
 
-  await supabase.from('case_status_history').insert({
+  await ensureGroupRoster(c.support_type_id, newMentorId);
+  await admin.from('case_status_history').insert({
     case_id: caseId,
-    from_status: existing.status,
-    to_status: existing.status,
+    from_status: c.status,
+    to_status: c.status,
     changed_by: actorId,
-    note: '멘토 재배정',
+    note: reason ? `멘토 교체: ${reason}` : '멘토 교체',
   });
-
-  // 새 멘토에게 배정 알림 큐 등록
-  await queueNotification(supabase, {
-    caseId,
-    recipientId: newMentorId,
-    triggerEvent: 'mentor_assigned',
-  });
-
-  await logAudit(supabase, {
-    actorId,
+  await queueNotification(admin, { caseId, programId: c.program_id, recipientId: newMentorId, triggerEvent: 'mentor_assigned' });
+  if (c.mentee_id) {
+    await queueNotification(admin, { caseId, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'mentor_assigned' });
+  }
+  await admin.from('audit_logs').insert({
+    actor_id: actorId,
+    program_id: c.program_id,
     action: 'case.reassign_mentor',
-    entityType: 'cases',
-    entityId: caseId,
-    metadata: { from_mentor_id: current.mentor_id, to_mentor_id: newMentorId },
+    entity_type: 'cases',
+    entity_id: caseId,
+    metadata: { from_mentor_id: current.mentor_id, to_mentor_id: newMentorId, reason: reason ?? null },
   });
-
   return { ok: true, caseId };
 }
 
-/**
- * 멘토 배정 회수. 배정 이후라도 넥스트랩이 배정을 취소하고 케이스를 대상자 등록(registered)
- * 단계로 되돌린다. 이후 진흥원이 내용을 수정·재업로드해 다시 멘토 배정을 요청할 수 있다.
- * (종결/미배정 케이스는 회수 불가)
- */
-export async function recallMentor(caseId: string, actorId: string): Promise<WorkflowResult> {
-  const supabase = createClient();
+/** 멘토 배정 회수 → registered. 회차가 하나도 없을 때(mentor_assigned)만. */
+export async function recallMentor(caseId: string, actorId: string, reason?: string): Promise<WorkflowResult> {
+  const admin = createAdminClient();
+  const { data: c } = await admin.from('cases').select('id, status, program_id').eq('id', caseId).maybeSingle();
+  if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
+  const denied = assertTransition('recall_mentor', c.status);
+  if (denied) return { ok: false, error: denied };
 
-  const { data: existing } = await supabase
-    .from('cases')
-    .select('id, status')
-    .eq('id', caseId)
-    .maybeSingle();
-  if (!existing) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
-  if (existing.status === 'registered') {
-    return { ok: false, error: '이미 대상자 등록 단계입니다.' };
-  }
-  if (
-    existing.status === 'withdrawn' ||
-    existing.status === 'rejected' ||
-    existing.status === 'payment_approved'
-  ) {
-    return { ok: false, error: '종결된 케이스는 회수할 수 없습니다.' };
-  }
-
-  const { data: active } = await supabase
+  const { data: active } = await admin
     .from('mentor_assignments')
     .select('id, mentor_id')
     .eq('case_id', caseId)
@@ -312,41 +291,41 @@ export async function recallMentor(caseId: string, actorId: string): Promise<Wor
     .maybeSingle();
   if (!active) return { ok: false, error: '배정된 멘토가 없습니다.' };
 
-  // 활성 배정 비활성화
-  const { error: deactivateError } = await supabase
+  const now = new Date().toISOString();
+  const { error: endErr } = await admin
     .from('mentor_assignments')
-    .update({ is_active: false })
-    .eq('case_id', caseId)
-    .eq('is_active', true);
-  if (deactivateError) return { ok: false, error: deactivateError.message };
+    .update({ is_active: false, ended_at: now, ended_by: actorId, end_kind: 'recalled', end_reason: reason ?? null })
+    .eq('id', active.id);
+  if (endErr) return { ok: false, error: endErr.message };
 
-  // 대상자 등록 단계로 되돌림
-  const { data: updated } = await supabase
+  const { data: updated } = await admin
     .from('cases')
     .update({ status: 'registered' })
     .eq('id', caseId)
+    .in('status', [...TRANSITIONS.recall_mentor.from])
     .select('id');
   if (!updated || updated.length === 0) {
-    // 롤백
-    await supabase.from('mentor_assignments').update({ is_active: true }).eq('id', active.id);
-    return { ok: false, error: '회수 처리에 실패했습니다. 다시 시도하세요.' };
+    await admin
+      .from('mentor_assignments')
+      .update({ is_active: true, ended_at: null, ended_by: null, end_kind: null, end_reason: null })
+      .eq('id', active.id);
+    return { ok: false, error: '회수 처리에 실패했습니다. 새로고침 후 다시 시도하세요.' };
   }
 
-  await supabase.from('case_status_history').insert({
+  await admin.from('case_status_history').insert({
     case_id: caseId,
-    from_status: existing.status,
+    from_status: c.status,
     to_status: 'registered',
     changed_by: actorId,
-    note: '멘토 배정 회수',
+    note: reason ? `멘토 배정 회수: ${reason}` : '멘토 배정 회수',
   });
-
-  await logAudit(supabase, {
-    actorId,
+  await admin.from('audit_logs').insert({
+    actor_id: actorId,
+    program_id: c.program_id,
     action: 'case.recall_mentor',
-    entityType: 'cases',
-    entityId: caseId,
-    metadata: { from_status: existing.status, recalled_mentor_id: active.mentor_id },
+    entity_type: 'cases',
+    entity_id: caseId,
+    metadata: { recalled_mentor_id: active.mentor_id, reason: reason ?? null },
   });
-
   return { ok: true, caseId };
 }

@@ -18,17 +18,16 @@ const optionalNumber = z
   });
 
 /**
- * 케이스 등록 (접수신청서 붙임1 기준).
- * 폐업정리 전용 필드는 선택으로 두고, 서버에서 유형이 closure 일 때 필수 검증한다.
- * 자격심사·선정 로직은 포함하지 않는다 (진흥원 별도 처리).
+ * 멘티(케이스) 등록. 사업그룹(support_type_id)은 행사 컨텍스트 안의 그룹이어야 한다(서버 검증).
+ * 예비창업자는 사업자번호·주소가 없을 수 있어 선택이다.
  */
 export const caseFormSchema = z.object({
-  support_type_id: z.string().uuid('지원유형을 선택하세요.'),
-  business_name: z.string().trim().min(1, '업체명을 입력하세요.'),
-  owner_name: z.string().trim().min(1, '대표자명을 입력하세요.'),
-  business_reg_no: z.string().trim().min(10, '사업자등록번호를 정확히 입력하세요.').max(12),
+  support_type_id: z.string().uuid('사업그룹을 선택하세요.'),
+  business_name: z.string().trim().min(1, '기업(팀)명을 입력하세요.'),
+  owner_name: z.string().trim().min(1, '멘티(대표자) 이름을 입력하세요.'),
+  business_reg_no: optionalString,
   phone: z.string().trim().min(1, '연락처를 입력하세요.'),
-  address: z.string().trim().min(1, '사업장 주소를 입력하세요.'),
+  address: optionalString,
   email: z
     .string()
     .trim()
@@ -40,13 +39,6 @@ export const caseFormSchema = z.object({
   opened_at: optionalString,
   employee_count: optionalNumber,
 
-  // 폐업정리 전용
-  closure_status: z.enum(['closed', 'pending']).optional(),
-  closed_at: optionalString,
-  revenue_last_year: optionalNumber,
-  lease_deposit: optionalNumber,
-  monthly_rent: optionalNumber,
-  exclusive_area_pyeong: optionalNumber,
 });
 
 /** 변환 후(출력) 타입 — 서버 처리·DB insert 용 */

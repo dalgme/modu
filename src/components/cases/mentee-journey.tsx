@@ -1,83 +1,64 @@
-import { Check } from 'lucide-react';
-
-import { CASE_STEP_ORDER, CASE_STATUS_META, type CaseStatus } from '@/types/case-status';
 import { cn } from '@/lib/utils';
+import { CASE_STATUS_META, CASE_STEP_ORDER, statusStep, type CaseStatus } from '@/types/case-status';
+import { fmt, PLATFORM_BRANDING, type Branding } from '@/lib/programs/branding';
 
-/**
- * 멘티 전용 진행 여정: 현재 단계·남은 단계를 세로 스텝으로 표시.
- * 완료(체크)·현재(강조)·예정(흐림) 3상태. 반려 시 승인 단계를 반려색으로.
- */
-export function MenteeJourney({ status }: { status: CaseStatus }) {
-  const rejected = status === 'rejected';
-  const current = CASE_STATUS_META[status].step;
-  const total = CASE_STEP_ORDER.length;
-  const remaining = Math.max(0, total - current);
-
-  // 종결(포기) 상태는 여정 대신 종결 안내
-  if (current === 0) {
-    return (
-      <div className="rounded-md border border-status-rejected/40 bg-status-rejected-bg/50 p-4 text-sm">
-        <p className="font-medium text-status-rejected">{CASE_STATUS_META[status].label}</p>
-        <p className="mt-1 text-muted-foreground">
-          지원이 종결되었습니다. 문의사항은 운영팀에 연락해 주세요.
-        </p>
-      </div>
-    );
-  }
+/** 멘티용 진행 여정 카드 — 7단계를 큼직하게, 현재 단계 설명 포함 */
+export function MenteeJourney({
+  status,
+  roundsDone,
+  requiredRounds,
+  branding = PLATFORM_BRANDING,
+}: {
+  status: CaseStatus;
+  roundsDone: number;
+  requiredRounds: number;
+  branding?: Branding;
+}) {
+  const current = statusStep(status);
+  const meta = CASE_STATUS_META[status];
+  const guide: Record<CaseStatus, string> = {
+    registered: '{operator}가 담당 멘토를 배정하면 알림을 드립니다.',
+    mentor_assigned: '담당 멘토가 곧 연락드립니다. 일정을 잡고 첫 컨설팅을 진행하세요.',
+    in_progress: `컨설팅 ${roundsDone}/${requiredRounds}회 진행. 회차마다 내용을 확인하고 서명해 주세요.`,
+    reassignment_pending: '담당 멘토가 변경될 예정입니다. {operator}가 새 멘토를 배정합니다.',
+    closure_requested: '멘토가 관찰의견서를 제출했습니다. {operator} 검수 중입니다. 만족도 조사에 참여해 주세요.',
+    revision_requested: '{operator}가 멘토에게 보완을 요청했습니다.',
+    settlement_pending: '{operator} 검수가 끝났습니다. 정산 절차가 진행됩니다.',
+    settlement_batched: '지급 품의가 진행 중입니다.',
+    closed: '모든 과정이 종결되었습니다. 참여해 주셔서 감사합니다.',
+    withdrawn: '중도 종료된 케이스입니다.',
+  };
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-        <span>
-          현재 <span className="font-semibold text-status-progress">{current}단계</span> ·{' '}
-          {CASE_STATUS_META[status].label}
-        </span>
-        <span className="text-muted-foreground">
-          남은 단계 <span className="font-semibold text-foreground">{remaining}개</span>
-        </span>
-      </div>
-
-      <ol className="flex flex-col">
-        {CASE_STEP_ORDER.map((s, i) => {
-          const step = i + 1;
+    <div className="rounded-2xl border bg-background p-5 shadow-sm">
+      <ol className="grid grid-cols-7 gap-1">
+        {CASE_STEP_ORDER.map((s) => {
+          const step = CASE_STATUS_META[s].step;
           const done = step < current;
           const isCurrent = step === current;
-          const last = step === total;
           return (
-            <li key={s} className="flex gap-3">
-              <div className="flex flex-col items-center">
-                <span
-                  className={cn(
-                    'flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold',
-                    done && 'bg-status-approved text-white',
-                    isCurrent && !rejected && 'bg-status-progress text-white',
-                    isCurrent && rejected && 'bg-status-rejected text-white',
-                    !done && !isCurrent && 'bg-muted text-muted-foreground',
-                  )}
-                >
-                  {done ? <Check className="h-3.5 w-3.5" /> : step}
-                </span>
-                {!last && (
-                  <span className={cn('w-0.5 flex-1', done ? 'bg-status-approved' : 'bg-muted')} />
+            <li key={s} className="flex flex-col items-center gap-1 text-center">
+              <span
+                className={cn(
+                  'flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold tabular-nums',
+                  done && 'bg-status-approved text-white',
+                  isCurrent && (meta.tone === 'rejected' ? 'bg-status-rejected text-white' : 'bg-primary text-primary-foreground'),
+                  !done && !isCurrent && 'bg-muted text-muted-foreground',
                 )}
-              </div>
-              <div className={cn('pb-4', last && 'pb-0')}>
-                <p
-                  className={cn(
-                    'text-sm',
-                    isCurrent ? 'font-semibold text-foreground' : 'text-muted-foreground',
-                  )}
-                >
-                  {CASE_STATUS_META[s].label}
-                </p>
-                {isCurrent && (
-                  <p className="mt-0.5 text-xs text-status-progress">진행 중</p>
-                )}
-              </div>
+              >
+                {step}
+              </span>
+              <span className={cn('text-[10px] leading-tight', isCurrent ? 'font-semibold' : 'text-muted-foreground')}>
+                {CASE_STATUS_META[s].short}
+              </span>
             </li>
           );
         })}
       </ol>
+      <div className="mt-4 rounded-lg bg-muted/40 px-3 py-2">
+        <p className="text-sm font-semibold">{fmt(meta.label, branding)}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{fmt(guide[status], branding)}</p>
+      </div>
     </div>
   );
 }

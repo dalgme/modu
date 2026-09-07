@@ -1,43 +1,27 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
-import { CASE_STATUS_META, type CaseStatus } from '@/types/case-status';
+import type { CaseStatus } from '@/types/case-status';
 import { sendSolapiSms, solapiConfigured } from '@/lib/notifications/solapi';
 import {
   getMentorReminderConfig,
   renderMentorReminder,
 } from '@/lib/data/app-settings';
 
-/**
- * '지원신청서 작성·접수(application_drafted)'을 아직 완료하지 못한 케이스 상태.
- * = 배정 이후(step ≥ mentor_assigned) 이면서 지원신청서 접수(step 5) 이전.
- *   → mentor_assigned, contacted, log_completed, contractor_registered(레거시)
- * (종결/반려/승인 이후 단계는 제외)
- * contractor_registered 는 표시 단계가 지원신청서와 같은 5단계로 접혔지만, 아직 멘토가
- * 지원신청서를 작성/접수하지 않은 상태이므로 리마인더 대상에 명시적으로 포함한다.
- */
-const APPLIED_STEP = CASE_STATUS_META.application_drafted.step; // 5
-const ASSIGNED_STEP = CASE_STATUS_META.mentor_assigned.step; // 2
-
-export const PENDING_APPLY_STATUSES: CaseStatus[] = (
-  Object.keys(CASE_STATUS_META) as CaseStatus[]
-).filter((s) => {
-  if (s === 'contractor_registered') return true; // 레거시 사전지원 제출 — 지원신청서 접수 전
-  const step = CASE_STATUS_META[s].step;
-  return step >= ASSIGNED_STEP && step < APPLIED_STEP;
-});
+/** 회차가 아직 진행 중인(등록 가능한) 케이스 상태 — 주간 안내문 대상 */
+export const PENDING_APPLY_STATUSES: CaseStatus[] = ['mentor_assigned', 'in_progress', 'revision_requested'];
 
 export interface EligibleMentor {
   mentorId: string;
   name: string;
   phone: string | null;
-  /** 아직 지원신청서 작성을 완료하지 못한 담당 멘티기업명 */
+  /** 회차가 진행 중인 담당 멘티(기업·팀)명 */
   companies: string[];
 }
 
 /**
  * 주간 안내문 발송 대상 멘토 목록.
- * 조건: (1) 활성 배정된 멘티기업이 있고, (2) 그 중 '지원신청서 작성'을 완료하지 못한 기업이 있을 것.
+ * 조건: (1) 활성 배정된 멘티가 있고, (2) 그 중 회차가 아직 진행 중인 케이스가 있을 것.
  */
 export async function listMentorsNeedingWeeklyReminder(): Promise<EligibleMentor[]> {
   const admin = createAdminClient();

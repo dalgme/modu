@@ -7,7 +7,6 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { loginSchema, changePasswordSchema } from '@/lib/validations/auth';
 import { resolveUserByIdentifier } from '@/lib/auth/identifier';
-import { roleHome } from '@/lib/auth/roles';
 import { getImpersonation, VIEW_AS_COOKIE } from '@/lib/auth/impersonation';
 import { logAudit } from '@/lib/workflow/audit';
 
@@ -70,7 +69,7 @@ export async function signIn(_prev: ActionState, formData: FormData): Promise<Ac
   if (profile.role === 'mentee' && !profile.privacy_agreed_at) {
     redirect('/mentee/consent');
   }
-  redirect(roleHome(profile.role));
+  redirect('/hub');
 }
 
 export async function signOut(): Promise<void> {
@@ -172,7 +171,7 @@ export async function changePassword(_prev: ActionState, formData: FormData): Pr
   if (profile?.role === 'mentee') {
     redirect('/mentee/consent');
   }
-  redirect(profile ? roleHome(profile.role) : '/login');
+  redirect(profile ? '/hub' : '/login');
 }
 
 /**
@@ -191,5 +190,5 @@ export async function agreePrivacy(): Promise<void> {
   const now = new Date().toISOString();
   await admin.from('users').update({ privacy_agreed_at: now, activated_at: now }).eq('id', user.id);
 
-  redirect('/mentee/dashboard');
+  redirect('/hub');
 }

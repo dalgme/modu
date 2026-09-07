@@ -202,8 +202,9 @@ pdf-lib(병합) / Solapi(SMS) / nodemailer(이메일) / Vercel(icn1)
 4) ✅ 서류 목록 확정 (§4)
 5) ✅ 현행 코드 전수 조사 (docs/CURRENT-STATE.md) · 설계 (docs/MODU-DESIGN.md)
 6) ✅ P1 마이그레이션 0046~0055 + 시드 + database.ts 재생성 (2026-09-07)
-7) P2 도메인 코어(상태 v2·전이 상수·행사/그룹 컨텍스트·허브·가드) + 레거시 삭제 → 빌드 그린   ← 다음 할 일
-8) P3 멘토 흐름 / P4 정산 / P5 멘티 기능 / P6 운영·승계 / P7 플랫폼 콘솔·브랜딩 / P8 배포
+7) ✅ P2 도메인 코어(상태 v2·전이 상수·행사/그룹 컨텍스트·허브·가드) + 레거시 삭제 → **typecheck·lint·build 그린** (2026-09-07)
+8) P3 멘토 흐름(회차 등록·관찰의견서·종결 요청·추가 회차·중도 종료 요청)   ← 다음 할 일
+9) P4 정산 / P5 멘티 기능 / P6 운영·설정·승계·리포트 / P7 플랫폼 콘솔·브랜딩 치환(잔여 159줄)·/api/setup / P8 배포
 ```
 
 > 단계별 상세와 파일 변경 지도는 `docs/MODU-DESIGN.md §10·§12`. 설계에 열린 항목 9건은 §11.
@@ -236,13 +237,15 @@ grep -rn "재기지원\|진흥원\|넥스트랩\|대전\|restart.poclab.kr" src/
 - **건너뜀 — 재기지원 전용 데이터**: 0004(지원유형 시드), 서식 21종(0006·0007·0008·0010~0013·0015·0016·0018~0027·0029·0040 · 약 221KB PDF 서식), 0032 FAQ 시드 4건, 0033·0042·0043(기존 운영데이터 정정 — 새 DB 에선 무의미)
 - → **모두의창업 서식·시드는 새로 작성해야 한다.**
 - **P1 적용(2026-09-07)**: 0046 programs·멤버십·플랫폼관리자 / 0047 support_types v2·그룹 명부 / 0048 case_status v2·cases 정리·배정 종료 사유·자진 종료 요청 / 0049 consulting_mode·단가·한도·mentoring_logs v2·추가회차 요청 / 0050 settlements·품의 / 0051 멘토변경 요청·만족도 양식·멘토 그룹 평가·reviews 재사용 / 0052 단일본 인덱스 v2 / 0053 레거시 5테이블 삭제·app_settings·서식·알림·감사 행사 범위 / 0054 매칭 프로필·추천·멘토 지급서류 / 0055 모두의창업 시드(행사·그룹 A~D·단가·한도·만족도 양식·키워드).
-- ⚠ **P1 직후 `npm run typecheck` 는 실패 상태**(레거시 코드가 삭제된 테이블·상태를 참조). P2 에서 레거시 삭제 + 도메인 코어 교체로 그린 복구. 그 전까지 main 머지 금지.
+- **P2 완료(2026-09-07)**: 레거시(보조금 절차) 151개 파일 삭제, 도메인 코어 신설 — `src/types/case-status.ts`(v2) · `src/lib/workflow/transitions.ts`(전이 상수, UI·서버 공용) · `src/lib/programs/{branding,data,context,enter,actions}.ts`(브랜딩·멤버십·컨텍스트 쿠키·허브 진입) · `/hub`(행사/그룹 배너·자동 진입) · `AppHeader` 컨텍스트 바 · 역할 레이아웃 `requireContext()` · `workflow/cases.ts`(등록·배정·교체·회수 v2) · 대시보드·케이스 상세(얇은 뼈대). typecheck·lint·build 그린.
+- P2 시점에 **비어 있는 화면**: 멘토 케이스 상세의 회차/관찰의견서(P3), 렛츠 검수·정산·품의(P4), 멘티 서명·설문·변경요청(P5), 설정·리포트·승계·멘티 등록 폼(P6), 플랫폼 콘솔·`/api/setup` 플랫폼 관리자화(P7).
 
 ---
 
 ## 10. 작업 브랜치 / 배포
 
-- 기본 작업 브랜치: `<미정>`
+- 현재 작업 브랜치: `claude/modu-platform-audit-tutute` (P1~P2 커밋). main 머지는 P8 배포 검증 후.
+- 행사/그룹 컨텍스트는 서명 쿠키 `modu_ctx`(`src/lib/programs/context.ts`) — 모든 스태프 조회는 `ctx.programId`(+`supportTypeId`) 로 필터한다. 새 페이지를 만들 때 `requireContext(profile)` 를 빠뜨리지 말 것.
 - 배포: main 머지 → Vercel 자동 배포
 - 검증 3종: `npm run typecheck` · `npm run lint` · `npm run build` (모두 통과해야 머지)
   + 정산 코드 도입 후 `npm run test`(vitest) 를 4종째로 추가.

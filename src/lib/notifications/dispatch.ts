@@ -17,7 +17,6 @@ export interface DispatchSummary {
  *  - 알림톡 시도 → 실패 시 SMS 자동 대체발송(fallback)
  *  - 결과를 notifications 에 채널·상태·시각·에러로 기록 (통보 누락 분쟁 대비)
  *  - 대행사 미설정 시 발송 보류(pending 유지)하여 계약 후 재발송 가능
- *  - approved 통보 완료 시 케이스 approved → notified 전이 (워크플로우 9단계)
  */
 export async function dispatchPending(limit = 100): Promise<DispatchSummary> {
   const admin = createAdminClient();
@@ -68,7 +67,6 @@ export async function dispatchPending(limit = 100): Promise<DispatchSummary> {
         .update({ channel: 'alimtalk', status: 'sent', sent_at: now, error_message: null })
         .eq('id', n.id);
       summary.sent += 1;
-      await maybeMarkNotified(admin, n.case_id, n.trigger_event);
       continue;
     }
 
@@ -85,7 +83,6 @@ export async function dispatchPending(limit = 100): Promise<DispatchSummary> {
         })
         .eq('id', n.id);
       summary.fallback += 1;
-      await maybeMarkNotified(admin, n.case_id, n.trigger_event);
       continue;
     }
 
@@ -100,33 +97,9 @@ export async function dispatchPending(limit = 100): Promise<DispatchSummary> {
   return summary;
 }
 
-/** approved 통보를 발송하면 케이스를 approved → notified 로 전이 (자동 통보 완료) */
-async function maybeMarkNotified(
-  admin: ReturnType<typeof createAdminClient>,
-  caseId: string | null,
-  triggerEvent: string,
-): Promise<void> {
-  if (!caseId || triggerEvent !== 'approved') return;
-  const { data: updated } = await admin
-    .from('cases')
-    .update({ status: 'notified' })
-    .eq('id', caseId)
-    .eq('status', 'approved')
-    .select('id');
-  if (updated && updated.length > 0) {
-    await admin.from('case_status_history').insert({
-      case_id: caseId,
-      from_status: 'approved',
-      to_status: 'notified',
-      changed_by: null,
-      note: '승인 자동 통보 완료',
-    });
-  }
-}
-
 /**
- * 진흥원 승인 대기(reviewed) 3일 초과 케이스에 독촉 알림 큐 등록.
- * (Vercel Cron 등에서 주기 실행)
+ * 종결 요청(closure_requested) 후 3일 넘게 검수되지 않은 케이스 → 그 행사의 운영사 담당자에게 독촉 알림 큐.
+ * (Vercel Cron 에서 주기 실행. 같은 날 이미 큐가 있으면 건너뛴다)
  */
 export async function queueOverdueReminders(): Promise<{ queued: number }> {
   const admin = createAdminClient();
@@ -134,30 +107,43 @@ export async function queueOverdueReminders(): Promise<{ queued: number }> {
 
   const { data: overdue } = await admin
     .from('cases')
-    .select('id, updated_at')
-    .eq('status', 'reviewed')
+    .select('id, program_id, updated_at')
+    .eq('status', 'closure_requested')
     .lt('updated_at', threshold);
-
   if (!overdue || overdue.length === 0) return { queued: 0 };
 
-  const { data: institutions } = await admin.from('users').select('id').eq('role', 'institution');
+  const programIds = Array.from(new Set(overdue.map((c) => c.program_id)));
+  const { data: members } = await admin
+    .from('program_members')
+    .select('program_id, user_id, users!inner(role, is_active)')
+    .in('program_id', programIds)
+    .eq('is_active', true);
+  const staffByProgram = new Map<string, string[]>();
+  for (const m of members ?? []) {
+    const u = m.users as unknown as { role: string; is_active: boolean } | null;
+    if (!u || u.role !== 'nextlab' || !u.is_active) continue;
+    const list = staffByProgram.get(m.program_id) ?? [];
+    list.push(m.user_id);
+    staffByProgram.set(m.program_id, list);
+  }
+
   let queued = 0;
   for (const c of overdue) {
-    for (const u of institutions ?? []) {
-      // 중복 방지: 이미 오늘 독촉 큐가 있으면 skip
+    for (const uid of staffByProgram.get(c.program_id) ?? []) {
       const { count } = await admin
         .from('notifications')
         .select('id', { count: 'exact', head: true })
         .eq('case_id', c.id)
-        .eq('recipient_id', u.id)
-        .eq('trigger_event', 'approval_overdue')
+        .eq('recipient_id', uid)
+        .eq('trigger_event', 'closure_overdue')
         .eq('status', 'pending');
       if ((count ?? 0) > 0) continue;
       await admin.from('notifications').insert({
         case_id: c.id,
-        recipient_id: u.id,
+        program_id: c.program_id,
+        recipient_id: uid,
         channel: 'alimtalk',
-        trigger_event: 'approval_overdue',
+        trigger_event: 'closure_overdue',
         status: 'pending',
       });
       queued += 1;
