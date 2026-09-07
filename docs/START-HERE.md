@@ -33,20 +33,46 @@
 
 ## 2. 다음 창에서 맨 처음 붙여넣을 프롬프트
 
+아래 블록 하나만 새 Claude Code 창에 붙여넣으면 나머지는 문서에서 자동으로 이어집니다.
+
 ```
-이 리포는 dalgme/restart 플랫폼을 복제해 "모두의창업" 용으로 개조하는 프로젝트입니다.
-CLAUDE.md, docs/START-HERE.md, docs/PLATFORM-CLONE-HANDOVER.md, docs/DOMAIN-REMODEL-GUIDE.md
-를 먼저 읽고 시작하세요.
+이 리포(dalgme/modu)는 dalgme/restart(재기지원사업 운영관리 플랫폼)를 복제해
+"모두의창업" 사업용으로 개조하는 프로젝트입니다.
+기획과 인프라 구축은 이전 세션에서 끝났고, 이 창에서 코드 개조를 이어받습니다.
 
-작업 원칙:
-- 추측하지 말고 실제 파일을 읽고 판단할 것
-- 코드 변경 후 npm run typecheck / lint / build 3종을 모두 통과시킬 것
-- 상태머신(case_status)이나 doc_key 를 바꿀 때는 UI 게이트와 서버 액션 게이트를 반드시 함께 수정할 것
-- 금액 집계(정산) 로직은 화면 표시액과 확정 저장액이 같은 함수에서 나오게 할 것
+■ 먼저 이 4개 문서를 읽고 시작하세요 (순서대로)
+  1. docs/START-HERE.md            — 현재 상태, 남은 일, 확정 필요 질문
+  2. CLAUDE.md                     — 확정된 도메인 정의(역할·데이터모델·정산요건)
+  3. docs/PLATFORM-CLONE-HANDOVER.md — 스택, 환경변수, 마이그레이션, 버킷, 크론
+  4. docs/DOMAIN-REMODEL-GUIDE.md  — 원본에서 무엇을 바꾸고 무엇을 건드리면 안 되는지
 
-첫 작업: CLAUDE.md §3(진행 단계)과 §4(서류 체계)가 아직 미확정입니다.
-현재 restart 코드의 case_status 전이 지점과 doc_key 사용처를 전수 조사해
-docs/CURRENT-STATE.md 로 정리해 주세요. 코드는 아직 바꾸지 마세요.
+■ 인프라 현황 (이미 완료 — 다시 만들지 마세요)
+  - GitHub: dalgme/modu (restart 코드 전체 복제 완료)
+  - Supabase: 프로젝트 modu / id osrigknfrzsqjrgihgao / ap-northeast-2
+              테이블 27개 · 스토리지 버킷 3개 · RLS 전부 활성
+  - 재기지원 전용 시드/서식 21종은 일부러 적용하지 않았습니다.
+    상세 목록은 docs/START-HERE.md 1절. 새 환경에 재적용할 때도 그대로 건너뛰세요.
+  - Vercel 프로젝트와 /api/setup 초기 계정 부트스트랩은 아직 미실행입니다.
+
+■ 작업 원칙
+  - 추측하지 말고 실제 파일을 읽고 판단할 것
+  - 코드 변경 후 npm run typecheck / lint / build 3종을 모두 통과시킬 것
+  - case_status 나 doc_key 를 바꿀 때는 UI 버튼 활성 조건과 서버 액션의 상태 게이트를
+    반드시 함께 수정할 것 (어긋나면 "버튼은 눌리는데 실패"가 납니다 — 원본 실제 버그)
+  - 단일본 doc_key 는 반드시 DB 유니크 인덱스로 강제할 것
+    (원본에서 앱 코드만 믿었다가 같은 보고서가 5건까지 쌓인 사고가 있었습니다)
+  - 정산 금액은 화면 표시액과 확정 저장액이 같은 함수에서 나오게 할 것
+
+■ 첫 작업 (코드는 아직 바꾸지 마세요)
+  CLAUDE.md 의 §3(진행 단계)과 §4(서류 체계)가 아직 미확정입니다.
+  현재 restart 코드를 전수 조사해 docs/CURRENT-STATE.md 로 정리해 주세요.
+    1) user_role 이 쓰이는 곳
+    2) case_status 상태 전이가 일어나는 서버 액션 전부 (표로)
+    3) doc_key 카탈로그 — 각각 단일본/누적/이력보존 중 무엇인지
+    4) "재기지원 / 진흥원 / 넥스트랩 / 대전" 등 원본 고유 문자열이 몇 곳에 있는지
+
+  조사 결과를 보고한 뒤, docs/START-HERE.md 3절의 "확정 필요 질문 6건"을
+  저에게 물어봐 주세요. 그 답이 나와야 상태머신과 서류 체계를 확정할 수 있습니다.
 ```
 
 ---
