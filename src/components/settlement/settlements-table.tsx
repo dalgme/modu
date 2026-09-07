@@ -132,7 +132,10 @@ export function SettlementsTable({
                     <input type="checkbox" checked={selected.has(s.id)} disabled={s.status !== 'pending'} onChange={() => toggle(s.id)} aria-label="선택" />
                   </td>
                 )}
-                <td className="px-3 py-2 font-medium">{s.mentorName}</td>
+                <td className="px-3 py-2 font-medium">
+                  {s.mentorName}
+                  {s.mentorDocsMissing && <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800" title="이력서·통장사본·신분증사본 중 미수령">서류 미비</span>}
+                </td>
                 <td className="px-3 py-2">
                   <Link href={`${caseHrefBase}/${s.case_id}`} className="hover:underline">
                     {s.businessName}

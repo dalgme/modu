@@ -82,7 +82,7 @@ export default async function Page({ params }: { params: { id: string } }) {
           <Card className="border-amber-300">
             <CardHeader>
               <CardTitle className="text-base">추가 회차 요청 (처리 대기)</CardTitle>
-              <p className="text-xs text-muted-foreground">승인·반려 처리는 다음 단계(P6 요청함)에서 열립니다.</p>
+              <p className="text-xs text-muted-foreground">승인·반려는 <a href="/nextlab/requests" className="text-primary underline">요청함</a>에서 처리합니다.</p>
             </CardHeader>
             <CardContent className="flex flex-col gap-2 text-sm">
               {pendingExt.map((r) => (

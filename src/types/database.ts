@@ -1,9 +1,3 @@
-/**
- * Supabase 데이터베이스 타입.
- * 자동 생성됨 — 스키마 변경 시 재생성:
- *   supabase gen types typescript --project-id osrigknfrzsqjrgihgao > src/types/database.ts
- * (또는 Supabase MCP generate_typescript_types) · 기준: 마이그레이션 0001~0056 (2026-09-07)
- */
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
@@ -414,11 +408,13 @@ export type Database = {
           field_mapping: Json;
           html_content: string;
           id: string;
+          is_active: boolean;
           name: string;
           program_id: string | null;
           support_type_id: string | null;
           template_key: string;
           updated_at: string;
+          updated_by: string | null;
         };
         Insert: {
           attachment_no?: string | null;
@@ -426,11 +422,13 @@ export type Database = {
           field_mapping?: Json;
           html_content: string;
           id?: string;
+          is_active?: boolean;
           name: string;
           program_id?: string | null;
           support_type_id?: string | null;
           template_key: string;
           updated_at?: string;
+          updated_by?: string | null;
         };
         Update: {
           attachment_no?: string | null;
@@ -438,11 +436,13 @@ export type Database = {
           field_mapping?: Json;
           html_content?: string;
           id?: string;
+          is_active?: boolean;
           name?: string;
           program_id?: string | null;
           support_type_id?: string | null;
           template_key?: string;
           updated_at?: string;
+          updated_by?: string | null;
         };
         Relationships: [
           {
@@ -457,6 +457,13 @@ export type Database = {
             columns: ['support_type_id'];
             isOneToOne: false;
             referencedRelation: 'support_types';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'document_templates_updated_by_fkey';
+            columns: ['updated_by'];
+            isOneToOne: false;
+            referencedRelation: 'users';
             referencedColumns: ['id'];
           },
         ];
@@ -1086,6 +1093,38 @@ export type Database = {
             foreignKeyName: 'mentor_profiles_user_id_fkey';
             columns: ['user_id'];
             isOneToOne: false;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      mentor_signatures: {
+        Row: {
+          created_at: string;
+          sha256: string;
+          storage_path: string;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          sha256: string;
+          storage_path: string;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          sha256?: string;
+          storage_path?: string;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'mentor_signatures_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: true;
             referencedRelation: 'users';
             referencedColumns: ['id'];
           },
@@ -1724,6 +1763,7 @@ export type Database = {
           operator_contact: string | null;
           operator_name: string;
           operator_short: string | null;
+          round_report_policy: Json;
           slug: string;
           sms_footer: string | null;
           starts_on: string | null;
@@ -1750,6 +1790,7 @@ export type Database = {
           operator_contact?: string | null;
           operator_name: string;
           operator_short?: string | null;
+          round_report_policy?: Json;
           slug: string;
           sms_footer?: string | null;
           starts_on?: string | null;
@@ -1776,6 +1817,7 @@ export type Database = {
           operator_contact?: string | null;
           operator_name?: string;
           operator_short?: string | null;
+          round_report_policy?: Json;
           slug?: string;
           sms_footer?: string | null;
           starts_on?: string | null;
@@ -2219,6 +2261,13 @@ export type Database = {
             referencedRelation: 'cases';
             referencedColumns: ['id'];
           },
+          {
+            foreignKeyName: 'signatures_log_id_fkey';
+            columns: ['log_id'];
+            isOneToOne: false;
+            referencedRelation: 'mentoring_logs';
+            referencedColumns: ['id'];
+          },
         ];
       };
       supplement_requests: {
@@ -2404,6 +2453,7 @@ export type Database = {
           program_id: string;
           required_rounds: number;
           round_label: string;
+          round_report_policy: Json | null;
           sort_order: number;
           starts_on: string | null;
           status: string;
@@ -2421,6 +2471,7 @@ export type Database = {
           program_id: string;
           required_rounds?: number;
           round_label?: string;
+          round_report_policy?: Json | null;
           sort_order?: number;
           starts_on?: string | null;
           status?: string;
@@ -2438,6 +2489,7 @@ export type Database = {
           program_id?: string;
           required_rounds?: number;
           round_label?: string;
+          round_report_policy?: Json | null;
           sort_order?: number;
           starts_on?: string | null;
           status?: string;

@@ -5,6 +5,7 @@ import { queueNotification } from '@/lib/workflow/notifications';
 import { notifyProgramStaff } from '@/lib/workflow/closure';
 import { TRANSITIONS } from '@/lib/workflow/transitions';
 import { sumSettlements } from '@/lib/settlement/compute';
+import { mentorsMissingPaymentDocs } from '@/lib/data/mentors';
 
 export type BatchResult = { ok: true; batchId: string } | { ok: false; error: string };
 
@@ -50,6 +51,17 @@ export async function addToBatch(batchId: string, settlementIds: string[], actor
   for (const s of rows) {
     if (s.program_id !== batch.program_id) return { ok: false, error: '다른 행사의 정산 건은 편성할 수 없습니다.' };
     if (s.status !== 'pending' || s.batch_id) return { ok: false, error: TRANSITIONS.add_to_batch.denied };
+  }
+  // 종결 게이트: 멘토 지급서류 미수령 시 품의 차단 (설정, 기본 꺼짐)
+  const { data: program } = await admin.from('programs').select('closure_policy').eq('id', batch.program_id).maybeSingle();
+  const policy = (program?.closure_policy ?? {}) as { block_batch_on_missing_mentor_docs?: boolean };
+  if (policy.block_batch_on_missing_mentor_docs) {
+    const { data: mentorRows } = await admin.from('settlements').select('mentor_id').in('id', ids);
+    const missing = await mentorsMissingPaymentDocs(batch.program_id, Array.from(new Set((mentorRows ?? []).map((m) => m.mentor_id))));
+    if (missing.size > 0) {
+      const { data: names } = await admin.from('users').select('name').in('id', Array.from(missing));
+      return { ok: false, error: `지급서류(이력서·통장사본·신분증사본) 미수령 멘토가 있어 편성할 수 없습니다: ${(names ?? []).map((n) => n.name).join(', ')} — 멘토 명단에서 수령 체크 후 다시 시도하세요.` };
+    }
   }
   const now = new Date().toISOString();
   const { data: upd } = await admin.from('settlements').update({ status: 'batched', batch_id: batchId }).in('id', ids).eq('status', 'pending').is('batch_id', null).select('id, case_id, kind');

@@ -7,13 +7,16 @@ import { cn } from '@/lib/utils';
 
 const TABS = [
   { href: '/nextlab/dashboard', label: '대시보드' },
+  { href: '/nextlab/reports', label: '리포트' },
+  { href: '/nextlab/requests', label: '요청함' },
   { href: '/nextlab/inquiries', label: '멘티 문의' },
   { href: '/nextlab/qna', label: '멘토·운영 게시판' },
   { href: '/nextlab/settlements', label: '정산·품의' },
+  { href: '/nextlab/mentors', label: '멘토 명단' },
   { href: '/nextlab/members', label: '회원관리' },
-  { href: '/admin/settings/features', label: '기능 노출' },
+  { href: '/nextlab/succession', label: '승계 개설' },
+  { href: '/nextlab/settings', label: '운영 설정' },
   { href: '/admin/settings/sms', label: '문자발송' },
-  { href: '/nextlab/settings/sms-api', label: '문자 API' },
   { href: '/admin/settings/faq', label: '멘토 FAQ' },
   { href: '/admin/audit-logs', label: '감사로그' },
 ];

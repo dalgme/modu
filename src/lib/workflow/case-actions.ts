@@ -6,6 +6,7 @@ import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { assignMentorSchema, caseFormSchema } from '@/lib/validations/case';
+import { succeedCases, type SuccessionResult } from '@/lib/workflow/succession';
 import {
   assignMentor,
   createCase,
@@ -88,4 +89,18 @@ export async function recallMentorAction(caseId: string, reason?: string): Promi
   const result = await recallMentor(caseId, profile.id, reason);
   if (result.ok) revalidateCase(caseId);
   return result;
+}
+
+/** 운영사: 그룹 간 승계 개설 (docs §8) */
+export async function succeedCasesAction(input: { sourceCaseIds: string[]; targetGroupId: string; keepMentor: boolean }): Promise<{ ok: true; result: SuccessionResult } | { ok: false; error: string }> {
+  const profile = await realRoleOrNull(['nextlab']);
+  if (!profile) return { ok: false, error: OPERATOR_ONLY };
+  const ctx = await contextOrNull(profile);
+  if (!ctx) return { ok: false, error: NO_CONTEXT };
+  const r = await succeedCases({ programId: ctx.programId, actorId: profile.id, sourceCaseIds: input.sourceCaseIds ?? [], targetGroupId: input.targetGroupId, keepMentor: !!input.keepMentor });
+  if (r.ok) {
+    revalidatePath('/nextlab/dashboard');
+    revalidatePath('/nextlab/succession');
+  }
+  return r;
 }

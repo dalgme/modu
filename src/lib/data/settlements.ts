@@ -3,6 +3,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createCaseScopedSignedUrl } from '@/lib/storage/files';
 import type { Tables } from '@/types/database';
 import type { SettlementLine } from '@/lib/settlement/compute';
+import { mentorsMissingPaymentDocs } from '@/lib/data/mentors';
 
 export type SettlementRow = Tables<'settlements'>;
 export type BatchRow = Tables<'settlement_batches'>;
@@ -16,6 +17,8 @@ export interface SettlementItem extends SettlementRow {
   batchStatus: string | null;
   linesParsed: SettlementLine[];
   roundCount: number;
+  /** 멘토 지급서류(3종) 미수령 */
+  mentorDocsMissing: boolean;
 }
 
 export interface BatchItem extends BatchRow {
@@ -67,6 +70,8 @@ async function enrich(rows: SettlementRow[], supportTypeId?: string): Promise<Se
   const caseMap = new Map((cases ?? []).map((c) => [c.id, c]));
   const userMap = new Map((users ?? []).map((u) => [u.id, u.name]));
   const batchMap = new Map((batches ?? []).map((b) => [b.id, b]));
+  const programId = rows[0]!.program_id;
+  const missingDocs = await mentorsMissingPaymentDocs(programId, mentorIds);
   const out: SettlementItem[] = [];
   for (const r of rows) {
     const c = caseMap.get(r.case_id);
@@ -84,6 +89,7 @@ async function enrich(rows: SettlementRow[], supportTypeId?: string): Promise<Se
       batchStatus: b?.status ?? null,
       linesParsed: lines,
       roundCount: lines.reduce((s, l) => s + l.count, 0),
+      mentorDocsMissing: missingDocs.has(r.mentor_id),
     });
   }
   return out;

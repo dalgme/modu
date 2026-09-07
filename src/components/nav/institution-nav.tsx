@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 
 const TABS = [
   { href: '/institution/dashboard', label: '대시보드' },
+  { href: '/institution/reports', label: '리포트' },
   { href: '/institution/settlements', label: '정산 확인' },
   { href: '/institution/mentors', label: '멘토 현황' },
   { href: '/institution/requests', label: '요청/문의', tone: 'amber' as const },

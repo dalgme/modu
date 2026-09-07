@@ -15,12 +15,14 @@ export function InstitutionDashboardBody({
   branding,
   groupName,
   pendingBatches = 0,
+  extra,
 }: {
   cases: CaseListItem[];
   basePath: string;
   branding: Branding;
   groupName: string | null;
   pendingBatches?: number;
+  extra?: React.ReactNode;
 }) {
   return (
     <div className="flex flex-col gap-6">
@@ -35,6 +37,7 @@ export function InstitutionDashboardBody({
       </div>
 
       <CaseStats items={cases} />
+      {extra}
 
       {pendingBatches > 0 && (
         <Link href="/institution/settlements" className="flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50/50 px-4 py-3 text-sm font-semibold text-amber-900 hover:bg-amber-50">

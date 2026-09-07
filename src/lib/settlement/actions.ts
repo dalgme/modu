@@ -9,6 +9,7 @@ import { reviewClosure } from '@/lib/workflow/review';
 import { cancelSettlement } from '@/lib/settlement/settle';
 import { addToBatch, confirmBatch, createBatch, deleteDraftBatch, markBatchPaid, removeFromBatch, submitBatch, unsubmitBatch, type BatchResult } from '@/lib/workflow/batches';
 import { decideMentorWithdrawal, forceEndMentor, withdrawCase } from '@/lib/workflow/withdrawal';
+import { decideRoundExtension } from '@/lib/workflow/closure';
 import type { WorkflowResult } from '@/lib/workflow/cases';
 
 const OPERATOR_ONLY = '운영사 담당자만 실행할 수 있습니다.';
@@ -196,5 +197,21 @@ export async function forceEndMentorAction(caseId: string, reason: string): Prom
   if (!(await caseInProgram(caseId, ctx.programId))) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
   const r = await forceEndMentor(caseId, profile.id, reason ?? '');
   if (r.ok) revalidateCase(caseId);
+  return r;
+}
+
+/** 운영사: 추가 회차 요청 승인/반려 */
+export async function decideExtensionAction(requestId: string, decision: 'approved' | 'rejected', note: string): Promise<WorkflowResult> {
+  const profile = await realRoleOrNull(['nextlab']);
+  if (!profile) return { ok: false, error: OPERATOR_ONLY };
+  const ctx = await contextOrNull(profile);
+  if (!ctx) return { ok: false, error: NO_CONTEXT };
+  const { data: req } = await createAdminClient().from('round_extension_requests').select('case_id').eq('id', requestId).maybeSingle();
+  if (!req || !(await caseInProgram(req.case_id, ctx.programId))) return { ok: false, error: '이 행사의 요청이 아닙니다.' };
+  const r = await decideRoundExtension(requestId, profile.id, decision, note ?? '');
+  if (r.ok) {
+    revalidateCase(r.caseId);
+    revalidatePath('/nextlab/requests');
+  }
   return r;
 }

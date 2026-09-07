@@ -15,6 +15,7 @@ import {
   uploadObservationFile,
 } from '@/lib/workflow/closure';
 import type { WorkflowResult } from '@/lib/workflow/cases';
+import { saveMentorSignature } from '@/lib/documents/round-report';
 
 function revalidate(caseId: string) {
   revalidatePath(`/mentor/cases/${caseId}`);
@@ -113,4 +114,15 @@ export async function requestWithdrawalAction(caseId: string, reason: string): P
   const result = await requestMentorWithdrawal(caseId, profile.id, reason);
   if (result.ok) revalidate(caseId);
   return result;
+}
+
+/** 멘토: 내 서명 등록/교체 (보고서 자동 서명용). 대행 중에는 불가. */
+export async function saveMentorSignatureAction(dataUrl: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  const profile = await mentorOrNull();
+  if (!profile) return { ok: false, error: MENTOR_ONLY_ERROR };
+  const imp = await getImpersonation();
+  if (imp && imp.target.id === profile.id) return { ok: false, error: '대행 중에는 서명을 등록할 수 없습니다. 멘토 본인이 등록해야 합니다.' };
+  const r = await saveMentorSignature(profile.id, dataUrl);
+  if (r.ok) revalidatePath('/mentor/signature');
+  return r;
 }

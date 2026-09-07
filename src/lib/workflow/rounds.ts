@@ -6,6 +6,7 @@ import { queueNotification } from '@/lib/workflow/notifications';
 import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
 import { resolveLimits, resolveRate, kstDate, type ConsultingMode } from '@/lib/settlement/rates';
 import { getRoundAllowance, photoDocKey, reportDocKey } from '@/lib/data/rounds';
+import { renderRoundReport, resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import type { WorkflowResult } from '@/lib/workflow/cases';
 
 export interface RoundInput {
@@ -157,6 +158,9 @@ export async function submitRound(input: RoundInput): Promise<RoundResult> {
     }
   }
   await attachPhotos(c.id, log.id, input.mentorId, input.photoPaths);
+  // 웹 작성 보고서 → 행사/그룹 양식 PDF (멘토 자동 서명 정책 반영). 실패해도 회차 저장은 유지(감사로그).
+  if (reportKind === 'web') await renderRoundReport(log.id);
+  const reportPolicy = await resolveRoundReportPolicy(c.program_id, c.support_type_id);
 
   // 첫 회차: mentor_assigned → in_progress
   if (c.status === 'mentor_assigned') {
@@ -177,7 +181,8 @@ export async function submitRound(input: RoundInput): Promise<RoundResult> {
     }
   }
 
-  if (c.mentee_id) {
+  // 멘티 확인 서명 정책이 켜져 있을 때만 "확인·서명" 안내 발송 (양식에 멘토 서명 컬럼이 있어야 유효)
+  if (c.mentee_id && reportPolicy.menteeConfirmSignature) {
     await queueNotification(admin, { caseId: c.id, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'round_registered' });
   }
   await admin.from('audit_logs').insert({
@@ -222,6 +227,7 @@ export async function updateRound(input: {
     .eq('id', input.logId);
   if (error) return { ok: false, error: error.message };
   await attachPhotos(log.case_id, log.id, input.mentorId, input.photoPaths);
+  if (log.report_kind === 'web') await renderRoundReport(log.id);
   await admin.from('audit_logs').insert({
     actor_id: input.mentorId,
     program_id: c.program_id,

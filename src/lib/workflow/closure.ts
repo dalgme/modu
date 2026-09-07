@@ -222,6 +222,27 @@ export async function requestRoundExtension(caseId: string, mentorId: string, re
   return { ok: true, caseId };
 }
 
+/** 운영사: 추가 회차 요청 승인/반려 */
+export async function decideRoundExtension(requestId: string, actorId: string, decision: 'approved' | 'rejected', note: string): Promise<WorkflowResult> {
+  const admin = createAdminClient();
+  const { data: req } = await admin.from('round_extension_requests').select('id, case_id, requested_by, status, extra_rounds').eq('id', requestId).maybeSingle();
+  if (!req) return { ok: false, error: '요청을 찾을 수 없습니다.' };
+  if (req.status !== 'pending') return { ok: false, error: '이미 처리된 요청입니다.' };
+  if (decision === 'rejected' && !note.trim()) return { ok: false, error: '반려 사유를 입력하세요.' };
+  const { data: c } = await admin.from('cases').select('id, program_id').eq('id', req.case_id).maybeSingle();
+  if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
+  const { data: upd } = await admin
+    .from('round_extension_requests')
+    .update({ status: decision, decided_by: actorId, decided_at: new Date().toISOString(), decision_note: note.trim() || null })
+    .eq('id', requestId)
+    .eq('status', 'pending')
+    .select('id');
+  if (!upd || upd.length === 0) return { ok: false, error: '이미 처리된 요청입니다.' };
+  await queueNotification(admin, { caseId: c.id, programId: c.program_id, recipientId: req.requested_by, triggerEvent: 'extension_decided', payload: { decision, message: decision === 'approved' ? `추가 ${req.extra_rounds}회가 승인되었습니다.` : `추가 회차 요청이 반려되었습니다. ${note.trim().slice(0, 60)}` } });
+  await admin.from('audit_logs').insert({ actor_id: actorId, program_id: c.program_id, action: `round.extension_${decision}`, entity_type: 'cases', entity_id: c.id, metadata: { request_id: requestId, extra_rounds: req.extra_rounds, note: note.trim() } });
+  return { ok: true, caseId: c.id };
+}
+
 /** T11a 멘토 자진 중도 종료 요청 (사유 작성 → 운영사 승인) */
 export async function requestMentorWithdrawal(caseId: string, mentorId: string, reason: string): Promise<WorkflowResult> {
   if (!reason.trim()) return { ok: false, error: '중도 종료 사유를 입력하세요.' };

@@ -7,6 +7,7 @@ import { listMentorChangeRequests } from '@/lib/data/mentee';
 import { listRequiredDocSlots } from '@/lib/workflow/case-documents';
 import { SURVEY_OPEN_STATUSES } from '@/lib/workflow/mentee';
 import { canTransition } from '@/lib/workflow/transitions';
+import { resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import { MenteeDashboardBody } from '@/components/mentee/mentee-dashboard-body';
 
 export const dynamic = 'force-dynamic';
@@ -20,9 +21,9 @@ export default async function Page() {
     ? [...all.filter((c) => c.support_type_id === ctx.supportTypeId), ...all.filter((c) => c.support_type_id !== ctx.supportTypeId)]
     : all;
   const primary = cases[0] ?? null;
-  const [rounds, survey, changeRequests, slots] = primary
-    ? await Promise.all([listRounds(primary.id), getCaseSurvey(primary.id), listMentorChangeRequests(primary.id), listRequiredDocSlots(primary.id, 'mentee')])
-    : [[], null, [], []];
+  const [rounds, survey, changeRequests, slots, policy] = primary
+    ? await Promise.all([listRounds(primary.id), getCaseSurvey(primary.id), listMentorChangeRequests(primary.id), listRequiredDocSlots(primary.id, 'mentee'), resolveRoundReportPolicy(primary.program_id, primary.support_type_id)])
+    : [[], null, [], [], null];
   const pendingChange = changeRequests.find((r) => r.status === 'pending') ?? null;
   const lastDecision = changeRequests.find((r) => r.status !== 'pending') ?? null;
 
@@ -35,7 +36,7 @@ export default async function Page() {
         todo={
           primary
             ? {
-                unsignedRounds: rounds.filter((r) => !r.mentee_signed_at).length,
+                unsignedRounds: policy?.menteeConfirmSignature ? rounds.filter((r) => !r.mentee_signed_at).length : 0,
                 surveyOpen: !!survey && !survey.response && (SURVEY_OPEN_STATUSES as readonly string[]).includes(primary.status),
                 surveyDone: !!survey?.response,
                 missingDocs: slots.filter((s) => s.required && s.forRole === 'mentee' && s.files.length === 0).map((s) => s.name),

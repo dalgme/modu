@@ -7,6 +7,7 @@ import { notifyProgramStaff } from '@/lib/workflow/closure';
 import { reassignMentor } from '@/lib/workflow/cases';
 import { TRANSITIONS } from '@/lib/workflow/transitions';
 import { getCaseSurvey, scaleOptions, choiceOptions } from '@/lib/data/survey';
+import { renderRoundReport, resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import type { WorkflowResult } from '@/lib/workflow/cases';
 import type { Json } from '@/types/database';
 
@@ -19,8 +20,10 @@ export async function signRound(caseId: string, logId: string, mentee: { id: str
   const { data: log } = await admin.from('mentoring_logs').select('id, case_id, mentor_id, mentee_signed_at, round_no').eq('id', logId).eq('case_id', caseId).maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
   if (log.mentee_signed_at) return { ok: false, error: '이미 서명한 회차입니다.' };
-  const { data: c } = await admin.from('cases').select('id, program_id, mentee_id, status').eq('id', caseId).maybeSingle();
+  const { data: c } = await admin.from('cases').select('id, program_id, support_type_id, mentee_id, status').eq('id', caseId).maybeSingle();
   if (!c || c.mentee_id !== mentee.id) return { ok: false, error: '본인 케이스의 회차만 서명할 수 있습니다.' };
+  const policy = await resolveRoundReportPolicy(c.program_id, c.support_type_id);
+  if (!policy.menteeConfirmSignature) return { ok: false, error: '이 그룹은 멘티 확인 서명을 사용하지 않습니다(보고서 양식·정책 설정).' };
 
   const ext = parsed.mimeType === 'image/jpeg' ? 'jpg' : 'png';
   const storagePath = `${caseId}/rounds/${logId}.${ext}`;
@@ -38,6 +41,7 @@ export async function signRound(caseId: string, logId: string, mentee: { id: str
   if (error) return { ok: false, error: error.code === '23505' ? '이미 서명한 회차입니다.' : error.message };
   const now = new Date().toISOString();
   await admin.from('mentoring_logs').update({ mentee_signed_at: now }).eq('id', logId).is('mentee_signed_at', null);
+  await renderRoundReport(logId); // 멘티 서명을 보고서 PDF 에 반영 (웹 작성 회차)
   await queueNotification(admin, { caseId, programId: c.program_id, recipientId: log.mentor_id, triggerEvent: 'round_signed', payload: { round_no: log.round_no } });
   await admin.from('audit_logs').insert({ actor_id: mentee.id, program_id: c.program_id, action: 'round.mentee_signed', entity_type: 'mentoring_logs', entity_id: logId, metadata: { case_id: caseId, round_no: log.round_no } });
   return { ok: true, caseId };

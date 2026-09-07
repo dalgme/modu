@@ -7,6 +7,9 @@ import { fmt } from '@/lib/programs/branding';
 import { listCases } from '@/lib/data/cases';
 import { countOpenInquiries } from '@/lib/data/inquiries';
 import { listOperatorRequests } from '@/lib/data/operator-requests';
+import { countPendingInbox } from '@/lib/data/requests';
+import { computeProgramMetrics } from '@/lib/reports/metrics';
+import { MetricsTiles } from '@/components/reports/metrics-tiles';
 import { CaseActionQueue } from '@/components/cases/case-action-queue';
 import { CaseStats } from '@/components/cases/case-stats';
 import { CaseTable } from '@/components/cases/case-table';
@@ -15,24 +18,41 @@ import { OperatorRequestsPanel, OperatorRequestsHeading } from '@/components/nex
 export default async function Page() {
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
-  const [cases, openInquiries, operatorRequests] = await Promise.all([
+  const [cases, openInquiries, operatorRequests, pendingInbox, metrics] = await Promise.all([
     listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined }),
     countOpenInquiries(),
     listOperatorRequests(),
+    countPendingInbox(ctx.programId, ctx.supportTypeId ?? undefined),
+    computeProgramMetrics(ctx.programId, ctx.supportTypeId ?? null),
   ]);
   const unreadRequests = operatorRequests.filter((r) => !r.read_at).length;
   const b = ctx.branding;
 
   return (
     <main className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold">{fmt('{operator} 대시보드', b)}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {ctx.group ? ctx.group.name : '행사 전체'} · 멘토 배정 · 종결 검수 · 정산.
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">{fmt('{operator} 대시보드', b)}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {ctx.group ? ctx.group.name : '행사 전체'} · 멘토 배정 · 종결 검수 · 정산.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <Link href="/nextlab/cases/new" className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90">+ 멘티 등록</Link>
+          <Link href="/nextlab/reports" className="rounded-lg border bg-background px-3 py-2 text-sm font-semibold hover:bg-accent">리포트</Link>
+        </div>
       </div>
 
       <CaseStats items={cases} />
+
+      <MetricsTiles m={metrics} base="/nextlab" reportsHref="/nextlab/reports" />
+
+      {pendingInbox > 0 && (
+        <Link href="/nextlab/requests" className="flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50/50 px-4 py-3 text-sm font-semibold text-amber-900 hover:bg-amber-50">
+          <span>처리 대기 요청 {pendingInbox}건 (추가 회차 · 멘토 변경 · 중도 종료)</span>
+          <span className="underline-offset-4">요청함으로 이동 →</span>
+        </Link>
+      )}
 
       <div className="flex flex-col gap-3">
         <OperatorRequestsHeading unread={unreadRequests} />

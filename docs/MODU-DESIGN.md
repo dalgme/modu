@@ -456,6 +456,7 @@ create table survey_responses (
 | 0053 | 레거시 삭제(`contractors` `support_applications` `payment_applications` `approvals` `case_edit_grants`) + `app_settings`·`document_templates`·`notifications`·`audit_logs` 행사 범위 |
 | 0054 | `tag_catalog` + `mentor_profiles` + `mentee_profiles` + `match_recommendations` + `mentor_payment_docs` |
 | 0055 | 시드: 행사 `modu-2026`(발주처·용역사 기관명) + 그룹 A~D(회차 4) + 단가 + 한도 + 표준 만족도 양식 6문항 + 키워드 14개 + 주간 안내문 플레이스홀더화 |
+| 0058 | P6: `document_templates` 그룹 범위 유니크·`is_active`·`updated_by` / `programs.round_report_policy`·`support_types.round_report_policy` / `mentor_signatures` |
 | 0057 | P5: `signatures.log_id`(회차 서명 연결, 회차×서명자 유니크) |
 | 0056 | P3: `documents.mentor_visible`·`uploaded_role` + 멘토 열람 RLS / `observation_reports`(웹 작성 초안, case_id PK) / `program_sms_settings`(행사별 문자 API, 봉투암호화, **RLS 정책 없음 = 서비스롤 전용**) + `program_sms_access_log` |
 
@@ -569,7 +570,8 @@ create table mentor_payment_docs (
 | 필수서류 | 그룹별 문서 슬롯(`support_type_documents`) | 기존 화면 재사용 | |
 | 만족도 양식 | 템플릿·문항·유형·순서, 그룹 지정 | `survey_*` | 답변 5 |
 | 키워드 사전 | 카테고리별 태그 관리 | `tag_catalog` | §14 |
-| 알림 | 이벤트별 채널 on/off·문구 | `app_settings(program_id)` | 기존 문자 설정 화면 확장 |
+| 보고서 양식·서명 정책 | 행사/그룹 양식 HTML, 멘티 확인 서명·멘토 자동 서명 | `document_templates`, `programs/support_types.round_report_policy` | §22 |
+| 알림 | 이벤트별 채널 on/off·문구 | `app_settings(program_id)` | P7 이후 (기존 문자 설정 화면 사용) |
 모든 저장은 감사로그(`settings.update`, before/after). 숫자 한도는 "적용일" 을 받아 이력 행으로 추가한다(과거 정산 불변).
 
 ---
@@ -713,6 +715,17 @@ create table mentor_group_reviews (
 
 ---
 
+## 22. 컨설팅 보고서 양식 · 서명 정책 (2026-09-07 추가 요건)
+
+- **양식 등록**: `document_templates(template_key='mentoring_report', program_id, support_type_id null=행사 공통)` — 운영 설정 "보고서 양식" 탭에서 HTML + 플레이스홀더로 등록. 해석 순서 **그룹 양식 → 행사 공통 양식 → 내장 기본 양식**(`DEFAULT_ROUND_REPORT_TEMPLATE`, 멘토·멘티 서명 컬럼 포함). 스크립트 금지, 미리보기(iframe srcDoc).
+- **PDF 재생성**: 웹 작성 회차는 `renderRoundReport(logId)` 가 **저장·수정·멘티 서명** 시점마다 양식으로 PDF 를 만들어 `mentoring_report:{logId}` 단일본으로 교체(파일 업로드 회차는 그대로). 실패해도 회차 저장은 유지, `round.report_render_failed` 감사.
+- **서명 정책** `round_report_policy {mentee_confirm_signature, mentor_auto_sign}` — 행사 기본(`programs`) + 그룹 override(`support_types`, null=상속).
+  - `mentee_confirm_signature`: 회차 등록 시 멘티에게 알림 발송 → 멘티가 확인 서명(`/mentee/rounds`) → 서명 후 멘토 수정 잠금·PDF 재생성. 꺼져 있으면 알림·서명 버튼 없음.
+  - `mentor_auto_sign`: 보고서 저장 시 멘토의 등록 서명(`mentor_signatures`, `/mentor/signature` 본인만 등록·대행 불가)을 자동으로 붙임.
+  - **두 정책 모두 적용 양식에 `{{{sign_mentor}}}` 컬럼이 있을 때만 유효**(`resolveRoundReportPolicy` 가 실제 적용값을 계산, 설정 화면은 컬럼이 없으면 토글 비활성, 서버 액션도 거부).
+
+---
+
 ## 12. 구현 단계 (검증: `typecheck` · `lint` · `build` · `test` 4종 통과 후 다음 단계)
 
 > P4 구현 메모: `src/lib/settlement/{compute,policy,settle,export,labels,actions}.ts` · `src/lib/workflow/{review,batches,withdrawal}.ts` · `src/lib/data/settlements.ts` · 페이지 `/nextlab/settlements`(+`/batches/[id]`) `/institution/settlements`(+`/[id]`) `/mentor/settlements` · API `/api/nextlab/batches/[id]/export`. 알림 `payload.message` 가 문자 본문 뒤에 붙는다(`dispatch.ts`). T7 은 스냅샷 저장 성공 후에만 상태 전이(반쪽 성공 금지), 상태 경쟁 시 스냅샷 자동 취소.
@@ -723,7 +736,7 @@ create table mentor_group_reviews (
 | P3 ✅ | 멘토 흐름: 회차 등록(웹/업로드, 검증 7항목·설정 한도)·사진·관찰의견서·종결 요청·추가 회차 요청·**중도 종료 요청** + **엑셀 일괄 등록**(멘토·멘티) + **멘티 서류 첨부(멘토 공개/비공개)** + **행사별 문자 API(§21)** → 3종 그린 (2026-09-07) | 멘토 완료 |
 | P4 ✅ | 정산: `computeSettlement`(기타소득·사업소득·없음, vitest 15건) + 예상/확정 동일 함수, 검수 승인(T6/T7)·확정 취소, 부분 정산(T10/T11a/T11b), 품의(T8/T8'·제출·철회·삭제), 발주처 정산 확인(T9 → closed), 지급 완료, 정산서 PDF(`settlement_statement`), 품의 엑셀, 멘토 통보(금액 포함) → 4종 그린 (2026-09-07) | 정산 완료 |
 | P5 ✅ | 멘티: 회차 서명(0057 `signatures.log_id`, 서명 후 멘토 수정 잠금)·만족도 조사(문항 5종 렌더·검증·score 파생, 종결 요청 이후 1회)·멘토 변경 요청(운영사 수락 시 T3)·그룹 필수서류 슬롯(`req:`/`req1:` + 종결 게이트 `require_group_docs`) → 4종 그린 (2026-09-07) | 멘티 완료 |
-| P6 | 운영: **설정 페이지 9탭**(§16)·그룹 관리·승계 개설·이전 이력 탭·요청함(추가회차/멘토변경/중도종료)·**멘토 명단 지급서류 체크**(§15) | 운영 완료 |
+| P6 ✅ | 운영: 설정 페이지 8탭(§16: 행사 기본·그룹+필수서류·단가한도·정산·종결게이트+서명정책·보고서 양식·만족도·키워드)·요청함·멘티 등록 폼·승계 개설(§8)·멘토 명단(지급서류 재인증 일괄 체크·그룹별 원천징수·운영사 평가 §15·§20)·리포트+대시보드 타일(§19, `reports/metrics.ts` 단일 계산)+엑셀 · **보고서 양식·서명 정책(§22)** → 4종 그린 (2026-09-07) | 운영 완료 |
 | P7 | 플랫폼: `programs` 콘솔·개설 마법사·복제·`/api/setup` 변경·브랜딩 동적화·문구 391줄 치환 · **AI 매칭 추천**(§14) | 다중 행사 |
 | P8 | Vercel 생성·환경변수(+`ANTHROPIC_API_KEY`)·부트스트랩·역할별 권한 격리 점검·문자 1건·PDF 1건 | 배포 |
 
