@@ -203,7 +203,7 @@ CLAUDE.md §8 의 명령(`grep -rn "재기지원\|진흥원\|넥스트랩\|대�
 | `src/lib` | 155 |
 | `src/app` | 57 |
 | `src/types` | 6 (`case-status.ts` 라벨) |
-| `public/sw.js` | 1 (PWA 캐시 이름) |
+| `public/sw.js` | 1 (파일 머리 주석) |
 | `supabase/migrations` | 110 (주석 + 0037 주간 안내문 시드 `'[재기지원사업] {mentor}멘토님…'`) |
 | `docs/` | 87 (설계 문서 — 치환 대상 아님) |
 
