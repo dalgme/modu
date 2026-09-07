@@ -63,7 +63,7 @@ export default async function Page() {
 
       <CaseActionQueue
         title="종결 검수 대기"
-        description="멘토가 관찰의견서를 제출하고 종결을 요청한 케이스입니다. 검수 승인 시 정산이 확정됩니다. (P4 에서 열립니다)"
+        description="멘토가 관찰의견서를 제출하고 종결을 요청한 케이스입니다. 검수 승인 시 정산이 확정됩니다."
         items={cases.filter((c) => c.status === 'closure_requested')}
         basePath="/nextlab/cases"
         ctaLabel="검수"

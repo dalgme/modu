@@ -5,6 +5,11 @@ import { requireContext } from '@/lib/programs/context';
 import { getCaseById, getCaseStatusHistory, listMentorsForProgram, listPredecessorCases } from '@/lib/data/cases';
 import { getObservationReportFile, listPendingRequestsForCase, listRounds } from '@/lib/data/rounds';
 import { listCaseDocuments } from '@/lib/workflow/case-documents';
+import { listCaseSettlements, listStatementFiles } from '@/lib/data/settlements';
+import { estimateSettlements } from '@/lib/settlement/settle';
+import { ClosureReviewPanel } from '@/components/settlement/closure-review-panel';
+import { SettlementCard } from '@/components/settlement/settlement-card';
+import { CaseEndPanel } from '@/components/settlement/case-end-panel';
 import { canTransition } from '@/lib/workflow/transitions';
 import { CaseDetailShell } from '@/components/cases/case-detail-shell';
 import { CaseDetailBackNav } from '@/components/cases/case-detail-back-nav';
@@ -23,7 +28,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   const item = await getCaseById(params.id);
   if (!item || item.program_id !== ctx.programId) notFound();
 
-  const [history, predecessors, mentors, rounds, obsFile, requests, docs] = await Promise.all([
+  const [history, predecessors, mentors, rounds, obsFile, requests, docs, settlements, statements, estimates] = await Promise.all([
     getCaseStatusHistory(item.id),
     listPredecessorCases(item.id),
     listMentorsForProgram(ctx.programId, item.support_type_id),
@@ -31,9 +36,18 @@ export default async function Page({ params }: { params: { id: string } }) {
     getObservationReportFile(item.id),
     listPendingRequestsForCase(item.id),
     listCaseDocuments(item.id, 'nextlab'),
+    listCaseSettlements(item.id),
+    listStatementFiles(item.id),
+    estimateSettlements(item.id),
   ]);
   const pendingExt = requests.extensions.filter((r) => r.status === 'pending');
   const pendingWd = requests.withdrawals.filter((r) => r.status === 'pending');
+  const SOURCE_LABEL = { mentor_in_group: '그룹 내 멘토별 설정', group: '그룹 일괄 설정', program: '행사 기본' } as const;
+  const estimateProps = estimates.map((e) => ({
+    mentorName: e.mentorName,
+    source: SOURCE_LABEL[e.withholding.source],
+    figures: { lines: e.result.lines, gross: e.result.gross, taxable: e.result.taxable, income_tax: e.result.income_tax, local_tax: e.result.local_tax, withholding: e.result.withholding, net: e.result.net, method: e.result.policy.method, exempted: e.result.exempted },
+  }));
 
   return (
     <main className="flex flex-col gap-5">
@@ -49,26 +63,36 @@ export default async function Page({ params }: { params: { id: string } }) {
           reassignable={item.mentorId !== null && canTransition('reassign_mentor', item.status)}
         />
 
-        {(pendingExt.length > 0 || pendingWd.length > 0) && (
+        {canTransition('review_approve', item.status) && (
+          <ClosureReviewPanel caseId={item.id} estimates={estimateProps} observationUrl={obsFile?.url ?? null} />
+        )}
+
+        <SettlementCard items={settlements} statements={statements} canCancel batchHrefBase="/nextlab/settlements/batches" />
+
+        {pendingExt.length > 0 && (
           <Card className="border-amber-300">
             <CardHeader>
-              <CardTitle className="text-base">처리 대기 요청</CardTitle>
+              <CardTitle className="text-base">추가 회차 요청 (처리 대기)</CardTitle>
               <p className="text-xs text-muted-foreground">승인·반려 처리는 다음 단계(P6 요청함)에서 열립니다.</p>
             </CardHeader>
             <CardContent className="flex flex-col gap-2 text-sm">
               {pendingExt.map((r) => (
                 <p key={r.id}>
-                  <b>추가 회차 요청</b> +{r.extra_rounds}회 · {formatDateTime(r.created_at)} — {r.reason}
-                </p>
-              ))}
-              {pendingWd.map((r) => (
-                <p key={r.id} className="text-destructive">
-                  <b>멘토 중도 종료 요청</b> · {formatDateTime(r.created_at)} — {r.reason}
+                  +{r.extra_rounds}회 · {formatDateTime(r.created_at)} — {r.reason}
                 </p>
               ))}
             </CardContent>
           </Card>
         )}
+
+        <CaseEndPanel
+          caseId={item.id}
+          pendingWithdrawals={pendingWd.map((r) => ({ id: r.id, reason: r.reason, created_at: r.created_at }))}
+          canDecideWithdrawal={canTransition('approve_mentor_withdrawal', item.status)}
+          canForceEnd={canTransition('force_end_mentor', item.status)}
+          canWithdrawCase={canTransition('withdraw_case', item.status)}
+          hasActiveMentor={item.mentorId !== null}
+        />
 
         <Card>
           <CardHeader>
@@ -92,9 +116,6 @@ export default async function Page({ params }: { params: { id: string } }) {
               </a>
             ) : (
               <p className="text-muted-foreground">아직 제출되지 않았습니다.</p>
-            )}
-            {item.status === 'closure_requested' && (
-              <p className="mt-2 text-xs text-muted-foreground">검수 승인·보완 요청·정산 확정은 다음 단계(P4)에서 열립니다.</p>
             )}
           </CardContent>
         </Card>

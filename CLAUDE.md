@@ -205,7 +205,8 @@ pdf-lib(병합) / Solapi(SMS) / nodemailer(이메일) / Vercel(icn1)
 6) ✅ P1 마이그레이션 0046~0055 + 시드 + database.ts 재생성 (2026-09-07)
 7) ✅ P2 도메인 코어(상태 v2·전이 상수·행사/그룹 컨텍스트·허브·가드) + 레거시 삭제 → **typecheck·lint·build 그린** (2026-09-07)
 8) ✅ P3 멘토 흐름(회차·관찰의견서·종결·추가 회차·중도 종료 요청) + 엑셀 일괄 등록 + 멘티 서류(멘토 공개/비공개) + 행사별 문자 API 7겹 보안 (2026-09-07)
-9) P4 정산   ← 다음 할 일 / P5 멘티 기능 / P6 운영·설정·승계·리포트 / P7 플랫폼 콘솔·브랜딩 치환(잔여 159줄)·/api/setup / P8 배포
+9) ✅ P4 정산(compute 단일 함수 + vitest 15건 · 검수 승인/보완 · 부분 정산 · 품의 · 발주처 확인 · 정산서 PDF · 엑셀) (2026-09-07)
+10) P5 멘티 기능   ← 다음 할 일 / P5 멘티 기능 / P6 운영·설정·승계·리포트 / P7 플랫폼 콘솔·브랜딩 치환(잔여 159줄)·/api/setup / P8 배포
 ```
 
 > 단계별 상세와 파일 변경 지도는 `docs/MODU-DESIGN.md §10·§12`. 설계에 열린 항목 9건은 §11.
@@ -241,7 +242,8 @@ grep -rn "재기지원\|진흥원\|넥스트랩\|대전\|restart.poclab.kr" src/
 - **P1 적용(2026-09-07)**: 0046 programs·멤버십·플랫폼관리자 / 0047 support_types v2·그룹 명부 / 0048 case_status v2·cases 정리·배정 종료 사유·자진 종료 요청 / 0049 consulting_mode·단가·한도·mentoring_logs v2·추가회차 요청 / 0050 settlements·품의 / 0051 멘토변경 요청·만족도 양식·멘토 그룹 평가·reviews 재사용 / 0052 단일본 인덱스 v2 / 0053 레거시 5테이블 삭제·app_settings·서식·알림·감사 행사 범위 / 0054 매칭 프로필·추천·멘토 지급서류 / 0055 모두의창업 시드(행사·그룹 A~D·단가·한도·만족도 양식·키워드).
 - **P2 완료(2026-09-07)**: 레거시(보조금 절차) 151개 파일 삭제, 도메인 코어 신설 — `src/types/case-status.ts`(v2) · `src/lib/workflow/transitions.ts`(전이 상수, UI·서버 공용) · `src/lib/programs/{branding,data,context,enter,actions}.ts`(브랜딩·멤버십·컨텍스트 쿠키·허브 진입) · `/hub`(행사/그룹 배너·자동 진입) · `AppHeader` 컨텍스트 바 · 역할 레이아웃 `requireContext()` · `workflow/cases.ts`(등록·배정·교체·회수 v2) · 대시보드·케이스 상세(얇은 뼈대). typecheck·lint·build 그린.
 - **P3 완료(2026-09-07)**: 0056 적용. `src/lib/workflow/{rounds,closure,mentor-actions,case-documents,document-actions}.ts` · `src/lib/data/rounds.ts` · `src/lib/settlement/rates.ts`(단가·한도 이력 해석) · `src/lib/import/`(엑셀 일괄 등록, xlsx) · `src/lib/sms/`(행사별 문자 API 봉투암호화·재인증, `docs/MODU-DESIGN.md §21`, 환경변수 `SMS_KEK`) · 페이지 `/mentor/cases/[id]`(회차·관찰의견서·요청·서류) `/mentee/documents` `/nextlab/members/import` `/nextlab/settings/sms-api`. 3종 그린.
-- 남은 **비어 있는 화면**: 렛츠 검수·정산·품의(P4), 멘티 서명·설문·변경요청(P5), 설정·리포트·승계·멘티 등록 폼(P6), 플랫폼 콘솔·`/api/setup` 플랫폼 관리자화(P7).
+- **P4 완료(2026-09-07)**: `src/lib/settlement/{compute,policy,settle,export,labels,actions}.ts` · `src/lib/workflow/{review,batches,withdrawal}.ts` · `src/lib/data/settlements.ts` · 페이지 `/nextlab/settlements`(품의 편성·제출·지급완료) `/institution/settlements`(정산 확인 T9) `/mentor/settlements` · 케이스 상세에 검수 패널·확정 정산 카드·중도 종료 패널. `npm run test`(vitest) 검증 4종째 편입. 4종 그린.
+- 남은 **비어 있는 화면**: 멘티 서명·설문·변경요청(P5), 설정·리포트·승계·멘티 등록 폼(P6), 플랫폼 콘솔·`/api/setup` 플랫폼 관리자화(P7).
 
 ---
 
@@ -250,8 +252,7 @@ grep -rn "재기지원\|진흥원\|넥스트랩\|대전\|restart.poclab.kr" src/
 - 현재 작업 브랜치: `claude/modu-platform-audit-tutute` (P1~P2 커밋). main 머지는 P8 배포 검증 후.
 - 행사/그룹 컨텍스트는 서명 쿠키 `modu_ctx`(`src/lib/programs/context.ts`) — 모든 스태프 조회는 `ctx.programId`(+`supportTypeId`) 로 필터한다. 새 페이지를 만들 때 `requireContext(profile)` 를 빠뜨리지 말 것.
 - 배포: main 머지 → Vercel 자동 배포
-- 검증 3종: `npm run typecheck` · `npm run lint` · `npm run build` (모두 통과해야 머지)
-  + 정산 코드 도입 후 `npm run test`(vitest) 를 4종째로 추가.
+- 검증 4종: `npm run typecheck` · `npm run lint` · `npm run build` · `npm run test`(vitest, 정산 계산) — 모두 통과해야 머지
 
 ---
 
@@ -277,4 +278,5 @@ grep -rn "재기지원\|진흥원\|넥스트랩\|대전\|restart.poclab.kr" src/
 - 2026-09-07 **다중 행사 = 한 배포 안의 `programs` 계층**, 1계정 1프로그램, 플랫폼 관리자 플래그. URL `/nextlab` → `/operator` 개명(역할 키는 유지). 설계 → `docs/MODU-DESIGN.md`.
 - 2026-09-07 멘티 기능 확정: 회차 서명 · 만족도 조사 · 멘토 변경 요청.
 - 2026-09-07 **P3 완료** + 추가 요건 3건(엑셀 일괄 등록 / 멘티 서류 멘토 공개·비공개 / 행사별 문자 API 다중 보안 §21) 구현. 요청 승인함·검수·정산은 P4~P6.
+- 2026-09-07 **P4 완료**: 정산 계산 단일 함수(`compute.ts`) + vitest, 검수 승인 시 스냅샷 선저장 후 전이, 품의 2단계 게이트(렛츠 제출 → 센터 확인 → closed), 부분 정산(T10/T11a/T11b). 추가 회차 요청 승인함은 P6.
 - 2026-09-07 **2차 답변 10건 반영**: 기타소득 원천징수(8.8%) · 멘티·날짜 합산 상한 · 정산 = 케이스×멘토(중도 종료 부분 정산, `reassignment_pending`) · 만족도 그룹별 표준양식 · 행사별 로그인 · 한도 전부 설정 페이지 · AI 매칭 추천(자동 배정 없음) · 멘토 지급서류 체크(비밀번호 재인증·일괄). 열린 항목은 `docs/MODU-DESIGN.md §11` 4건(기본값으로 진행).

@@ -31,7 +31,7 @@ export async function dispatchPending(limit = 100): Promise<DispatchSummary> {
 
   const { data: pending } = await admin
     .from('notifications')
-    .select('id, case_id, program_id, recipient_id, recipient_phone, trigger_event, template_code')
+    .select('id, case_id, program_id, recipient_id, recipient_phone, trigger_event, template_code, payload')
     .eq('status', 'pending')
     .order('created_at', { ascending: true })
     .limit(limit);
@@ -66,7 +66,8 @@ export async function dispatchPending(limit = 100): Promise<DispatchSummary> {
     }
     const branding = await getBranding(programId);
     const rawTpl = templateFor(n.trigger_event);
-    const tpl = { code: rawTpl.code, text: fmt(rawTpl.text, branding) + (branding.smsFooter ? ` ${branding.smsFooter}` : '') };
+    const extra = payloadMessage(n.payload);
+    const tpl = { code: rawTpl.code, text: fmt(rawTpl.text, branding) + (extra ? ` ${extra}` : '') + (branding.smsFooter ? ` ${branding.smsFooter}` : '') };
     const now = new Date().toISOString();
 
     // 1) 알림톡
@@ -160,4 +161,11 @@ export async function queueOverdueReminders(): Promise<{ queued: number }> {
     }
   }
   return { queued };
+}
+
+/** payload.message — 정산 금액 등 건별 문구를 템플릿 뒤에 덧붙인다 (기관명 리터럴 없음) */
+function payloadMessage(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const m = (payload as Record<string, unknown>).message;
+  return typeof m === 'string' && m.trim() ? m.trim() : null;
 }

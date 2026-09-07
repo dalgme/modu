@@ -4,19 +4,23 @@ import { fmt } from '@/lib/programs/branding';
 import { CaseActionQueue } from '@/components/cases/case-action-queue';
 import { CaseStats } from '@/components/cases/case-stats';
 import { CaseTable } from '@/components/cases/case-table';
+import Link from 'next/link';
+
 import { OperatorRequestGeneralButton } from '@/components/cases/operator-request-general-button';
 
-/** 발주처 대시보드 본문 — 열람 중심. 정산 확인(T9)은 P4 에서 붙는다. */
+/** 발주처 대시보드 본문 — 열람 + 정산 확인(T9) 진입 */
 export function InstitutionDashboardBody({
   cases,
   basePath,
   branding,
   groupName,
+  pendingBatches = 0,
 }: {
   cases: CaseListItem[];
   basePath: string;
   branding: Branding;
   groupName: string | null;
+  pendingBatches?: number;
 }) {
   return (
     <div className="flex flex-col gap-6">
@@ -32,13 +36,19 @@ export function InstitutionDashboardBody({
 
       <CaseStats items={cases} />
 
+      {pendingBatches > 0 && (
+        <Link href="/institution/settlements" className="flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50/50 px-4 py-3 text-sm font-semibold text-amber-900 hover:bg-amber-50">
+          <span>{fmt('{operator}가 제출한 지급 품의 ', branding)}{pendingBatches}건이 정산 확인을 기다립니다.</span>
+          <span className="underline-offset-4">정산 확인으로 이동 →</span>
+        </Link>
+      )}
       <CaseActionQueue
-        title="정산 확인 대기 (지급 품의)"
-        description={fmt('{operator}가 제출한 지급 품의입니다. 확인하면 케이스가 종결됩니다. (P4 에서 열립니다)', branding)}
+        title="지급 품의 편성 케이스"
+        description={fmt('{operator}가 지급 품의에 편성한 케이스입니다. 정산 확인 메뉴에서 품의 단위로 확인하면 종결됩니다.', branding)}
         items={cases.filter((c) => c.status === 'settlement_batched')}
         basePath={basePath}
-        ctaLabel="확인"
-        emptyText="확인 대기 건이 없습니다."
+        ctaLabel="열람"
+        emptyText="편성된 케이스가 없습니다."
         branding={branding}
       />
 

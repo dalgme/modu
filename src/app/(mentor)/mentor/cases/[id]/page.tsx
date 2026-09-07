@@ -16,6 +16,10 @@ import { RoundsList } from '@/components/mentor/rounds-list';
 import { ObservationForm } from '@/components/mentor/observation-form';
 import { MentorRequests } from '@/components/mentor/mentor-requests';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { listCaseSettlements, listStatementFiles } from '@/lib/data/settlements';
+import { estimateSettlements } from '@/lib/settlement/settle';
+import { SettlementCard } from '@/components/settlement/settlement-card';
+import { SettlementSummary } from '@/components/settlement/settlement-summary';
 
 export const maxDuration = 60;
 
@@ -26,7 +30,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   if (!item || item.program_id !== ctx.programId || item.mentorId !== profile.id) notFound();
 
   const today = kstDate(new Date());
-  const [history, predecessors, rounds, allowance, obs, obsFile, requests, docs, online, offline] = await Promise.all([
+  const [history, predecessors, rounds, allowance, obs, obsFile, requests, docs, online, offline, settlements, statements, estimates] = await Promise.all([
     getCaseStatusHistory(item.id),
     listPredecessorCases(item.id),
     listRounds(item.id),
@@ -37,7 +41,11 @@ export default async function Page({ params }: { params: { id: string } }) {
     listCaseDocuments(item.id, 'mentor'),
     resolveRate(item.program_id, item.support_type_id, 'online', today),
     resolveRate(item.program_id, item.support_type_id, 'offline', today),
+    listCaseSettlements(item.id),
+    listStatementFiles(item.id),
+    estimateSettlements(item.id, profile.id),
   ]);
+  const myEstimate = estimates[0] ?? null;
 
   const maxRounds = item.requiredRounds + allowance.approvedExtra;
   const roundsEditable = canTransition('submit_round', item.status);
@@ -100,6 +108,22 @@ export default async function Page({ params }: { params: { id: string } }) {
             <ObservationForm caseId={item.id} initial={observation} file={obsFile} editable={roundsEditable} />
           </CardContent>
         </Card>
+
+        {myEstimate && myEstimate.rounds.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">예상 정산액 (미확정)</CardTitle>
+              <p className="text-xs text-muted-foreground">등록한 회차 기준 예상액입니다. 운영사 검수 승인 시 같은 계산으로 확정됩니다.</p>
+            </CardHeader>
+            <CardContent>
+              <SettlementSummary
+                compact
+                f={{ lines: myEstimate.result.lines, gross: myEstimate.result.gross, taxable: myEstimate.result.taxable, income_tax: myEstimate.result.income_tax, local_tax: myEstimate.result.local_tax, withholding: myEstimate.result.withholding, net: myEstimate.result.net, method: myEstimate.result.policy.method, exempted: myEstimate.result.exempted }}
+              />
+            </CardContent>
+          </Card>
+        )}
+        <SettlementCard items={settlements.filter((s) => s.mentor_id === profile.id)} statements={statements} title="내 확정 정산" />
 
         <CaseDocumentsPanel caseId={item.id} docs={docs} viewerRole="mentor" canUpload={roundsEditable} />
       </CaseDetailShell>

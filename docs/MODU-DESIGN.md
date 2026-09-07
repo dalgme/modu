@@ -713,12 +713,14 @@ create table mentor_group_reviews (
 ---
 
 ## 12. 구현 단계 (검증: `typecheck` · `lint` · `build` · `test` 4종 통과 후 다음 단계)
+
+> P4 구현 메모: `src/lib/settlement/{compute,policy,settle,export,labels,actions}.ts` · `src/lib/workflow/{review,batches,withdrawal}.ts` · `src/lib/data/settlements.ts` · 페이지 `/nextlab/settlements`(+`/batches/[id]`) `/institution/settlements`(+`/[id]`) `/mentor/settlements` · API `/api/nextlab/batches/[id]/export`. 알림 `payload.message` 가 문자 본문 뒤에 붙는다(`dispatch.ts`). T7 은 스냅샷 저장 성공 후에만 상태 전이(반쪽 성공 금지), 상태 경쟁 시 스냅샷 자동 취소.
 | 단계 | 내용 | 산출 |
 |---|---|---|
 | P1 | 마이그레이션 0046~0057 작성 + Supabase `modu` 적용 + `database.ts` 재생성 | 스키마 확정 |
 | P2 ✅ | 도메인 코어: 상태 v2·전이 상수·역할 라벨·행사/그룹 컨텍스트(쿠키)·허브·가드 + **레거시 삭제** → 빌드 그린 (2026-09-07) | 뼈대 |
 | P3 ✅ | 멘토 흐름: 회차 등록(웹/업로드, 검증 7항목·설정 한도)·사진·관찰의견서·종결 요청·추가 회차 요청·**중도 종료 요청** + **엑셀 일괄 등록**(멘토·멘티) + **멘티 서류 첨부(멘토 공개/비공개)** + **행사별 문자 API(§21)** → 3종 그린 (2026-09-07) | 멘토 완료 |
-| P4 | 정산: `computeSettlement`(기타소득) + 테스트, 예상/확정, 검수 승인(T7)·부분 정산(T10/T11), 품의(T8), 센터 확인(T9), 정산서 PDF, 통보 | 정산 완료 |
+| P4 ✅ | 정산: `computeSettlement`(기타소득·사업소득·없음, vitest 15건) + 예상/확정 동일 함수, 검수 승인(T6/T7)·확정 취소, 부분 정산(T10/T11a/T11b), 품의(T8/T8'·제출·철회·삭제), 발주처 정산 확인(T9 → closed), 지급 완료, 정산서 PDF(`settlement_statement`), 품의 엑셀, 멘토 통보(금액 포함) → 4종 그린 (2026-09-07) | 정산 완료 |
 | P5 | 멘티: 서명·만족도(양식 렌더)·멘토 변경 요청·필수서류 | 멘티 완료 |
 | P6 | 운영: **설정 페이지 9탭**(§16)·그룹 관리·승계 개설·이전 이력 탭·요청함(추가회차/멘토변경/중도종료)·**멘토 명단 지급서류 체크**(§15) | 운영 완료 |
 | P7 | 플랫폼: `programs` 콘솔·개설 마법사·복제·`/api/setup` 변경·브랜딩 동적화·문구 391줄 치환 · **AI 매칭 추천**(§14) | 다중 행사 |
