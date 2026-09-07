@@ -1,0 +1,117 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * 디자인 토큰 (설계문서 8.6 — 신뢰감 있는 공공기관 협업툴 톤, 차분한 블루/그레이)
+ * primary: 네이비 계열
+ * 상태색: 대기=그레이 / 진행=블루 / 승인=그린 / 반려=레드
+ */
+@layer base {
+  :root {
+    --background: 210 20% 99%;
+    --foreground: 222 32% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 32% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 32% 12%;
+
+    /* primary: 코랄 */
+    --primary: 9 84% 61%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 222 30% 96%;
+    --secondary-foreground: 223 45% 18%;
+    --muted: 220 16% 95%;
+    --muted-foreground: 220 12% 42%;
+    --accent: 9 84% 96%;
+    --accent-foreground: 9 55% 34%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 16% 90%;
+    --input: 220 16% 88%;
+    --ring: 9 84% 61%;
+    --radius: 0.65rem;
+
+    /* 브랜드 — 미드나이트 블루 (헤더·히어로 다크 서피스) */
+    --midnight: 223 47% 16%;
+    --midnight-foreground: 210 30% 96%;
+
+    /* 상태 색상 (배지·타임라인 공통) */
+    --status-pending: 215 16% 47%; /* 대기 — 그레이 */
+    --status-pending-bg: 210 20% 96%;
+    --status-progress: 217 91% 50%; /* 진행 — 블루 */
+    --status-progress-bg: 214 95% 96%;
+    --status-approved: 142 71% 38%; /* 승인 — 그린 */
+    --status-approved-bg: 138 76% 96%;
+    --status-rejected: 0 72% 48%; /* 반려 — 레드 */
+    --status-rejected-bg: 0 86% 97%;
+  }
+
+  .dark {
+    --background: 223 44% 8%;
+    --foreground: 210 30% 96%;
+    --card: 223 42% 12%;
+    --card-foreground: 210 30% 96%;
+    --popover: 223 42% 12%;
+    --popover-foreground: 210 30% 96%;
+
+    --primary: 9 86% 65%;
+    --primary-foreground: 223 47% 10%;
+
+    --secondary: 223 33% 18%;
+    --secondary-foreground: 210 30% 96%;
+    --muted: 223 30% 17%;
+    --muted-foreground: 220 14% 64%;
+    --accent: 223 33% 20%;
+    --accent-foreground: 9 84% 72%;
+    --destructive: 0 63% 48%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 223 30% 20%;
+    --input: 223 30% 22%;
+    --ring: 9 86% 65%;
+
+    --midnight: 223 44% 12%;
+    --midnight-foreground: 210 30% 96%;
+
+    --status-pending: 215 20% 65%;
+    --status-pending-bg: 217 33% 18%;
+    --status-progress: 213 94% 68%;
+    --status-progress-bg: 222 47% 16%;
+    --status-approved: 142 69% 58%;
+    --status-approved-bg: 150 30% 14%;
+    --status-rejected: 0 84% 68%;
+    --status-rejected-bg: 0 40% 16%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+  /* 모바일 입력 시 iOS 자동 확대 방지 (16px 이상) */
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+  @media (min-width: 640px) {
+    input,
+    textarea,
+    select {
+      font-size: 0.875rem;
+    }
+  }
+}
+
+/* PWA 세이프에어리어 (노치·홈 인디케이터) — 가로/하단 여백 */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
