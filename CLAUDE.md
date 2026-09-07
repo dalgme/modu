@@ -48,7 +48,7 @@ support_types(= 사업그룹, 3~5개)
        ├ mentor_assignments (활성 멘토 1명, is_active 로 교체 이력 보존)
        └ mentoring_logs (컨설팅 회차 — 총 4회)
             ├ 보고서 첨부  (doc_key: mentoring_report, 누적)
-            └ 평가서 첨부  (doc_key: evaluation_report, 신규 · 성격 미정)
+            └ 관찰의견서(=평가서)  (doc_key: observation_report, 케이스당 1건 단일본 — §4)
 ```
 
 ### 2-1. 사업그룹 = `support_types` 재사용
@@ -67,7 +67,7 @@ support_types(= 사업그룹, 3~5개)
 
 ### 2-3. 컨설팅 4회 + 멘토 변경 승계
 - **1멘티당 총 4회**, **1명의 멘토**가 담당.
-- `src/lib/workflow/mentor-tasks.ts` 의 `logRequirement()` → 모든 그룹 `{ min: 4, max: 4 }` (그룹별로 다르면 그룹 코드로 분기).
+- 회차 수는 `support_types.required_rounds`(그룹별 3~4) + 승인된 추가 회차. `logRequirement()` 하드코딩은 제거.
 - **중간 멘토 변경 시 잔여 회차 승계**: `mentor_assignments` 가 이미 `is_active` 로 교체 이력을 남기므로 **테이블 변경 불필요**.
   - 회차 카운트는 **케이스 단위 누적**(`mentoring_logs` 전체)으로 세야 한다. 멘토별로 세면 변경 후 회차가 리셋된다. ← 개조 시 반드시 확인할 지점.
   - `mentoring_logs` 에 `mentor_id` 를 남겨 "몇 회차를 누가 했는지" 추적 가능하게 할 것.
@@ -94,35 +94,67 @@ support_types(= 사업그룹, 3~5개)
 > ⚠ **금액이 걸린 기능**이다. 집계 로직은 반드시 단위 테스트를 붙이고,
 > 화면 표시액과 확정 저장액이 같은 함수에서 나오게 할 것(두 군데서 각자 계산하면 반드시 어긋난다).
 
-**원본에서 재사용 가능한 것**: `support_types.calc_method` / `limit_amount` 계산 구조,
-`payment_applications` 테이블(지급 신청), 알림 큐 + Cron 디스패치.
+**확정된 수치 (2026-09-07 답변 3·4·5)** — 상세 `docs/MODU-DESIGN.md §6`
+- 온라인 **80,000원/회**, 오프라인 **100,000원/회**. 1일 1건(멘티)당 상한 온라인 240,000 / 오프라인 300,000. 멘토 1일 최대 3건.
+- 정산 단위 = **케이스(멘티) 종결 검수 승인 시 확정 스냅샷**(`settlements`: 유형별 회차·단가·합계·원천징수·실지급요청액) → `settlement_pending` → 렛츠가 골라 **지급 품의**(`settlement_batches`) → 센터 확인 → `closed`.
+- 정산 주기는 미정 → 품의 묶음 단위로 운영 재량. 원천징수율은 프로그램 설정(기본 3.3%).
+- 계산 함수 `src/lib/settlement/compute.ts` **단 한 곳** + `vitest` 단위 테스트(검증 4종째).
+
+**원본에서 재사용 가능한 것**: 알림 큐 + Cron 디스패치, `reviews`(종결 검수 기록), PDF 렌더(`render.ts`), 서명 캔버스.
+`payment_applications`·`calc_method`·`limit_amount` 는 **재사용하지 않고 삭제**.
 
 ---
 
-## 3. 진행 단계(상태머신) — ⚠ 미확정
+## 2-5. 다중 행사(프로그램) 구조 — ✅ 확정 (2026-09-07) · **신규 개발**
 
-원본의 11단계는 **보조금 지급 절차**라 그대로 맞지 않는다. 모두의창업 축(안):
+이 운영방식을 **계정 추가만으로 여러 행사에 복제**할 수 있어야 한다. 상세는 `docs/MODU-DESIGN.md §1`.
+- 최상위에 `programs`(행사) 테이블. **계정·사업그룹·케이스·단가·브랜딩 라벨이 전부 프로그램 소속.**
+- **1계정 = 1프로그램** (`users.program_id`). 두 행사를 맡으면 계정 2개. 멤버십 다대다 테이블 없음.
+- 플랫폼 관리자는 `users.is_platform_admin` 플래그(역할 enum 추가 없음) — `/platform/*` 콘솔에서 행사 개설·첫 계정 발급·복제.
+- 격리는 두 겹: RLS `private.program_id()` + 서비스롤 경로의 모든 스태프 조회·알림 수신자 조회에 `program_id` 코드 필터.
+- "진흥원/넥스트랩" 하드코딩 라벨은 `programs.client_label / operator_label` 로 치환.
+
+---
+
+## 3. 진행 단계(상태머신) — ✅ 확정 (2026-09-07)
+
+`case_status` enum 을 **전면 교체**(새 DB 이므로 타입 재생성). 상세 전이 표는 `docs/MODU-DESIGN.md §3-2`.
 ```
-그룹 개설 → 멘티 등록 → 멘토 배정 → 멘토 연락
-  → 컨설팅 1~4회(회차별 보고서 등록) → 평가서 등록 → 종료
-  (+ 다음 그룹으로 승계)
+registered(멘티 등록) → mentor_assigned(멘토 배정) → in_progress(컨설팅 진행 중, 1회차 등록 시)
+  → closure_requested(관찰의견서 제출·종결 요청 — 멘토)
+       ↔ revision_requested(렛츠 보완요청)
+  → settlement_pending(렛츠 검수 승인 + 정산 확정 = 지급 대기)
+  → settlement_batched(지급 품의 편성 — 렛츠)
+  → closed(센터 '정산 확인' = 종결 확정)
+  ※ withdrawn(중도 종료) 은 어느 비종결 상태에서든
 ```
-- 지급/정산 단계(`payment_*`, `approved`, `notified`)가 필요 없으면 상태에서 제거.
+- 승인 게이트는 **2단계**: 렛츠 검수(정산 확정) → 센터 정산 확인. 원본의 지급/승인 9개 상태·전이 10개는 제거.
+- `contacted`(멘티 연락) 단계 제거.
+- 전이 상수는 `src/lib/workflow/transitions.ts` 한 곳에 두고 **UI 버튼 조건과 서버 게이트가 같은 상수를 읽는다.**
 - **⚠ 불변 규칙**: 화면 버튼의 활성 조건과 서버 액션의 상태 게이트는 **반드시 같이** 수정한다.
   어긋나면 "버튼은 눌리는데 실패"가 난다 (원본에서 실제 발생한 버그).
 
+### 3-1. 회차 규칙 (답변 3·5)
+- 1회차 = `mentoring_logs` 1행(웹작성이든 파일 업로드든). 필수: 일시(시작·종료)·장소·**유형(online/offline)**·내용 또는 파일·사진.
+- **회차 이행** = 행 등록(예상 비용, 미확정) / **회차 완료** = 케이스가 `settlement_pending` 이상(확정). 회차 행에 별도 상태 컬럼 없음.
+- 검증(서버 코드에서 직접): 회차 ≤ `support_types.required_rounds` + 승인된 추가 회차 / **같은 멘티·같은 날·같은 유형 합산 ≤ 일일 상한**(온 24만·오프 30만) / **멘토 1일 최대 3건(멘티)** / 시간 겹침 불가 / 단가 스냅샷 필수.
+- 추가 회차는 `round_extension_requests`(멘토 요청 → 렛츠 승인).
+
 ---
 
-## 4. 서류 체계 (doc_key) — ⚠ 일부 미확정
+## 4. 서류 체계 (doc_key) — ✅ 확정 (2026-09-07)
 
-| doc_key | 이름 | 성격 |
-|---|---|---|
-| `mentoring_report` | 멘토링 보고서 | 누적(회차별 · 최대 4건) |
-| `evaluation_report` | 평가서 | **신규** — 단일본/누적 **미정** |
+| doc_key | 이름 | 성격 | 강제 |
+|---|---|---|---|
+| `mentoring_report:{logId}` | 회차 보고서(업로드본) | 누적(회차당 1) | 유니크 인덱스 접두 |
+| `mentoring_photo:{logId}` | 회차 사진 | 누적 | 없음 |
+| `observation_report` | **관찰의견서(= 평가서)** — 멘티당 1건, 담당 멘토 작성 | **단일본** | **DB 유니크 인덱스** + 앱 delete-then-insert |
+| `settlement_statement` | 정산서(확정 시 생성) | 이력보존 | 없음(의도) |
+| `req:{key}` / `req1:{key}` | 그룹별 필수서류(`support_type_documents`) | 그룹 설정 | `req1:` 접두는 유니크 |
+| `application_pdf` | 등록 원본 | 이력보존 | 없음 |
 
-- **단일본**이면 `supabase/migrations/0045_documents_singleton_doc_keys.sql` 유니크 인덱스 조건에 반드시 추가.
-  현재 인덱스는 원본 키(`consulting_report`/`support_application`/`form_*`)로 걸려 있으니 **새 키로 교체**할 것.
-- 업로드 UI 는 `CaseDocUpload` 재사용.
+- 0045 인덱스는 **새 마이그레이션으로 교체**(`observation_report` 등 새 키). 원본 키(`consulting_report`/`support_application`/`form_*`/`contractor_*`/`si:`/`post:`/`payment_*`)와 관련 테이블(`contractors` `support_applications` `payment_applications` `approvals`)은 삭제.
+- 업로드 UI 는 `CaseDocUpload` 재사용. 상세 카탈로그는 `docs/MODU-DESIGN.md §5`.
 
 ---
 
@@ -154,18 +186,17 @@ pdf-lib(병합) / Solapi(SMS) / nodemailer(이메일) / Vercel(icn1)
 ## 7. 개조 순서
 
 ```
-1) ✅ 역할 확정 (§1) — 라벨·라우트명 교체만 하면 됨
-2) ✅ 데이터 모델 확정 (§2) — 원본 1:1 구조 그대로 + 승계 컬럼 추가
-3) ⚠ 단계 확정 (§3)  ← 다음 할 일
-4) ⚠ 서류 목록 확정 (§4)
-5) 사업그룹 시드 작성 (0004 대체)
-6) 컨설팅 유형·단가·정산 설계 (§2-4)  ← 금액이 걸린 신규 기능
-7) 화면 배선
-8) PDF 서식 / 알림 문구 / 브랜딩 교체
-9) 역할별 권한 격리 점검
+1) ✅ 역할 확정 (§1)
+2) ✅ 데이터 모델 확정 (§2) + 다중 행사 구조 (§2-5)
+3) ✅ 단계 확정 (§3)
+4) ✅ 서류 목록 확정 (§4)
+5) ✅ 현행 코드 전수 조사 (docs/CURRENT-STATE.md) · 설계 (docs/MODU-DESIGN.md)
+6) P1 마이그레이션 0046~0054 + 시드 + database.ts 재생성   ← 다음 할 일
+7) P2 도메인 코어(상태 v2·전이 상수·프로그램 스코프) + 레거시 삭제 → 빌드 그린
+8) P3 멘토 흐름 / P4 정산 / P5 멘티 기능 / P6 운영·승계 / P7 플랫폼 콘솔·브랜딩 / P8 배포
 ```
 
-> **3~4를 확정하기 전에 화면부터 만들지 말 것.**
+> 단계별 상세와 파일 변경 지도는 `docs/MODU-DESIGN.md §10·§12`. 설계에 열린 항목 9건은 §11.
 
 ---
 
@@ -185,7 +216,9 @@ grep -rn "재기지원\|진흥원\|넥스트랩\|대전\|restart.poclab.kr" src/
 | GitHub | `dalgme/modu` — 코드 푸시 완료 |
 | Supabase | 프로젝트 `modu` (`osrigknfrzsqjrgihgao`, ap-northeast-2) — **구조 마이그레이션 적용 완료 (27개 테이블)** |
 | Vercel | **미생성** — 다음 단계 |
-| 초기 계정 | `/api/setup` 부트스트랩 (`SETUP_TOKEN` 필요) — 아직 미실행 |
+| 초기 계정 | `/api/setup` 부트스트랩 (환경변수 **`BOOTSTRAP_TOKEN`** — 코드 기준) — 아직 미실행. 설계상 플랫폼 관리자 생성으로 변경 예정 |
+
+> Supabase 키는 코드에 없다(`.env.example` 만 존재, 전부 환경변수). `modu` 프로젝트는 `restart`(`thgdodvxhxukvwqpzbyi`)와 **별개 프로젝트**이므로 Vercel 에 `modu` 의 URL·anon·service_role 키를 넣으면 단독 운영된다. 원본 `.env` 값을 복사하지 말 것.
 
 ### 적용된 마이그레이션 / 의도적으로 건너뛴 것
 - **적용**: 0001 스토리지 / 0002 코어 스키마 / 0003 RLS / 0005 헬퍼 강화 / 필드추가(0009·0017·0035·0038·0030) / 0014·0041 상태값 / 0028 문의 / 0031 OTP / 0032 FAQ(표 구조만) / 0034 운영요청 / 0036 게시판 / 0037 문자예약·설정 / 0039 보완요청 / 0044 임시수정권한 / 0045 단일본 인덱스
@@ -199,6 +232,7 @@ grep -rn "재기지원\|진흥원\|넥스트랩\|대전\|restart.poclab.kr" src/
 - 기본 작업 브랜치: `<미정>`
 - 배포: main 머지 → Vercel 자동 배포
 - 검증 3종: `npm run typecheck` · `npm run lint` · `npm run build` (모두 통과해야 머지)
+  + 정산 코드 도입 후 `npm run test`(vitest) 를 4종째로 추가.
 
 ---
 
@@ -215,3 +249,11 @@ grep -rn "재기지원\|진흥원\|넥스트랩\|대전\|restart.poclab.kr" src/
 - 2026-09-07 **멘토 1명 : 멘티 다수** 담당 확인 — 멘티 기준 1:1 은 유지되므로 case 모델 변경 없음.
 - 2026-09-07 **컨설팅 유형별 단가 차등**(온라인/오프라인 등) + **지급청구서 자동 집계·결산 푸시** 요건 추가(§2-4). 별도 서식 작성 없음.
 - 2026-09-07 이 프로젝트는 **재기지원 플랫폼 세션에서 분리**한다. 이후 작업은 modu 전용 Claude Code 창에서 진행.
+- 2026-09-07 현행 코드 전수 조사 완료 → `docs/CURRENT-STATE.md`. 사용자 답변 6건 수령.
+- 2026-09-07 **상태머신 v2 확정**(§3): 렛츠 검수 → 센터 정산 확인 2단계 게이트. `contacted`·지급 9개 상태 제거.
+- 2026-09-07 **평가서 = 관찰의견서**, 멘티당 1건 **단일본**(`observation_report`, DB 유니크 인덱스).
+- 2026-09-07 **단가·상한 확정**: 온 8만/오프 10만, 1일 1건 상한 24만/30만, 멘토 1일 3건, 추가 회차 요청 기능.
+- 2026-09-07 **정산 흐름 확정**: 종결 승인 시 확정 스냅샷 → 지급 대기 → 품의 묶음 → 센터 확인 → 종결. 회차 이행(예상)/완료(확정) 이원화.
+- 2026-09-07 **사업그룹 A(1기/2R)·B(2기/1R)·C(2기/2R)·D(2기/탈락자)**, 그룹 동적 생성(enum → text), 승계 = `predecessor_case_id`.
+- 2026-09-07 **다중 행사 = 한 배포 안의 `programs` 계층**, 1계정 1프로그램, 플랫폼 관리자 플래그. URL `/nextlab` → `/operator` 개명(역할 키는 유지). 설계 → `docs/MODU-DESIGN.md`.
+- 2026-09-07 멘티 기능 확정: 회차 서명 · 만족도 조사 · 멘토 변경 요청.

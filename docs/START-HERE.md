@@ -79,6 +79,10 @@
 
 ## 3. 사용자에게 아직 물어봐야 하는 것 (착수 전 확정 필요)
 
+> ✅ **2026-09-07 6건 모두 답변 수령** → 반영 결과는 `docs/MODU-DESIGN.md §0`, 확정 내용은 `CLAUDE.md §2-4·§2-5·§3·§4`.
+> 남은 열린 항목(원천징수 절사 규칙, 만족도 문항, 중도 종료 정산 등 9건)은 `docs/MODU-DESIGN.md §11`.
+> 아래는 기록용 원문.
+
 1. **진행 단계에 지급/승인 단계가 필요한가?**
    원본 11단계는 보조금 지급 절차. 모두의창업 축은
    `그룹 개설 → 멘티 등록 → 멘토 배정 → 컨설팅 1~4회 → 평가서 → 종료` 로 보이는데,
@@ -98,7 +102,7 @@
 `docs/PLATFORM-CLONE-HANDOVER.md` 3절의 환경변수 27개를 채워야 합니다. 최소 세트:
 
 - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `SUPABASE_SERVICE_ROLE_KEY`
-- `SETUP_TOKEN` (초기 계정 부트스트랩 `/api/setup` 1회용)
+- `BOOTSTRAP_TOKEN` (초기 계정 부트스트랩 `/api/setup` 1회용 — 코드가 읽는 변수명은 이것. `SETUP_TOKEN` 아님)
 - `CRON_SECRET`, 알림(Solapi·SMTP) 키 — 문자 발송 붙이기 전까지는 비워도 동작
 - 리전은 **icn1** 고정 (PDF Chromium 콜드스타트)
 
