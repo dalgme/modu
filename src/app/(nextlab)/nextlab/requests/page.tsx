@@ -6,6 +6,8 @@ import { listInbox } from '@/lib/data/requests';
 import { InboxList } from '@/components/nextlab/inbox-list';
 
 export const dynamic = 'force-dynamic';
+/** PDF(보고서·정산서) 생성 서버 액션 — 서버리스 Chromium 콜드스타트 대비 (CLAUDE.md §6-4) */
+export const maxDuration = 60;
 
 /** 요청함 — 추가 회차 / 멘토 변경(멘티) / 멘토 중도 종료 */
 export default async function Page({ searchParams }: { searchParams: { tab?: string } }) {

@@ -6,6 +6,8 @@ import { RoundSignList } from '@/components/mentee/round-sign-list';
 import { resolveRoundReportPolicy } from '@/lib/documents/round-report';
 
 export const dynamic = 'force-dynamic';
+/** PDF(보고서·정산서) 생성 서버 액션 — 서버리스 Chromium 콜드스타트 대비 (CLAUDE.md §6-4) */
+export const maxDuration = 60;
 
 /** 멘티 회차 확인·서명 */
 export default async function Page() {

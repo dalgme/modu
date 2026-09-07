@@ -209,7 +209,7 @@ pdf-lib(병합) / Solapi(SMS) / nodemailer(이메일) / Vercel(icn1)
 10) ✅ P5 멘티 기능(회차 서명·만족도 조사·멘토 변경 요청·그룹 필수서류) (2026-09-07)
 11) ✅ P6 운영 설정 8탭·요청함·멘티 등록·승계 개설·멘토 명단(지급서류·원천징수·평가)·리포트+대시보드 타일·보고서 양식+서명 정책 (2026-09-07)
 12) ✅ P7 플랫폼 콘솔·/api/setup 플랫폼 관리자화·브랜딩 잔재 0건·AI 매칭 추천 (2026-09-07)
-13) P8 배포   ← 다음 할 일 / P5 멘티 기능 / P6 운영·설정·승계·리포트 / P7 플랫폼 콘솔·브랜딩 치환(잔여 159줄)·/api/setup / P8 배포
+13) 🟡 P8 배포 — 코드 준비 완료(Chromium 트레이싱·maxDuration 정리, `docs/DEPLOY-RUNBOOK.md`). **남은 것은 사람 조치**: Vercel 프로젝트 생성(MCP 토큰 권한 없음 403) → 환경변수 → Preview 검증 → `/api/setup` → main 머지
 ```
 
 > 단계별 상세와 파일 변경 지도는 `docs/MODU-DESIGN.md §10·§12`. 설계에 열린 항목 9건은 §11.
@@ -232,7 +232,7 @@ npm run lint:brand   # scripts/check-brand-strings.sh — 0건 (npm run lint 에
 |---|---|
 | GitHub | `dalgme/modu` — 코드 푸시 완료 |
 | Supabase | 프로젝트 `modu` (`osrigknfrzsqjrgihgao`, ap-northeast-2) — 원본 구조(0001~0045 선별) + **모두의창업 P1 마이그레이션 0046~0055 적용 완료 (41개 테이블, 2026-09-07)**. `src/types/database.ts` 재생성 완료 |
-| Vercel | **미생성** — 다음 단계 |
+| Vercel | **미생성** — 연동 토큰에 프로젝트 생성 권한이 없어(403) 대시보드에서 직접 `dalgme/modu` Import 필요. 절차·환경변수 표·검증 체크리스트는 `docs/DEPLOY-RUNBOOK.md` |
 | 환경변수 추가 | `SMS_KEK`(행사별 문자 API 암호화 키, `openssl rand -hex 32`) — Vercel 에 반드시 설정 · `ANTHROPIC_API_KEY`(AI 매칭 정성 근거, 선택) |
 | 초기 계정 | `/api/setup` 부트스트랩 (환경변수 **`BOOTSTRAP_TOKEN`**) → **플랫폼 관리자**(nextlab + is_platform_admin) 생성, 이후 `/platform` 에서 행사 개설·스태프 발급 — 아직 미실행 |
 
@@ -249,7 +249,8 @@ npm run lint:brand   # scripts/check-brand-strings.sh — 0건 (npm run lint 에
 - **P5 완료(2026-09-07)**: 0057 적용. `src/lib/workflow/{mentee,mentee-actions}.ts` · `src/lib/data/{survey,mentee}.ts` · `case-documents.ts` 필수서류 슬롯(`listRequiredDocSlots`·`missingRequiredMenteeDocs`) · 페이지 `/mentee/rounds`(서명) `/mentee/survey` `/mentee/documents`(필수서류+자유첨부) · 대시보드 할 일 카드 · 운영사 케이스 상세에 멘토 변경 요청 처리·만족도 응답·필수서류 패널. 4종 그린.
 - **P6 완료(2026-09-07)**: 0058 적용. `src/lib/settings/{data,actions}.ts` + `src/components/settings/*`(`/nextlab/settings` 8탭) · `src/lib/documents/round-report.ts`(양식 해석·PDF 재생성·서명 정책, `docs/MODU-DESIGN.md §22`) · `src/lib/data/requests.ts`+`/nextlab/requests` · `/nextlab/cases/new` · `src/lib/workflow/succession.ts`+`/nextlab/succession` · `src/lib/data/mentors.ts`+`src/lib/mentors/actions.ts`+`/nextlab/mentors` · `src/lib/reports/{metrics,export,page-data}.ts`+`/nextlab/reports`·`/institution/reports`·대시보드 타일 · `/mentor/signature`. 4종 그린.
 - **P7 완료(2026-09-07)**: `src/lib/platform/{data,actions}.ts`+`/platform`(`(platform)` 레이아웃, `requirePlatformAdmin`) · `/api/setup`·`scripts/bootstrap-admin.mjs` = 첫 플랫폼 관리자(nextlab+is_platform_admin, 시드 행사 멤버십 자동) · `scripts/check-brand-strings.sh`(lint 편입, 0건) · `src/lib/matching/{score,recommend,actions}.ts`+`src/components/matching/*`(`@anthropic-ai/sdk`, 환경변수 `ANTHROPIC_API_KEY` 선택) · `/mentor/profile`. 4종 그린.
-- 남은 것: 알림 이벤트별 on/off 설정, 레거시 `/admin/settings/features`(붙임서식 토글) 정리 — P8 이후, 설정·리포트·승계·멘티 등록 폼(P6), 플랫폼 콘솔·`/api/setup` 플랫폼 관리자화(P7).
+- **P8 코드 준비(2026-09-07)**: `next.config.mjs` `outputFileTracingIncludes` 를 실제 PDF 생성 라우트 5개(`/mentor/cases/[id]` `/mentee/rounds` `/nextlab/cases/[id]` `/nextlab/requests` `/institution/cases/[id]`)로 정리(구 `/apply` 제거), `/mentee/rounds`·`/nextlab/requests` 에 `maxDuration = 60`. Supabase 보안 어드바이저 INFO 2건(서비스롤 전용 테이블, 의도)뿐. 4종 그린.
+- 남은 것: 알림 이벤트별 on/off 설정, 레거시 `/admin/settings/features`(붙임서식 토글) 정리 — P8 이후.
 
 ---
 
@@ -287,6 +288,7 @@ npm run lint:brand   # scripts/check-brand-strings.sh — 0건 (npm run lint 에
 - 2026-09-07 **P7 완료**: 플랫폼 콘솔·부트스트랩 플랫폼 관리자화·브랜딩 잔재 0건·AI 매칭(자동 배정 없음, 채택 시 `adopted_at`, 미채택 배정은 `recommended_rank: null` 감사). 로그인은 통합(`/login`→`/hub`), 행사별 로그인 URL 은 설계 3차 답변대로 폐기.
 - 2026-09-07 **보고서 양식·서명 정책 요건**: 컨설팅 보고서 양식을 행사/그룹 단위로 등록, 웹 작성 회차는 저장·서명 시 양식 PDF 재생성. "알림 발송 후 멘티 확인 서명" / "저장 시 멘토 서명 자동" 정책은 양식에 멘토 서명 컬럼이 있을 때만 사용 가능(§22).
 - 2026-09-07 **P6 완료**: 설정·요청함·승계·멘토 명단·리포트. 멘토 지급서류 체크는 비밀번호 재인증 + 대행 불가 + 멘토별 감사로그.
+- 2026-09-07 **P8 코드 준비 완료**, Vercel 프로젝트 생성은 사용자 조치(런북 `docs/DEPLOY-RUNBOOK.md`). main 머지는 Preview 검증 후.
 - 2026-09-07 **P5 완료**: 회차 서명은 `signatures.log_id` 로 회차에 귀속, 서명 후 멘토 수정 잠금. 만족도는 종결 요청 이후 1회, 정산 게이트 아님. 멘토 변경 요청 수락 = T3 교체. 필수서류 게이트는 설정 `closure_policy.require_group_docs`(기본 꺼짐).
 - 2026-09-07 **P4 완료**: 정산 계산 단일 함수(`compute.ts`) + vitest, 검수 승인 시 스냅샷 선저장 후 전이, 품의 2단계 게이트(렛츠 제출 → 센터 확인 → closed), 부분 정산(T10/T11a/T11b). 추가 회차 요청 승인함은 P6.
 - 2026-09-07 **2차 답변 10건 반영**: 기타소득 원천징수(8.8%) · 멘티·날짜 합산 상한 · 정산 = 케이스×멘토(중도 종료 부분 정산, `reassignment_pending`) · 만족도 그룹별 표준양식 · 행사별 로그인 · 한도 전부 설정 페이지 · AI 매칭 추천(자동 배정 없음) · 멘토 지급서류 체크(비밀번호 재인증·일괄). 열린 항목은 `docs/MODU-DESIGN.md §11` 4건(기본값으로 진행).
