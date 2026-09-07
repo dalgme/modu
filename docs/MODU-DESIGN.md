@@ -56,9 +56,9 @@ platform (플랫폼 관리자 — 렛츠 본사 계정, program_id = null)
      └ program 설정 (브랜딩 라벨 · 원천징수율 · 멘토 1일 상한 · 문자 꼬리말 …)
 ```
 
-### 1-3. 원칙
-1. **1계정 = 1프로그램.** 한 사람이 두 행사를 맡으면 계정을 두 개 발급한다("계정 추가로 복제"의 문자 그대로). 멤버십 다대다 테이블은 만들지 않는다 — 대행(view-as)·감사·RLS 헬퍼가 전부 `auth.uid()` 단일 신원을 전제로 하기 때문.
-2. **프로그램 격리는 두 겹.** (a) RLS 헬퍼 `private.program_id()` 를 스태프 정책에 결합, (b) 서비스롤 경로의 모든 스태프 조회·알림 수신자 조회에 `program_id` 필터를 코드로 강제(`CURRENT-STATE.md §1-4` 의 `.eq('role', …)` 지점 전부).
+### 1-3. 원칙 (2026-09-07 3차 답변으로 개정 — **1계정 = 여러 행사·여러 그룹**)
+1. **한 계정이 여러 행사(프로그램)·여러 그룹에 귀속될 수 있다.** 멘토·멘티·운영사·발주처 모두. 귀속은 `program_members`(행사) + `support_type_members`(그룹 명부: 멘토·스태프) + `cases`(멘티는 케이스로 그룹 귀속). **역할(`users.role`)은 계정 전역**으로 하나 — 한 사람이 행사마다 다른 역할을 가져야 하면 계정을 나눈다(RLS 헬퍼·대행이 `users.role` 을 전제로 하므로).
+2. **프로그램 격리는 두 겹.** (a) RLS 헬퍼 `private.is_program_member(program_id)` / `private.is_program_staff(program_id)` 를 스태프 정책에 결합, (b) 서비스롤 경로의 모든 스태프 조회·알림 수신자 조회에 **현재 행사 컨텍스트**(§18) 의 `program_id` 필터를 코드로 강제(`CURRENT-STATE.md §1-4` 의 `.eq('role', …)` 지점 전부는 `program_members` 조인으로 바뀐다).
 3. **브랜딩·문구는 프로그램 설정에서 읽는다.** 행사 기본 탭에서 **발주처·용역사(운영) 기관명**을 등록하면 그 행사의 모든 화면·문서·알림에 반영된다(§17). `ROLE_LABELS` 의 "진흥원/넥스트랩" 하드코딩은 `roleLabel(role, branding)` 으로 대체. 원본 문자열 391줄 치환의 종착점.
 4. **플랫폼 관리자는 역할 enum 을 늘리지 않고 `users.is_platform_admin` 플래그**로 둔다. 라우트 `/platform/*` 은 이 플래그로만 열린다. (enum 추가 시 53개 파일 영향 — `CURRENT-STATE.md §1`)
 5. 스토리지 경로는 `{caseId}/…` 로 이미 전역 유일 → 변경 없음. Cron 은 프로그램을 순회한다.
@@ -74,37 +74,35 @@ platform (플랫폼 관리자 — 렛츠 본사 계정, program_id = null)
 ```
 `/api/setup` 부트스트랩은 **플랫폼 관리자 1명**만 만든다(현재는 institution 을 만듦 → 변경).
 
-### 1-6. 로그인 — 행사별 화면 + 플랫폼 통합 로그인
-| URL | 대상 | 화면 |
-|---|---|---|
-| `/{slug}/login` (예: `/modu-2026/login`) | 그 행사의 센터·렛츠·멘토·멘티 | `programs.logo_path / app_title / client_name × operator_name` 로 브랜딩(§17). 로그인 성공 후 `users.program_id ≠ slug` 면 **거부**("이 행사의 계정이 아닙니다") — 다른 행사 계정으로 이 행사 데이터에 들어오는 경로 차단 |
-| `/platform/login` | `is_platform_admin = true` 만 | 플랫폼 공통 브랜드. 프로그램 계정은 거부 |
-| `/login` (슬러그 없음) | — | 활성 프로그램이 1개면 그 행사로 리다이렉트, 여러 개면 행사 선택 목록(로고 카드) |
-- 비밀번호 재설정(OTP)·최초 비밀번호 변경 화면도 슬러그 하위에 두고 같은 브랜딩을 쓴다.
-- 미들웨어: `/{slug}/*` 의 `slug` 를 `programs.slug` 로 확인 후 요청 컨텍스트에 `program_id` 를 심는다(존재하지 않는 슬러그는 404).
-- 세션 쿠키는 공용(Supabase Auth) — 격리는 `users.program_id` 검사로 한다.
+### 1-6. 로그인 — **통합 로그인 + 행사/그룹 허브** (3차 답변으로 개정; 행사별 로그인 URL 은 폐기)
+| URL | 내용 |
+|---|---|
+| `/login` | 모든 계정의 통합 로그인(플랫폼 브랜드). 플랫폼 관리자도 여기서 로그인 |
+| `/hub` | 로그인 직후 진입. **활성 행사 배너**(로고·행사명·내 역할·내 그룹 수·미처리 건수) 목록. **종료된 행사** 는 별도 탭. 배너 클릭 → 행사 컨텍스트 진입(§18) |
+| `/hub?program={id}` | 행사 안의 **그룹 배너**(활성/종료 탭). 배너 클릭 → 그룹 컨텍스트 진입 |
+| 자동 진입 | 로그인 시 활성 행사가 **1개**면 허브를 건너뛰고 그 행사로, 그 안에 활성 그룹이 **1개**면 그 그룹까지 자동 진입. 스태프는 그룹 선택 없이 "행사 전체" 로도 들어갈 수 있다 |
+| `/platform/*` | 플랫폼 관리자 콘솔(행사 개설·복제·계정). 관리자는 허브에도 모든 행사가 보인다 |
+- 비밀번호 재설정(OTP)·최초 비밀번호 변경은 통합 화면. 브랜딩은 컨텍스트 진입 후부터 행사 값(§17).
+- 세션 쿠키는 공용(Supabase Auth) — 격리는 멤버십 검사(§18).
 
-### 1-5. 스키마 변경
+### 1-5. 스키마 변경 (구현본은 `supabase/migrations/0046~0056`)
 ```sql
 create table programs (
-  id uuid pk, slug text unique, name text,
-  client_name text not null, client_short text, client_seal_name text, client_logo_path text,   -- 발주처 (§17-1)
-  operator_name text not null, operator_short text, operator_contact text,                       -- 용역사(운영)
-  app_title text, logo_path text, sms_footer text, email_subject_prefix text,
-  withholding_rate numeric(5,2) default 3.3,
-  mentor_daily_case_limit int default 3,
-  default_required_rounds int default 4,
-  is_active bool default true, created_by uuid, created_at, updated_at
+  id uuid pk, slug text unique, name text, status 'active'|'ended', starts_on, ends_on,
+  client_name/client_short/client_seal_name/client_logo_path, operator_name/operator_short/operator_contact,   -- §17
+  app_title, logo_path, sms_footer, email_subject_prefix,
+  withholding_params jsonb,      -- { other_income:{expense_rate,tax_rate,local_rate,rounding,min_taxable_exempt}, business_income:{rate:0.033,...} }
+  default_withholding_method text,  -- 'other_income' | 'business_income' | 'none'
+  closure_policy jsonb,          -- { require_mentee_signature:false, require_group_docs:false, block_batch_on_missing_mentor_docs:false }
+  default_required_rounds int default 4, created_by, created_at, updated_at
 );
-alter table users add column program_id uuid references programs(id),
-                  add column is_platform_admin bool not null default false;
--- 제약: is_platform_admin = false 이면 program_id not null (check)
-alter table support_types add column program_id uuid not null references programs(id);
-alter table document_templates add column program_id uuid references programs(id); -- null = 공통
-alter table app_settings add column program_id uuid; -- pk 를 (program_id, key) 로 교체
-create function private.program_id() returns uuid ... select program_id from users where id = auth.uid();
+create table program_members (program_id, user_id, is_active, joined_at, left_at, note, unique(program_id,user_id));
+alter table users add column is_platform_admin bool default false;          -- program_id 컬럼은 두지 않는다(다중 귀속)
+alter table support_types add column program_id uuid not null, status, withholding_method text null …;
+create table support_type_members (support_type_id, user_id, member_role 'mentor'|'staff', is_active, withholding_method text null, …);  -- 그룹 명부 + 멘토별 원천징수 override
+create function private.is_program_member(pid uuid) / private.is_program_staff(pid uuid) / private.is_platform_admin();
 ```
-RLS: 스태프 정책(`is_staff()`)에 `support_types.program_id = private.program_id()` 조인 조건 추가. 멘토·멘티는 이미 케이스 배정 기준이라 추가 조건 불필요(배정 자체가 프로그램 안에서만 일어남).
+RLS: 스태프 정책은 `private.is_program_staff(program_id)` 로 행사 범위를 좁힌다. 멘토·멘티는 케이스 배정 기준이라 추가 조건 불필요.
 
 ---
 
@@ -172,7 +170,8 @@ alter table support_types
 | T8' | `settlement_batched` → `settlement_pending` | nextlab | `removeFromBatch` | batch 가 draft 일 때만 | |
 | T9 | `settlement_batched` → `closed` | **institution** | `confirmSettlement` (품의 단위 일괄 또는 건별) | `= settlement_batched` | 알림 멘토·멘티, 만족도조사 미제출이면 멘티 안내 |
 | T10 | 비종결 → `withdrawn` (멘티 중도 종료) | staff | `withdrawCase` | `∉ {closed, withdrawn}` | 배정 해제. **이행 회차는 정산**: 담당 멘토(들)의 부분 정산 스냅샷 생성(§6-3 kind=`partial`) |
-| T11 | `in_progress` → `reassignment_pending` (멘토 중도 종료) | mentor 요청 → nextlab 승인 | `requestMentorWithdrawal(reason)` → `approveMentorWithdrawal` | `= in_progress` ∧ 활성 배정 = 요청 멘토 | 배정 비활성(`ended_reason`, `ended_at`), 해당 멘토 **부분 정산 스냅샷**(kind=`partial`) 생성 → `settlements.status = pending`, 알림 렛츠·멘티 |
+| T11a | `in_progress` → `reassignment_pending` (멘토 **자진** 중도 종료) | mentor 요청(사유) → nextlab 승인 | `requestMentorWithdrawal(reason)` → `approveMentorWithdrawal` / `rejectMentorWithdrawal` | `= in_progress` ∧ 활성 배정 = 요청 멘토 | 배정 종료(`end_kind='mentor_withdrawal'`, 사유 전체 공개), 해당 멘토 **부분 정산 스냅샷**(kind=`partial`) → `pending`, 알림 렛츠·멘티 |
+| T11b | `in_progress`/`mentor_assigned` → `reassignment_pending` (운영사 **강제** 종료) | nextlab (사유 필수) | `forceEndMentor(reason)` | 활성 배정 존재 | 배정 종료(`end_kind='forced'`, `reason_visibility='staff_only'` → **운영사·발주처만 사유 열람**, 멘토·멘티 화면엔 "운영사 결정으로 종료" 만 표시), 이행 회차 있으면 부분 정산, 알림 멘토·멘티 |
 | T12 | `reassignment_pending` → `in_progress` | nextlab | `assignMentor` (T2 와 같은 함수, 상태 분기) | `= reassignment_pending` ∧ 활성 배정 없음 | 새 멘토는 잔여 회차(`required_rounds − 이행 회차`)만 진행. 알림 새 멘토·멘티 |
 
 UI 노출 규칙: 진행바(`CASE_STEP_ORDER`) = 1·2·3·4·5·6·7. `revision_requested` 는 4 단계에 반려 톤, `reassignment_pending` 은 3 단계에 반려 톤, `withdrawn` 은 0.
@@ -224,7 +223,7 @@ alter table mentoring_logs
 6. 시간 겹침: 같은 멘토의 다른 회차와 `[started_at, ended_at)` 이 겹치면 거부.
 7. 단가 스냅샷: `consulting_rates` 에서 `(program, support_type ?? null, mode, effective_from ≤ started_at::date)` 최신 1건. 없으면 거부("단가 미설정").
 
-**모든 한도값은 설정에서 읽는다**(답변 10). 해석 순서: 그룹(`support_type_id` 지정 행) → 프로그램 기본(`support_type_id null`). 코드에 숫자를 박지 않는다. 설정 페이지는 §16.
+**모든 한도값은 행사 설정에서 읽는다**(답변 10·3차). 기본은 **행사 단위**(`support_type_id null` 행). 그룹 행이 있으면 그 그룹에서만 우선(선택 기능, 기본은 비움). 코드에 숫자를 박지 않는다. 설정 페이지는 §16.
 
 ### 4-4. 추가 회차 요청
 ```sql
@@ -311,18 +310,14 @@ computeSettlement(input: {
   net: number,                                    // 실지급요청액 = gross − withholding
 }
 
-WithholdingPolicy = {
-  method: 'other_income',           // 기타소득(답변 1). 확장 여지: 'business_income'(3.3%), 'none'
-  expense_rate: 0.6,                // 필요경비율 60%
-  tax_rate: 0.20,                   // 기타소득세 20%
-  local_rate: 0.10,                 // 지방소득세 = 소득세의 10%
-  rounding: 'floor_10',             // 세액 10원 미만 절사 (국고금관리법 단수 처리)
-  min_taxable_exempt: 50000,        // 건별 기타소득금액 5만원 이하 과세최저한 → 원천징수 0 (설정으로 on/off)
-}
+WithholdingPolicy =
+  | { method: 'other_income', expense_rate: 0.6, tax_rate: 0.20, local_rate: 0.10, rounding: 'floor_10', min_taxable_exempt: 50000 }  // 기타소득 8.8%
+  | { method: 'business_income', tax_rate: 0.03, local_rate: 0.10, rounding: 'floor_10' }                                            // 사업소득 3.3%
+  | { method: 'none' }
 ```
-- 기타소득 실효세율 = 40% × 22% = **8.8%**. 예: 4회 오프라인 400,000 → 기타소득금액 160,000 → 소득세 32,000 + 지방세 3,200 = 35,200 → 실지급 364,800.
-- 화면의 "예상 비용"(§4-2)과 T7 의 확정 저장이 **같은 함수**를 호출한다.
-- 파라미터는 `programs` 설정(§16)에 저장하고 정산 스냅샷에 **적용 당시 값**을 함께 저장한다(세율 변경 소급 방지).
+- 기타소득 실효세율 = 40% × 22% = **8.8%**. 예: 4회 오프라인 400,000 → 기타소득금액 160,000 → 소득세 32,000 + 지방세 3,200 = 35,200 → 실지급 364,800. 사업소득은 400,000 × 3.3% = 13,200 → 실지급 386,800.
+- **적용 방식 결정 순서(3차 답변)**: ① 그룹 안의 **멘토별 설정**(`support_type_members.withholding_method`) → ② **그룹 일괄 설정**(`support_types.withholding_method`) → ③ 행사 기본(`programs.default_withholding_method`). 파라미터(세율 등)는 행사 설정 `programs.withholding_params` 에서 방식별로 읽는다. 멘토별 설정은 **그 그룹 안에서만** 유효하다.
+- 화면의 "예상 비용"(§4-2)과 T7 의 확정 저장이 **같은 함수**를 호출한다. 정산 스냅샷에 **적용 방식 + 당시 파라미터**를 저장한다(소급 방지).
 - 테스트 러너: 리포에 없음 → `vitest` 추가(`npm run test` 를 검증 3종에 4번째로 편입). 테스트 케이스: 유형 혼합, 추가 회차, 과세최저한 경계, 절사, 멘토 2명 분할.
 
 ### 6-3. 예상 vs 확정
@@ -446,18 +441,20 @@ create table survey_responses (
 ### 10-1. 새 마이그레이션 (0046~; 0004·서식 21종은 계속 건너뜀)
 | 번호 | 내용 |
 |---|---|
-| 0046 | `programs` + `users.program_id / is_platform_admin` + `private.program_id()` + 스태프 RLS 보강 |
-| 0047 | `support_types` 동적화(enum→text, program_id, required_rounds, predecessor) + `support_type_documents.multiple` |
-| 0048 | `case_status` v2 재생성(`cases`, `case_status_history` 컬럼 재타입) |
-| 0049 | `consulting_mode` enum + `consulting_rates` + `mentoring_logs` v2 컬럼 |
-| 0050 | `settlements` + `settlement_batches` |
-| 0051 | `round_extension_requests` + `mentor_change_requests` + `survey_templates/questions/responses` + `cases.predecessor_case_id` + `mentor_assignments.ended_*` |
-| 0052 | `documents` 단일본 인덱스 v2 (0045 교체) |
-| 0053 | 레거시 테이블 삭제: `contractors` `support_applications` `payment_applications` `approvals` + 관련 정책 |
-| 0054 | 시드: 프로그램 `modu-2026` + 그룹 A·B·C·D + 단가(온 8만/24만, 오프 10만/30만) + 운영 한도(3/3) + 원천징수 정책 + 알림 템플릿 + 만족도 기본 양식 + 관찰의견서 서식 자리 |
-| 0055 | `operating_limits` + `programs.withholding_policy jsonb` + 종결 게이트 설정 컬럼 |
-| 0056 | 매칭: `tag_catalog` + `mentor_profiles` + `mentee_profiles` + `match_recommendations` (§14) |
-| 0057 | `mentor_payment_docs` + 감사 정책 (§15) |
+> ✅ **2026-09-07 P1 완료** — 아래 10개를 작성해 Supabase `modu` 에 적용했고 `src/types/database.ts` 를 재생성했다(41개 테이블).
+
+| 번호 | 내용 |
+|---|---|
+| 0046 | `programs`(브랜딩·원천징수 파라미터·종결 게이트) + `program_members`(1계정 다중 행사) + `users.is_platform_admin` + `private.is_platform_admin / is_program_member / is_program_staff / is_program_nextlab / shares_program_with` + `users_select` 행사 범위 |
+| 0047 | `support_types` 동적화(enum→text, `program_id`, `required_rounds`, `withholding_method`, `predecessor`, status) + `support_type_documents.multiple/for_role` + **`support_type_members`**(그룹 명부·멘토별 원천징수 override) |
+| 0048 | `case_status` v2 10개 재생성, `cases` 정리(보조금 컬럼 삭제, `program_id`·`predecessor_case_id`·종료 필드, 행사 일치 트리거), `mentor_assignments.ended_* / end_kind / reason_visibility`, `mentor_withdrawal_requests`, `can_access_case` 행사 범위 재정의 |
+| 0049 | `consulting_mode` + `consulting_rates` + `operating_limits`(행사 기본·그룹 override) + `mentoring_logs` v2(round_no·mode·started/ended·스냅샷·서명·추가회차) + `round_extension_requests` |
+| 0050 | `settlement_batches` + `settlements`(케이스×멘토, closure/partial, 방식·파라미터 스냅샷) + `mentoring_logs.settlement_id` |
+| 0051 | `mentor_change_requests` + `survey_templates/questions/responses`(응답 시 잠금 트리거) + `mentor_group_reviews` + `reviews` 종결 검수 재사용 |
+| 0052 | `documents` 단일본 인덱스 v2 + `doc_key not null` |
+| 0053 | 레거시 삭제(`contractors` `support_applications` `payment_applications` `approvals` `case_edit_grants`) + `app_settings`·`document_templates`·`notifications`·`audit_logs` 행사 범위 |
+| 0054 | `tag_catalog` + `mentor_profiles` + `mentee_profiles` + `match_recommendations` + `mentor_payment_docs` |
+| 0055 | 시드: 행사 `modu-2026`(발주처·용역사 기관명) + 그룹 A~D(회차 4) + 단가 + 한도 + 표준 만족도 양식 6문항 + 키워드 14개 + 주간 안내문 플레이스홀더화 |
 
 ### 10-2. 코드 — 삭제
 `src/lib/workflow/{application*,attachment-forms*,payment*,support-items-actions,contractor,consulting-report*,supplement-actions,edit-grant-actions,case-editor}.ts`, `src/lib/support/`, `src/lib/data/{contractor-config,support-items,payment-files,application-files,application-bundle,mentee-progress}.ts`, 멘토 `apply/contractor-docs/contractor-signatures/pre-support/post-support/support-scope` 라우트, 멘티 `pre-support/post-support/contractor-signatures/support-scope` 라우트, 컴포넌트 `application-form, payment-*, contractor-*, attachment-forms-panel, edit-grant-*, case-deliverables-review(개편)`, API `institution/cases/parse-application·application-docs`.
@@ -564,7 +561,7 @@ create table mentor_payment_docs (
 | 행사 기본 | **발주처 기관명 / 용역사(운영) 기관명** + 약칭·직인 명의·대표 연락처·로고·앱 타이틀·문자 꼬리말 — 저장 즉시 **해당 행사 전체 화면·문서·알림에 반영**(§17) | `programs` | 플랫폼 관리자도 편집 가능 |
 | 사업그룹 | 그룹 추가·이름·코드·**회차 수(기본 4)**·기간·승계 원천 그룹·활성 | `support_types` | 답변 8 |
 | 단가·한도 | 유형별 단가·일일 금액 상한, 멘토 1일 건수, 멘티 1일 회차 — **그룹별 override**, 적용일 | `consulting_rates`, `operating_limits` | 이력 행 추가 방식. 답변 10 |
-| 정산 | 원천징수 방식·파라미터, 정산서 서식 | `programs.withholding_policy` | 답변 1 |
+| 정산 | 행사 기본 원천징수 방식 + 방식별 파라미터, **그룹별 일괄 방식**(기타소득/사업소득/없음), **그룹 내 멘토별 방식**(멘토 명부에서), 정산서 서식 | `programs.default_withholding_method / withholding_params`, `support_types.withholding_method`, `support_type_members.withholding_method` | 답변 1·3차 |
 | 종결 게이트 | 멘티 서명 필수 / 필수서류 완료 필수 / 지급서류 미비 시 품의 차단 | `programs.closure_policy jsonb` | 답변 4 기본 false |
 | 필수서류 | 그룹별 문서 슬롯(`support_type_documents`) | 기존 화면 재사용 | |
 | 만족도 양식 | 템플릿·문항·유형·순서, 그룹 지정 | `survey_*` | 답변 5 |
@@ -620,7 +617,75 @@ export function fmt(template: string, b: Branding, vars?): string;        // '{c
 | 만족도 조사 안내·설문 머리글 | `program_name` |
 
 ### 17-4. 강제 장치
-- 코드 `src/` 에 기관명 리터럴(세종·렛츠·진흥원·넥스트랩·대전·restart.poclab.kr·OP.map)이 **0건**이어야 한다. `scripts/check-brand-strings.sh` 를 `npm run lint` 앞단에 붙여 1건이라도 있으면 실패.
+- 코드 `src/` 에 기관명 리터럴(세종·렛츠·진흥원·넥스트랩·대전·restart.poclab.kr·OP.map)이 **0건**이어야 한다.
+
+(§17 계속은 위. 아래 §18~§20 은 3차 답변 신규.)
+
+---
+
+## 18. 행사/그룹 컨텍스트 — 허브 배너, 자동 진입, 상단 표시
+
+### 18-1. 컨텍스트 저장
+- 현재 행사·그룹은 **서명된 쿠키** `modu_ctx = {programId, supportTypeId|null}` 에 둔다(대행 쿠키와 같은 방식, `VIEW_AS_SECRET` 파생 키). URL 재구성(`/{slug}/…`) 대신 쿠키를 택한 이유: 원본 라우트 구조(`(operator)/(mentor)/(mentee)/(institution)`)를 유지해 개조량을 줄이고, 북마크가 컨텍스트 안에서 그대로 동작.
+- 서버: `getContext()` 가 쿠키를 읽고 **매 요청 멤버십을 재검증**(`program_members` 활성 + 그룹이면 `support_type_members`/케이스 존재). 실패하면 `/hub` 로. 모든 데이터 조회는 `ctx.programId`(+`ctx.supportTypeId`) 로 필터.
+- 같은 브라우저에서 탭마다 다른 행사를 열면 마지막 선택이 이긴다 → 상단 컨텍스트 바에 항상 행사/그룹명과 **전환 버튼**을 두어 오인을 막는다.
+
+### 18-2. 허브 (`/hub`)
+| 구역 | 내용 |
+|---|---|
+| 활성 행사 탭 | 배너 카드: 로고·행사명·기간·내 역할·활성 그룹 수·**내 미처리 건수**(멘토: 서명 대기·미등록 회차 / 렛츠: 검수 대기·요청함 / 센터: 품의 확인 대기 / 멘티: 서명·설문) |
+| 종료 행사 탭 | `programs.status='ended'` 또는 내 멤버십 `left_at` 이 있는 행사. 읽기 전용 진입(정산 내역·이력 열람) |
+| 행사 클릭 → 그룹 배너 | 활성/종료 탭 동일. 스태프에게는 "행사 전체" 카드가 맨 앞. 멘티는 케이스가 있는 그룹만, 멘토는 명부에 있는 그룹만 |
+| 자동 진입 | `active programs = 1` → 그 행사로. 그 안에서 `내 활성 그룹 = 1` (스태프는 그룹 수 = 1) → 그 그룹으로. 둘 다 아니면 허브 표시 |
+
+### 18-3. 상단 컨텍스트 바 (모든 역할 레이아웃 공통)
+`[로고] 행사명  ›  그룹명(있으면)  [전환]` — 그룹 미선택 시 "행사 전체". 행사명은 `programs.name`, 그룹명은 `support_types.name`. `<title>` 도 `그룹명 · 행사명 · 앱타이틀` 순.
+
+### 18-4. 멤버십 관리
+- 렛츠 회원관리: 계정 발급 시 행사 멤버십 자동 부여 + 그룹 명부 선택(멘토). 기존 계정(다른 행사 소속)을 **이메일/휴대폰으로 검색해 이 행사에 초대** — 새 계정을 만들지 않는다.
+- 플랫폼 관리자: 행사 간 계정 복제 없이 멤버십만 추가. 행사 종료 처리(`status='ended'`) 시 멤버십은 유지(이력 열람).
+
+---
+
+## 19. 리포트 · 대시보드 (발주처 / 운영사)
+
+### 19-1. 대시보드 — 통계 타일(직관) + 타일 클릭 → 팝업 상세(테이블·CSV)
+| 구역 | 타일 | 팝업 내용 |
+|---|---|---|
+| 수행 성과 | 케이스 수(상태별 도넛) · **이행 회차 / 계획 회차**(진행률 바) · 완료 회차(확정) · 종결 케이스 · 종결률 | 케이스 목록(그룹·멘토·상태·회차 n/N), 상태별 필터 |
+| 비수행 잔여 과업 | 미배정 케이스 · 잔여 회차 합계 · **정체 케이스**(최근 N일 회차 없음) · 검수 대기(종결 요청) · 보완 요청 중 · 재배정 대기 · 멘티 미서명 회차 · 미응답 설문 · 지급서류 미비 멘토 · 미처리 요청(추가회차/멘토변경/중도종료) | 항목별 리스트 + 담당자 + 경과일, 바로가기 |
+| 성과평가 | 만족도 평균(그룹·멘토별 막대) · 멘토 운영사 평가 평균(§20) · 관찰의견서 제출률 | 응답 분포, 문항별 점수, 멘토별 순위 |
+| 정산 | **예상 정산액(미확정)** · 확정 대기 · 품의 편성 · 센터 확인 완료 · 지급 완료 · 원천징수 합계 | 정산 건 목록(멘토·케이스·kind·금액), 품의별 소계, 방식별(기타/사업) 소계 |
+- 발주처 대시보드는 같은 타일에서 **편집 버튼만 없다.** 그룹 필터(컨텍스트) 적용.
+- 수치는 `src/lib/reports/metrics.ts` 한 곳에서 계산(대시보드 타일·팝업·리포트 화면이 같은 함수).
+
+### 19-2. 리포트 메뉴 (`/operator/reports`, `/institution/reports`)
+| 리포트 | 내용 | 내보내기 |
+|---|---|---|
+| 진행현황 | 그룹×상태 매트릭스, 케이스별 회차 타임라인 | CSV/XLSX |
+| 멘토 실적 | 멘토별 담당 케이스·이행/완료 회차·온/오프 비율·종결·정산액·만족도·운영사 평가 | CSV/XLSX |
+| 그룹 실적 | 그룹별 위 지표 + 승계 현황 | CSV/XLSX |
+| 정산 | 기간·품의·멘토·방식별 집계, 원천징수 명세(세무 제출용) | XLSX |
+| 만족도 | 템플릿별 문항 통계·주관식 원문 | CSV |
+| 잔여 과업 | §19-1 두 번째 구역의 전체 리스트 | CSV |
+| 감사 | 상태 전이·설정 변경·강제 종료 이력 | CSV |
+기간·그룹·멘토 필터 공통. 차트는 대시보드와 같은 팔레트.
+
+---
+
+## 20. 그룹별 멘토 명부 — 운영사 평가·메모
+```sql
+create table mentor_group_reviews (
+  id uuid pk, program_id uuid not null, support_type_id uuid not null, mentor_id uuid not null,
+  author_id uuid not null,                 -- 운영사 담당자
+  rating smallint check (rating between 1 and 5),   -- null 허용(메모만)
+  memo text, tags text[] default '{}',
+  created_at timestamptz not null default now()     -- append-only (수정 대신 새 행, 삭제는 soft: deleted_at)
+);
+```
+- 화면: 그룹 컨텍스트의 멘토 명부(`/operator/mentors`) 각 행에 **평가(별점)·메모 추가** + 최근 평가 요약. 평가·메모는 **그 그룹 활동에만 귀속**되어 다른 그룹 명부에는 나타나지 않는다.
+- **멘토별 통합 로그**(`/operator/mentors/[id]/log`): 그 멘토가 속했던 모든 행사·그룹의 평가·메모·실적·정산·중도 종료 이력을 시간순으로. 열람 권한 = 해당 행사들의 스태프 멤버 또는 플랫폼 관리자(다른 행사 항목은 그 행사 멤버가 아니면 "비공개 항목 N건" 으로 접힘). 데이터 통합 활용을 위해 `program_id`·`support_type_id` 를 모두 갖고 CSV 내보내기 제공.
+- 발주처는 열람만(설정으로 숨김 가능), 멘토 본인에게는 비공개. `scripts/check-brand-strings.sh` 를 `npm run lint` 앞단에 붙여 1건이라도 있으면 실패.
 - 시드(0054)에만 모두의창업 값을 넣는다. 새 행사는 마법사(§1-4 ①)에서 입력.
 - 변경 시 감사로그 + 캐시 무효화(`revalidateTag('program:'+id)`). 이미 생성된 PDF 는 그대로 두고(문서 이력), 이후 생성분부터 새 명칭.
 
@@ -649,4 +714,5 @@ export function fmt(template: string, b: Branding, vars?): string;        // '{c
 - 2026-09-07 사업그룹 A~D 시드, 그룹 동적 생성(enum → text), 그룹 간 승계 = `predecessor_case_id`.
 - 2026-09-07 **다중 행사 = 한 배포 안의 `programs` 계층(B안)**, 1계정 1프로그램, 플랫폼 관리자 플래그. 인프라 복제(A안)는 대안으로 문서 유지.
 - 2026-09-07 URL `/nextlab` → `/operator` 개명, 역할 키 `nextlab` 은 유지.
+- 2026-09-07 **3차 답변 반영**: 원천징수 방식 = 그룹 일괄 + 그룹 내 멘토별 override · 멘토 중도 종료 = 자진(멘토 사유→렛츠 승인) / 강제(렛츠 사유, 운영사·발주처만 열람) · 한도 규칙 = 행사 단위 · 발주처/운영사 리포트 메뉴 + 대시보드 통계 타일·팝업 드릴다운(§19) · 그룹별 멘토 명부의 운영사 평가·메모(그룹 귀속, 멘토별 통합 로그 §20) · **1계정 = 여러 행사·여러 그룹, 통합 로그인 + 허브 배너, 단일 활성 시 자동 진입, 상단에 행사명/그룹명 표시(§18)** — 행사별 로그인 URL(구 §1-6)·1계정 1행사 원칙은 폐기.
 - 2026-09-07 **2차 답변 반영**: 원천징수 = 기타소득(실효 8.8%, 파라미터화) · 일일 상한 = 같은 멘티·같은 날 합산 · 정산 단위 = 케이스×멘토(중도 종료 부분 정산, `reassignment_pending` 상태 신설) · 만족도 그룹별 표준양식(문항 유형 5종) · 행사별 로그인 `/{slug}/login` · 한도 전부 설정 페이지 · AI 매칭 추천(객관 점수 + Claude 정성 근거, 자동 배정 없음) · 멘토 지급서류 수령 체크(비밀번호 재인증·일괄).
