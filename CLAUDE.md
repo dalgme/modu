@@ -121,7 +121,7 @@ support_types(= 사업그룹, 3~5개)
 - **1계정 = 1프로그램** (`users.program_id`). 두 행사를 맡으면 계정 2개. 멤버십 다대다 테이블 없음.
 - 플랫폼 관리자는 `users.is_platform_admin` 플래그(역할 enum 추가 없음) — `/platform/*` 콘솔에서 행사 개설·첫 계정 발급·복제.
 - 격리는 두 겹: RLS `private.program_id()` + 서비스롤 경로의 모든 스태프 조회·알림 수신자 조회에 `program_id` 코드 필터.
-- "진흥원/넥스트랩" 하드코딩 라벨은 `programs.client_label / operator_label` 로 치환.
+- **발주처·용역사(운영) 기관명은 행사 기본 설정에서 등록 → 그 행사의 모든 화면·문서·알림에 반영**(`docs/MODU-DESIGN.md §17`). 코드에 기관명 리터럴 금지, `getBranding()`/`roleLabel()`/`fmt('{client}…')` 로만 읽는다. `scripts/check-brand-strings.sh` 로 lint 단계에서 0건 강제.
 
 ---
 
@@ -216,6 +216,7 @@ pdf-lib(병합) / Solapi(SMS) / nodemailer(이메일) / Vercel(icn1)
 grep -rn "재기지원\|진흥원\|넥스트랩\|대전\|restart.poclab.kr" src/ | wc -l
 ```
 전수 치환 후 0건이 되어야 한다. DB 쪽 잔재도 확인: `app_settings.mentor_weekly_reminder_template`.
+치환의 목적지는 "세종/렛츠" 리터럴이 **아니라** `programs` 의 발주처·용역사 필드다(§2-5). 새 문구를 쓸 때도 `{client}` `{operator}` `{program}` 플레이스홀더만 허용.
 
 ---
 

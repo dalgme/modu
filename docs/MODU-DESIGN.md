@@ -59,7 +59,7 @@ platform (플랫폼 관리자 — 렛츠 본사 계정, program_id = null)
 ### 1-3. 원칙
 1. **1계정 = 1프로그램.** 한 사람이 두 행사를 맡으면 계정을 두 개 발급한다("계정 추가로 복제"의 문자 그대로). 멤버십 다대다 테이블은 만들지 않는다 — 대행(view-as)·감사·RLS 헬퍼가 전부 `auth.uid()` 단일 신원을 전제로 하기 때문.
 2. **프로그램 격리는 두 겹.** (a) RLS 헬퍼 `private.program_id()` 를 스태프 정책에 결합, (b) 서비스롤 경로의 모든 스태프 조회·알림 수신자 조회에 `program_id` 필터를 코드로 강제(`CURRENT-STATE.md §1-4` 의 `.eq('role', …)` 지점 전부).
-3. **브랜딩·문구는 프로그램 설정에서 읽는다.** `ROLE_LABELS` 의 "진흥원/넥스트랩" 하드코딩을 `programs.client_label / operator_label` 로 치환. 원본 문자열 391줄 치환의 종착점.
+3. **브랜딩·문구는 프로그램 설정에서 읽는다.** 행사 기본 탭에서 **발주처·용역사(운영) 기관명**을 등록하면 그 행사의 모든 화면·문서·알림에 반영된다(§17). `ROLE_LABELS` 의 "진흥원/넥스트랩" 하드코딩은 `roleLabel(role, branding)` 으로 대체. 원본 문자열 391줄 치환의 종착점.
 4. **플랫폼 관리자는 역할 enum 을 늘리지 않고 `users.is_platform_admin` 플래그**로 둔다. 라우트 `/platform/*` 은 이 플래그로만 열린다. (enum 추가 시 53개 파일 영향 — `CURRENT-STATE.md §1`)
 5. 스토리지 경로는 `{caseId}/…` 로 이미 전역 유일 → 변경 없음. Cron 은 프로그램을 순회한다.
 
@@ -77,7 +77,7 @@ platform (플랫폼 관리자 — 렛츠 본사 계정, program_id = null)
 ### 1-6. 로그인 — 행사별 화면 + 플랫폼 통합 로그인
 | URL | 대상 | 화면 |
 |---|---|---|
-| `/{slug}/login` (예: `/modu-2026/login`) | 그 행사의 센터·렛츠·멘토·멘티 | `programs.logo_path / app_title / client_label × operator_label` 로 브랜딩. 로그인 성공 후 `users.program_id ≠ slug` 면 **거부**("이 행사의 계정이 아닙니다") — 다른 행사 계정으로 이 행사 데이터에 들어오는 경로 차단 |
+| `/{slug}/login` (예: `/modu-2026/login`) | 그 행사의 센터·렛츠·멘토·멘티 | `programs.logo_path / app_title / client_name × operator_name` 로 브랜딩(§17). 로그인 성공 후 `users.program_id ≠ slug` 면 **거부**("이 행사의 계정이 아닙니다") — 다른 행사 계정으로 이 행사 데이터에 들어오는 경로 차단 |
 | `/platform/login` | `is_platform_admin = true` 만 | 플랫폼 공통 브랜드. 프로그램 계정은 거부 |
 | `/login` (슬러그 없음) | — | 활성 프로그램이 1개면 그 행사로 리다이렉트, 여러 개면 행사 선택 목록(로고 카드) |
 - 비밀번호 재설정(OTP)·최초 비밀번호 변경 화면도 슬러그 하위에 두고 같은 브랜딩을 쓴다.
@@ -88,9 +88,9 @@ platform (플랫폼 관리자 — 렛츠 본사 계정, program_id = null)
 ```sql
 create table programs (
   id uuid pk, slug text unique, name text,
-  client_label text,      -- 화면 표기: '세종창조경제혁신센터'
-  operator_label text,    -- '(주)렛츠'
-  app_title text, logo_path text, sms_footer text,
+  client_name text not null, client_short text, client_seal_name text, client_logo_path text,   -- 발주처 (§17-1)
+  operator_name text not null, operator_short text, operator_contact text,                       -- 용역사(운영)
+  app_title text, logo_path text, sms_footer text, email_subject_prefix text,
   withholding_rate numeric(5,2) default 3.3,
   mentor_daily_case_limit int default 3,
   default_required_rounds int default 4,
@@ -561,7 +561,7 @@ create table mentor_payment_docs (
 ## 16. 운영기관 설정 페이지 (`/operator/settings`, nextlab 전용)
 | 탭 | 항목 | 저장처 | 비고 |
 |---|---|---|---|
-| 행사 기본 | 라벨(센터·운영기관)·앱 타이틀·로고·문자 꼬리말 | `programs` | 플랫폼 관리자도 편집 가능 |
+| 행사 기본 | **발주처 기관명 / 용역사(운영) 기관명** + 약칭·직인 명의·대표 연락처·로고·앱 타이틀·문자 꼬리말 — 저장 즉시 **해당 행사 전체 화면·문서·알림에 반영**(§17) | `programs` | 플랫폼 관리자도 편집 가능 |
 | 사업그룹 | 그룹 추가·이름·코드·**회차 수(기본 4)**·기간·승계 원천 그룹·활성 | `support_types` | 답변 8 |
 | 단가·한도 | 유형별 단가·일일 금액 상한, 멘토 1일 건수, 멘티 1일 회차 — **그룹별 override**, 적용일 | `consulting_rates`, `operating_limits` | 이력 행 추가 방식. 답변 10 |
 | 정산 | 원천징수 방식·파라미터, 정산서 서식 | `programs.withholding_policy` | 답변 1 |
@@ -571,6 +571,58 @@ create table mentor_payment_docs (
 | 키워드 사전 | 카테고리별 태그 관리 | `tag_catalog` | §14 |
 | 알림 | 이벤트별 채널 on/off·문구 | `app_settings(program_id)` | 기존 문자 설정 화면 확장 |
 모든 저장은 감사로그(`settings.update`, before/after). 숫자 한도는 "적용일" 을 받아 이력 행으로 추가한다(과거 정산 불변).
+
+---
+
+## 17. 브랜딩 치환 지도 — 발주처 / 용역사(운영) 기관명은 **한 곳에서 등록, 행사 전체에 반영**
+
+### 17-1. 저장 필드 (`programs`)
+| 필드 | 예 (모두의창업) | 쓰이는 곳 |
+|---|---|---|
+| `client_name` | 세종창조경제혁신센터 | 발주처 정식 명칭 — 문서·약관·이메일 |
+| `client_short` | 센터 | 발주처 약칭 — 역할 라벨·배지·버튼 문구·안내문 |
+| `client_seal_name` | 세종창조경제혁신센터장 | 서식 직인란 (원본 `templates.ts:14 INSTITUTION` 대체) |
+| `operator_name` | (주)렛츠 | 용역사(운영) 정식 명칭 |
+| `operator_short` | 렛츠 | 용역사 약칭 — 역할 라벨·안내문 |
+| `operator_contact` | 대표 전화·이메일 | 약관·개인정보처리방침·문의 안내 |
+| `program_name` / `app_title` | 모두의창업 / 모두의창업 운영관리 | `<title>`, PWA 이름, 로그인 헤더, 보고서 제목 |
+| `logo_path`, `client_logo_path` | | 로그인·헤더·PDF 머리글 |
+| `sms_footer` | -모두의창업 | 문자 꼬리말 |
+| `email_subject_prefix` | [모두의창업] | 이메일 제목 접두 (원본 `[OP.map]` 대체) |
+약칭을 비우면 정식 명칭을 쓴다. 저장 시 필수: `client_name`, `operator_name`, `program_name`.
+
+### 17-2. 읽는 방법 — 단일 진입점
+```ts
+// src/lib/programs/branding.ts
+export type Branding = { clientName, clientShort, clientSealName, operatorName, operatorShort, operatorContact, programName, appTitle, logoPath, clientLogoPath, smsFooter, emailSubjectPrefix, appUrl };
+export const getBranding = cache(async (programId): Promise<Branding>);   // 서버 (React cache, 요청당 1회)
+export function roleLabel(role: UserRole, b: Branding): string;           // institution → clientShort, nextlab → operatorShort
+export function fmt(template: string, b: Branding, vars?): string;        // '{client} 승인 대기' 같은 문구 치환
+```
+- 클라이언트 컴포넌트에는 `BrandingProvider`(layout 에서 1회 주입) + `useBranding()`.
+- **문자열 상수 파일에는 기관명을 쓰지 않는다.** 문구는 `{client}` `{operator}` `{program}` 플레이스홀더로 두고 `fmt()` 로 치환한다.
+- 원본 `ROLE_LABELS` 는 `roleLabel(role, branding)` 으로 대체. `MENTOR_ONLY_ERROR` 같은 안내 문구도 함수화.
+
+### 17-3. 반영 지점 전수 (원본 잔재 391줄의 종착점 — `CURRENT-STATE.md §4`)
+| 표면 | 반영 방식 |
+|---|---|
+| 헤더·역할 배지·회원관리 역할 필터 | `roleLabel()` |
+| 로그인(`/{slug}/login`)·비밀번호 변경·OTP | 로고 + `program_name` + "`{client_name} × {operator_name}`" |
+| `<title>`·`manifest.ts`·PWA 이름 | `app_title` (레이아웃에서 프로그램 해석 후 `generateMetadata`) |
+| 대시보드·케이스 상세·타임라인 라벨(예: "렛츠 검수 완료", "센터 정산 확인") | `CASE_STATUS_META.label` 을 `{operator}` `{client}` 템플릿으로 두고 렌더 시 `fmt()` |
+| 버튼·안내·에러 문구(예: "담당 멘토만 실행할 수 있습니다. {operator}는 회원관리에서…") | `fmt()` |
+| 사용 안내 페이지(`institution-guide`, `mentor-guide`) | 본문 전체 템플릿화 |
+| 이용약관·개인정보처리방침 | 책임 기관 = `client_name`, 운영기관 = `operator_name`, 연락처 = `operator_contact` |
+| PDF 서식(관찰의견서·정산서·품의서·보고서 머리글·직인란) | `buildTemplateData()` 에 `client_seal_name`·로고 주입 |
+| 알림 문자·이메일 본문·제목 | `templates.ts` 플레이스홀더 + `sms_footer` + `email_subject_prefix`, URL 은 `appUrl/{slug}/…` |
+| 주간 리마인더 등 `app_settings` 문구 | 프로그램별 행(`program_id`) + 플레이스홀더 |
+| 정산서·품의서 엑셀 내보내기 | 시트 머리글에 발주처·용역사 |
+| 만족도 조사 안내·설문 머리글 | `program_name` |
+
+### 17-4. 강제 장치
+- 코드 `src/` 에 기관명 리터럴(세종·렛츠·진흥원·넥스트랩·대전·restart.poclab.kr·OP.map)이 **0건**이어야 한다. `scripts/check-brand-strings.sh` 를 `npm run lint` 앞단에 붙여 1건이라도 있으면 실패.
+- 시드(0054)에만 모두의창업 값을 넣는다. 새 행사는 마법사(§1-4 ①)에서 입력.
+- 변경 시 감사로그 + 캐시 무효화(`revalidateTag('program:'+id)`). 이미 생성된 PDF 는 그대로 두고(문서 이력), 이후 생성분부터 새 명칭.
 
 ---
 
