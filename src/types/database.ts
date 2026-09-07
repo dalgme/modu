@@ -2,7 +2,7 @@
  * Supabase 데이터베이스 타입.
  * 자동 생성됨 — 스키마 변경 시 재생성:
  *   supabase gen types typescript --project-id osrigknfrzsqjrgihgao > src/types/database.ts
- * (또는 Supabase MCP generate_typescript_types) · 기준: 마이그레이션 0001~0055 (2026-09-07)
+ * (또는 Supabase MCP generate_typescript_types) · 기준: 마이그레이션 0001~0056 (2026-09-07)
  */
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
@@ -469,11 +469,13 @@ export type Database = {
           doc_name: string;
           file_size: number | null;
           id: string;
+          mentor_visible: boolean;
           mime_type: string | null;
           sha256: string;
           storage_path: string;
           updated_at: string;
           uploaded_by: string | null;
+          uploaded_role: Database['public']['Enums']['user_role'] | null;
         };
         Insert: {
           case_id: string;
@@ -482,11 +484,13 @@ export type Database = {
           doc_name: string;
           file_size?: number | null;
           id?: string;
+          mentor_visible?: boolean;
           mime_type?: string | null;
           sha256: string;
           storage_path: string;
           updated_at?: string;
           uploaded_by?: string | null;
+          uploaded_role?: Database['public']['Enums']['user_role'] | null;
         };
         Update: {
           case_id?: string;
@@ -495,11 +499,13 @@ export type Database = {
           doc_name?: string;
           file_size?: number | null;
           id?: string;
+          mentor_visible?: boolean;
           mime_type?: string | null;
           sha256?: string;
           storage_path?: string;
           updated_at?: string;
           uploaded_by?: string | null;
+          uploaded_role?: Database['public']['Enums']['user_role'] | null;
         };
         Relationships: [
           {
@@ -1330,6 +1336,48 @@ export type Database = {
           },
         ];
       };
+      observation_reports: {
+        Row: {
+          case_id: string;
+          content: Json;
+          created_at: string;
+          mentor_id: string;
+          submitted_at: string | null;
+          updated_at: string;
+        };
+        Insert: {
+          case_id: string;
+          content?: Json;
+          created_at?: string;
+          mentor_id: string;
+          submitted_at?: string | null;
+          updated_at?: string;
+        };
+        Update: {
+          case_id?: string;
+          content?: Json;
+          created_at?: string;
+          mentor_id?: string;
+          submitted_at?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'observation_reports_case_id_fkey';
+            columns: ['case_id'];
+            isOneToOne: true;
+            referencedRelation: 'cases';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'observation_reports_mentor_id_fkey';
+            columns: ['mentor_id'];
+            isOneToOne: false;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       operating_limits: {
         Row: {
           case_daily_round_limit: number;
@@ -1526,6 +1574,130 @@ export type Database = {
           {
             foreignKeyName: 'program_members_user_id_fkey';
             columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      program_sms_access_log: {
+        Row: {
+          action: string;
+          actor_id: string | null;
+          created_at: string;
+          detail: Json | null;
+          id: string;
+          program_id: string;
+        };
+        Insert: {
+          action: string;
+          actor_id?: string | null;
+          created_at?: string;
+          detail?: Json | null;
+          id?: string;
+          program_id: string;
+        };
+        Update: {
+          action?: string;
+          actor_id?: string | null;
+          created_at?: string;
+          detail?: Json | null;
+          id?: string;
+          program_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'program_sms_access_log_actor_id_fkey';
+            columns: ['actor_id'];
+            isOneToOne: false;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'program_sms_access_log_program_id_fkey';
+            columns: ['program_id'];
+            isOneToOne: false;
+            referencedRelation: 'programs';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      program_sms_settings: {
+        Row: {
+          api_key_enc: string;
+          api_key_hint: string;
+          api_secret_enc: string;
+          created_at: string;
+          created_by: string | null;
+          dek_wrapped: string;
+          enc_version: number;
+          fingerprint: string;
+          is_active: boolean;
+          program_id: string;
+          provider: string;
+          rotated_at: string;
+          sender_number_enc: string;
+          sender_number_hint: string;
+          updated_at: string;
+          updated_by: string | null;
+          verified_at: string | null;
+        };
+        Insert: {
+          api_key_enc: string;
+          api_key_hint: string;
+          api_secret_enc: string;
+          created_at?: string;
+          created_by?: string | null;
+          dek_wrapped: string;
+          enc_version?: number;
+          fingerprint: string;
+          is_active?: boolean;
+          program_id: string;
+          provider?: string;
+          rotated_at?: string;
+          sender_number_enc: string;
+          sender_number_hint: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          verified_at?: string | null;
+        };
+        Update: {
+          api_key_enc?: string;
+          api_key_hint?: string;
+          api_secret_enc?: string;
+          created_at?: string;
+          created_by?: string | null;
+          dek_wrapped?: string;
+          enc_version?: number;
+          fingerprint?: string;
+          is_active?: boolean;
+          program_id?: string;
+          provider?: string;
+          rotated_at?: string;
+          sender_number_enc?: string;
+          sender_number_hint?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          verified_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'program_sms_settings_created_by_fkey';
+            columns: ['created_by'];
+            isOneToOne: false;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'program_sms_settings_program_id_fkey';
+            columns: ['program_id'];
+            isOneToOne: true;
+            referencedRelation: 'programs';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'program_sms_settings_updated_by_fkey';
+            columns: ['updated_by'];
             isOneToOne: false;
             referencedRelation: 'users';
             referencedColumns: ['id'];
@@ -2569,12 +2741,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
@@ -2594,13 +2766,12 @@ export type Tables<
 
 export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema['Tables']
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+    keyof DefaultSchema['Tables'] | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
@@ -2619,13 +2790,12 @@ export type TablesInsert<
 
 export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
-    | keyof DefaultSchema['Tables']
-    | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+    keyof DefaultSchema['Tables'] | { schema: keyof DatabaseWithoutInternals },
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
@@ -2644,13 +2814,12 @@ export type TablesUpdate<
 
 export type Enums<
   DefaultSchemaEnumNameOrOptions extends
-    | keyof DefaultSchema['Enums']
-    | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    keyof DefaultSchema['Enums'] | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums']
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }
@@ -2661,13 +2830,12 @@ export type Enums<
 
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
-    | keyof DefaultSchema['CompositeTypes']
-    | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    keyof DefaultSchema['CompositeTypes'] | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals;
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes']
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals;
 }

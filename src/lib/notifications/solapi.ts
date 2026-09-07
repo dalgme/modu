@@ -41,10 +41,8 @@ function byteLength(text: string): number {
   return n;
 }
 
-/** HMAC-SHA256 인증 헤더 (Authorization) 생성 */
-function authHeader(): string {
-  const apiKey = process.env.SOLAPI_API_KEY!;
-  const apiSecret = process.env.SOLAPI_API_SECRET!;
+/** HMAC-SHA256 인증 헤더 (Authorization) 생성 — 자격증명은 호출 시점에만 메모리에 둔다 */
+function authHeader(apiKey: string, apiSecret: string): string {
   const date = new Date().toISOString();
   const salt = crypto.randomBytes(32).toString('hex');
   const signature = crypto
@@ -61,10 +59,17 @@ function authHeader(): string {
 export async function sendSolapiSms(
   to: string,
   text: string,
-  opts: { senderIndex?: 1 | 2; subject?: string } = {},
+  opts: {
+    senderIndex?: 1 | 2;
+    subject?: string;
+    /** 행사별 자격증명(§21). 없으면 플랫폼 환경변수 */
+    creds?: { apiKey: string; apiSecret: string; senderNumber: string };
+  } = {},
 ): Promise<SolapiResult> {
-  if (!solapiConfigured()) return { ok: false, error: 'solapi_not_configured' };
-  const from = solapiSender(opts.senderIndex ?? 1);
+  const apiKey = opts.creds?.apiKey ?? process.env.SOLAPI_API_KEY;
+  const apiSecret = opts.creds?.apiSecret ?? process.env.SOLAPI_API_SECRET;
+  const from = opts.creds?.senderNumber ?? solapiSender(opts.senderIndex ?? 1);
+  if (!apiKey || !apiSecret) return { ok: false, error: 'solapi_not_configured' };
   if (!from) return { ok: false, error: 'solapi_sender_missing' };
 
   const isLms = byteLength(text) > 90;
@@ -80,7 +85,7 @@ export async function sendSolapiSms(
     const res = await fetch(`${SOLAPI_BASE}/messages/v4/send`, {
       method: 'POST',
       headers: {
-        Authorization: authHeader(),
+        Authorization: authHeader(apiKey, apiSecret),
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ message }),
@@ -149,7 +154,7 @@ async function fetchSolapiList(limit: number, from?: string): Promise<SolapiMess
   const params = new URLSearchParams({ limit: String(limit) });
   if (from) params.set('from', from);
   const res = await fetch(`${SOLAPI_BASE}/messages/v4/list?${params.toString()}`, {
-    headers: { Authorization: authHeader() },
+    headers: { Authorization: authHeader(process.env.SOLAPI_API_KEY ?? '', process.env.SOLAPI_API_SECRET ?? '') },
   });
   const body = (await res.json().catch(() => ({}))) as {
     messageList?: Record<string, Record<string, unknown>>;
@@ -207,7 +212,7 @@ export async function getSolapiBalance(): Promise<
   if (!solapiConfigured()) return { ok: false, error: 'solapi_not_configured' };
   try {
     const res = await fetch(`${SOLAPI_BASE}/cash/v1/balance`, {
-      headers: { Authorization: authHeader() },
+      headers: { Authorization: authHeader(process.env.SOLAPI_API_KEY ?? '', process.env.SOLAPI_API_SECRET ?? '') },
     });
     const body = (await res.json().catch(() => ({}))) as {
       balance?: number;

@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { solapiConfigured, sendSolapiSms } from '@/lib/notifications/solapi';
+import { resolveSmsCredentials } from '@/lib/sms/secrets';
 
 export type SendResult = { ok: true; providerId?: string } | { ok: false; error: string };
 
@@ -45,10 +46,23 @@ export async function sendAlimtalk(
 /**
  * SMS 대체발송 (알림톡 실패 시 fallback).
  */
-export async function sendSms(to: string, text: string): Promise<SendResult> {
+/**
+ * SMS 발송. programId 가 있으면 행사별 자격증명(§21)을 먼저 쓰고, 없으면 플랫폼 환경변수로 폴백한다.
+ * 행사 설정이 있는데 복호화·지문 검증에 실패하면 폴백하지 않고 실패를 돌려준다(변조 의심).
+ */
+export async function sendSms(to: string, text: string, programId: string | null = null): Promise<SendResult> {
+  if (programId) {
+    const creds = await resolveSmsCredentials(programId, 'send');
+    if (creds) return sendSolapiSms(to, text, { creds });
+    const { createAdminClient } = await import('@/lib/supabase/admin');
+    const { data } = await createAdminClient().from('program_sms_settings').select('is_active').eq('program_id', programId).maybeSingle();
+    if (data?.is_active) return { ok: false, error: 'program_sms_credentials_unavailable' };
+  }
   if (solapiConfigured()) {
-    // Solapi v4 (SMS/LMS 자동전환, HMAC-SHA256 인증)
     return sendSolapiSms(to, text);
   }
-  return { ok: false, error: 'sms_not_configured' };
+  const apiKey = process.env.SMS_FALLBACK_API_KEY;
+  const from = process.env.SMS_FALLBACK_FROM;
+  if (!apiKey || !from) return { ok: false, error: 'sms_not_configured' };
+  return { ok: false, error: 'sms_fallback_not_implemented' };
 }

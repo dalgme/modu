@@ -74,6 +74,7 @@
 | `SOLAPI_API_KEY` / `SOLAPI_API_SECRET` | Solapi 인증 |
 | `SOLAPI_SENDER_NUMBER_1` | 발신번호 1 (기본) |
 | `SOLAPI_SENDER_NUMBER_2` | 발신번호 2 (보조) |
+| `SMS_KEK` | 행사별 문자 API 자격증명 봉투암호화 키(32바이트). 없으면 플랫폼 SOLAPI_* 만 사용 |
 | `NEXT_PUBLIC_SMS_PRICE_SMS` / `_LMS` | 관리자 화면 발송비용 표시용 단가 |
 | `SMS_FALLBACK_API_KEY` / `SMS_FALLBACK_FROM` | 대체 발송 경로(선택) |
 

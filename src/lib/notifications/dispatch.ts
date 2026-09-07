@@ -3,6 +3,8 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendAlimtalk, sendSms, alimtalkConfigured } from '@/lib/notifications/provider';
 import { templateFor } from '@/lib/notifications/templates';
+import { getBranding } from '@/lib/programs/data';
+import { fmt } from '@/lib/programs/branding';
 
 export interface DispatchSummary {
   processed: number;
@@ -29,7 +31,7 @@ export async function dispatchPending(limit = 100): Promise<DispatchSummary> {
 
   const { data: pending } = await admin
     .from('notifications')
-    .select('id, case_id, recipient_id, recipient_phone, trigger_event, template_code')
+    .select('id, case_id, program_id, recipient_id, recipient_phone, trigger_event, template_code')
     .eq('status', 'pending')
     .order('created_at', { ascending: true })
     .limit(limit);
@@ -56,7 +58,15 @@ export async function dispatchPending(limit = 100): Promise<DispatchSummary> {
       continue;
     }
 
-    const tpl = templateFor(n.trigger_event);
+    // 행사 범위: notifications.program_id → 없으면 케이스의 행사. 문구의 {program}/{operator} 치환 + 행사별 문자 API.
+    let programId: string | null = n.program_id;
+    if (!programId && n.case_id) {
+      const { data: c } = await admin.from('cases').select('program_id').eq('id', n.case_id).maybeSingle();
+      programId = c?.program_id ?? null;
+    }
+    const branding = await getBranding(programId);
+    const rawTpl = templateFor(n.trigger_event);
+    const tpl = { code: rawTpl.code, text: fmt(rawTpl.text, branding) + (branding.smsFooter ? ` ${branding.smsFooter}` : '') };
     const now = new Date().toISOString();
 
     // 1) 알림톡
@@ -71,7 +81,7 @@ export async function dispatchPending(limit = 100): Promise<DispatchSummary> {
     }
 
     // 2) SMS 대체발송
-    const sms = await sendSms(phone, tpl.text);
+    const sms = await sendSms(phone, tpl.text, programId);
     if (sms.ok) {
       await admin
         .from('notifications')

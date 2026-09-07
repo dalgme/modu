@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 
 const TABS = [
   { href: '/mentee/dashboard', label: '내 진행 현황' },
+  { href: '/mentee/documents', label: '내 서류' },
   { href: '/mentee/inquiries', label: '문의하기·내역' },
 ];
 

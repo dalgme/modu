@@ -12,6 +12,7 @@ const TABS = [
   { href: '/nextlab/members', label: '회원관리' },
   { href: '/admin/settings/features', label: '기능 노출' },
   { href: '/admin/settings/sms', label: '문자발송' },
+  { href: '/nextlab/settings/sms-api', label: '문자 API' },
   { href: '/admin/settings/faq', label: '멘토 FAQ' },
   { href: '/admin/audit-logs', label: '감사로그' },
 ];

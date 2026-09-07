@@ -250,6 +250,7 @@ create table round_extension_requests (
 | `satisfaction_survey_pdf` | 만족도조사 결과 PDF (선택) | 단일본 | 유니크 인덱스 | 시스템 |
 | `req:{support_type_documents.doc_key}` | 그룹별 필수서류(사업계획서·참가확인서 등) | 그룹 설정의 `is_required`/`multiple` 에 따름 | multiple=false 면 유니크 인덱스 대상 접두 `req1:` 로 구분 | mentee / nextlab 대리 |
 | `application_pdf` | 등록 원본(신청서·명단 등) | 이력보존 | 없음 | nextlab |
+| `case_doc` | **멘티 관련 서류**(자유 첨부) — `documents.mentor_visible` 로 멘토 공개/비공개 | 누적 | 없음 · RLS `documents_select` 가 멘토에게 `mentor_visible=true` 만 노출 + 코드 필터 이중 | mentee / nextlab / mentor(항상 공개) |
 
 유니크 인덱스(새 마이그레이션, 0045 대체):
 ```sql
@@ -455,6 +456,7 @@ create table survey_responses (
 | 0053 | 레거시 삭제(`contractors` `support_applications` `payment_applications` `approvals` `case_edit_grants`) + `app_settings`·`document_templates`·`notifications`·`audit_logs` 행사 범위 |
 | 0054 | `tag_catalog` + `mentor_profiles` + `mentee_profiles` + `match_recommendations` + `mentor_payment_docs` |
 | 0055 | 시드: 행사 `modu-2026`(발주처·용역사 기관명) + 그룹 A~D(회차 4) + 단가 + 한도 + 표준 만족도 양식 6문항 + 키워드 14개 + 주간 안내문 플레이스홀더화 |
+| 0056 | P3: `documents.mentor_visible`·`uploaded_role` + 멘토 열람 RLS / `observation_reports`(웹 작성 초안, case_id PK) / `program_sms_settings`(행사별 문자 API, 봉투암호화, **RLS 정책 없음 = 서비스롤 전용**) + `program_sms_access_log` |
 
 ### 10-2. 코드 — 삭제
 `src/lib/workflow/{application*,attachment-forms*,payment*,support-items-actions,contractor,consulting-report*,supplement-actions,edit-grant-actions,case-editor}.ts`, `src/lib/support/`, `src/lib/data/{contractor-config,support-items,payment-files,application-files,application-bundle,mentee-progress}.ts`, 멘토 `apply/contractor-docs/contractor-signatures/pre-support/post-support/support-scope` 라우트, 멘티 `pre-support/post-support/contractor-signatures/support-scope` 라우트, 컴포넌트 `application-form, payment-*, contractor-*, attachment-forms-panel, edit-grant-*, case-deliverables-review(개편)`, API `institution/cases/parse-application·application-docs`.
@@ -691,12 +693,31 @@ create table mentor_group_reviews (
 
 ---
 
+## 21. 행사별 문자 API 자격증명 — 다중 보안 (2026-09-07 요청)
+
+운영사가 `/nextlab/settings/sms-api` 에서 행사별 솔라피 API 키·시크릿·발신번호를 등록한다. 유출 방지 장치는 **7겹**이며 어느 하나가 뚫려도 평문이 나오지 않게 설계했다.
+
+| # | 계층 | 구현 |
+|---|---|---|
+| 1 | **봉투 암호화** | 행사마다 DEK(32B) 생성 → 값은 DEK 로 AES-256-GCM, DEK 는 환경변수 `SMS_KEK` 로 래핑. DB 만 털려도(KEK 없음) · 서버 환경변수만 새어도(암호문 없음) 복호화 불가 (`src/lib/sms/secrets.ts`) |
+| 2 | **AAD 바인딩** | 암호문마다 `${programId}:${field}` 를 GCM 추가인증데이터로 묶어 **행 복사·필드 바꿔치기·타 행사 이식이 복호화 실패**로 끝남 |
+| 3 | **테이블 접근 차단** | `program_sms_settings` 는 RLS 활성 + **정책 0개** → anon/authenticated 로는 읽기·쓰기 자체가 불가. 서비스롤 서버 코드만 접근 |
+| 4 | **표시 최소화** | 화면·서버 액션 응답에는 힌트(키 앞 4자·번호 뒤 4자)와 HMAC 지문만. 저장 후 원문 재조회 경로 없음 (`getProgramSmsSettingsView`) |
+| 5 | **비밀번호 재인증 + 잠금** | 등록·교체·비활성화는 로그인 세션과 별개로 **현재 비밀번호 재입력** 필수. 5회 실패 시 15분 잠금 (`src/lib/sms/reauth.ts`) — 대행(view-as) 중에는 실행자 본인 비밀번호 |
+| 6 | **접근 감사** | `program_sms_access_log` 에 set/rotate/disable/test_send/send_use/decrypt_fail/reauth_fail 전부 기록 + `audit_logs`. 설정 화면에 최근 30건 표시 |
+| 7 | **발송 격리·폴백** | 발송 시 `resolveSmsCredentials(programId)` 로 복호화 → 메모리에서만 사용. 행사 설정이 활성인데 복호화 실패면 **플랫폼 키로 새지 않고 실패**(`program_sms_credentials_unavailable`). 미등록/비활성 행사만 플랫폼 `SOLAPI_*` 폴백 |
+
+- KEK 교체(`SMS_KEK` 변경) 시 기존 암호문은 복호화 불가 → 운영사 재등록. `enc_version` 컬럼으로 향후 재암호화 마이그레이션 여지.
+- 문자 발송부 `sendSms(to, text, programId)` 는 `dispatch.ts` 가 알림의 `program_id` 를 넘긴다. 서비스롤 경로에서만 호출.
+
+---
+
 ## 12. 구현 단계 (검증: `typecheck` · `lint` · `build` · `test` 4종 통과 후 다음 단계)
 | 단계 | 내용 | 산출 |
 |---|---|---|
 | P1 | 마이그레이션 0046~0057 작성 + Supabase `modu` 적용 + `database.ts` 재생성 | 스키마 확정 |
 | P2 ✅ | 도메인 코어: 상태 v2·전이 상수·역할 라벨·행사/그룹 컨텍스트(쿠키)·허브·가드 + **레거시 삭제** → 빌드 그린 (2026-09-07) | 뼈대 |
-| P3 | 멘토 흐름: 회차 등록(웹/업로드, 검증 7항목·설정 한도)·사진·관찰의견서·종결 요청·추가 회차 요청·**중도 종료 요청** | 멘토 완료 |
+| P3 ✅ | 멘토 흐름: 회차 등록(웹/업로드, 검증 7항목·설정 한도)·사진·관찰의견서·종결 요청·추가 회차 요청·**중도 종료 요청** + **엑셀 일괄 등록**(멘토·멘티) + **멘티 서류 첨부(멘토 공개/비공개)** + **행사별 문자 API(§21)** → 3종 그린 (2026-09-07) | 멘토 완료 |
 | P4 | 정산: `computeSettlement`(기타소득) + 테스트, 예상/확정, 검수 승인(T7)·부분 정산(T10/T11), 품의(T8), 센터 확인(T9), 정산서 PDF, 통보 | 정산 완료 |
 | P5 | 멘티: 서명·만족도(양식 렌더)·멘토 변경 요청·필수서류 | 멘티 완료 |
 | P6 | 운영: **설정 페이지 9탭**(§16)·그룹 관리·승계 개설·이전 이력 탭·요청함(추가회차/멘토변경/중도종료)·**멘토 명단 지급서류 체크**(§15) | 운영 완료 |
