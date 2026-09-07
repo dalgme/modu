@@ -18,6 +18,20 @@
 | 6 | 사업그룹 | A 1기/2라운드 · B 2기/1라운드 · C 2기/2라운드 · D 2기/탈락자. 추가 생성 가능. 그룹 간 멘티·멘토 승계, 데이터는 독립이되 이력 열람 가능 | §2 그룹 = `support_types` 동적화, §8 승계 |
 | + | 복제 | 이 운영방식을 **계정 추가로 복제/생성**해 여러 행사에 사용 | §1 프로그램(행사) 계층 |
 
+### 0-2. 2차 답변 (2026-09-07, §11 열린 항목 9건 + 추가 요건 1건)
+| # | 답변 | 설계 반영 |
+|---|---|---|
+| 1 | 원천징수는 **기타소득세 일괄 처리** | §6-2 `withholding_method = other_income` (필요경비율·세율·지방세 파라미터) |
+| 2 | **같은 날·같은 멘티** 합산 상한 | §4-3 일일 상한 = 멘티·날짜 기준 합산(회차 수 + 유형별 금액) |
+| 3 | 추가 회차 승인 주체 = 렛츠 | §4-4 그대로 |
+| 4 | 종결 게이트(멘티 서명 필수·필수서류 완료) **기본 아니오** | §7·§16 설정값 기본 false |
+| 5 | 만족도: 문항 추가 가능, **복수선택/주관식/순위 등 유형 선택**, 운영기관 설정에서 **그룹별 표준양식** | §7-2 설문 템플릿·문항·응답 3테이블 |
+| 6 | 중도 종료 시에도 이행 회차 정산 · **멘토가 사유 작성** · 잔여 회차는 **타 멘토 배정해 진행·정산** | §3-1 `reassignment_pending`, §6-3 정산 = (케이스 × 멘토) 단위 |
+| 7 | 케이스 등록 = 렛츠, 센터 열람 전용 | §3-2 T1 |
+| 8 | 그룹별 회차 기본 4회, **설정 페이지에서 조정** | §16 운영 설정 |
+| 9 | **로그인 화면은 행사별**, 플랫폼 총괄관리자만 통합 로그인 | §1-6 |
+| 10 | (신규) 1일 건수·한도 등 제한 조건이 **행사별/그룹별로 다름 → 설정 페이지** · 멘토/멘티 **다중 키워드 등록 → AI 매칭 추천(근거 기록)** · **멘토별 명단에 지급서류 수령 체크**(비밀번호 재입력, 일괄 입력) | §16 운영 설정 · §14 매칭 추천 · §15 멘토 지급서류 체크 |
+
 ---
 
 ## 1. 다중 행사(프로그램) 구조 — "계정 추가로 복제"
@@ -59,6 +73,16 @@ platform (플랫폼 관리자 — 렛츠 본사 계정, program_id = null)
 ⑥ (선택) 복제   : 기존 프로그램의 그룹·단가·서식·FAQ 를 복사
 ```
 `/api/setup` 부트스트랩은 **플랫폼 관리자 1명**만 만든다(현재는 institution 을 만듦 → 변경).
+
+### 1-6. 로그인 — 행사별 화면 + 플랫폼 통합 로그인
+| URL | 대상 | 화면 |
+|---|---|---|
+| `/{slug}/login` (예: `/modu-2026/login`) | 그 행사의 센터·렛츠·멘토·멘티 | `programs.logo_path / app_title / client_label × operator_label` 로 브랜딩. 로그인 성공 후 `users.program_id ≠ slug` 면 **거부**("이 행사의 계정이 아닙니다") — 다른 행사 계정으로 이 행사 데이터에 들어오는 경로 차단 |
+| `/platform/login` | `is_platform_admin = true` 만 | 플랫폼 공통 브랜드. 프로그램 계정은 거부 |
+| `/login` (슬러그 없음) | — | 활성 프로그램이 1개면 그 행사로 리다이렉트, 여러 개면 행사 선택 목록(로고 카드) |
+- 비밀번호 재설정(OTP)·최초 비밀번호 변경 화면도 슬러그 하위에 두고 같은 브랜딩을 쓴다.
+- 미들웨어: `/{slug}/*` 의 `slug` 를 `programs.slug` 로 확인 후 요청 컨텍스트에 `program_id` 를 심는다(존재하지 않는 슬러그는 404).
+- 세션 쿠키는 공용(Supabase Auth) — 격리는 `users.program_id` 검사로 한다.
 
 ### 1-5. 스키마 변경
 ```sql
@@ -124,6 +148,7 @@ alter table support_types
 | 1 | `registered` | 멘티 등록 | pending | 케이스 생성 |
 | 2 | `mentor_assigned` | 멘토 배정 | progress | 활성 배정 생성 |
 | 3 | `in_progress` | 컨설팅 진행 중 | progress | 1회차 등록 시 자동 (n/N 회차는 배지로 표시) |
+| 3' | `reassignment_pending` | 멘토 중도 종료 · 재배정 대기 | rejected | 멘토의 중도 종료 요청을 렛츠가 승인 → 활성 배정 없음. 재배정되면 `in_progress` 로 복귀 |
 | 4 | `closure_requested` | 종결 요청(관찰의견서 제출) | progress | 필수 회차 충족 + 관찰의견서 존재 + 멘토 '종결' 클릭 |
 | 4' | `revision_requested` | 보완 요청 | rejected | 렛츠 검수 반려 → 멘토 수정 후 재요청 |
 | 5 | `settlement_pending` | 검수 완료 · 지급 대기 | approved | 렛츠 검수 승인 + 정산 확정 저장 |
@@ -146,9 +171,12 @@ alter table support_types
 | T8 | `settlement_pending` → `settlement_batched` | nextlab | `addToBatch` | `= settlement_pending` | `settlements.batch_id` 세팅 |
 | T8' | `settlement_batched` → `settlement_pending` | nextlab | `removeFromBatch` | batch 가 draft 일 때만 | |
 | T9 | `settlement_batched` → `closed` | **institution** | `confirmSettlement` (품의 단위 일괄 또는 건별) | `= settlement_batched` | 알림 멘토·멘티, 만족도조사 미제출이면 멘티 안내 |
-| T10 | 비종결 → `withdrawn` | staff | `withdrawCase` | `∉ {closed, withdrawn}` | 배정 해제, 이미 이행한 회차의 정산 처리 여부는 §6-6 |
+| T10 | 비종결 → `withdrawn` (멘티 중도 종료) | staff | `withdrawCase` | `∉ {closed, withdrawn}` | 배정 해제. **이행 회차는 정산**: 담당 멘토(들)의 부분 정산 스냅샷 생성(§6-3 kind=`partial`) |
+| T11 | `in_progress` → `reassignment_pending` (멘토 중도 종료) | mentor 요청 → nextlab 승인 | `requestMentorWithdrawal(reason)` → `approveMentorWithdrawal` | `= in_progress` ∧ 활성 배정 = 요청 멘토 | 배정 비활성(`ended_reason`, `ended_at`), 해당 멘토 **부분 정산 스냅샷**(kind=`partial`) 생성 → `settlements.status = pending`, 알림 렛츠·멘티 |
+| T12 | `reassignment_pending` → `in_progress` | nextlab | `assignMentor` (T2 와 같은 함수, 상태 분기) | `= reassignment_pending` ∧ 활성 배정 없음 | 새 멘토는 잔여 회차(`required_rounds − 이행 회차`)만 진행. 알림 새 멘토·멘티 |
 
-UI 노출 규칙: 진행바(`CASE_STEP_ORDER`) = 1·2·3·4·5·6·7. `revision_requested` 는 4 단계에 반려 톤으로, `withdrawn` 은 0.
+UI 노출 규칙: 진행바(`CASE_STEP_ORDER`) = 1·2·3·4·5·6·7. `revision_requested` 는 4 단계에 반려 톤, `reassignment_pending` 은 3 단계에 반려 톤, `withdrawn` 은 0.
+`mentor_assignments` 에 `ended_at timestamptz, ended_reason text, ended_by uuid` 를 추가해 중도 종료 사유(멘토 작성)를 배정 행에 남긴다.
 
 ### 3-3. 원본 대비 제거되는 것
 `contacted` `log_completed` `contractor_registered` `application_drafted` `under_review` `reviewed` `approved` `rejected` `notified` `execution_docs_submitted` `payment_application_drafted` `payment_approved` 와 관련 전이 #5, #7~#20(`CURRENT-STATE.md §2-2`), 패널 `ReviewPanel`·`ApprovalPanel`·`PaymentApprovalPanel`·지급신청 카드·사전/사후 지원신청 화면 전부.
@@ -189,10 +217,14 @@ alter table mentoring_logs
 1. 담당 멘토(활성 배정) 확인 — `mentorOfCaseOrNull`.
 2. 케이스 상태 ∈ {`mentor_assigned`, `in_progress`, `revision_requested`}.
 3. **회차 상한**: `count + 1 ≤ required_rounds + 승인된 추가 회차 합`.
-4. **1일 1건 상한**: 같은 `case_id` · 같은 날짜(KST) · 같은 `mode` 의 `amount_snapshot` 합 + 이번 단가 ≤ `daily_cap_amount` (온라인 24만 = 3회, 오프라인 30만 = 3회). 초과 시 거부(메시지에 남은 한도 표시).
-5. **멘토 1일 3건**: 같은 `mentor_id` · 같은 날짜의 **distinct case_id** 수가 이미 `mentor_daily_case_limit` 이고 이번 케이스가 그 안에 없으면 거부.
+4. **같은 멘티·같은 날 합산 상한**(답변 2): 같은 `case_id` · 같은 날짜(KST) 의 기존 회차와 합산해
+   (a) 회차 수 ≤ `case_daily_round_limit`(기본 3), (b) `mode` 별 `amount_snapshot` 합 ≤ 그 유형의 `daily_cap_amount`(온라인 24만·오프라인 30만).
+   초과 시 거부(메시지에 남은 한도 표시). 온·오프를 섞어도 (a) 로 하루 3회를 넘지 못한다.
+5. **멘토 1일 건수**: 같은 `mentor_id` · 같은 날짜의 **distinct case_id** 수가 이미 `mentor_daily_case_limit`(기본 3) 이고 이번 케이스가 그 안에 없으면 거부.
 6. 시간 겹침: 같은 멘토의 다른 회차와 `[started_at, ended_at)` 이 겹치면 거부.
 7. 단가 스냅샷: `consulting_rates` 에서 `(program, support_type ?? null, mode, effective_from ≤ started_at::date)` 최신 1건. 없으면 거부("단가 미설정").
+
+**모든 한도값은 설정에서 읽는다**(답변 10). 해석 순서: 그룹(`support_type_id` 지정 행) → 프로그램 기본(`support_type_id null`). 코드에 숫자를 박지 않는다. 설정 페이지는 §16.
 
 ### 4-4. 추가 회차 요청
 ```sql
@@ -249,28 +281,49 @@ create table consulting_rates (
   id uuid pk, program_id uuid not null, support_type_id uuid null,  -- null = 프로그램 기본
   mode consulting_mode not null,
   unit_price numeric(14,2) not null,        -- 온라인 80,000 / 오프라인 100,000
-  daily_cap_amount numeric(14,2) not null,  -- 온라인 240,000 / 오프라인 300,000 (1일 1건당)
+  daily_cap_amount numeric(14,2) not null,  -- 온라인 240,000 / 오프라인 300,000 (같은 멘티·같은 날)
   effective_from date not null, created_by uuid, created_at,
   unique (program_id, support_type_id, mode, effective_from)
 );
+-- 유형과 무관한 운영 한도 (그룹 override 가능, 이력 관리)
+create table operating_limits (
+  id uuid pk, program_id uuid not null, support_type_id uuid null,
+  mentor_daily_case_limit int not null default 3,   -- 멘토 1일 최대 멘티 수
+  case_daily_round_limit int not null default 3,    -- 같은 멘티 1일 최대 회차
+  effective_from date not null, created_by uuid, created_at,
+  unique (program_id, support_type_id, effective_from)
+);
 ```
-단가 변경은 **행 추가**(effective_from)로만 한다. 과거 회차는 `unit_price_snapshot` 을 갖고 있어 흔들리지 않는다.
+단가·한도 변경은 **행 추가**(effective_from)로만 한다. 과거 회차는 `unit_price_snapshot` 을 갖고 있어 흔들리지 않는다.
 
 ### 6-2. 계산 함수 — **한 곳** `src/lib/settlement/compute.ts` (순수 함수, 단위 테스트 필수)
 ```ts
 computeSettlement(input: {
-  rounds: { mode, unit_price_snapshot, amount_snapshot, is_extra, started_at }[],
-  withholdingRate: number,          // 3.3 (프로그램 설정)
+  rounds: { mode, unit_price_snapshot, amount_snapshot, is_extra, started_at, mentor_id }[],
+  withholding: WithholdingPolicy,   // 프로그램 설정 (아래)
 }): {
   lines: { mode, count, unit_price, amount }[],   // 유형별 내역 (+ 추가회차 줄)
-  gross: number,                                  // 합계
-  withholding: number,                            // 원천징수액 = round(gross × rate/100)  ← 절사 규칙 확정 필요
+  gross: number,                                  // 지급총액
+  taxable: number,                                // 기타소득금액 = gross × (1 − expense_rate)
+  income_tax: number,                             // 소득세 = taxable × tax_rate  (10원 미만 절사)
+  local_tax: number,                              // 지방소득세 = income_tax × local_rate (10원 미만 절사)
+  withholding: number,                            // 원천징수 합계
   net: number,                                    // 실지급요청액 = gross − withholding
 }
+
+WithholdingPolicy = {
+  method: 'other_income',           // 기타소득(답변 1). 확장 여지: 'business_income'(3.3%), 'none'
+  expense_rate: 0.6,                // 필요경비율 60%
+  tax_rate: 0.20,                   // 기타소득세 20%
+  local_rate: 0.10,                 // 지방소득세 = 소득세의 10%
+  rounding: 'floor_10',             // 세액 10원 미만 절사 (국고금관리법 단수 처리)
+  min_taxable_exempt: 50000,        // 건별 기타소득금액 5만원 이하 과세최저한 → 원천징수 0 (설정으로 on/off)
+}
 ```
+- 기타소득 실효세율 = 40% × 22% = **8.8%**. 예: 4회 오프라인 400,000 → 기타소득금액 160,000 → 소득세 32,000 + 지방세 3,200 = 35,200 → 실지급 364,800.
 - 화면의 "예상 비용"(§4-2)과 T7 의 확정 저장이 **같은 함수**를 호출한다.
-- 원천징수: 프리랜서 사업소득 3.3%(소득세 3% + 지방소득세 0.3%) 기본값. 10원 미만 절사 등 반올림 규칙은 §11 확인 항목.
-- 테스트 러너: 리포에 없음 → `vitest` 추가(`npm run test` 를 검증 3종에 4번째로 편입).
+- 파라미터는 `programs` 설정(§16)에 저장하고 정산 스냅샷에 **적용 당시 값**을 함께 저장한다(세율 변경 소급 방지).
+- 테스트 러너: 리포에 없음 → `vitest` 추가(`npm run test` 를 검증 3종에 4번째로 편입). 테스트 케이스: 유형 혼합, 추가 회차, 과세최저한 경계, 절사, 멘토 2명 분할.
 
 ### 6-3. 예상 vs 확정
 | 구분 | 원천 | 노출 | 저장 |
@@ -280,18 +333,22 @@ computeSettlement(input: {
 
 ```sql
 create table settlements (
-  id uuid pk, case_id uuid not null unique, program_id uuid not null,
-  mentor_id uuid not null,                      -- 확정 시점 담당 멘토(지급 대상)
-  lines jsonb not null, gross numeric, withholding_rate numeric, withholding numeric, net numeric,
+  id uuid pk, program_id uuid not null,
+  case_id uuid not null, mentor_id uuid not null,   -- 정산 단위 = 케이스 × 멘토 (답변 6)
+  kind text check in ('closure','partial') not null,-- closure: 종결 검수 승인 / partial: 멘토 중도 종료·멘티 중도 종료
+  status text check in ('pending','batched','confirmed','paid') default 'pending',
+  lines jsonb not null, gross numeric, taxable numeric, income_tax numeric, local_tax numeric,
+  withholding numeric, net numeric, withholding_policy jsonb not null,   -- 적용 당시 세율 파라미터
   rounds_snapshot jsonb not null,               -- 회차 id·일시·유형·단가 목록 (감사용)
-  confirmed_by uuid, confirmed_at timestamptz,
+  confirmed_by uuid, confirmed_at timestamptz,  -- 렛츠 확정
   batch_id uuid references settlement_batches(id),
-  paid_at timestamptz, created_at
+  paid_at timestamptz, created_at,
+  unique (case_id, mentor_id)                   -- 한 멘토는 한 케이스에서 한 번만 정산
 );
 ```
-확정 후 회차가 추가·수정되면(원칙적으로 `settlement_pending` 이후 회차 편집은 잠금) 다음 정산이 아니라 **재확정 없이 잠금**이 기본. 예외 편집은 렛츠의 "확정 취소(T7 역전이, 사유 필수)" 로만 — 감사로그 필수.
-
-> ⚠ 멘토 변경이 있었던 케이스: 정산은 **회차별 `mentor_id`** 로 나뉜다. `settlements.lines` 에 멘토별 소계를 넣고, 지급 대상이 둘 이상이면 품의 화면에 멘토별 행으로 펼친다.
+- **케이스 상태와 정산 상태의 관계**: 케이스 상태(`settlement_pending → settlement_batched → closed`)는 그 케이스의 **`closure` 정산**의 status 를 따라간다. `partial` 정산은 케이스 상태와 무관하게 자체 status 로 품의에 실린다(케이스는 새 멘토와 계속 진행).
+- 정산 대상 회차 = `mentoring_logs where case_id = ? and mentor_id = ?` 중 아직 어떤 정산에도 포함되지 않은 것(`mentoring_logs.settlement_id` 로 표시). 같은 회차가 두 번 정산되지 않는다.
+- 확정 후 회차 편집은 잠금. 예외는 렛츠의 "확정 취소(사유 필수, `pending` 이고 품의 미편성일 때만)" — 감사로그 필수.
 
 ### 6-4. 지급 품의 (`settlement_batches`)
 ```sql
@@ -302,13 +359,17 @@ create table settlement_batches (
   total_gross numeric, total_withholding numeric, total_net numeric, created_at
 );
 ```
-렛츠: `settlement_pending` 케이스를 체크박스로 골라 품의 생성(draft) → 제출(submitted, T8) → 센터: 품의 상세에서 **"정산 확인"**(confirmed → 포함 케이스 전부 T9 `closed`) → 렛츠: 실제 지급 후 `paid` 표시. 품의서 PDF/엑셀 내보내기 제공.
+렛츠: `status = pending` 인 **정산 건**(closure·partial 모두)을 체크박스로 골라 품의 생성(draft) → 제출(submitted, T8) → 센터: 품의 상세에서 **"정산 확인"**(confirmed → 포함된 `closure` 정산의 케이스는 T9 `closed`, `partial` 은 정산 건만 confirmed) → 렛츠: 실제 지급 후 `paid` 표시. 품의서 PDF/엑셀 내보내기 제공(멘토별 합계·원천징수 내역 포함).
 
 ### 6-5. 통보
 T7 확정 시 멘토에게 인앱 + 문자(`queueNotification`, 기존 큐·Cron 재사용): "○○ 멘티 정산 확정 — 온라인 N회·오프라인 M회, 합계 X원, 원천징수 Y원, 실지급 Z원". 문자는 try/catch 격리(CLAUDE.md §6-5).
 
-### 6-6. 중도 종료(`withdrawn`) 시 이행 회차
-이미 이행한 회차는 정산 대상인지 **정책 확정 필요**(§11). 기본안: 렛츠가 종료 처리 시 "이행분 정산" 체크박스 → 체크 시 T7 과 같은 확정 스냅샷을 만들고 `settlement_pending` 대신 `withdrawn` 상태로 두되 `settlements` 행은 생성.
+### 6-6. 중도 종료 시 이행 회차 (답변 6 확정)
+| 경우 | 트리거 | 정산 | 케이스 |
+|---|---|---|---|
+| **멘토 중도 종료** | 멘토가 사유 작성 → 렛츠 승인 (T11) | 그 멘토의 이행 회차로 `partial` 정산 생성(`pending`) | `reassignment_pending` → 타 멘토 배정(T12) → 잔여 회차 진행 → 종결 시 새 멘토 `closure` 정산 |
+| **멘티 중도 종료** | 렛츠 `withdrawCase` (T10, 사유) | 활성 멘토의 이행 회차로 `partial` 정산 생성 | `withdrawn` 종결 |
+이행 회차가 0이면 정산 행을 만들지 않는다. 부분 정산도 §6-2 같은 함수·같은 원천징수 정책을 쓴다.
 
 ---
 
@@ -316,13 +377,39 @@ T7 확정 시 멘토에게 인앱 + 문자(`queueNotification`, 기존 큐·Cron
 
 | 기능 | 데이터 | 흐름 | 게이트 |
 |---|---|---|---|
-| **회차 서명** | `signatures(signer_type=mentee, document_type='mentoring_log', log_id)` + `mentoring_logs.mentee_signed_at` | 멘티 대시보드 "서명 대기 회차" → 캔버스 서명 | 프로그램 설정 `require_mentee_signature_for_closure`(기본 true)면 T5 게이트 |
-| **만족도 조사** | `satisfaction_surveys(case_id unique, mentee_id, answers jsonb, score int, comment, submitted_at)` + 문항은 `program_survey_questions` (프로그램별 편집) | `closure_requested` 부터 노출, 1회 제출 | T9 게이트로 두지 않음(멘티 미응답이 정산을 막으면 안 됨) — 미제출 시 리마인더 문자 |
+| **회차 서명** | `signatures(signer_type=mentee, document_type='mentoring_log', log_id)` + `mentoring_logs.mentee_signed_at` | 멘티 대시보드 "서명 대기 회차" → 캔버스 서명 | 프로그램 설정 `require_mentee_signature_for_closure`(**기본 false**, 답변 4)면 T5 게이트 |
+| **만족도 조사** | §7-2 설문 템플릿(그룹별 표준양식) + `survey_responses` | `closure_requested` 부터 노출, 1회 제출 | T9 게이트로 두지 않음(멘티 미응답이 정산을 막으면 안 됨) — 미제출 시 리마인더 문자 |
 | **멘토 변경 요청** | `mentor_change_requests(case_id, requested_by, reason, status pending/accepted/rejected, handled_by, note)` | 멘티 → 렛츠 요청함 → 수락 시 T3 `reassignMentor` 호출 | 진행 중 상태에서만 |
 | 진행 열람 | 기존 `mentee-journey` 재사용 (7단계) | | |
 | 필수서류 업로드 | §5-3 | | |
 
 기존 멘티 화면 중 `pre-support` `post-support` `contractor-signatures` `support-scope` 는 제거.
+
+### 7-2. 만족도 조사 — 그룹별 표준양식 (답변 5)
+```sql
+create table survey_templates (
+  id uuid pk, program_id uuid not null, support_type_id uuid null,   -- null = 프로그램 공통 양식
+  name text not null, version int not null default 1, is_active bool default true,
+  created_by uuid, created_at, unique (program_id, support_type_id, version)
+);
+create table survey_questions (
+  id uuid pk, template_id uuid not null, sort_order int not null,
+  qtype text check in ('scale','single','multi','text','rank') not null,  -- 5점척도 / 단일선택 / 복수선택 / 주관식 / 순위
+  label text not null, help text,
+  options jsonb,                -- single/multi/rank 의 보기 목록, scale 의 min/max/라벨
+  required bool default true
+);
+create table survey_responses (
+  id uuid pk, case_id uuid not null unique, template_id uuid not null, mentee_id uuid not null,
+  answers jsonb not null,       -- { questionId: value | value[] | rankedIds[] | text }
+  score numeric,                -- scale 문항 평균(대시보드용, 파생)
+  submitted_at timestamptz not null default now()
+);
+```
+- 운영 설정 페이지(§16)에서 템플릿을 만들고 문항을 추가·정렬·유형 선택한다. 응답이 1건이라도 생기면 템플릿은 **잠금**(수정하려면 새 버전 생성).
+- 케이스에 노출되는 양식 = 그룹 지정 활성 템플릿 → 없으면 프로그램 공통 활성 템플릿.
+- 기본 시드: 5점 척도 5문항(전문성·성실성·도움 정도·의사소통·재참여 의향) + 주관식 1문항.
+- 결과: 그룹·멘토별 평균 점수 대시보드(센터·렛츠), 멘토 본인은 익명 집계만 열람. CSV 내보내기.
 
 ---
 
@@ -364,10 +451,13 @@ T7 확정 시 멘토에게 인앱 + 문자(`queueNotification`, 기존 큐·Cron
 | 0048 | `case_status` v2 재생성(`cases`, `case_status_history` 컬럼 재타입) |
 | 0049 | `consulting_mode` enum + `consulting_rates` + `mentoring_logs` v2 컬럼 |
 | 0050 | `settlements` + `settlement_batches` |
-| 0051 | `round_extension_requests` + `mentor_change_requests` + `satisfaction_surveys` + `program_survey_questions` + `cases.predecessor_case_id` |
+| 0051 | `round_extension_requests` + `mentor_change_requests` + `survey_templates/questions/responses` + `cases.predecessor_case_id` + `mentor_assignments.ended_*` |
 | 0052 | `documents` 단일본 인덱스 v2 (0045 교체) |
 | 0053 | 레거시 테이블 삭제: `contractors` `support_applications` `payment_applications` `approvals` + 관련 정책 |
-| 0054 | 시드: 프로그램 `modu-2026` + 그룹 A·B·C·D + 단가(온 8만/24만, 오프 10만/30만) + 알림 템플릿 + 관찰의견서 서식 자리 |
+| 0054 | 시드: 프로그램 `modu-2026` + 그룹 A·B·C·D + 단가(온 8만/24만, 오프 10만/30만) + 운영 한도(3/3) + 원천징수 정책 + 알림 템플릿 + 만족도 기본 양식 + 관찰의견서 서식 자리 |
+| 0055 | `operating_limits` + `programs.withholding_policy jsonb` + 종결 게이트 설정 컬럼 |
+| 0056 | 매칭: `tag_catalog` + `mentor_profiles` + `mentee_profiles` + `match_recommendations` (§14) |
+| 0057 | `mentor_payment_docs` + 감사 정책 (§15) |
 
 ### 10-2. 코드 — 삭제
 `src/lib/workflow/{application*,attachment-forms*,payment*,support-items-actions,contractor,consulting-report*,supplement-actions,edit-grant-actions,case-editor}.ts`, `src/lib/support/`, `src/lib/data/{contractor-config,support-items,payment-files,application-files,application-bundle,mentee-progress}.ts`, 멘토 `apply/contractor-docs/contractor-signatures/pre-support/post-support/support-scope` 라우트, 멘티 `pre-support/post-support/contractor-signatures/support-scope` 라우트, 컴포넌트 `application-form, payment-*, contractor-*, attachment-forms-panel, edit-grant-*, case-deliverables-review(개편)`, API `institution/cases/parse-application·application-docs`.
@@ -391,34 +481,110 @@ T7 확정 시 멘토에게 인앱 + 문자(`queueNotification`, 기존 큐·Cron
 | `src/app/layout.tsx` `manifest.ts` `login/page.tsx` `privacy-policy` `terms` | 브랜딩 → 프로그램 설정/플랫폼 기본값 |
 
 ### 10-4. 코드 — 신규
-`src/lib/settlement/{compute.ts, compute.test.ts, actions.ts, batches.ts}`, `src/lib/programs/{data.ts, actions.ts, branding.ts}`, `src/app/(platform)/platform/{programs, programs/new, programs/[id]}`, `src/lib/workflow/{closure-actions, extension-actions, mentor-change-actions, survey-actions}.ts`, `src/components/{settlement, programs, rounds, observation}`.
+`src/lib/settlement/{compute.ts, compute.test.ts, withholding.ts, actions.ts, batches.ts}`, `src/lib/programs/{data.ts, actions.ts, branding.ts, limits.ts}`, `src/app/(platform)/platform/{login, programs, programs/new, programs/[id]}`, `src/app/[slug]/(auth)/{login, reset-password, change-password}` + `src/middleware.ts` 슬러그 해석, `src/lib/workflow/{closure-actions, extension-actions, mentor-change-actions, mentor-withdrawal-actions, survey-actions, settings-actions, mentor-docs-actions}.ts`, `src/lib/matching/{score.ts, score.test.ts, rationale.ts (Claude API), actions.ts}`, `src/app/(operator)/operator/{settings, mentors, settlements, batches}`, `src/components/{settlement, programs, rounds, observation, survey, matching, settings}`.
+패키지 추가: `@anthropic-ai/sdk`(매칭 근거), `vitest`(정산·점수 테스트).
 
 ---
 
-## 11. 확정 필요(설계는 아래 기본값으로 진행하되, 다르면 알려 주세요)
-1. **원천징수율 3.3%**, 원 단위 절사 규칙(기본: 원천징수액 원 미만 절사).
-2. **1일 상한 해석**: "1일 1건당 24만/30만" 을 **같은 멘티·같은 날·같은 유형 합산 상한**으로 구현(= 3회). 온·오프 혼합 시 각자 상한.
-3. **추가 회차 승인 주체**: 렛츠(기본). 센터 승인이 필요하면 2단계로.
-4. **종결 요청 게이트에 멘티 서명 필수** 여부(기본 true) · **그룹 필수서류 완료** 여부(기본 false).
-5. **만족도 문항**: 프로그램별 편집 가능한 5점 척도 5문항 + 자유의견(기본 시드). 응답 시점 = 종결 요청 이후.
-6. **중도 종료 시 이행 회차 정산** 여부(§6-6).
-7. **센터의 케이스 등록 권한**: 원본은 institution 이 등록. 모두의창업은 렛츠 등록 기본, 센터는 열람 전용으로 잡음.
-8. **그룹별 회차 수**: A~D 각각 3 또는 4 — 시드는 4, 화면에서 수정.
-9. **로그인 화면 브랜딩**: 단일 플랫폼 브랜드(기본) vs `/login?p=modu-2026` 로 행사별 로고.
+## 11. 열린 항목 — 1차 9건은 §0-2 로 **전부 확정**. 남은 것(기본값으로 진행):
+1. 기타소득 파라미터 기본값(필요경비 60%·세율 20%·지방세 10%·10원 미만 절사·과세최저한 5만원 적용). 회계 담당자 확인 권장 — 설정 페이지에서 바꿀 수 있으므로 구현은 막히지 않음.
+2. 매칭 추천의 **자동 배정 금지** — 추천은 후보 3~5명 + 근거까지만, 배정 버튼은 렛츠가 누른다(§14). 자동 배정을 원하면 별도 지시.
+3. 멘토 지급서류 3종(이력서·통장사본·신분증사본)의 **파일 업로드 보관** 여부 — 기본은 "수령 체크"만(§15). 파일 보관은 개인정보(신분증) 보존기간 정책이 필요.
+4. 그룹별 회차 수 A~D 실제 값 — 시드 4, 설정 페이지에서 조정(답변 8).
+
+---
+
+## 14. AI 멘토 매칭 추천 (답변 10)
+
+### 14-1. 데이터 — 다중 키워드 프로필
+```sql
+create table tag_catalog (            -- 프로그램별 키워드 사전 (자동완성·통계용, 자유 입력도 허용)
+  id uuid pk, program_id uuid not null, category text not null,  -- 'industry' | 'expertise' | 'stage' | 'region' | 'need' | 'custom'
+  label text not null, sort_order int, unique (program_id, category, label)
+);
+create table mentor_profiles (
+  user_id uuid pk references users(id), program_id uuid not null,
+  industries text[] default '{}', expertise text[] default '{}', regions text[] default '{}',
+  stages text[] default '{}',           -- 예비/초기/성장
+  modes consulting_mode[] default '{online,offline}',
+  capacity int default 5,               -- 동시 담당 멘티 상한 (부하 계산)
+  career text, bio text,                -- 정성 근거의 재료 (경력·소개)
+  keywords text[] default '{}',         -- 자유 키워드
+  updated_at
+);
+create table mentee_profiles (
+  case_id uuid pk references cases(id), program_id uuid not null,
+  industry text, stage text, region text, preferred_mode consulting_mode,
+  needs text[] default '{}',            -- 원하는 도움 (마케팅/재무/법무/제품…)
+  keywords text[] default '{}', summary text,   -- 사업 소개·현황·고민 (정성 근거의 재료)
+  updated_at
+);
+create table match_recommendations (
+  id uuid pk, program_id uuid not null, case_id uuid not null, mentor_id uuid not null,
+  rank int not null, score numeric not null,              -- 0~100
+  objective jsonb not null,   -- { tag_overlap: {industry:2, expertise:3, need:1}, region_match: true, mode_match: true, load: {current:3, capacity:5}, prior_cases_with_mentee: 0 }
+  rationale text not null,    -- 정성 근거 (모델 생성, 한국어 2~4문장)
+  model text not null, prompt_version text not null, generated_at timestamptz, generated_by uuid,
+  adopted_at timestamptz,     -- 이 추천으로 실제 배정된 경우 기록
+  unique (case_id, mentor_id, generated_at)
+);
+```
+- 멘토·멘티 등록 화면(렛츠)과 본인 프로필 화면에서 키워드를 **다중 입력**(칩 UI, 카탈로그 자동완성 + 자유 입력). CSV 일괄 등록 지원.
+
+### 14-2. 추천 파이프라인 (서버 액션 `recommendMentors(caseId)`)
+1. **객관 점수(코드, 결정적)** — 같은 프로그램의 활성 멘토 전원에 대해: 태그 겹침(카테고리별 가중치), 지역·유형 일치, 현재 부하(활성 배정 수 / capacity), 승계 케이스면 이전 멘토 가점, 1일 3건 등 한도 위반 가능성. 상위 8명을 후보로 추린다. 이 단계만으로도 추천이 나온다(모델 장애 시 폴백).
+2. **정성 근거(모델)** — 후보 8명의 `career/bio/keywords` 와 멘티 `summary/needs` 를 넣고 **Anthropic Claude API**(`@anthropic-ai/sdk`, 모델 `claude-opus-5`, 적응형 thinking, `output_config.format` 구조화 출력)로 "상위 3~5명 순위 + 각 2~4문장 근거 + 주의점"을 JSON 으로 받는다. 개인정보(연락처·사업자번호)는 프롬프트에서 제외.
+3. 저장 → 화면: 렛츠 배정 패널에 추천 카드(점수·객관 요인 표·정성 근거). **배정은 렛츠가 클릭** — 자동 배정 없음. 채택 시 `adopted_at` 기록으로 추천 정확도를 나중에 측정.
+4. 비용·지연: 케이스당 1회 호출(재생성 버튼), 결과 캐시. `ANTHROPIC_API_KEY` 환경변수 추가. 키 미설정이면 1단계 객관 점수만으로 동작.
+
+### 14-3. 근거 기록 원칙
+- `objective` 는 숫자·불리언만(재현 가능). `rationale` 은 모델 출력 원문 + `model`/`prompt_version` 을 남겨 나중에 "왜 이 멘토였나"를 감사할 수 있게 한다.
+- 추천을 무시하고 다른 멘토를 배정하면 배정 감사로그에 `recommended_rank: null` 을 남긴다.
+
+---
+
+## 15. 멘토 지급서류 수령 체크 (답변 10)
+```sql
+create table mentor_payment_docs (
+  user_id uuid pk references users(id), program_id uuid not null,
+  resume_received_at timestamptz, bankbook_received_at timestamptz, id_card_received_at timestamptz,
+  note text, checked_by uuid, updated_at
+);
+```
+- 화면: 렛츠 **멘토별 명단**(`/operator/mentors`)에 3개 체크 열(이력서·통장사본·신분증사본) + 미수령 필터 + 정산 화면에 "서류 미비" 배지(지급 품의 편성 시 경고, 차단은 하지 않음 — 설정으로 차단 전환 가능).
+- **비밀번호 재입력**: 체크 입력/변경 서버 액션은 `password` 를 함께 받아 실행자(실제 신원, `getRealSessionProfile`)의 이메일로 `signInWithPassword` 재인증에 성공해야 저장한다. 실패 3회 시 5분 잠금(`app_settings` 카운터). 대행(view-as) 중에는 불가.
+- **일괄 입력**: 멘토 다중 선택 → "수령 일괄 체크" 모달(항목 선택 + 비밀번호 1회) → 한 트랜잭션으로 저장, 감사로그는 멘토별 1건씩(`mentor.payment_doc_check`, before/after).
+- 파일 자체는 보관하지 않는다(§11-3). 보관이 필요해지면 `documents` 의 케이스 스코프가 아닌 **사용자 스코프 버킷**(`mentor-docs/{userId}/`)을 별도로 설계한다.
+
+---
+
+## 16. 운영기관 설정 페이지 (`/operator/settings`, nextlab 전용)
+| 탭 | 항목 | 저장처 | 비고 |
+|---|---|---|---|
+| 행사 기본 | 라벨(센터·운영기관)·앱 타이틀·로고·문자 꼬리말 | `programs` | 플랫폼 관리자도 편집 가능 |
+| 사업그룹 | 그룹 추가·이름·코드·**회차 수(기본 4)**·기간·승계 원천 그룹·활성 | `support_types` | 답변 8 |
+| 단가·한도 | 유형별 단가·일일 금액 상한, 멘토 1일 건수, 멘티 1일 회차 — **그룹별 override**, 적용일 | `consulting_rates`, `operating_limits` | 이력 행 추가 방식. 답변 10 |
+| 정산 | 원천징수 방식·파라미터, 정산서 서식 | `programs.withholding_policy` | 답변 1 |
+| 종결 게이트 | 멘티 서명 필수 / 필수서류 완료 필수 / 지급서류 미비 시 품의 차단 | `programs.closure_policy jsonb` | 답변 4 기본 false |
+| 필수서류 | 그룹별 문서 슬롯(`support_type_documents`) | 기존 화면 재사용 | |
+| 만족도 양식 | 템플릿·문항·유형·순서, 그룹 지정 | `survey_*` | 답변 5 |
+| 키워드 사전 | 카테고리별 태그 관리 | `tag_catalog` | §14 |
+| 알림 | 이벤트별 채널 on/off·문구 | `app_settings(program_id)` | 기존 문자 설정 화면 확장 |
+모든 저장은 감사로그(`settings.update`, before/after). 숫자 한도는 "적용일" 을 받아 이력 행으로 추가한다(과거 정산 불변).
 
 ---
 
 ## 12. 구현 단계 (검증: `typecheck` · `lint` · `build` · `test` 4종 통과 후 다음 단계)
 | 단계 | 내용 | 산출 |
 |---|---|---|
-| P1 | 마이그레이션 0046~0054 작성 + Supabase `modu` 적용 + `database.ts` 재생성 | 스키마 확정 |
-| P2 | 도메인 코어: 상태 v2·전이 상수·역할 라벨·프로그램 스코프·가드 + **레거시 삭제** → 빌드 그린 | 뼈대 |
-| P3 | 멘토 흐름: 회차 등록(웹/업로드, 검증 7항목)·사진·관찰의견서·종결 요청·추가 회차 요청 | 멘토 완료 |
-| P4 | 정산: `computeSettlement` + 테스트, 예상/확정, 검수 승인(T7), 품의(T8), 센터 확인(T9), 정산서 PDF, 통보 | 정산 완료 |
-| P5 | 멘티: 서명·만족도·멘토 변경 요청·필수서류 | 멘티 완료 |
-| P6 | 운영: 그룹 관리·승계 개설·이전 이력 탭·요청함(추가회차/멘토변경) | 운영 완료 |
-| P7 | 플랫폼: `programs` 콘솔·개설 마법사·복제·`/api/setup` 변경·브랜딩 동적화·문구 391줄 치환 | 다중 행사 |
-| P8 | Vercel 생성·환경변수·부트스트랩·역할별 권한 격리 점검·문자 1건·PDF 1건 | 배포 |
+| P1 | 마이그레이션 0046~0057 작성 + Supabase `modu` 적용 + `database.ts` 재생성 | 스키마 확정 |
+| P2 | 도메인 코어: 상태 v2·전이 상수·역할 라벨·프로그램 스코프·가드·슬러그 로그인 + **레거시 삭제** → 빌드 그린 | 뼈대 |
+| P3 | 멘토 흐름: 회차 등록(웹/업로드, 검증 7항목·설정 한도)·사진·관찰의견서·종결 요청·추가 회차 요청·**중도 종료 요청** | 멘토 완료 |
+| P4 | 정산: `computeSettlement`(기타소득) + 테스트, 예상/확정, 검수 승인(T7)·부분 정산(T10/T11), 품의(T8), 센터 확인(T9), 정산서 PDF, 통보 | 정산 완료 |
+| P5 | 멘티: 서명·만족도(양식 렌더)·멘토 변경 요청·필수서류 | 멘티 완료 |
+| P6 | 운영: **설정 페이지 9탭**(§16)·그룹 관리·승계 개설·이전 이력 탭·요청함(추가회차/멘토변경/중도종료)·**멘토 명단 지급서류 체크**(§15) | 운영 완료 |
+| P7 | 플랫폼: `programs` 콘솔·개설 마법사·복제·`/api/setup` 변경·브랜딩 동적화·문구 391줄 치환 · **AI 매칭 추천**(§14) | 다중 행사 |
+| P8 | Vercel 생성·환경변수(+`ANTHROPIC_API_KEY`)·부트스트랩·역할별 권한 격리 점검·문자 1건·PDF 1건 | 배포 |
 
 ---
 
@@ -431,3 +597,4 @@ T7 확정 시 멘토에게 인앱 + 문자(`queueNotification`, 기존 큐·Cron
 - 2026-09-07 사업그룹 A~D 시드, 그룹 동적 생성(enum → text), 그룹 간 승계 = `predecessor_case_id`.
 - 2026-09-07 **다중 행사 = 한 배포 안의 `programs` 계층(B안)**, 1계정 1프로그램, 플랫폼 관리자 플래그. 인프라 복제(A안)는 대안으로 문서 유지.
 - 2026-09-07 URL `/nextlab` → `/operator` 개명, 역할 키 `nextlab` 은 유지.
+- 2026-09-07 **2차 답변 반영**: 원천징수 = 기타소득(실효 8.8%, 파라미터화) · 일일 상한 = 같은 멘티·같은 날 합산 · 정산 단위 = 케이스×멘토(중도 종료 부분 정산, `reassignment_pending` 상태 신설) · 만족도 그룹별 표준양식(문항 유형 5종) · 행사별 로그인 `/{slug}/login` · 한도 전부 설정 페이지 · AI 매칭 추천(객관 점수 + Claude 정성 근거, 자동 배정 없음) · 멘토 지급서류 수령 체크(비밀번호 재인증·일괄).
