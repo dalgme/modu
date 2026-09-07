@@ -13,8 +13,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 
 /**
- * 진흥원 '요청/문의' — 제목·내용만 간단히 입력해 넥스트랩(운영사)에 요청을 보낸다.
- * 전송하면 넥스트랩 대시보드 '운영사 요청' 리스트에 올라간다.
+ * 발주처 '요청/문의' — 제목·내용만 간단히 입력해 운영사에 요청을 보낸다.
+ * 전송하면 운영사 대시보드 '운영사 요청' 리스트에 올라간다.
  */
 export function OperatorRequestForm() {
   const router = useRouter();
@@ -32,7 +32,7 @@ export function OperatorRequestForm() {
     const res = await createOperatorRequestAction({ title, body });
     setSending(false);
     if (res.ok) {
-      toast({ title: '넥스트랩(운영사)에 요청을 보냈습니다.' });
+      toast({ title: '운영사에 요청을 보냈습니다.' });
       setTitle('');
       setBody('');
       router.refresh();
@@ -44,9 +44,9 @@ export function OperatorRequestForm() {
   return (
     <Card className="border-primary/30 bg-primary/5">
       <CardHeader>
-        <CardTitle className="text-base">넥스트랩에 요청/문의하기</CardTitle>
+        <CardTitle className="text-base">운영사에 요청/문의하기</CardTitle>
         <p className="text-xs text-muted-foreground">
-          제목과 내용을 작성해 보내면 넥스트랩 대시보드 &lsquo;운영사 요청&rsquo;에 즉시 등록됩니다.
+          제목과 내용을 작성해 보내면 운영사 대시보드 &lsquo;운영사 요청&rsquo;에 즉시 등록됩니다.
         </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">

@@ -20,7 +20,7 @@ interface AuditInput {
  * 대행(view-as) 중에는 actorId 로 '명의(대행 대상 멘토)'가 들어오는데, audit_logs RLS(0030)는
  * `with check (actor_id = auth.uid())` 라 anon 클라이언트 경로에서 조용히 폐기된다.
  * 그래서 대행 중이고 actorId 가 대행 대상 본인이면
- *   - actor_id 를 **실제 실행자(넥스트랩)** 로 바꾸고
+ *   - actor_id 를 **실제 실행자(운영사)** 로 바꾸고
  *   - metadata.on_behalf_of 에 명의를 남기며
  *   - service_role(admin) 로 기록해 RLS 를 우회한다.
  * 대행이 아니면 전달받은 클라이언트/actorId 를 그대로 쓴다(동작 불변).

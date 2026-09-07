@@ -97,7 +97,7 @@ export function MentorReminderCard({
           <div>
             <p className="text-sm font-semibold">매주 월요일 12:30 자동 발송</p>
             <p className="text-xs text-muted-foreground">
-              배정된 멘티기업 중 <b>&lsquo;지원신청서 작성&rsquo;을 완료하지 못한</b> 기업이 있는
+              배정된 멘티 중 <b>회차 등록이 남은</b> 멘티가 있는
               멘토에게만 발송됩니다.
             </p>
           </div>
@@ -136,7 +136,7 @@ export function MentorReminderCard({
           rows={3}
           value={template}
           onChange={(e) => setTemplate(e.target.value)}
-          placeholder="[재기지원사업] {mentor}멘토님, 이번주에도 [{companies}] 기업에 대한 …"
+          placeholder="[멘토링 프로그램] {mentor}멘토님, 이번주에도 [{companies}] 기업에 대한 …"
         />
       </div>
 

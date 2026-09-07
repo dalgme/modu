@@ -19,104 +19,82 @@ import { Button } from '@/components/ui/button';
 
 export type GuideFaq = { id: string; question: string; answer: string };
 
-/** 유형별 컨설팅 회차·내용 안내 */
+/** 컨설팅 유형 안내 — 단가·상한은 운영 설정(행사/그룹) 값이 회차 등록 화면에 표시된다 */
 const CONSULTING = [
-  {
-    type: '경영개선 유형',
-    required: '컨설팅 2회 필수',
-    optional: '필요시 1회 추가 가능',
-    content: '경영개선 요청사항 현장확인, 경영관련 일반 컨설팅 등',
-    accent: 'border-emerald-300 dark:border-emerald-800',
-    badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300',
-  },
-  {
-    type: '폐업정리 유형',
-    required: '컨설팅 1회 필수',
-    optional: '필요시 1회 추가 가능',
-    content: '폐업현장 확인, 지원금 신청항목 확인',
-    accent: 'border-amber-300 dark:border-amber-800',
-    badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  },
+  { type: '온라인 컨설팅', required: '화상·전화 등 비대면', optional: '회차 등록 시 유형 선택', content: '사업계획·마케팅·재무 등 비대면 상담', accent: 'border-emerald-300 dark:border-emerald-800', badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' },
+  { type: '오프라인 컨설팅', required: '대면 방문·현장', optional: '회차 등록 시 유형 선택', content: '현장 방문 상담, 워크숍, 대면 코칭', accent: 'border-amber-300 dark:border-amber-800', badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' },
 ];
 
 /** 본 사업 전체 여정(약식) */
-const OVERALL = [
-  '진흥원 멘티기업 등록',
-  '넥스트랩 멘토 배정',
-  '멘토링·서명',
-  '지원신청서·부속서류',
-  '넥스트랩 검수',
-  '진흥원 승인',
-  '증빙·지급',
-];
+const OVERALL = ['멘티 등록', '멘토 배정', '컨설팅 회차 등록', '멘티 확인 서명', '관찰의견서·종결 요청', '운영사 검수·정산 확정', '발주처 정산 확인·종결'];
 
 /** 멘토 입장의 플랫폼 여정 */
 const JOURNEY = [
   {
     icon: ClipboardList,
     title: '배정 확인',
-    desc: '넥스트랩이 케이스에 멘토님을 배정하면 멘토 대시보드 상단에 신규 배정 케이스가 표시됩니다. 케이스를 열어 멘티기업 정보와 진행 단계를 확인하세요.',
-    features: ['신규 배정 알림', '멘티별 업무진행 보드', '진행단계 실시간 확인'],
+    desc: '운영사가 케이스에 멘토님을 배정하면 대시보드 상단에 신규 배정 케이스가 표시됩니다. 케이스를 열어 멘티 정보, 그룹 회차 수, 진행 단계를 확인하세요.',
+    features: ['신규 배정 알림', '담당 케이스 목록', '진행단계 실시간 확인'],
     screenshot: 'mentor-dashboard',
     caption: '멘토 대시보드',
     href: '/mentor/dashboard',
     cta: '대시보드 열기',
   },
   {
+    icon: NotebookPen,
+    title: '컨설팅 회차 등록',
+    desc: '회차마다 일시·장소·유형(온라인/오프라인)을 입력하고 내용을 웹으로 작성하거나 보고서 파일을 올립니다. 사진도 첨부할 수 있습니다. 단가는 등록 시점 값으로 고정됩니다.',
+    features: ['웹 작성 시 행사/그룹 양식으로 보고서 PDF 자동 생성', '같은 멘티·같은 날 상한, 1일 최대 건수 자동 검증', '멘티 서명 전까지 수정 가능'],
+    screenshot: 'mentor-log',
+    caption: '회차 등록',
+    href: '/mentor/dashboard',
+    cta: '케이스에서 등록',
+  },
+  {
+    icon: FileSignature,
+    title: '내 서명 등록',
+    desc: '운영사가 보고서 양식에 멘토 서명 컬럼을 두고 자동 서명을 켠 그룹에서는, 등록한 서명이 보고서 저장 시 자동으로 붙습니다.',
+    features: ['직접 그리기 또는 이미지 업로드', '본인만 등록·교체', '대행 중에는 등록 불가'],
+    screenshot: 'mentor-signature',
+    caption: '내 서명 등록',
+    href: '/mentor/signature',
+    cta: '서명 등록',
+  },
+  {
     icon: Users,
-    title: '멘티 미팅 지원',
-    desc: '케이스 상세의 ‘멘티 미팅 지원’ 패널에서 멘티가 로그인을 못 하면 임시 비밀번호를 재설정하고, 미팅 확인 서명을 받아둘 수 있습니다.',
-    features: ['멘티 임시 비밀번호 재설정', '미팅 확인 서명(멘티) 캡처', '서명은 서식에 자동 재사용'],
+    title: '멘티 확인 서명 · 서류',
+    desc: '회차를 등록하면 멘티에게 확인 알림이 가고 멘티가 서명합니다(정책 설정 시). 멘티가 멘토에게 공개한 서류를 케이스 상세에서 볼 수 있습니다.',
+    features: ['회차별 멘티 서명 상태', '멘티 서류(공개본) 열람', '멘티 관련 서류 첨부'],
     screenshot: 'mentor-mentee-panel',
-    caption: '케이스 상세 · 멘티 미팅 지원',
+    caption: '케이스 상세 · 멘티 서류',
     href: '/mentor/dashboard',
     cta: '케이스에서 확인',
   },
   {
-    icon: NotebookPen,
-    title: '멘토링 일지·서명·사진',
-    desc: '미팅 후 멘토링 일지를 작성합니다. 방문일·주제·내용과 함께 멘토·멘티 서명, 현장 사진을 기록하면 다음 단계로 진행됩니다.',
-    features: ['방문 회차·내용 기록', '멘토·멘티 서명', '현장 사진 첨부'],
-    screenshot: 'mentor-log',
-    caption: '멘토링 일지 작성',
-    href: '/mentor/tasks',
-    cta: '업무진행 보드',
-  },
-  {
-    icon: FileSignature,
-    title: '지원신청서 작성',
-    desc: '경영개선 지원신청서(붙임5)를 작성합니다. 멘티가 등록한 공사업체·첨부서류가 자동으로 채워지고, 필요한 항목을 수정·보완할 수 있습니다.',
-    features: ['시공(제작)내용 자동 채움·편집', '멘티 첨부서류 하단 연동(팝업 열람)', '제출 시 붙임서식 PDF 자동 생성'],
-    screenshot: 'mentor-apply',
-    caption: '지원신청서 작성',
-    href: '/mentor/dashboard',
-    cta: '케이스에서 작성',
-  },
-  {
     icon: FolderCheck,
-    title: '부속서류 생성',
-    desc: '동의·확약 등 부속서류(붙임3·4·6·8~12)를 업체 정보로 채워 PDF로 생성합니다. 첨부서류 안내를 참고해 멘티에게 필요한 서류를 요청하세요.',
-    features: ['동의·확약 서식 PDF 생성', '생성 서식 팝업 열람', '첨부서류 안내 체크리스트'],
-    screenshot: 'mentor-forms',
-    caption: '동의·확약 부속서류',
+    title: '추가 회차 · 중도 종료 요청',
+    desc: '회차가 더 필요하면 추가 회차를, 부득이하게 계속할 수 없으면 사유를 적어 중도 종료를 요청합니다. 운영사가 승인하면 반영됩니다.',
+    features: ['추가 회차 요청(운영사 승인)', '중도 종료 요청 → 이행 회차 부분 정산', '처리 결과 알림'],
+    screenshot: 'mentor-requests',
+    caption: '요청',
     href: '/mentor/dashboard',
-    cta: '케이스에서 생성',
+    cta: '케이스에서 요청',
   },
   {
     icon: Send,
-    title: '멘토링 결과보고서 제출 → 이관',
-    desc: '멘토링 결과보고서를 생성·제출하면 멘토님의 업무 범위가 완료됩니다. 이후 검수·승인·지급 절차는 (주)넥스트랩과 진흥원이 이어받아 진행합니다.',
-    features: ['컨설팅 결과보고서 생성', '지원신청서 검수 요청(넥스트랩)', '이후 단계는 운영기관이 진행'],
+    title: '관찰의견서 · 종결 요청 → 정산',
+    desc: '필수 회차를 채운 뒤 관찰의견서(멘티당 1건)를 작성하거나 완성본을 올리고 종결을 요청합니다. 운영사가 검수 승인하면 정산이 확정되어 정산서와 함께 통보되며, 정산 내역 메뉴에서 확인할 수 있습니다.',
+    features: ['관찰의견서 임시 저장·제출', '예상 정산액(미확정) 확인', '확정 정산·정산서 PDF 열람'],
     screenshot: 'mentor-report',
-    caption: '결과보고서 생성',
-    href: '/mentor/dashboard',
-    cta: '케이스에서 제출',
+    caption: '관찰의견서 · 정산',
+    href: '/mentor/settlements',
+    cta: '정산 내역',
   },
 ];
 
 /**
  * 멘토 이용 안내 본문 (전체 여정 약식 + 멘토 여정 6단계 + FAQ).
- * 멘토 안내 페이지와 넥스트랩 회원 열람(view-as) 안내 탭에서 공용으로 사용한다.
+ * 멘토 안내 페이지와 운영사 회원 열람(view-as) 안내 탭에서 공용으로 사용한다.
  * @param showCtas false 이면 각 단계의 이동 버튼을 숨긴다(열람 전용).
  */
 export function MentorGuideContent({
@@ -133,7 +111,7 @@ export function MentorGuideContent({
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Wallet className="h-4 w-4 text-primary" />
-            유형별 컨설팅 회차 · 비용 안내
+            컨설팅 유형 · 비용 안내
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
@@ -163,8 +141,7 @@ export function MentorGuideContent({
           <div className="flex items-center gap-2 rounded-md bg-primary/5 px-3 py-2 text-sm">
             <Clock className="h-4 w-4 shrink-0 text-primary" />
             <span>
-              각 컨설팅은 <b className="text-primary">1회당 1시간</b> 기준,{' '}
-              <b className="text-primary">시간당 12만원</b>입니다.
+              단가와 1일 상한은 <b className="text-primary">행사·그룹 운영 설정</b>에 따르며 회차 등록 화면에 표시됩니다. 회차 등록 시점의 단가가 정산에 그대로 적용됩니다.
             </span>
           </div>
         </CardContent>
@@ -189,8 +166,7 @@ export function MentorGuideContent({
             ))}
           </ol>
           <p className="mt-3 text-xs text-muted-foreground">
-            이 중 <b className="text-primary">멘토링·서명</b> 및{' '}
-            <b className="text-primary">지원신청서·부속서류</b> 단계가 멘토님의 주요 업무입니다.
+            이 중 <b className="text-primary">컨설팅 회차 등록</b>과 <b className="text-primary">관찰의견서·종결 요청</b>이 멘토님의 주요 업무입니다.
           </p>
         </CardContent>
       </Card>

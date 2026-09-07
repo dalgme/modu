@@ -18,8 +18,8 @@ export type MemberActionState =
   | undefined;
 
 /**
- * 회원 계정 발급 (넥스트랩 총괄관리자 전용).
- * 진흥원·넥스트랩·멘토 계정을 발급한다. 멘티는 케이스 등록 후 초대 플로우로만 생성된다.
+ * 회원 계정 발급 (운영사 총괄관리자 전용).
+ * 발주처·운영사·멘토 계정을 발급한다. 멘티는 케이스 등록 후 초대 플로우로만 생성된다.
  */
 export async function createMemberAction(
   _prev: MemberActionState,
@@ -53,7 +53,7 @@ export async function createMemberAction(
 }
 
 /**
- * 멘티 초대 (넥스트랩 전용). 케이스에 멘티 계정을 발급하고 mentee_id 를 연결한다.
+ * 멘티 초대 (운영사 전용). 케이스에 멘티 계정을 발급하고 mentee_id 를 연결한다.
  * 이미 멘티가 연결된 케이스는 중복 초대를 막는다. 임시 비밀번호를 1회 노출한다.
  */
 export async function inviteMenteeAction(
@@ -134,7 +134,7 @@ export async function setMemberActiveAction(
 }
 
 /**
- * 회원 영구 삭제 (넥스트랩 총괄관리자 전용).
+ * 회원 영구 삭제 (운영사 총괄관리자 전용).
  * auth 계정을 삭제하면 public.users 프로필이 CASCADE 로 함께 제거된다.
  * 단, 케이스·배정·멘토링 이력이 연결된 회원은 데이터 무결성을 위해 삭제를 막고
  * 비활성화를 안내한다. (감사로그 actor_id 는 ON DELETE SET NULL 이라 보존됨)

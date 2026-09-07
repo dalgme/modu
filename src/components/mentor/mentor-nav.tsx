@@ -8,13 +8,14 @@ import { cn } from '@/lib/utils';
 const TABS = [
   { href: '/mentor/dashboard', label: '대시보드' },
   { href: '/mentor/settlements', label: '정산 내역' },
+  { href: '/mentor/profile', label: '내 프로필' },
   { href: '/mentor/signature', label: '내 서명' },
   { href: '/mentor/qna', label: '문의 및 요청하기' },
   { href: '/mentor/guide', label: '이용안내', tone: 'green' as const },
   { href: '/mentor/install', label: '📱 휴대폰 설치', tone: 'purple' as const },
 ];
 
-/** 멘토 상단 탭 내비게이션 (넥스트랩 내비와 동일한 pill·sticky 스타일) */
+/** 멘토 상단 탭 내비게이션 (운영사 내비와 동일한 pill·sticky 스타일) */
 export function MentorNav() {
   const pathname = usePathname();
   return (

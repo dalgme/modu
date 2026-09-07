@@ -16,7 +16,7 @@ export function SmsTestForm({ configured }: { configured: boolean }) {
   const router = useRouter();
   const { toast } = useToast();
   const [to, setTo] = useState('');
-  const [text, setText] = useState('[테스트] 재기지원사업 문자발송 테스트입니다.');
+  const [text, setText] = useState('[테스트] 플랫폼 문자발송 테스트입니다.');
   const [sending, setSending] = useState(false);
 
   async function sendTest(e: React.FormEvent) {

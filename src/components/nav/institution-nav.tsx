@@ -16,7 +16,7 @@ const TABS = [
   { href: '/institution/install', label: '📱 핸드폰 설치', tone: 'purple' as const },
 ];
 
-/** 진흥원 상단 탭 내비게이션 (멘토·넥스트랩 내비와 동일한 pill·sticky 스타일) */
+/** 발주처 상단 탭 내비게이션 (멘토·운영사 내비와 동일한 pill·sticky 스타일) */
 export function InstitutionNav() {
   const pathname = usePathname();
   return (

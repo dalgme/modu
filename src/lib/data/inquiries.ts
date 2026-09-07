@@ -34,7 +34,7 @@ export async function listMyInquiries(menteeId: string): Promise<Inquiry[]> {
   return data ?? [];
 }
 
-/** 운영진(넥스트랩)용 전체 문의 목록 — 접수(open) 우선, 최신순 */
+/** 운영진(운영사)용 전체 문의 목록 — 접수(open) 우선, 최신순 */
 export async function listInquiries(): Promise<InquiryWithMeta[]> {
   const supabase = createClient();
   const { data } = await supabase
@@ -58,7 +58,7 @@ export async function listInquiries(): Promise<InquiryWithMeta[]> {
     .sort((a, b) => order(a.status) - order(b.status));
 }
 
-/** 미답변(접수) 문의 수 — 넥스트랩 대시보드 즉시 알림용 */
+/** 미답변(접수) 문의 수 — 운영사 대시보드 즉시 알림용 */
 export async function countOpenInquiries(): Promise<number> {
   const supabase = createClient();
   const { count } = await supabase

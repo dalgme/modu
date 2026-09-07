@@ -61,7 +61,7 @@ export async function listOperatorRequests(limit = 100): Promise<OperatorRequest
   }));
 }
 
-/** 특정 작성자(진흥원 본인)가 등록한 요청 목록 (최신순) */
+/** 특정 작성자(발주처 본인)가 등록한 요청 목록 (최신순) */
 export async function listMyOperatorRequests(
   createdBy: string,
   limit = 50,
@@ -89,7 +89,7 @@ export async function listMyOperatorRequests(
   }));
 }
 
-/** 읽지 않은 운영사 요청 수 (넥스트랩 강조·배지용) */
+/** 읽지 않은 운영사 요청 수 (운영사 강조·배지용) */
 export async function countUnreadOperatorRequests(): Promise<number> {
   const supabase = createClient() as unknown as SupabaseClient;
   const { count } = await orTable(supabase)

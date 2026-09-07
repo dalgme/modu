@@ -21,7 +21,7 @@ const TABS = [
   { href: '/admin/audit-logs', label: '감사로그' },
 ];
 
-/** 넥스트랩 총괄관리자 상단 탭 내비게이션 */
+/** 운영사 총괄관리자 상단 탭 내비게이션 */
 export function NextlabNav() {
   const pathname = usePathname();
   return (

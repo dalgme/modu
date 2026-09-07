@@ -4,7 +4,7 @@ import { PwaInstallGuide } from '@/components/common/pwa-install-guide';
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
-  // 멘토 본인 + 넥스트랩·진흥원(회원 열람 시 안내 확인)도 접근 가능
+  // 멘토 본인 + 운영사·발주처(회원 열람 시 안내 확인)도 접근 가능
   await requireRole(['mentor', 'nextlab', 'institution']);
 
   return (

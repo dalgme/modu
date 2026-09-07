@@ -24,7 +24,7 @@ function revalidateBoards() {
   revalidatePath('/nextlab/qna');
 }
 
-/** 문의·요청 글 작성 (넥스트랩·멘토). nextlabOnly=true → 운영사(넥스트랩)에게만 공개. */
+/** 문의·요청 글 작성 (운영사·멘토). nextlabOnly=true → 운영사에게만 공개. */
 export async function createBoardPostAction(input: {
   title: string;
   body: string;
@@ -48,7 +48,7 @@ export async function createBoardPostAction(input: {
   return { ok: true };
 }
 
-/** 답변 작성 (넥스트랩·멘토). RLS 로 열람 가능한 글에만 허용. */
+/** 답변 작성 (운영사·멘토). RLS 로 열람 가능한 글에만 허용. */
 export async function createBoardReplyAction(input: {
   postId: string;
   body: string;
@@ -68,7 +68,7 @@ export async function createBoardReplyAction(input: {
   return { ok: true };
 }
 
-/** 글 삭제 (넥스트랩 또는 작성자 — RLS 로 강제). */
+/** 글 삭제 (운영사 또는 작성자 — RLS 로 강제). */
 export async function deleteBoardPostAction(id: string): Promise<BoardResult> {
   await requireRole(['mentor', 'nextlab']);
   const { error } = await loose().from('board_posts').delete().eq('id', id);

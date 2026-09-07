@@ -17,7 +17,7 @@ function revalidate() {
   revalidatePath('/mentor/guide');
 }
 
-/** FAQ 추가 (넥스트랩) */
+/** FAQ 추가 (운영사) */
 export async function createFaqAction(input: {
   audience?: string;
   question: string;
@@ -42,7 +42,7 @@ export async function createFaqAction(input: {
   return { ok: true };
 }
 
-/** FAQ 수정 (넥스트랩) */
+/** FAQ 수정 (운영사) */
 export async function updateFaqAction(input: {
   id: string;
   question: string;
@@ -70,7 +70,7 @@ export async function updateFaqAction(input: {
   return { ok: true };
 }
 
-/** FAQ 삭제 (넥스트랩) */
+/** FAQ 삭제 (운영사) */
 export async function deleteFaqAction(id: string): Promise<FaqActionResult> {
   await requireNextlab();
   if (!id) return { ok: false, error: '대상을 확인할 수 없습니다.' };

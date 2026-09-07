@@ -17,7 +17,7 @@ export interface ScheduledMessageRow {
 
 /**
  * 예약 문자 목록 (예약 대기 우선, 최근 발송/취소 일부 포함).
- * 넥스트랩 문자 발송 페이지에서 예약 현황·취소에 사용한다.
+ * 운영사 문자 발송 페이지에서 예약 현황·취소에 사용한다.
  */
 export async function listScheduledMessages(limit = 30): Promise<ScheduledMessageRow[]> {
   const admin = createAdminClient();

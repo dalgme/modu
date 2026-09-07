@@ -28,7 +28,7 @@ export async function ImpersonationBanner() {
           {imp.target.name} 멘토 대행 중
         </span>
         <span className="text-amber-800/90 dark:text-amber-300/90">
-          이 화면의 작업은 실제로 처리되며, 실행자(넥스트랩)가 감사기록에 남습니다.
+          이 화면의 작업은 실제로 처리되며, 실행자(운영사)가 감사기록에 남습니다.
         </span>
         <span className="text-xs text-amber-700/80 dark:text-amber-400/80">
           남은 시간 약 {remainMin}분

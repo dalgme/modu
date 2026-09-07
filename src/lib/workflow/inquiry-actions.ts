@@ -11,7 +11,7 @@ export type InquiryResult = { ok: true } | { ok: false; error: string };
 
 const CATEGORIES = ['complaint', 'feature', 'guide', 'other'];
 
-/** 멘티: 문의 등록 → 넥스트랩 대시보드에 즉시 노출(접수 카운트·목록 갱신) */
+/** 멘티: 문의 등록 → 운영사 대시보드에 즉시 노출(접수 카운트·목록 갱신) */
 export async function submitInquiryAction(input: {
   category: string;
   subject: string;
@@ -43,14 +43,14 @@ export async function submitInquiryAction(input: {
     metadata: { category, subject },
   });
 
-  // 멘티 목록 + 넥스트랩 대시보드/문의관리 즉시 갱신
+  // 멘티 목록 + 운영사 대시보드/문의관리 즉시 갱신
   revalidatePath('/mentee/inquiries');
   revalidatePath('/nextlab/dashboard');
   revalidatePath('/nextlab/inquiries');
   return { ok: true };
 }
 
-/** 넥스트랩: 문의 답변 (상태 answered 전이) */
+/** 운영사: 문의 답변 (상태 answered 전이) */
 export async function answerInquiryAction(input: {
   id: string;
   answer: string;

@@ -39,7 +39,7 @@ interface MentorAssignPanelProps {
   currentMentorId?: string | null;
   /** 이미 배정된 케이스에서 다른 멘토로 재배정 가능한지 (진행중 상태) */
   reassignable?: boolean;
-  /** 대시보드로 이동 버튼 링크 (기본 넥스트랩 대시보드) */
+  /** 대시보드로 이동 버튼 링크 (기본 운영사 대시보드) */
   dashboardHref?: string;
 }
 
@@ -102,7 +102,7 @@ export function MentorAssignPanel({
   async function onRecall() {
     if (
       !window.confirm(
-        '멘토 배정을 회수하고 대상자 등록 단계로 되돌립니다.\n진흥원이 내용을 수정·재업로드해 다시 배정 요청할 수 있습니다. 계속할까요?',
+        '멘토 배정을 회수하고 대상자 등록 단계로 되돌립니다.\n발주처가 내용을 수정·재업로드해 다시 배정 요청할 수 있습니다. 계속할까요?',
       )
     ) {
       return;

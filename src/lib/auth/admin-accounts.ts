@@ -51,7 +51,7 @@ export interface AccountIssueResult {
 }
 
 /**
- * 진흥원/넥스트랩/멘토 계정 발급.
+ * 발주처/운영사/멘토 계정 발급.
  * 임시 비밀번호 생성 → auth 사용자 + users 프로필(must_change_password=true) 생성 → 감사로그.
  * service_role(admin) 필요.
  */
@@ -105,7 +105,7 @@ interface InviteMenteeInput {
 }
 
 /**
- * 멘티 초대: 케이스 등록 후 넥스트랩이 발급.
+ * 멘티 초대: 케이스 등록 후 운영사가 발급.
  * 임시 비밀번호 계정 생성(must_change_password=true, invited_at) → 케이스에 mentee_id 연결 → 감사로그.
  * 최초 로그인 시 비밀번호 변경 + 개인정보 동의 후 활성화된다.
  */

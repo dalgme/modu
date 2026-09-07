@@ -60,7 +60,7 @@ export type MemberRow = Pick<
   | 'created_at'
 >;
 
-/** 역할 표시 정렬 순서 (넥스트랩 → 진흥원 → 멘토 → 멘티) */
+/** 역할 표시 정렬 순서 (운영사 → 발주처 → 멘토 → 멘티) */
 const ROLE_ORDER: Record<UserRole, number> = {
   nextlab: 0,
   institution: 1,
@@ -69,7 +69,7 @@ const ROLE_ORDER: Record<UserRole, number> = {
 };
 
 /**
- * 전 회원 목록 (넥스트랩 총괄관리자 전용).
+ * 전 회원 목록 (운영사 총괄관리자 전용).
  * service_role 로 조회 — 호출부(page)에서 requireNextlab 으로 권한 강제.
  */
 export async function listMembers(): Promise<MemberRow[]> {
@@ -106,8 +106,8 @@ export interface SmsRecipient {
 }
 
 /**
- * 문자 발송 수신 대상 목록: 활성·휴대폰 보유 회원 (넥스트랩 전용 호출부 가드).
- * 역할순(넥스트랩→진흥원→멘토→멘티) 정렬. 멘티는 소속 기업명을 함께 반환.
+ * 문자 발송 수신 대상 목록: 활성·휴대폰 보유 회원 (운영사 전용 호출부 가드).
+ * 역할순(운영사→발주처→멘토→멘티) 정렬. 멘티는 소속 기업명을 함께 반환.
  */
 export async function listSmsRecipients(): Promise<SmsRecipient[]> {
   const admin = createAdminClient();

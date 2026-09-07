@@ -20,8 +20,8 @@ const ROLE_FILTERS = [
   { key: 'all', label: '전체' },
   { key: 'mentee', label: '멘티' },
   { key: 'mentor', label: '멘토' },
-  { key: 'nextlab', label: '넥스트랩' },
-  { key: 'institution', label: '진흥원' },
+  { key: 'nextlab', label: '운영사' },
+  { key: 'institution', label: '발주처' },
 ] as const;
 
 export function SmsComposer({

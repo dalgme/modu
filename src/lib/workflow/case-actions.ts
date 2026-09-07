@@ -7,6 +7,7 @@ import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { assignMentorSchema, caseFormSchema } from '@/lib/validations/case';
 import { succeedCases, type SuccessionResult } from '@/lib/workflow/succession';
+import { markRecommendationAdopted } from '@/lib/matching/recommend';
 import {
   assignMentor,
   createCase,
@@ -34,6 +35,12 @@ async function caseInProgram(caseId: string, programId: string): Promise<boolean
   return !!data && data.program_id === programId;
 }
 
+/** 추천 채택 기록 (docs §14-3): 추천 목록에 있던 멘토면 adopted_at, 아니면 recommended_rank: null 을 감사에 남긴다 */
+async function recordAdoption(caseId: string, mentorId: string, actorId: string, programId: string): Promise<void> {
+  const rank = await markRecommendationAdopted(caseId, mentorId);
+  await createAdminClient().from('audit_logs').insert({ actor_id: actorId, program_id: programId, action: 'match.adoption', entity_type: 'cases', entity_id: caseId, metadata: { mentor_id: mentorId, recommended_rank: rank } });
+}
+
 /** 운영사: 멘티(케이스) 등록 (T1) */
 export async function registerCaseAction(input: unknown): Promise<CreateCaseResult> {
   const profile = await realRoleOrNull(['nextlab']);
@@ -59,7 +66,10 @@ export async function assignMentorAction(caseId: string, mentorId: string): Prom
   if (!(await caseInProgram(parsed.data.caseId, ctx.programId))) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
 
   const result = await assignMentor(parsed.data.caseId, parsed.data.mentorId, profile.id);
-  if (result.ok) revalidateCase(caseId);
+  if (result.ok) {
+    await recordAdoption(parsed.data.caseId, parsed.data.mentorId, profile.id, ctx.programId);
+    revalidateCase(caseId);
+  }
   return result;
 }
 
@@ -74,7 +84,10 @@ export async function reassignMentorAction(caseId: string, newMentorId: string, 
   if (!(await caseInProgram(parsed.data.caseId, ctx.programId))) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
 
   const result = await reassignMentor(parsed.data.caseId, parsed.data.mentorId, profile.id, reason);
-  if (result.ok) revalidateCase(caseId);
+  if (result.ok) {
+    await recordAdoption(parsed.data.caseId, parsed.data.mentorId, profile.id, ctx.programId);
+    revalidateCase(caseId);
+  }
   return result;
 }
 

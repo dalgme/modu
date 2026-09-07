@@ -21,7 +21,7 @@ export default async function Page() {
           <h1 className="text-2xl font-semibold">문의하기 · 내역</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             오른쪽 &lsquo;문의하기&rsquo; 버튼으로 불편사항·기능요청·가이드 문의를 남기면
-            운영기관(넥스트랩)이 확인 후 답변드립니다. 남긴 문의와 답변은 아래에서 확인할 수 있습니다.
+            운영기관이 확인 후 답변드립니다. 남긴 문의와 답변은 아래에서 확인할 수 있습니다.
           </p>
         </div>
         <InquiryForm />

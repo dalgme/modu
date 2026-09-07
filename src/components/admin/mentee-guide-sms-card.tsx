@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 
 /**
  * 멘티 안내 문자 문구 편집 카드 (문자발송 페이지).
- * 넥스트랩 '멘티기업 현황판'의 '멘티 안내 문자보내기' 버튼이 사용하는 템플릿을 수정한다.
+ * 운영사 '멘티기업 현황판'의 '멘티 안내 문자보내기' 버튼이 사용하는 템플릿을 수정한다.
  */
 export function MenteeGuideSmsCard({ initialTemplate }: { initialTemplate: string }) {
   const { toast } = useToast();

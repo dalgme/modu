@@ -17,13 +17,13 @@ export function PwaInstallGuide() {
           <div className="flex flex-col items-center gap-1.5">
             <Image
               src="/icon-192.png"
-              alt="재기지원 앱 아이콘"
+              alt="플랫폼 앱 아이콘"
               width={72}
               height={72}
               className="rounded-2xl border bg-white shadow-md"
             />
             <span className="text-xs font-semibold text-violet-700 dark:text-violet-300">
-              재기지원
+              멘토링
             </span>
           </div>
           <div className="flex flex-col gap-1">

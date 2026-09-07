@@ -11,6 +11,10 @@ import { getCaseSurvey } from '@/lib/data/survey';
 import { RequiredDocsPanel } from '@/components/cases/required-docs-panel';
 import { SurveyResultCard } from '@/components/cases/survey-result-card';
 import { MentorChangePanel } from '@/components/nextlab/mentor-change-panel';
+import { listLatestRecommendations } from '@/lib/matching/recommend';
+import { listTags } from '@/lib/settings/data';
+import { MatchRecommendations } from '@/components/matching/match-recommendations';
+import { MenteeProfileForm, type TagOptions } from '@/components/matching/profile-forms';
 import { listCaseSettlements, listStatementFiles } from '@/lib/data/settlements';
 import { estimateSettlements } from '@/lib/settlement/settle';
 import { ClosureReviewPanel } from '@/components/settlement/closure-review-panel';
@@ -34,7 +38,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   const item = await getCaseById(params.id);
   if (!item || item.program_id !== ctx.programId) notFound();
 
-  const [history, predecessors, mentors, rounds, obsFile, requests, docs, settlements, statements, estimates, slots, survey, changeReqs] = await Promise.all([
+  const [history, predecessors, mentors, rounds, obsFile, requests, docs, settlements, statements, estimates, slots, survey, changeReqs, recs, menteeProfile, tags] = await Promise.all([
     getCaseStatusHistory(item.id),
     listPredecessorCases(item.id),
     listMentorsForProgram(ctx.programId, item.support_type_id),
@@ -48,7 +52,13 @@ export default async function Page({ params }: { params: { id: string } }) {
     listRequiredDocSlots(item.id, 'nextlab'),
     getCaseSurvey(item.id),
     createAdminClient().from('mentor_change_requests').select('id, reason, created_at').eq('case_id', item.id).eq('status', 'pending').order('created_at'),
+    listLatestRecommendations(item.id),
+    createAdminClient().from('mentee_profiles').select('*').eq('case_id', item.id).maybeSingle(),
+    listTags(ctx.programId),
   ]);
+  const tagOptions: TagOptions = {};
+  for (const t of tags) (tagOptions[t.category] ??= []).push(t.label);
+  const mp = menteeProfile.data;
   const pendingExt = requests.extensions.filter((r) => r.status === 'pending');
   const pendingWd = requests.withdrawals.filter((r) => r.status === 'pending');
   const SOURCE_LABEL = { mentor_in_group: '그룹 내 멘토별 설정', group: '그룹 일괄 설정', program: '행사 기본' } as const;
@@ -71,6 +81,11 @@ export default async function Page({ params }: { params: { id: string } }) {
           currentMentorId={item.mentorId}
           reassignable={item.mentorId !== null && canTransition('reassign_mentor', item.status)}
         />
+
+        {(canTransition('assign_mentor', item.status) || canTransition('reassign_mentor', item.status)) && (
+          <MatchRecommendations caseId={item.id} initial={recs} assignable={canTransition('assign_mentor', item.status)} reassignable={item.mentorId !== null && canTransition('reassign_mentor', item.status)} currentMentorId={item.mentorId} modelConfigured={!!process.env.ANTHROPIC_API_KEY} />
+        )}
+        <MenteeProfileForm caseId={item.id} value={mp ? { industry: mp.industry, stage: mp.stage, region: mp.region, preferred_mode: mp.preferred_mode, needs: mp.needs, keywords: mp.keywords, summary: mp.summary } : null} tags={tagOptions} />
 
         {canTransition('review_approve', item.status) && (
           <ClosureReviewPanel caseId={item.id} estimates={estimateProps} observationUrl={obsFile?.url ?? null} />

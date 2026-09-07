@@ -20,8 +20,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 
 /**
- * 진흥원 대시보드: 특정 업체와 무관한 일반 요청사항을 넥스트랩(운영사)에 등록한다.
- * 제목·내용만 작성해 '요청하기' → 넥스트랩 대시보드 '운영사 요청' 리스트에 올라간다.
+ * 발주처 대시보드: 특정 업체와 무관한 일반 요청사항을 운영사에 등록한다.
+ * 제목·내용만 작성해 '요청하기' → 운영사 대시보드 '운영사 요청' 리스트에 올라간다.
  */
 export function OperatorRequestGeneralButton() {
   const { toast } = useToast();
@@ -39,7 +39,7 @@ export function OperatorRequestGeneralButton() {
     const res = await createOperatorRequestAction({ title, body });
     setSending(false);
     if (res.ok) {
-      toast({ title: '운영사(넥스트랩)로 요청을 보냈습니다.' });
+      toast({ title: '운영사로 요청을 보냈습니다.' });
       setTitle('');
       setBody('');
       setOpen(false);
@@ -62,9 +62,9 @@ export function OperatorRequestGeneralButton() {
       </DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>운영사(넥스트랩) 요청사항 등록</DialogTitle>
+          <DialogTitle>운영사 요청사항 등록</DialogTitle>
           <DialogDescription>
-            제목과 내용을 작성해 요청하면 넥스트랩 대시보드에 표시됩니다.
+            제목과 내용을 작성해 요청하면 운영사 대시보드에 표시됩니다.
           </DialogDescription>
         </DialogHeader>
 

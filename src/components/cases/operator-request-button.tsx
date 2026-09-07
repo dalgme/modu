@@ -20,8 +20,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 
 /**
- * 진흥원 케이스 상세 '신청 정보'에서 넥스트랩(운영사)에 처리 요청을 보낸다.
- * 업체 정보를 자동 연동해 표시하고, 제목·요청사항을 작성해 보내면 넥스트랩 대시보드에 리스트업된다.
+ * 발주처 케이스 상세 '신청 정보'에서 운영사에 처리 요청을 보낸다.
+ * 업체 정보를 자동 연동해 표시하고, 제목·요청사항을 작성해 보내면 운영사 대시보드에 리스트업된다.
  */
 export function OperatorRequestButton({
   caseId,
@@ -49,7 +49,7 @@ export function OperatorRequestButton({
     const res = await createOperatorRequestAction({ caseId, title, body });
     setSending(false);
     if (res.ok) {
-      toast({ title: '운영사(넥스트랩)로 요청을 보냈습니다.' });
+      toast({ title: '운영사로 요청을 보냈습니다.' });
       setTitle('');
       setBody('');
       setOpen(false);
@@ -68,9 +68,9 @@ export function OperatorRequestButton({
       </DialogTrigger>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>운영사(넥스트랩) 요청 등록</DialogTitle>
+          <DialogTitle>운영사 요청 등록</DialogTitle>
           <DialogDescription>
-            아래 업체 기준으로 처리·확인을 요청합니다. 보내면 넥스트랩 대시보드에 표시됩니다.
+            아래 업체 기준으로 처리·확인을 요청합니다. 보내면 운영사 대시보드에 표시됩니다.
           </DialogDescription>
         </DialogHeader>
 

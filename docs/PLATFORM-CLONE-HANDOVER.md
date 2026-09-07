@@ -64,7 +64,8 @@
 | 변수 | 용도 | 비고 |
 |---|---|---|
 | `CRON_SECRET` | Vercel Cron 인증 | 임의 난수. Vercel이 `Authorization: Bearer` 로 전달 |
-| `BOOTSTRAP_TOKEN` | 최초 관리자 생성 1회용 토큰 | **사용 후 반드시 삭제** |
+| `BOOTSTRAP_TOKEN` | 최초 **플랫폼 관리자** 생성 1회용 토큰 (`/api/setup`) | **사용 후 반드시 삭제** |
+| `ANTHROPIC_API_KEY` | AI 멘토 매칭 정성 근거 (선택, 없으면 객관 점수만) | |
 | `VIEW_AS_SECRET` | 회원 대행(impersonation) 쿠키 서명키 | 미설정 시 service_role 키에서 파생됨(동작함). 명시 권장 |
 
 ### 3-3. 문자 발송 (Solapi)

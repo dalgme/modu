@@ -5,8 +5,8 @@ import { createAccountSchema } from '@/lib/validations/auth';
 import { createStaffOrMentorAccount } from '@/lib/auth/admin-accounts';
 
 /**
- * 관리자 계정 발급 (진흥원/넥스트랩/멘토).
- * 권한: 넥스트랩(총괄관리자)은 institution/nextlab/mentor 발급, 진흥원은 mentor 만 발급.
+ * 관리자 계정 발급 (발주처/운영사/멘토).
+ * 권한: 운영사(총괄관리자)은 institution/nextlab/mentor 발급, 발주처는 mentor 만 발급.
  * 서버에서 역할 재검증 (클라이언트 UI 숨김에 의존하지 않음).
  * 계정 발급은 스태프 특권이므로 대행 여부와 무관하게 '실제 신원'으로 판정한다.
  */
@@ -28,10 +28,10 @@ export async function POST(request: Request) {
     );
   }
 
-  // 진흥원은 멘토 계정만 발급 가능 (넥스트랩 총괄관리자만 전 역할 발급)
+  // 발주처는 멘토 계정만 발급 가능 (운영사 총괄관리자만 전 역할 발급)
   if (profile.role === 'institution' && parsed.data.role !== 'mentor') {
     return NextResponse.json(
-      { error: '진흥원은 멘토 계정만 발급할 수 있습니다.' },
+      { error: '발주처는 멘토 계정만 발급할 수 있습니다.' },
       { status: 403 },
     );
   }

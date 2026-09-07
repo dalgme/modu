@@ -9,21 +9,21 @@ const MENTEE_GUIDE_SMS_TEMPLATE_KEY = 'mentee_guide_sms_template';
 
 /**
  * 멘티 안내 문자 기본 템플릿.
- * 치환: {name}=대표자, {company}=업체명, {login_id}=로그인 아이디, {password}=비밀번호 안내, {url}=플랫폼 주소
+ * 치환: {program}=행사명, {name}=멘티, {company}=기업(팀)명, {login_id}=로그인 아이디, {password}=비밀번호 안내, {url}=플랫폼 주소
  */
-export const DEFAULT_MENTEE_GUIDE_SMS_TEMPLATE = `[재기지원사업] {name}님, {company} 재기지원사업 안내드립니다.
+export const DEFAULT_MENTEE_GUIDE_SMS_TEMPLATE = `[{program}] {name}님, {company} 멘토링 프로그램 안내드립니다.
 
-▶ 지원신청 서류를 플랫폼에 올려주세요
-- 공사업체 사업자등록증
-- 견적서
-- 비교견적서
+▶ 플랫폼에서 할 일
+- 담당 멘토 확인 및 컨설팅 회차 확인·서명
+- 그룹 필수서류 업로드
+- 종결 후 만족도 조사 참여
 
 ▶ 플랫폼 사용 안내
 - 접속: {url}
 - 로그인 아이디: {login_id}
 - 비밀번호: {password}
 
-로그인 후 안내에 따라 서류를 올려주세요. 문의는 담당 멘토·넥스트랩으로 연락 주세요.`;
+로그인 후 안내에 따라 진행해 주세요. 문의는 담당 멘토·운영사로 연락 주세요.`;
 
 /** 멘티 안내 문자 템플릿 조회(없으면 기본값) */
 export async function getMenteeGuideSmsTemplate(): Promise<string> {
@@ -42,9 +42,11 @@ export async function saveMenteeGuideSmsTemplate(
 /** 멘티 안내 문자 치환 */
 export function renderMenteeGuideSms(
   template: string,
-  vars: { name: string; company: string; loginId: string; password: string; url: string },
+  vars: { name: string; company: string; loginId: string; password: string; url: string; program?: string },
 ): string {
   return template
+    .split('{program}')
+    .join(vars.program ?? '멘토링 프로그램')
     .split('{name}')
     .join(vars.name)
     .split('{company}')
@@ -59,7 +61,7 @@ export function renderMenteeGuideSms(
 
 /** 주간 멘토 안내문 기본 템플릿 ({mentor}=멘토명, {companies}=미완료 기업명 목록) */
 export const DEFAULT_MENTOR_REMINDER_TEMPLATE =
-  '[재기지원사업] {mentor}멘토님, 이번주에도 [{companies}] 기업에 대한 재기지원 컨설팅/지원신청서 작성 진행 잘 부탁드리겠습니다';
+  '[{program}] {mentor}멘토님, 이번주에도 [{companies}] 멘티에 대한 컨설팅 회차 등록·보고서 작성 진행 잘 부탁드리겠습니다';
 
 export interface MentorReminderConfig {
   template: string;
@@ -89,7 +91,7 @@ export async function setSetting(
 }
 
 // ---------------------------------------------------------------------------
-// 기능 노출 플래그 (넥스트랩 관리자 → 기능 노출 설정)
+// 기능 노출 플래그 (운영사 관리자 → 기능 노출 설정)
 // 본 컨설팅·지원 단계에서는 기본 비노출(false). 선정/변경·지급 단계에서 사용할 때만 켠다.
 // ---------------------------------------------------------------------------
 const FEATURE_KEYS = {
@@ -174,8 +176,11 @@ export function renderMentorReminder(
   template: string,
   mentorName: string,
   companies: string[],
+  programName?: string,
 ): string {
   return template
+    .split('{program}')
+    .join(programName ?? '멘토링 프로그램')
     .split('{mentor}')
     .join(mentorName)
     .split('{companies}')

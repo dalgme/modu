@@ -19,7 +19,7 @@ import { roleHome } from '@/lib/auth/roles';
 export type ViewAsResult = { ok: true } | { ok: false; error: string };
 
 /**
- * 대행 시작 — 넥스트랩이 대상 회원(멘토) 명의로 실제 업무를 수행할 수 있게 한다.
+ * 대행 시작 — 운영사가 대상 회원(멘토) 명의로 실제 업무를 수행할 수 있게 한다.
  * requireNextlab(실제 신원) → 대상 검증 → 서명 쿠키 발급 → 감사기록.
  * 성공하면 대상 역할의 홈으로 이동한다.
  */

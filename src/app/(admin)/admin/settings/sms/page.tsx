@@ -80,12 +80,12 @@ export default async function Page() {
         </CardContent>
       </Card>
 
-      {/* 멘티 안내 문자 문구 (넥스트랩 '멘티기업 현황판'의 안내문자 버튼이 사용) */}
+      {/* 멘티 안내 문자 문구 (운영사 '멘티기업 현황판'의 안내문자 버튼이 사용) */}
       <Card className="border-l-4 border-l-primary">
         <CardHeader>
           <CardTitle className="text-base">멘티 안내 문자 문구</CardTitle>
           <p className="text-xs text-muted-foreground">
-            넥스트랩 <b>멘티기업 현황판</b>의 &lsquo;멘티 안내 문자보내기&rsquo; 버튼이 보내는
+            운영사 <b>멘티기업 현황판</b>의 &lsquo;멘티 안내 문자보내기&rsquo; 버튼이 보내는
             문구입니다. 지원신청 서류 안내·플랫폼 사용 안내(아이디·비밀번호·URL)를 담습니다.
           </p>
         </CardHeader>

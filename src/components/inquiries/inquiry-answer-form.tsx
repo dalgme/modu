@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 
-/** 넥스트랩: 문의 답변 폼 */
+/** 운영사: 문의 답변 폼 */
 export function InquiryAnswerForm({ id, initialAnswer }: { id: string; initialAnswer?: string }) {
   const router = useRouter();
   const { toast } = useToast();

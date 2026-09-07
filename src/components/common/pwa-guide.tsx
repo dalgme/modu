@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 /**
  * PWA(홈 화면 추가) 설치 안내 — 일반 사용자가 이해하기 쉬운 표현으로 설명한다.
- * 진흥원 '플랫폼 안내' · 멘토 '이용안내' 등에서 공용으로 사용.
+ * 발주처 '플랫폼 안내' · 멘토 '이용안내' 등에서 공용으로 사용.
  */
 export function PwaGuide() {
   return (

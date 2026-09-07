@@ -208,7 +208,8 @@ pdf-lib(병합) / Solapi(SMS) / nodemailer(이메일) / Vercel(icn1)
 9) ✅ P4 정산(compute 단일 함수 + vitest 15건 · 검수 승인/보완 · 부분 정산 · 품의 · 발주처 확인 · 정산서 PDF · 엑셀) (2026-09-07)
 10) ✅ P5 멘티 기능(회차 서명·만족도 조사·멘토 변경 요청·그룹 필수서류) (2026-09-07)
 11) ✅ P6 운영 설정 8탭·요청함·멘티 등록·승계 개설·멘토 명단(지급서류·원천징수·평가)·리포트+대시보드 타일·보고서 양식+서명 정책 (2026-09-07)
-12) P7 플랫폼 콘솔·브랜딩 치환·/api/setup   ← 다음 할 일 / P5 멘티 기능 / P6 운영·설정·승계·리포트 / P7 플랫폼 콘솔·브랜딩 치환(잔여 159줄)·/api/setup / P8 배포
+12) ✅ P7 플랫폼 콘솔·/api/setup 플랫폼 관리자화·브랜딩 잔재 0건·AI 매칭 추천 (2026-09-07)
+13) P8 배포   ← 다음 할 일 / P5 멘티 기능 / P6 운영·설정·승계·리포트 / P7 플랫폼 콘솔·브랜딩 치환(잔여 159줄)·/api/setup / P8 배포
 ```
 
 > 단계별 상세와 파일 변경 지도는 `docs/MODU-DESIGN.md §10·§12`. 설계에 열린 항목 9건은 §11.
@@ -218,9 +219,9 @@ pdf-lib(병합) / Solapi(SMS) / nodemailer(이메일) / Vercel(icn1)
 ## 8. 브랜딩 치환 대상 (원본 잔재)
 
 ```bash
-grep -rn "재기지원\|진흥원\|넥스트랩\|대전\|restart.poclab.kr" src/ | wc -l
+npm run lint:brand   # scripts/check-brand-strings.sh — 0건 (npm run lint 에 포함, 2026-09-07 달성)
 ```
-전수 치환 후 0건이 되어야 한다. DB 쪽 잔재도 확인: `app_settings.mentor_weekly_reminder_template`.
+전수 치환 완료(0건). DB 쪽 잔재도 확인: `app_settings.mentor_weekly_reminder_template`.
 치환의 목적지는 "세종/렛츠" 리터럴이 **아니라** `programs` 의 발주처·용역사 필드다(§2-5). 새 문구를 쓸 때도 `{client}` `{operator}` `{program}` 플레이스홀더만 허용.
 
 ---
@@ -232,8 +233,8 @@ grep -rn "재기지원\|진흥원\|넥스트랩\|대전\|restart.poclab.kr" src/
 | GitHub | `dalgme/modu` — 코드 푸시 완료 |
 | Supabase | 프로젝트 `modu` (`osrigknfrzsqjrgihgao`, ap-northeast-2) — 원본 구조(0001~0045 선별) + **모두의창업 P1 마이그레이션 0046~0055 적용 완료 (41개 테이블, 2026-09-07)**. `src/types/database.ts` 재생성 완료 |
 | Vercel | **미생성** — 다음 단계 |
-| 환경변수 추가 | `SMS_KEK`(행사별 문자 API 암호화 키, `openssl rand -hex 32`) — Vercel 에 반드시 설정 |
-| 초기 계정 | `/api/setup` 부트스트랩 (환경변수 **`BOOTSTRAP_TOKEN`** — 코드 기준) — 아직 미실행. 설계상 플랫폼 관리자 생성으로 변경 예정 |
+| 환경변수 추가 | `SMS_KEK`(행사별 문자 API 암호화 키, `openssl rand -hex 32`) — Vercel 에 반드시 설정 · `ANTHROPIC_API_KEY`(AI 매칭 정성 근거, 선택) |
+| 초기 계정 | `/api/setup` 부트스트랩 (환경변수 **`BOOTSTRAP_TOKEN`**) → **플랫폼 관리자**(nextlab + is_platform_admin) 생성, 이후 `/platform` 에서 행사 개설·스태프 발급 — 아직 미실행 |
 
 > Supabase 키는 코드에 없다(`.env.example` 만 존재, 전부 환경변수). `modu` 프로젝트는 `restart`(`thgdodvxhxukvwqpzbyi`)와 **별개 프로젝트**이므로 Vercel 에 `modu` 의 URL·anon·service_role 키를 넣으면 단독 운영된다. 원본 `.env` 값을 복사하지 말 것.
 
@@ -247,7 +248,8 @@ grep -rn "재기지원\|진흥원\|넥스트랩\|대전\|restart.poclab.kr" src/
 - **P4 완료(2026-09-07)**: `src/lib/settlement/{compute,policy,settle,export,labels,actions}.ts` · `src/lib/workflow/{review,batches,withdrawal}.ts` · `src/lib/data/settlements.ts` · 페이지 `/nextlab/settlements`(품의 편성·제출·지급완료) `/institution/settlements`(정산 확인 T9) `/mentor/settlements` · 케이스 상세에 검수 패널·확정 정산 카드·중도 종료 패널. `npm run test`(vitest) 검증 4종째 편입. 4종 그린.
 - **P5 완료(2026-09-07)**: 0057 적용. `src/lib/workflow/{mentee,mentee-actions}.ts` · `src/lib/data/{survey,mentee}.ts` · `case-documents.ts` 필수서류 슬롯(`listRequiredDocSlots`·`missingRequiredMenteeDocs`) · 페이지 `/mentee/rounds`(서명) `/mentee/survey` `/mentee/documents`(필수서류+자유첨부) · 대시보드 할 일 카드 · 운영사 케이스 상세에 멘토 변경 요청 처리·만족도 응답·필수서류 패널. 4종 그린.
 - **P6 완료(2026-09-07)**: 0058 적용. `src/lib/settings/{data,actions}.ts` + `src/components/settings/*`(`/nextlab/settings` 8탭) · `src/lib/documents/round-report.ts`(양식 해석·PDF 재생성·서명 정책, `docs/MODU-DESIGN.md §22`) · `src/lib/data/requests.ts`+`/nextlab/requests` · `/nextlab/cases/new` · `src/lib/workflow/succession.ts`+`/nextlab/succession` · `src/lib/data/mentors.ts`+`src/lib/mentors/actions.ts`+`/nextlab/mentors` · `src/lib/reports/{metrics,export,page-data}.ts`+`/nextlab/reports`·`/institution/reports`·대시보드 타일 · `/mentor/signature`. 4종 그린.
-- 남은 **비어 있는 화면**: 플랫폼 콘솔·`/api/setup` 플랫폼 관리자화·브랜딩 잔재 치환(P7), 알림 이벤트별 on/off 설정(P7 이후), 설정·리포트·승계·멘티 등록 폼(P6), 플랫폼 콘솔·`/api/setup` 플랫폼 관리자화(P7).
+- **P7 완료(2026-09-07)**: `src/lib/platform/{data,actions}.ts`+`/platform`(`(platform)` 레이아웃, `requirePlatformAdmin`) · `/api/setup`·`scripts/bootstrap-admin.mjs` = 첫 플랫폼 관리자(nextlab+is_platform_admin, 시드 행사 멤버십 자동) · `scripts/check-brand-strings.sh`(lint 편입, 0건) · `src/lib/matching/{score,recommend,actions}.ts`+`src/components/matching/*`(`@anthropic-ai/sdk`, 환경변수 `ANTHROPIC_API_KEY` 선택) · `/mentor/profile`. 4종 그린.
+- 남은 것: 알림 이벤트별 on/off 설정, 레거시 `/admin/settings/features`(붙임서식 토글) 정리 — P8 이후, 설정·리포트·승계·멘티 등록 폼(P6), 플랫폼 콘솔·`/api/setup` 플랫폼 관리자화(P7).
 
 ---
 
@@ -256,7 +258,7 @@ grep -rn "재기지원\|진흥원\|넥스트랩\|대전\|restart.poclab.kr" src/
 - 현재 작업 브랜치: `claude/modu-platform-audit-tutute` (P1~P2 커밋). main 머지는 P8 배포 검증 후.
 - 행사/그룹 컨텍스트는 서명 쿠키 `modu_ctx`(`src/lib/programs/context.ts`) — 모든 스태프 조회는 `ctx.programId`(+`supportTypeId`) 로 필터한다. 새 페이지를 만들 때 `requireContext(profile)` 를 빠뜨리지 말 것.
 - 배포: main 머지 → Vercel 자동 배포
-- 검증 4종: `npm run typecheck` · `npm run lint` · `npm run build` · `npm run test`(vitest, 정산 계산) — 모두 통과해야 머지
+- 검증 4종: `npm run typecheck` · `npm run lint`(ESLint + 브랜딩 잔재 검사) · `npm run build` · `npm run test`(vitest: 정산 계산·매칭 점수) — 모두 통과해야 머지
 
 ---
 
@@ -282,6 +284,7 @@ grep -rn "재기지원\|진흥원\|넥스트랩\|대전\|restart.poclab.kr" src/
 - 2026-09-07 **다중 행사 = 한 배포 안의 `programs` 계층**, 1계정 1프로그램, 플랫폼 관리자 플래그. URL `/nextlab` → `/operator` 개명(역할 키는 유지). 설계 → `docs/MODU-DESIGN.md`.
 - 2026-09-07 멘티 기능 확정: 회차 서명 · 만족도 조사 · 멘토 변경 요청.
 - 2026-09-07 **P3 완료** + 추가 요건 3건(엑셀 일괄 등록 / 멘티 서류 멘토 공개·비공개 / 행사별 문자 API 다중 보안 §21) 구현. 요청 승인함·검수·정산은 P4~P6.
+- 2026-09-07 **P7 완료**: 플랫폼 콘솔·부트스트랩 플랫폼 관리자화·브랜딩 잔재 0건·AI 매칭(자동 배정 없음, 채택 시 `adopted_at`, 미채택 배정은 `recommended_rank: null` 감사). 로그인은 통합(`/login`→`/hub`), 행사별 로그인 URL 은 설계 3차 답변대로 폐기.
 - 2026-09-07 **보고서 양식·서명 정책 요건**: 컨설팅 보고서 양식을 행사/그룹 단위로 등록, 웹 작성 회차는 저장·서명 시 양식 PDF 재생성. "알림 발송 후 멘티 확인 서명" / "저장 시 멘토 서명 자동" 정책은 양식에 멘토 서명 컬럼이 있을 때만 사용 가능(§22).
 - 2026-09-07 **P6 완료**: 설정·요청함·승계·멘토 명단·리포트. 멘토 지급서류 체크는 비밀번호 재인증 + 대행 불가 + 멘토별 감사로그.
 - 2026-09-07 **P5 완료**: 회차 서명은 `signatures.log_id` 로 회차에 귀속, 서명 후 멘토 수정 잠금. 만족도는 종결 요청 이후 1회, 정산 게이트 아님. 멘토 변경 요청 수락 = T3 교체. 필수서류 게이트는 설정 `closure_policy.require_group_docs`(기본 꺼짐).

@@ -26,7 +26,7 @@ export const getRealSessionProfile = cache(async (): Promise<Profile | null> => 
 });
 
 /**
- * 현재 요청의 **유효 신원**. 넥스트랩이 회원 화면보기에서 '대행 시작'을 눌렀다면
+ * 현재 요청의 **유효 신원**. 운영사가 회원 화면보기에서 '대행 시작'을 눌렀다면
  * 대행 대상(멘토) 프로필을, 아니면 실제 프로필을 반환한다.
  *
  * 멘토 업무·명의·데이터 스코프 → 이 함수(유효 신원)
@@ -77,8 +77,8 @@ export async function requireRole(allowed: UserRole[]): Promise<Profile> {
  * 서버 액션 전용 역할 확인 — 역할이 다르면 리다이렉트하지 않고 null 을 반환한다.
  *
  * requireRole 은 역할이 다르면 roleHome 으로 redirect 하는데, 서버 액션에서 그러면
- * 페이지 전체가 이동해 버린다. 특히 넥스트랩이 '회원 화면보기(view-as)'로 멘토 화면을
- * 열람하는 중 멘토 전용 버튼을 누르면 열람이 통째로 풀리고 넥스트랩 대시보드로 튕긴다.
+ * 페이지 전체가 이동해 버린다. 특히 운영사가 '회원 화면보기(view-as)'로 멘토 화면을
+ * 열람하는 중 멘토 전용 버튼을 누르면 열람이 통째로 풀리고 운영사 대시보드로 튕긴다.
  * 액션에서는 이 함수로 확인한 뒤 { ok:false, error } 를 돌려주면 화면을 유지한 채
  * 안내만 표시할 수 있다.
  */
@@ -112,7 +112,7 @@ export async function realRoleOrNull(allowed: UserRole[]): Promise<Profile | nul
 /**
  * 이 케이스의 **활성 담당 멘토**로서 실행 가능한지 확인한다. (비대상이면 null)
  *
- * 대행 중에는 DB 의 auth.uid() 가 넥스트랩(is_staff)이라 RLS 가 케이스 스코프를 막아 주지 못한다.
+ * 대행 중에는 DB 의 auth.uid() 가 운영사(is_staff)이라 RLS 가 케이스 스코프를 막아 주지 못한다.
  * 따라서 caseId 로 스코프되는 멘토 액션은 RLS 에 기대지 말고 반드시 이 함수로 배정을 직접 확인해야 한다.
  */
 export async function mentorOfCaseOrNull(caseId: string): Promise<Profile | null> {
@@ -134,11 +134,11 @@ export const NOT_ASSIGNED_ERROR = '담당 멘토가 아닙니다. (배정된 케
 
 /** 멘토 전용 액션을 다른 역할이 눌렀을 때의 공통 안내 문구 */
 export const MENTOR_ONLY_ERROR =
-  '담당 멘토만 실행할 수 있습니다. 넥스트랩은 회원관리에서 해당 멘토의 [화면 보기]로 들어가면 대행 상태가 되어 바로 처리할 수 있습니다.';
+  '담당 멘토만 실행할 수 있습니다. 운영사는 회원관리에서 해당 멘토의 [화면 보기]로 들어가면 대행 상태가 되어 바로 처리할 수 있습니다.';
 
 /**
  * **실제 신원** 기준 역할 가드 (스태프 콘솔 전용).
- * 대행 중에도 넥스트랩/진흥원이 자기 콘솔에서 쫓겨나지 않도록, 신원 치환의 영향을 받지 않는다.
+ * 대행 중에도 운영사·발주처가 자기 콘솔에서 쫓겨나지 않도록, 신원 치환의 영향을 받지 않는다.
  */
 async function requireRealRole(allowed: UserRole[]): Promise<Profile> {
   const real = await getRealSessionProfile();
@@ -163,4 +163,13 @@ export async function requireMentee(): Promise<Profile> {
     redirect('/mentee/consent');
   }
   return profile;
+}
+
+/** 플랫폼 관리자 콘솔 — 실제 신원의 is_platform_admin. 아니면 허브로. */
+export async function requirePlatformAdmin(): Promise<Profile> {
+  const real = await getRealSessionProfile();
+  if (!real || !real.is_active) redirect('/login');
+  if (real.must_change_password) redirect('/change-password');
+  if (!real.is_platform_admin) redirect('/hub');
+  return real;
 }

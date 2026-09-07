@@ -77,7 +77,7 @@ function CreateMemberForm() {
       <CardHeader>
         <CardTitle className="text-lg">회원 계정 발급</CardTitle>
         <CardDescription>
-          진흥원 담당자 · 넥스트랩 · 멘토 계정을 발급합니다. 멘티는 케이스 등록 후 초대됩니다.
+          발주처 담당자 · 운영사 · 멘토 계정을 발급합니다. 멘티는 케이스 등록 후 초대됩니다.
           <br />
           <span className="text-primary">임시 비밀번호는 입력한 휴대폰 번호(숫자)로 발급되며, 첫 로그인 시 변경해야 합니다.</span>
         </CardDescription>

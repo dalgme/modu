@@ -20,7 +20,7 @@ export const ALLOWED_TARGET_ROLES: UserRole[] = ['mentor'];
 export const VIEW_AS_TTL_SEC = 8 * 60 * 60;
 
 export interface ImpersonationContext {
-  /** 실제 로그인 사용자(넥스트랩) id */
+  /** 실제 로그인 사용자(운영사) id */
   actorId: string;
   /** 대행 대상(멘토) 프로필 */
   target: Profile;
@@ -30,7 +30,7 @@ export interface ImpersonationContext {
 
 interface Payload {
   v: 1;
-  a: string; // actor(넥스트랩) auth uid
+  a: string; // actor(운영사) auth uid
   t: string; // target(멘토) uid
   r: UserRole; // target role
   iat: number;
@@ -141,7 +141,7 @@ export const getImpersonation = cache(async (): Promise<ImpersonationContext | n
     .select('id, role, is_active')
     .eq('id', payload.a)
     .maybeSingle();
-  // (3) 실행자는 활성 넥스트랩이어야 한다
+  // (3) 실행자는 활성 운영사이어야 한다
   if (!real || !real.is_active || real.role !== 'nextlab') return null;
 
   const { data: target } = await admin.from('users').select('*').eq('id', payload.t).maybeSingle();
@@ -160,10 +160,10 @@ export const getImpersonation = cache(async (): Promise<ImpersonationContext | n
 /**
  * case_status_history.note 등에 붙일 대행 표기.
  * changedBy 가 '대행 대상 멘토 본인'일 때만 접미어를 붙인다 →
- * 같은 대행 중 수행한 넥스트랩 본인 명의 액션(예: 검수)은 오염되지 않는다.
+ * 같은 대행 중 수행한 운영사 본인 명의 액션(예: 검수)은 오염되지 않는다.
  */
 export async function actingNote(base: string, changedBy: string | null): Promise<string> {
   const imp = await getImpersonation();
   if (!imp || !changedBy || changedBy !== imp.target.id) return base;
-  return `${base} · 넥스트랩 대행`;
+  return `${base} · 운영사 대행`;
 }

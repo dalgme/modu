@@ -16,7 +16,7 @@ export default async function Page() {
       <div>
         <h1 className="text-2xl font-semibold">요청 / 문의</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          넥스트랩(운영사)에 처리 요청이나 문의사항을 간단히 등록합니다.
+          운영사에 처리 요청이나 문의사항을 간단히 등록합니다.
         </p>
       </div>
 
@@ -52,7 +52,7 @@ export default async function Page() {
                             : 'bg-status-progress/10 text-status-progress',
                         )}
                       >
-                        {read ? '넥스트랩 확인' : '전달됨 · 확인대기'}
+                        {read ? '운영사 확인' : '전달됨 · 확인대기'}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground">{formatDateTime(r.created_at)}</p>

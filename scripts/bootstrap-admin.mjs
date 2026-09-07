@@ -1,7 +1,7 @@
 /**
- * 최초 관리자(진흥원) 계정 부트스트랩.
- * 셀프가입이 없으므로 첫 institution 계정은 이 스크립트로 1회 생성한다.
- * 이후 계정은 이 계정으로 로그인해 /api/admin/users 로 발급한다.
+ * 최초 플랫폼 관리자 계정 부트스트랩 (역할 nextlab + is_platform_admin).
+ * 셀프가입이 없으므로 첫 계정은 이 스크립트(또는 /api/setup)로 1회 생성한다.
+ * 이후 /platform 콘솔에서 행사를 개설하고 행사별 스태프 계정을 발급한다.
  *
  * 사용법:
  *   node --env-file=.env.local scripts/bootstrap-admin.mjs <email> <name> [phone]
@@ -55,9 +55,16 @@ if (error || !data.user) {
   process.exit(1);
 }
 
+const { count } = await admin.from('users').select('id', { count: 'exact', head: true }).eq('is_platform_admin', true);
+if ((count ?? 0) > 0) {
+  console.error('이미 플랫폼 관리자가 있습니다. /platform 콘솔에서 계정을 발급하세요.');
+  process.exit(1);
+}
+
 const { error: profileError } = await admin.from('users').insert({
   id: data.user.id,
-  role: 'institution',
+  role: 'nextlab',
+  is_platform_admin: true,
   name,
   phone: phone ?? null,
   email,
@@ -74,10 +81,15 @@ await admin.from('audit_logs').insert({
   action: 'account.bootstrap',
   entity_type: 'users',
   entity_id: data.user.id,
-  metadata: { role: 'institution', email },
+  metadata: { role: 'nextlab', is_platform_admin: true, email },
 });
 
-console.log('✅ 부트스트랩 institution 계정 생성 완료');
+const { data: programs } = await admin.from('programs').select('id');
+for (const p of programs ?? []) {
+  await admin.from('program_members').upsert({ program_id: p.id, user_id: data.user.id, is_active: true }, { onConflict: 'program_id,user_id' });
+}
+
+console.log('✅ 플랫폼 관리자 계정 생성 완료 — 로그인 후 /platform 에서 행사를 개설하세요');
 console.log('  email        :', email);
 console.log('  임시 비밀번호 :', password);
 console.log('  user id      :', data.user.id);

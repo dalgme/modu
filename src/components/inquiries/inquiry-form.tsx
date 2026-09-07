@@ -24,7 +24,7 @@ const CATEGORIES = [
   { value: 'other', label: '기타' },
 ];
 
-/** 멘티 문의 등록 폼 — 제출 시 넥스트랩 대시보드에 즉시 접수된다. */
+/** 멘티 문의 등록 폼 — 제출 시 운영사 대시보드에 즉시 접수된다. */
 export function InquiryForm() {
   const router = useRouter();
   const { toast } = useToast();
@@ -40,7 +40,7 @@ export function InquiryForm() {
     const result = await submitInquiryAction({ category, subject, body });
     setSubmitting(false);
     if (result.ok) {
-      toast({ title: '문의가 접수되었습니다.', description: '운영기관(넥스트랩)이 확인 후 답변드립니다.' });
+      toast({ title: '문의가 접수되었습니다.', description: '운영기관이 확인 후 답변드립니다.' });
       setSubject('');
       setBody('');
       setCategory('complaint');

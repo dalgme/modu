@@ -29,7 +29,7 @@ const ITEMS: { key: keyof FeatureFlags; label: string; desc: string }[] = [
   },
 ];
 
-/** 넥스트랩 관리자: 기능 노출 on/off 토글 */
+/** 운영사 관리자: 기능 노출 on/off 토글 */
 export function FeatureTogglesCard({ initial }: { initial: FeatureFlags }) {
   const router = useRouter();
   const { toast } = useToast();

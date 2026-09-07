@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
   title: '시스템 이용수칙',
-  description: '대전 소상공인·자영업자 재기지원 플랫폼 시스템 이용수칙',
+  description: '멘토링 운영관리 플랫폼 시스템 이용수칙',
 };
 
 /** 시스템 이용수칙 (상용화 출시 §14 법적문서). 세부 문구는 기관 최종 검토 후 확정. */
@@ -12,7 +12,7 @@ export default function TermsPage() {
     <main className="mx-auto max-w-3xl px-6 py-12">
       <h1 className="text-2xl font-bold">시스템 이용수칙</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        본 수칙은 대전 소상공인·자영업자 재기지원 플랫폼(이하 &lsquo;서비스&rsquo;)의 이용 조건과 절차,
+        본 수칙은 멘토링 운영관리 플랫폼(이하 &lsquo;서비스&rsquo;)의 이용 조건과 절차,
         이용자와 운영기관의 권리·의무를 규정합니다.
       </p>
 
@@ -35,8 +35,8 @@ export default function TermsPage() {
         <div>
           <h2 className="text-base font-semibold">3. 금지 행위</h2>
           <p>
-            서류 위·변조, 중복지원, 부당한 이익 수수, 시스템 무단 접근·자동화 수집, 지식재산권 침해 등의
-            행위를 금지합니다. 위반 시 지원 탈락·지원금 환수·이용 제한 등의 조치가 취해질 수 있습니다.
+            서류 위·변조, 허위 회차 등록, 부당한 이익 수수, 시스템 무단 접근·자동화 수집, 지식재산권 침해 등의
+            행위를 금지합니다. 위반 시 참여 제한·정산 취소·이용 제한 등의 조치가 취해질 수 있습니다.
           </p>
         </div>
         <div>
@@ -55,7 +55,7 @@ export default function TermsPage() {
         </div>
         <div>
           <h2 className="text-base font-semibold">6. 문의</h2>
-          <p>서비스 이용 관련 문의는 운영기관((주)넥스트랩) 및 대전일자리경제진흥원 담당 부서로 접수합니다.</p>
+          <p>서비스 이용 관련 문의는 각 행사의 운영사 및 발주처 담당 부서로 접수합니다.</p>
         </div>
         <div>
           <h2 className="text-base font-semibold">7. 시행</h2>

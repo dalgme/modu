@@ -11,7 +11,7 @@ import { formatDateTime } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
 
 /**
- * 넥스트랩 대시보드: 진흥원(운영사) 요청 리스트.
+ * 운영사 대시보드: 발주처 요청 리스트.
  * 읽지 않은 요청은 강조(테두리·NEW 배지) 표시하고, 펼쳐 읽으면 강조를 해제한다.
  */
 export function OperatorRequestsPanel({ requests }: { requests: OperatorRequestListItem[] }) {
@@ -81,7 +81,7 @@ export function OperatorRequestsPanel({ requests }: { requests: OperatorRequestL
               <div className="border-t px-3 py-3">
                 <p className="mb-2 text-xs text-muted-foreground">
                   {r.businessName ? `${r.businessName} · ` : ''}
-                  {r.createdByName ? `요청자 ${r.createdByName}` : '진흥원'}
+                  {r.createdByName ? `요청자 ${r.createdByName}` : '발주처'}
                 </p>
                 <p className="whitespace-pre-wrap text-sm">{r.body}</p>
                 {r.case_id && (

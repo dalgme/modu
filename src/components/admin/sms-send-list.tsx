@@ -15,8 +15,8 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const ROLE_LABEL: Record<string, string> = {
-  institution: '진흥원',
-  nextlab: '넥스트랩',
+  institution: '발주처',
+  nextlab: '운영사',
   mentor: '멘토',
   mentee: '멘티기업',
 };

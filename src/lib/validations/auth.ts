@@ -17,7 +17,7 @@ export const changePasswordSchema = z
   });
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 
-/** 관리자 계정 발급 (진흥원/넥스트랩/멘토) */
+/** 관리자 계정 발급 (발주처/운영사/멘토) */
 export const createAccountSchema = z.object({
   email: z.string().email('올바른 이메일을 입력하세요.'),
   name: z.string().min(1, '이름을 입력하세요.'),
@@ -26,7 +26,7 @@ export const createAccountSchema = z.object({
 });
 export type CreateAccountInput = z.infer<typeof createAccountSchema>;
 
-/** 멘티 초대 (케이스 등록 후 넥스트랩이 계정 발급) */
+/** 멘티 초대 (케이스 등록 후 운영사가 계정 발급) */
 export const inviteMenteeSchema = z.object({
   caseId: z.string().uuid('케이스를 확인할 수 없습니다.'),
   email: z.string().email('올바른 이메일을 입력하세요.'),

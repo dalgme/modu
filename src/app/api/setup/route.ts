@@ -5,14 +5,15 @@ import { generateTempPassword } from '@/lib/auth/admin-accounts';
 import { safeEqual } from '@/lib/auth/secret';
 
 /**
- * 1회용 부트스트랩: 최초 institution(진흥원) 계정 생성.
- * 셀프가입이 없으므로 배포 직후 이 라우트로 첫 관리자 계정을 만든다.
+ * 1회용 부트스트랩: 최초 **플랫폼 관리자** 계정 생성 (역할 nextlab + is_platform_admin).
+ * 셀프가입이 없으므로 배포 직후 이 라우트로 첫 관리자를 만들고, 이후 /platform 콘솔에서 행사를 개설·복제하고
+ * 행사별 스태프 계정을 발급한다.
  *
  * 가드:
  *  - BOOTSTRAP_TOKEN 환경변수가 설정돼 있어야 하고 x-bootstrap-token 헤더와 일치해야 함
- *  - 이미 institution 계정이 존재하면 409 (재실행 차단, self-disable)
+ *  - 이미 플랫폼 관리자가 존재하면 409 (재실행 차단, self-disable)
  *
- * 사용 후에는 BOOTSTRAP_TOKEN 을 제거하거나 이 라우트를 삭제할 것.
+ * 사용 후에는 BOOTSTRAP_TOKEN 을 제거할 것.
  */
 export async function POST(request: Request) {
   const expected = process.env.BOOTSTRAP_TOKEN;
@@ -23,23 +24,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: '인증 실패' }, { status: 401 });
   }
 
-  const body = (await request.json().catch(() => null)) as {
-    email?: string;
-    name?: string;
-    phone?: string;
-  } | null;
+  const body = (await request.json().catch(() => null)) as { email?: string; name?: string; phone?: string } | null;
   if (!body?.email || !body?.name) {
     return NextResponse.json({ error: 'email, name 필요' }, { status: 400 });
   }
 
   const admin = createAdminClient();
-
-  const { count } = await admin
-    .from('users')
-    .select('id', { count: 'exact', head: true })
-    .eq('role', 'institution');
+  const { count } = await admin.from('users').select('id', { count: 'exact', head: true }).eq('is_platform_admin', true);
   if ((count ?? 0) > 0) {
-    return NextResponse.json({ error: '이미 부트스트랩되었습니다.' }, { status: 409 });
+    return NextResponse.json({ error: '이미 부트스트랩되었습니다(플랫폼 관리자 존재).' }, { status: 409 });
   }
 
   const tempPassword = generateTempPassword();
@@ -55,7 +48,8 @@ export async function POST(request: Request) {
 
   const { error: profileError } = await admin.from('users').insert({
     id: data.user.id,
-    role: 'institution',
+    role: 'nextlab',
+    is_platform_admin: true,
     name: body.name,
     phone: body.phone ?? null,
     email: body.email,
@@ -66,13 +60,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: profileError.message }, { status: 500 });
   }
 
+  // 이미 시드된 행사가 있으면 전부 멤버십 부여 (허브에서 바로 진입 가능)
+  const { data: programs } = await admin.from('programs').select('id');
+  for (const p of programs ?? []) {
+    await admin.from('program_members').upsert({ program_id: p.id, user_id: data.user.id, is_active: true }, { onConflict: 'program_id,user_id' });
+  }
+
   await admin.from('audit_logs').insert({
     actor_id: null,
     action: 'account.bootstrap',
     entity_type: 'users',
     entity_id: data.user.id,
-    metadata: { role: 'institution', email: body.email },
+    metadata: { role: 'nextlab', is_platform_admin: true, email: body.email, programs: (programs ?? []).length },
   });
 
-  return NextResponse.json({ email: body.email, tempPassword, userId: data.user.id });
+  return NextResponse.json({ email: body.email, tempPassword, userId: data.user.id, next: '/platform' });
 }

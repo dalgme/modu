@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 
 /**
- * 대행 시작 — 넥스트랩이 대상 멘토 명의로 **실제 업무를 처리**할 수 있는 상태로 전환한다.
+ * 대행 시작 — 운영사가 대상 멘토 명의로 **실제 업무를 처리**할 수 있는 상태로 전환한다.
  * 성공하면 서버 액션이 멘토 홈으로 redirect 하므로 이 컴포넌트로 제어가 돌아오지 않는다.
  */
 export function ViewAsStartButton({

@@ -2,9 +2,9 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: '대전 재기지원사업 운영관리',
-    short_name: '재기지원',
-    description: '대전일자리경제진흥원 × 넥스트랩 재기지원사업 운영관리 시스템',
+    name: '멘토링 운영관리 플랫폼',
+    short_name: '멘토링',
+    description: '멘토링 프로그램 운영관리 시스템',
     start_url: '/',
     scope: '/',
     display: 'standalone',

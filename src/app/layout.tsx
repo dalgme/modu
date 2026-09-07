@@ -16,11 +16,11 @@ const pretendard = localFont({
 });
 
 export const metadata: Metadata = {
-  title: '대전 재기지원사업 운영관리 플랫폼',
-  description: '대전일자리경제진흥원 × 넥스트랩 재기지원사업 운영관리 시스템',
+  title: '멘토링 운영관리 플랫폼 플랫폼',
+  description: '멘토링 프로그램 운영관리 시스템',
   // 내부 업무도구 — 전체 페이지 검색 비노출 (CLAUDE.md 14절)
   robots: { index: false, follow: false, nocache: true },
-  applicationName: '재기지원',
+  applicationName: '멘토링',
   icons: {
     icon: [
       { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
@@ -31,7 +31,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: '재기지원',
+    title: '멘토링',
   },
   formatDetection: { telephone: false },
 };

@@ -32,7 +32,7 @@ interface MenteeInvitePanelProps {
 }
 
 /**
- * 넥스트랩: 케이스에 멘티(멘티기업) 로그인 계정을 발급하고 mentee_id 를 연결한다.
+ * 운영사: 케이스에 멘티(멘티기업) 로그인 계정을 발급하고 mentee_id 를 연결한다.
  * 초대 완료 후 멘티는 임시 비밀번호로 로그인 → 비밀번호 변경 → 개인정보 동의 후 활성화된다.
  */
 export function MenteeInvitePanel({

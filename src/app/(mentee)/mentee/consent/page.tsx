@@ -26,7 +26,7 @@ export default function ConsentPage() {
         <CardHeader className="space-y-1">
           <CardTitle className="text-lg">개인정보 수집·이용 동의</CardTitle>
           <CardDescription>
-            재기지원사업을 함께 진행하기 위해 필요합니다. 아래 내용을 확인하고 동의에 체크해 주세요.
+            멘토링 프로그램을 함께 진행하기 위해 필요합니다. 아래 내용을 확인하고 동의에 체크해 주세요.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
@@ -37,7 +37,7 @@ export default function ConsentPage() {
               서류·서명·사진.
             </p>
             <p className="mt-3 font-medium text-foreground">2. 수집·이용 목적</p>
-            <p>재기지원사업 케이스 처리(멘토링·서류 검수·지원/지급 신청·승인) 및 관련 통보.</p>
+            <p>멘토링 프로그램 케이스 처리(멘토링·서류 검수·지원/지급 신청·승인) 및 관련 통보.</p>
             <p className="mt-3 font-medium text-foreground">3. 보유·이용 기간</p>
             <p>사업 종료 후 관련 법령·정산 규정에 따른 보관 기간(기본 3년) 경과 시 파기.</p>
             <p className="mt-3 font-medium text-foreground">4. 동의 거부 권리</p>

@@ -39,22 +39,22 @@ export default function LoginPage({
 
         <div className="relative z-10">
           <span className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium tracking-wide">
-            대전일자리경제진흥원 × 넥스트랩
+            멘토링 운영관리 플랫폼
           </span>
         </div>
 
         <div className="relative z-10 max-w-md space-y-5">
           <h1 className="text-4xl font-bold leading-[1.2]">
-            소상공인·자영업자
+            멘토와 멘티를
             <br />
-            <span className="text-primary">재기지원</span> 운영관리
+            <span className="text-primary">1:1</span>로 연결하고 관리
           </h1>
           <p className="text-sm leading-relaxed text-midnight-foreground/70">
-            컨설팅 · 경영개선 · 폐업정리의 11단계 지원 과정을 하나의 플랫폼에서. 멘토링부터
-            붙임서식 자동 생성, 지급까지 투명하게 관리합니다.
+            멘토 배정부터 컨설팅 회차·보고서·관찰의견서, 정산·지급 품의까지 한 플랫폼에서. 여러 행사를
+            계정 추가만으로 운영합니다.
           </p>
           <ul className="space-y-2 pt-2 text-sm text-midnight-foreground/80">
-            {['업체별 진행단계 실시간 시각화', '멘토링·서식·서명 자동화', '역할별 처리 대기 알림'].map(
+            {['멘토·멘티별 진행현황 실시간 확인', '회차 보고서·서명·정산 자동화', '역할별 처리 대기 알림'].map(
               (t) => (
                 <li key={t} className="flex items-center gap-2">
                   <span className="h-1.5 w-1.5 rounded-full bg-primary" />
@@ -66,7 +66,7 @@ export default function LoginPage({
         </div>
 
         <div className="relative z-10 text-xs text-midnight-foreground/45">
-          © 2026 넥스트랩 · 내부 업무용 시스템
+          © 2026 · 내부 업무용 시스템
         </div>
       </div>
 
@@ -76,7 +76,7 @@ export default function LoginPage({
         <Card className="w-full max-w-sm border-none shadow-none sm:border sm:shadow-sm">
           <CardHeader className="space-y-1">
             <CardTitle className="text-xl">로그인</CardTitle>
-            <CardDescription>재기지원사업 운영관리 시스템</CardDescription>
+            <CardDescription>멘토링 운영관리 플랫폼</CardDescription>
           </CardHeader>
           <CardContent>
             <form action={formAction} className="flex flex-col gap-4">
@@ -126,7 +126,7 @@ export default function LoginPage({
             </Link>
           </p>
             <div className="mt-4 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs leading-relaxed">
-              <p className="mb-1.5 font-semibold text-foreground">멘티기업 로그인 안내</p>
+              <p className="mb-1.5 font-semibold text-foreground">멘티 로그인 안내</p>
               <ul className="flex flex-col gap-1 text-muted-foreground">
                 <li>
                   <b className="text-foreground">아이디</b> — 이름 + 휴대폰 뒷자리 4개 (예:{' '}
@@ -146,30 +146,17 @@ export default function LoginPage({
                 </li>
               </ul>
               <p className="mt-1.5 text-muted-foreground">
-                계정은 운영팀(넥스트랩)이 발급합니다. 로그인이 안 되면 담당 멘토나 운영팀에 문의해
-                주세요.
+                계정은 행사 운영사가 발급합니다. 로그인이 안 되면 담당 멘토나 운영사에 문의해 주세요.
               </p>
             </div>
           </CardContent>
         </Card>
         </div>
 
-        {/* 주관·운영 기관 로고 락업 */}
         <footer className="mt-6 flex flex-col items-center gap-3 border-t pt-6">
-          <span className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            주관 · 운영
+          <span className="text-[11px] text-muted-foreground">
+            로그인 후 소속 행사를 선택하면 해당 행사의 발주처·운영사 브랜딩이 적용됩니다.
           </span>
-          <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-3">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/images/logo-daejeon.png"
-              alt="대전일자리경제진흥원"
-              className="h-7 w-auto"
-            />
-            <span className="h-7 w-px bg-border" />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/images/logo-nextlab.jpg" alt="주식회사 넥스트랩" className="h-6 w-auto" />
-          </div>
           <nav className="flex items-center gap-3 text-[11px] text-muted-foreground">
             <Link href="/privacy-policy" className="underline-offset-4 hover:underline">
               개인정보처리방침

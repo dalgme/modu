@@ -18,7 +18,7 @@ export type SimpleResult = { ok: true } | { ok: false; error: string };
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL?.trim() || 'https://restart.startmate.kr';
 
 /**
- * 넥스트랩: 해당 멘티에게 '지원신청 서류 업로드 + 플랫폼 사용 안내(아이디·비밀번호·URL)' 문자 발송.
+ * 운영사: 해당 멘티에게 '지원신청 서류 업로드 + 플랫폼 사용 안내(아이디·비밀번호·URL)' 문자 발송.
  * 문구는 문자발송 메뉴에서 수정한 템플릿을 사용한다. 이미 발송된 케이스는 중복 발송하지 않고
  * 기존 발송일시를 반환한다. 발송 기록은 audit_logs(action='sms.mentee_guide')로 남긴다.
  */

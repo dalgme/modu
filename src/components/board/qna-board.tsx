@@ -116,7 +116,7 @@ export function QnaBoard({
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground">
-          넥스트랩·멘토단이 함께 쓰는 문의·요청 게시판입니다.
+          운영사·멘토단이 함께 쓰는 문의·요청 게시판입니다.
           {isMentor && ' 글 작성 시 ‘운영사에게만 공개’를 선택할 수 있습니다.'}
         </p>
         <Button type="button" size="sm" onClick={() => setShowForm((v) => !v)} className="gap-1.5">
@@ -158,7 +158,7 @@ export function QnaBoard({
                   className="h-4 w-4 accent-primary"
                 />
                 <span>
-                  <b>운영사(넥스트랩)에게만 공개</b> — 체크하면 넥스트랩만 볼 수 있고, 체크하지 않으면
+                  <b>운영사에게만 공개</b> — 체크하면 운영사만 볼 수 있고, 체크하지 않으면
                   모든 멘토가 함께 볼 수 있습니다.
                 </span>
               </label>

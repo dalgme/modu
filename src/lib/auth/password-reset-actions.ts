@@ -92,7 +92,7 @@ export async function requestPasswordResetAction(
   try {
     await sendSms(
       resolved.phone!,
-      `[OP.map 재기지원] 비밀번호 재설정 인증번호 ${code} · 5분 내 입력하세요. 본인이 요청하지 않았다면 무시하세요.`,
+      `[멘토링 플랫폼] 비밀번호 재설정 인증번호 ${code} · 5분 내 입력하세요. 본인이 요청하지 않았다면 무시하세요.`,
     );
   } catch {
     // 발송 실패는 익명화(일반 성공 응답) — 사용자는 재요청으로 재시도 가능
