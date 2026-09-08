@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 import Link from 'next/link';
 import { ChevronRight, Repeat, ShieldCheck } from 'lucide-react';
 
@@ -32,8 +33,8 @@ export async function AppHeader({ name, role, branding = PLATFORM_BRANDING, cont
     <header className={`sticky top-0 z-40 border-b border-white/10 text-midnight-foreground ${platformMode ? 'bg-violet-950' : 'bg-midnight'}`}>
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4">
         <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
-          <Link href={platformMode ? '/platform' : '/hub'} className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-xs font-bold text-primary-foreground ${platformMode ? 'bg-violet-500' : 'bg-primary'}`}>
-            {initial}
+          <Link href={platformMode ? '/platform' : '/hub'} className="flex shrink-0 items-center" title={platformMode ? '플랫폼 통합관리 콘솔' : '허브'}>
+            <img src="/brand/mark-on-dark.png" alt={initial} className="h-7 w-7 object-contain" />
           </Link>
           {platformMode ? (
             <span className="flex min-w-0 items-center gap-2 font-semibold">

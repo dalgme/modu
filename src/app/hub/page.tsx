@@ -25,6 +25,8 @@ export default async function HubPage({
   const profile = (await getSessionProfile()) ?? real;
 
   if (!searchParams.pick && !searchParams.program && !searchParams.denied && !searchParams.error) {
+    // 플랫폼 통합관리자는 행사 화면으로 자동 진입하지 않고 통합관리 콘솔로 간다 (행사 진입은 콘솔의 '행사로 들어가기').
+    if (real.is_platform_admin) redirect('/platform');
     const target = await autoEnterTarget(real, profile);
     if (target) redirect(`/hub/enter?program=${target}`);
   }

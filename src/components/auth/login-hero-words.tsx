@@ -1,3 +1,4 @@
+/* eslint-disable @next/next/no-img-element */
 import { PLATFORM_BRANDING } from '@/lib/programs/branding';
 
 /**
@@ -19,7 +20,7 @@ export function LoginHeroWords() {
     <div className="relative z-10 flex h-full flex-col justify-between">
       {/* 상단: 플랫폼 이름 */}
       <div className="flex items-center gap-3">
-        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-base font-black text-primary-foreground shadow-lg shadow-primary/30">M</span>
+        <img src="/brand/mark-on-dark.png" alt="" aria-hidden="true" className="h-10 w-10 object-contain drop-shadow-lg" />
         <div className="leading-tight">
           <p className="text-sm font-semibold tracking-wide">{PLATFORM_BRANDING.appTitle}</p>
           <p className="text-[11px] uppercase tracking-[0.28em] text-midnight-foreground/60">Mentoring Operations</p>
@@ -33,7 +34,7 @@ export function LoginHeroWords() {
             key={c.en}
             style={{ animationDelay: `${i * 120}ms` }}
             className={`animate-in fade-in slide-in-from-left-2 fill-mode-both rounded-full border px-3.5 py-1.5 backdrop-blur-md duration-700 ${
-              c.accent ? 'border-primary/60 bg-primary/25 text-white' : 'border-white/20 bg-white/10 text-midnight-foreground'
+              c.accent ? 'border-brand-teal/70 bg-brand-teal/25 text-white' : 'border-white/20 bg-white/10 text-midnight-foreground'
             }`}
           >
             <span className="text-sm font-semibold">{c.ko}</span>
@@ -47,7 +48,7 @@ export function LoginHeroWords() {
         <h1 className="text-4xl font-bold leading-[1.2]">
           멘토와 멘티를
           <br />
-          <span className="text-primary">1:1</span>로 연결하고, 끝까지 관리
+          <span className="text-brand-teal">1:1</span>로 연결하고, 끝까지 관리
         </h1>
         <p className="text-sm leading-relaxed text-midnight-foreground/75">
           배정 · 컨설팅 회차 · 보고서와 서명 · 관찰의견서 · 검수 · 정산과 지급 품의까지 한 흐름으로. 여러 행사를 계정 추가만으로 운영합니다.

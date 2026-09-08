@@ -45,6 +45,8 @@ export default function LoginPage({
         <div className="flex flex-1 items-center justify-center">
         <Card className="w-full max-w-sm border-none shadow-none sm:border sm:shadow-sm">
           <CardHeader className="space-y-1">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/brand/wordmark-light.png" alt="멘토링 운영관리" className="mb-3 h-11 w-auto object-contain object-left" />
             <CardTitle className="text-xl">로그인</CardTitle>
             <CardDescription>멘토링 운영관리 플랫폼</CardDescription>
           </CardHeader>

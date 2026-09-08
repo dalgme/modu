@@ -36,6 +36,10 @@ const config: Config = {
           'rejected-bg': 'hsl(var(--status-rejected-bg))',
         },
         // 브랜드 — 미드나이트 블루 (헤더·히어로 다크 서피스)
+        brand: {
+          teal: '#2AD1BF',
+          navy: '#103355',
+        },
         midnight: {
           DEFAULT: 'hsl(var(--midnight))',
           foreground: 'hsl(var(--midnight-foreground))',
