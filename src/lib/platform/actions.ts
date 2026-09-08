@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { getRealSessionProfile } from '@/lib/auth/guards';
-import { createStaffOrMentorAccount } from '@/lib/auth/admin-accounts';
+import { createStaffOrMentorAccount, phoneTempPassword } from '@/lib/auth/admin-accounts';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ROUND_REPORT_TEMPLATE_KEY } from '@/lib/documents/round-report';
 import type { Json } from '@/types/database';
@@ -25,6 +25,7 @@ async function audit(actorId: string, action: string, entityId: string | null, m
 
 function revalidate() {
   revalidatePath('/platform');
+  revalidatePath('/platform/programs');
   revalidatePath('/hub');
 }
 
@@ -232,5 +233,69 @@ export async function setPlatformAdminAction(email: string, isAdmin: boolean): P
   if (error) return { ok: false, error: error.message };
   await audit(op.id, isAdmin ? 'platform.admin_granted' : 'platform.admin_revoked', null, { user_id: u.id });
   revalidate();
+  return { ok: true };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 계정 통합 관리 (전 행사) — 플랫폼 관리자 전용. 운영사 회원관리(member-actions)와 달리 행사 범위 제한이 없다.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function auditUser(actorId: string, action: string, userId: string, metadata: Json) {
+  await createAdminClient().from('audit_logs').insert({ actor_id: actorId, program_id: null, action, entity_type: 'users', entity_id: userId, metadata });
+}
+
+function revalidateUsers() {
+  revalidatePath('/platform/users');
+  revalidatePath('/platform');
+  revalidatePath('/hub');
+}
+
+/** 임시 비밀번호 재발급 (휴대폰 번호 기반, 없으면 난수) → 최초 로그인 시 변경 강제 */
+export async function platformResetPasswordAction(userId: string): Promise<Result<{ tempPassword: string }>> {
+  const op = await platformAdmin();
+  if ('error' in op) return { ok: false, error: op.error };
+  const admin = createAdminClient();
+  const { data: u } = await admin.from('users').select('id, phone, role').eq('id', userId).maybeSingle();
+  if (!u) return { ok: false, error: '계정을 찾을 수 없습니다.' };
+  const tempPassword = phoneTempPassword(u.phone);
+  const { error } = await admin.auth.admin.updateUserById(userId, { password: tempPassword });
+  if (error) return { ok: false, error: error.message };
+  await admin.from('users').update({ must_change_password: true, updated_at: new Date().toISOString() }).eq('id', userId);
+  await auditUser(op.id, 'platform.account.reset_password', userId, { role: u.role });
+  revalidateUsers();
+  return { ok: true, tempPassword };
+}
+
+/** 활성/비활성 — 비활성 계정은 모든 행사에서 로그인이 막힌다. 본인·다른 플랫폼 관리자는 여기서 못 막는다(플랫폼 관리자 탭에서 해제 후). */
+export async function platformSetUserActiveAction(userId: string, active: boolean): Promise<Result> {
+  const op = await platformAdmin();
+  if ('error' in op) return { ok: false, error: op.error };
+  if (userId === op.id) return { ok: false, error: '본인 계정은 변경할 수 없습니다.' };
+  const admin = createAdminClient();
+  const { data: u } = await admin.from('users').select('is_platform_admin, role').eq('id', userId).maybeSingle();
+  if (!u) return { ok: false, error: '계정을 찾을 수 없습니다.' };
+  if (u.is_platform_admin && !active) return { ok: false, error: '플랫폼 관리자는 먼저 관리자 지정을 해제한 뒤 비활성화하세요.' };
+  const { error } = await admin.from('users').update({ is_active: active, updated_at: new Date().toISOString() }).eq('id', userId);
+  if (error) return { ok: false, error: error.message };
+  await auditUser(op.id, active ? 'platform.account.activate' : 'platform.account.deactivate', userId, { role: u.role });
+  revalidateUsers();
+  return { ok: true };
+}
+
+/** 행사 소속 추가/해제 — 어느 역할이든 가능. 해제는 멤버십 행을 지우지 않고 is_active=false·left_at 기록(이력 보존). */
+export async function platformSetMembershipAction(userId: string, programId: string, member: boolean): Promise<Result> {
+  const op = await platformAdmin();
+  if ('error' in op) return { ok: false, error: op.error };
+  const admin = createAdminClient();
+  const [{ data: u }, { data: p }] = await Promise.all([admin.from('users').select('id, role').eq('id', userId).maybeSingle(), admin.from('programs').select('id, name').eq('id', programId).maybeSingle()]);
+  if (!u) return { ok: false, error: '계정을 찾을 수 없습니다.' };
+  if (!p) return { ok: false, error: '행사를 찾을 수 없습니다.' };
+  const now = new Date().toISOString();
+  const { error } = member
+    ? await admin.from('program_members').upsert({ program_id: programId, user_id: userId, is_active: true, left_at: null, joined_at: now }, { onConflict: 'program_id,user_id' })
+    : await admin.from('program_members').update({ is_active: false, left_at: now }).eq('program_id', programId).eq('user_id', userId);
+  if (error) return { ok: false, error: error.message };
+  await auditUser(op.id, member ? 'platform.membership.add' : 'platform.membership.remove', userId, { program_id: programId, program: p.name, role: u.role });
+  revalidateUsers();
   return { ok: true };
 }

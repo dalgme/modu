@@ -14,7 +14,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   return (
     <main className="flex flex-col gap-5">
       <div>
-        <Link href="/platform" className="text-sm text-muted-foreground hover:underline">← 행사 목록</Link>
+        <Link href="/platform/programs" className="text-sm text-muted-foreground hover:underline">← 행사 관리</Link>
         <h1 className="mt-1 text-2xl font-semibold">{p.name} <span className="ml-2 font-mono text-sm text-muted-foreground">{p.slug}</span></h1>
         <p className="mt-1 text-sm text-muted-foreground">
           발주처 {p.client_name} · 운영사 {p.operator_name} · {formatDate(p.starts_on)} ~ {formatDate(p.ends_on)} · {p.status === 'active' ? '진행 중' : '종료'}

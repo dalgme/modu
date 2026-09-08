@@ -88,8 +88,8 @@ export function HubProgramList({
 
       {isPlatformAdmin && (
         <p className="text-xs text-muted-foreground">
-          플랫폼 관리자는 모든 행사가 표시됩니다. 행사 개설·복제·스태프 발급은{' '}
-          <Link href="/platform" className="font-semibold text-primary underline">플랫폼 콘솔</Link>에서 합니다.
+          플랫폼 통합관리자는 모든 행사가 표시됩니다. 행사 개설·계정 통합 조회·시스템 상태는 상단 배지 또는{' '}
+          <Link href="/platform" className="font-semibold text-violet-700 underline">플랫폼 통합관리 콘솔</Link>에서 합니다.
         </p>
       )}
     </section>
