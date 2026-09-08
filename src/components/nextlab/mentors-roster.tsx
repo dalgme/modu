@@ -121,7 +121,12 @@ export function MentorsRoster({ mentors, groups }: { mentors: MentorRosterItem[]
                 <td className="px-3 py-2"><input type="checkbox" checked={selected.has(m.id)} onChange={() => setSelected((s) => { const n = new Set(s); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n; })} aria-label="선택" /></td>
                 <td className="px-3 py-2">
                   <b>{m.name}</b>
-                  <div className="text-xs text-muted-foreground">{m.phone ?? ''} {m.email ? `· ${m.email}` : ''}</div>
+                  {m.activeCases > 0 ? (
+                    <span className="ml-1 rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700" title="배정된 멘티에 대해 확정된 멘토">확정</span>
+                  ) : (
+                    <span className="ml-1 rounded border px-1.5 py-0.5 text-[10px] text-muted-foreground" title="아직 멘티가 배정되지 않은 Pool(대기) 멘토 — 배정되면 그 멘티에 대해 확정됩니다">Pool</span>
+                  )}
+                  <div className="text-xs text-muted-foreground">{m.organization ? `${m.organization} · ` : ''}{m.phone ?? ''} {m.email ? `· ${m.email}` : ''}</div>
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">{m.activeCases}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{m.totalRounds}</td>

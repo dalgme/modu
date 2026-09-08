@@ -8,6 +8,8 @@ export interface MentorRosterItem {
   name: string;
   email: string | null;
   phone: string | null;
+  /** 소속 (회사·기관) */
+  organization: string | null;
   isActive: boolean;
   activeCases: number;
   totalRounds: number;
@@ -27,7 +29,7 @@ export async function listProgramMentors(programId: string, supportTypeId?: stri
   const { data: members } = await admin.from('program_members').select('user_id').eq('program_id', programId).eq('role', 'mentor').eq('is_active', true);
   const ids = (members ?? []).map((m) => m.user_id);
   if (ids.length === 0) return [];
-  const { data: users } = await admin.from('users').select('id, name, email, phone, is_active').in('id', ids).order('name');
+  const { data: users } = await admin.from('users').select('id, name, email, phone, organization, is_active').in('id', ids).order('name');
   const mentors = users ?? [];
   if (mentors.length === 0) return [];
   const mids = mentors.map((m) => m.id);
@@ -69,6 +71,7 @@ export async function listProgramMentors(programId: string, supportTypeId?: stri
         name: m.name,
         email: m.email,
         phone: m.phone,
+        organization: m.organization,
         isActive: m.is_active,
         activeCases: myAssigns.filter((a) => a.is_active).length,
         totalRounds: (logs ?? []).filter((l) => l.mentor_id === m.id && inScope(l.case_id)).length,

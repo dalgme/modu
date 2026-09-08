@@ -69,7 +69,16 @@ export type MemberRow = Pick<
   grade: string | null;
   /** 이 행사 담당역할 메모 */
   duty: string | null;
+  /** 소속 (멘토의 회사·기관, 담당자의 부서). 멘티는 케이스의 기업(팀)명 */
+  organization: string | null;
+  /** 멘토: 이 행사에서 활성 배정된 멘티 수 (0 = Pool 대기) */
+  assignedCount: number;
+  /** 로그인 안내 문자 최초 발송 일시 (audit_logs 기반) */
+  guideSentAt: string | null;
 };
+
+/** 로그인 안내 문자 발송 기록용 audit_logs action (스키마 변경 없이 발송 여부 추적) */
+export const LOGIN_GUIDE_SMS_ACTION = 'sms.login_guide';
 
 /** 역할 표시 정렬 순서 (운영사 → 발주처 → 멘토 → 멘티) */
 const ROLE_ORDER: Record<UserRole, number> = {
@@ -92,16 +101,44 @@ export async function listProgramMembers(programId: string): Promise<MemberRow[]
     .order('joined_at', { ascending: true });
   const ids = (memberships ?? []).map((m) => m.user_id);
   if (ids.length === 0) return [];
-  const { data: users } = await admin
-    .from('users')
-    .select('id, email, name, phone, role, is_active, must_change_password, invited_at, activated_at, created_at, position')
-    .in('id', ids);
+  const [{ data: users }, { data: assigns }, { data: guides }, { data: menteeCases }] = await Promise.all([
+    admin
+      .from('users')
+      .select('id, email, name, phone, role, is_active, must_change_password, invited_at, activated_at, created_at, position, organization')
+      .in('id', ids),
+    admin.from('mentor_assignments').select('mentor_id, case_id, cases!inner(program_id)').in('mentor_id', ids).eq('is_active', true).eq('cases.program_id', programId),
+    admin.from('audit_logs').select('entity_id, created_at').eq('action', LOGIN_GUIDE_SMS_ACTION).eq('program_id', programId).eq('entity_type', 'users').in('entity_id', ids).order('created_at', { ascending: true }),
+    admin.from('cases').select('mentee_id, business_name, created_at').eq('program_id', programId).not('mentee_id', 'is', null).order('created_at', { ascending: false }),
+  ]);
+  const assignedCount = new Map<string, number>();
+  for (const a of assigns ?? []) assignedCount.set(a.mentor_id, (assignedCount.get(a.mentor_id) ?? 0) + 1);
+  const guideAt = new Map<string, string>();
+  for (const g of guides ?? []) {
+    if (g.entity_id && !guideAt.has(g.entity_id)) guideAt.set(g.entity_id, g.created_at);
+  }
+  const businessOf = new Map<string, string>();
+  for (const c of menteeCases ?? []) {
+    if (c.mentee_id && !businessOf.has(c.mentee_id)) businessOf.set(c.mentee_id, c.business_name);
+  }
   const byId = new Map((users ?? []).map((u) => [u.id, u]));
   const rows: MemberRow[] = [];
   for (const m of memberships ?? []) {
     const u = byId.get(m.user_id);
     if (!u) continue;
-    rows.push({ ...u, primaryRole: u.role, role: m.role as UserRole, memberActive: m.is_active, joinedAt: m.joined_at, position: u.position, grade: m.grade, duty: m.duty });
+    const role = m.role as UserRole;
+    rows.push({
+      ...u,
+      primaryRole: u.role,
+      role,
+      memberActive: m.is_active,
+      joinedAt: m.joined_at,
+      position: u.position,
+      grade: m.grade,
+      duty: m.duty,
+      organization: role === 'mentee' ? u.organization ?? businessOf.get(u.id) ?? null : u.organization,
+      assignedCount: assignedCount.get(u.id) ?? 0,
+      guideSentAt: guideAt.get(u.id) ?? null,
+    });
   }
   return rows.sort((a, b) => {
     const r = ROLE_ORDER[a.role] - ROLE_ORDER[b.role];

@@ -42,6 +42,8 @@ interface CreateStaffOrMentorInput {
   role: Extract<UserRole, 'institution' | 'nextlab' | 'mentor'>;
   /** 직위 (발주처·운영사 담당자) */
   position?: string;
+  /** 소속 (멘토의 회사·기관, 담당자의 부서 등) */
+  organization?: string;
   /** 발급을 수행하는 관리자 (감사로그용) */
   actorId: string;
 }
@@ -80,6 +82,7 @@ export async function createStaffOrMentorAccount(
     phone: toStoredPhone(input.phone),
     email: input.email,
     position: input.position?.trim() || null,
+    organization: input.organization?.trim() || null,
     must_change_password: true,
   });
   if (profileError) {

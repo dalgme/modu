@@ -24,6 +24,7 @@ export const createAccountSchema = z.object({
   phone: z.string().optional(),
   role: z.enum(['institution', 'nextlab', 'mentor']),
   position: z.string().trim().max(60).optional(),
+  organization: z.string().trim().max(80).optional(),
 }).refine((v) => v.role === 'mentor' || !!v.position?.trim(), { message: '발주처·운영사 담당자는 직위를 입력하세요.', path: ['position'] });
 export type CreateAccountInput = z.infer<typeof createAccountSchema>;
 

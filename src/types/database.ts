@@ -2013,6 +2013,79 @@ export type Database = {
           },
         ];
       };
+      roster_columns: {
+        Row: {
+          created_at: string;
+          created_by: string | null;
+          id: string;
+          name: string;
+          program_id: string;
+          sort_order: number;
+          target: Database['public']['Enums']['user_role'];
+        };
+        Insert: {
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          name: string;
+          program_id: string;
+          sort_order?: number;
+          target: Database['public']['Enums']['user_role'];
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          id?: string;
+          name?: string;
+          program_id?: string;
+          sort_order?: number;
+          target?: Database['public']['Enums']['user_role'];
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'roster_columns_program_id_fkey';
+            columns: ['program_id'];
+            isOneToOne: false;
+            referencedRelation: 'programs';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      roster_values: {
+        Row: {
+          column_id: string;
+          id: string;
+          updated_at: string;
+          updated_by: string | null;
+          user_id: string;
+          value: string;
+        };
+        Insert: {
+          column_id: string;
+          id?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          user_id: string;
+          value?: string;
+        };
+        Update: {
+          column_id?: string;
+          id?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          user_id?: string;
+          value?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'roster_values_column_id_fkey';
+            columns: ['column_id'];
+            isOneToOne: false;
+            referencedRelation: 'roster_columns';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       scheduled_messages: {
         Row: {
           created_at: string;
@@ -2890,6 +2963,7 @@ export type Database = {
           is_platform_admin: boolean;
           must_change_password: boolean;
           name: string;
+          organization: string | null;
           password_changed_at: string | null;
           phone: string | null;
           platform_role: string | null;
@@ -2908,6 +2982,7 @@ export type Database = {
           is_platform_admin?: boolean;
           must_change_password?: boolean;
           name: string;
+          organization?: string | null;
           password_changed_at?: string | null;
           phone?: string | null;
           platform_role?: string | null;
@@ -2926,6 +3001,7 @@ export type Database = {
           is_platform_admin?: boolean;
           must_change_password?: boolean;
           name?: string;
+          organization?: string | null;
           password_changed_at?: string | null;
           phone?: string | null;
           platform_role?: string | null;

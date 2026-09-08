@@ -13,7 +13,7 @@ import { createCase } from '@/lib/workflow/cases';
  */
 export type ImportKind = 'mentor' | 'mentee';
 
-export const MENTOR_COLUMNS = ['이름', '이메일', '휴대폰', '소속그룹코드', '전문분야', '업종', '지역', '경력', '소개'] as const;
+export const MENTOR_COLUMNS = ['이름', '이메일', '휴대폰', '소속', '직위', '소속그룹코드', '전문분야', '업종', '지역', '경력', '소개'] as const;
 export const MENTEE_COLUMNS = ['멘티이름', '기업(팀)명', '휴대폰', '이메일', '사업그룹코드', '사업자등록번호', '주소', '업종', '아이템', '창업단계', '지역', '필요분야', '소개'] as const;
 
 export interface ImportRow {
@@ -55,7 +55,7 @@ export function buildTemplate(kind: ImportKind, groupCodes: string[]): Buffer {
   const columns = kind === 'mentor' ? MENTOR_COLUMNS : MENTEE_COLUMNS;
   const example =
     kind === 'mentor'
-      ? ['홍길동', 'mentor@example.com', '010-1234-5678', groupCodes[0] ?? '', '마케팅·브랜딩; 재무·투자유치', '식품', '세종', '○○ 대표 10년', '온·오프라인 모두 가능']
+      ? ['홍길동', 'mentor@example.com', '010-1234-5678', '○○컨설팅', '대표', groupCodes[0] ?? '', '마케팅·브랜딩; 재무·투자유치', '식품', '세종', '○○ 대표 10년', '온·오프라인 모두 가능']
       : ['김멘티', '팀 이름', '010-9876-5432', 'mentee@example.com', groupCodes[0] ?? '', '', '세종시 …', 'IT', '앱 서비스', '예비창업', '세종', '사업계획서; 마케팅·브랜딩', '한 줄 소개'];
   const ws = XLSX.utils.aoa_to_sheet([[...columns], example]);
   const guide = XLSX.utils.aoa_to_sheet([
@@ -143,7 +143,7 @@ export async function commitImport(programId: string, kind: ImportKind, rows: Im
         const phone = toStoredPhone(v['휴대폰'] ?? '') ?? v['휴대폰']!;
         const email = v['이메일'] || `m-${phone.replace(/\D/g, '')}@mentor.local`;
         if (!userId) {
-          const acc = await createStaffOrMentorAccount({ email, name: v['이름']!, phone, role: 'mentor', actorId });
+          const acc = await createStaffOrMentorAccount({ email, name: v['이름']!, phone, role: 'mentor', organization: v['소속'] || undefined, position: v['직위'] || undefined, actorId });
           userId = acc.userId;
           result.created += 1;
           result.credentials.push({ line: row.line, name: v['이름']!, email: acc.email, tempPassword: acc.tempPassword });

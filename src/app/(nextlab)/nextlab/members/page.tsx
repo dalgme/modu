@@ -4,12 +4,16 @@ import { requireNextlab } from '@/lib/auth/guards';
 import { Button } from '@/components/ui/button';
 import { requireContext } from '@/lib/programs/context';
 import { listProgramMembers } from '@/lib/data/members';
+import { listRosterColumns } from '@/lib/data/roster-columns';
 import { MembersManager } from '@/components/nextlab/members-manager';
 
 export default async function Page() {
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
-  const members = await listProgramMembers(ctx.programId);
+  const [members, roster] = await Promise.all([
+    listProgramMembers(ctx.programId),
+    listRosterColumns(ctx.programId),
+  ]);
 
   return (
     <main className="flex flex-col gap-5">
@@ -36,9 +40,14 @@ export default async function Page() {
           position: m.position,
           grade: m.grade,
           duty: m.duty,
+          organization: m.organization,
+          assignedCount: m.assignedCount,
+          guideSentAt: m.guideSentAt,
           is_active: m.is_active,
           must_change_password: m.must_change_password,
         }))}
+        rosterColumns={roster.columns.map((c) => ({ id: c.id, target: c.target, name: c.name }))}
+        rosterValues={roster.values}
       />
     </main>
   );
