@@ -3,6 +3,7 @@
 > 이 파일은 새 Claude Code 세션이 시작될 때 자동으로 읽힙니다.
 > **원본 뼈대**: `dalgme/restart` (재기지원사업 운영관리 플랫폼)에서 복제 — 인프라·인증·문서·알림·PDF·감사 구조를 승계.
 > 복제 절차는 `docs/PLATFORM-CLONE-HANDOVER.md`, 개조 지점은 `docs/DOMAIN-REMODEL-GUIDE.md` 참조.
+> **기획·구조·전달받은 프롬프트 통합 정리** = `docs/handbook/` (01 기획 · 02 구조 · 03 프롬프트 · `modu-handbook.html`, `python3 scripts/build-handbook.py` 로 재생성).
 
 ---
 
@@ -289,6 +290,7 @@ npm run lint:brand   # scripts/check-brand-strings.sh — 0건 (npm run lint 에
 - 2026-09-07 **보고서 양식·서명 정책 요건**: 컨설팅 보고서 양식을 행사/그룹 단위로 등록, 웹 작성 회차는 저장·서명 시 양식 PDF 재생성. "알림 발송 후 멘티 확인 서명" / "저장 시 멘토 서명 자동" 정책은 양식에 멘토 서명 컬럼이 있을 때만 사용 가능(§22).
 - 2026-09-07 **P6 완료**: 설정·요청함·승계·멘토 명단·리포트. 멘토 지급서류 체크는 비밀번호 재인증 + 대행 불가 + 멘토별 감사로그.
 - 2026-09-07 **P8 코드 준비 완료**, Vercel 프로젝트 생성은 사용자 조치(런북 `docs/DEPLOY-RUNBOOK.md`). main 머지는 Preview 검증 후.
+- 2026-09-08 **플랫폼 통합관리 콘솔 확장**(통합 현황·행사 관리·계정 통합 조회·통합 감사로그·시스템 상태) + 상단 "플랫폼 통합관리자" 배지. 행사·그룹 설정은 운영사, 개설·계정·시스템은 플랫폼 관리자로 역할 분담. 핸드북 `docs/handbook/` 작성.
 - 2026-09-08 **P8 배포 완료**: Vercel `modu` 를 대시보드에서 생성(작업 브랜치가 Production 으로 배포됨), `NEXT_PUBLIC_*` 는 Config 타입·나머지는 Secret, Vercel Authentication 해제, `/api/setup` 부트스트랩 → 플랫폼 관리자 로그인·`/hub`·대시보드 확인. 첫 배포의 런타임 오류(Supabase URL 누락)는 환경변수 재입력으로 해소.
 - 2026-09-07 **P5 완료**: 회차 서명은 `signatures.log_id` 로 회차에 귀속, 서명 후 멘토 수정 잠금. 만족도는 종결 요청 이후 1회, 정산 게이트 아님. 멘토 변경 요청 수락 = T3 교체. 필수서류 게이트는 설정 `closure_policy.require_group_docs`(기본 꺼짐).
 - 2026-09-07 **P4 완료**: 정산 계산 단일 함수(`compute.ts`) + vitest, 검수 승인 시 스냅샷 선저장 후 전이, 품의 2단계 게이트(렛츠 제출 → 센터 확인 → closed), 부분 정산(T10/T11a/T11b). 추가 회차 요청 승인함은 P6.

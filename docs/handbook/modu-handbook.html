@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>모두의창업 플랫폼 핸드북</title><style>
+:root{--bg:#fff;--fg:#1f2430;--muted:#5b6472;--line:#e3e6ec;--accent:#6d28d9;--code:#f4f5f8}
+*{box-sizing:border-box}body{margin:0;font-family:-apple-system,"Segoe UI","Apple SD Gothic Neo","Noto Sans KR",sans-serif;color:var(--fg);background:var(--bg);line-height:1.6}
+.wrap{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
+nav{position:sticky;top:0;height:100vh;overflow:auto;border-right:1px solid var(--line);padding:20px 16px;font-size:13px;background:#faf9fd}
+nav h1{font-size:15px;margin:0 0 12px}nav a{display:block;color:var(--fg);text-decoration:none;padding:3px 6px;border-radius:6px}nav a:hover{background:#ede9fe}
+nav .l1{font-weight:700;margin-top:10px}nav .l2{padding-left:14px;color:var(--muted)}
+main{padding:32px 48px;max-width:1100px}
+h1{font-size:26px;border-bottom:2px solid var(--accent);padding-bottom:8px;margin-top:48px}h1:first-child{margin-top:0}
+h2{font-size:20px;margin-top:36px;border-bottom:1px solid var(--line);padding-bottom:4px}h3{font-size:16px;margin-top:24px}h4{font-size:14px}
+code{background:var(--code);padding:1px 5px;border-radius:4px;font-size:12.5px;font-family:ui-monospace,Menlo,Consolas,monospace}
+pre{background:#111827;color:#e5e7eb;padding:14px 16px;border-radius:8px;overflow:auto;font-size:12.5px;line-height:1.5}pre code{background:none;color:inherit;padding:0}
+blockquote{margin:12px 0;padding:8px 14px;border-left:4px solid var(--accent);background:#f5f3ff;color:#3b3352;font-size:13.5px}
+.tbl{overflow-x:auto;margin:12px 0}table{border-collapse:collapse;width:100%;font-size:13px}th,td{border:1px solid var(--line);padding:6px 8px;vertical-align:top;text-align:left}th{background:#f3f4f6}
+hr{border:0;border-top:1px solid var(--line);margin:28px 0}
+.meta{color:var(--muted);font-size:12px;margin-bottom:24px}
+@media (max-width:900px){.wrap{grid-template-columns:1fr}nav{position:static;height:auto;border-right:0;border-bottom:1px solid var(--line)}main{padding:20px}}
+@media print{nav{display:none}.wrap{display:block}main{padding:0}}
+</style></head>
+<body><div class="wrap"><nav><h1>모두의창업 플랫폼 핸드북</h1><a class="l1" href="#모두의창업-플랫폼-기획-정리">모두의창업 플랫폼 — 기획 정리</a><a class="l2" href="#1-사업-개요">1. 사업 개요</a><a class="l2" href="#2-역할과-계정-정책">2. 역할과 계정 정책</a><a class="l2" href="#3-핵심-운영-흐름-사용자-답변-1-을-그대로-상태머신으로">3. 핵심 운영 흐름 (사용자 답변 1 을 그대로 상태머신으로)</a><a class="l2" href="#4-요구사항-목록-전달받은-답변-지시-반영">4. 요구사항 목록 (전달받은 답변·지시 → 반영)</a><a class="l2" href="#5-확정-수치-정책-요약">5. 확정 수치·정책 요약</a><a class="l2" href="#6-결정-기록-연대기">6. 결정 기록 (연대기)</a><a class="l2" href="#7-남은-항목">7. 남은 항목</a><a class="l1" href="#모두의창업-플랫폼-구조-정리">모두의창업 플랫폼 — 구조 정리</a><a class="l2" href="#1-기술-스택">1. 기술 스택</a><a class="l2" href="#2-계층-구조">2. 계층 구조</a><a class="l2" href="#3-데이터-모델-45개-테이블">3. 데이터 모델 (45개 테이블)</a><a class="l2" href="#4-상태머신-case-status-v2">4. 상태머신 (case_status v2)</a><a class="l2" href="#5-서류-체계-doc-key">5. 서류 체계 (doc_key)</a><a class="l2" href="#6-정산">6. 정산</a><a class="l2" href="#7-권한-보안-감사">7. 권한·보안·감사</a><a class="l2" href="#8-화면-라우트-지도">8. 화면·라우트 지도</a><a class="l2" href="#9-코드-디렉터리-지도">9. 코드 디렉터리 지도</a><a class="l2" href="#10-알림-cron">10. 알림·Cron</a><a class="l2" href="#11-인프라-배포">11. 인프라·배포</a><a class="l2" href="#12-불변-규칙-원본에서-사고가-났던-지점">12. 불변 규칙 (원본에서 사고가 났던 지점)</a><a class="l1" href="#모두의창업-플랫폼-전달받은-프롬프트-정리">모두의창업 플랫폼 — 전달받은 프롬프트 정리</a><a class="l2" href="#1-상시-작업-원칙-모든-세션에-적용">1. 상시 작업 원칙 (모든 세션에 적용)</a><a class="l2" href="#2-프롬프트-연대기">2. 프롬프트 연대기</a><a class="l2" href="#3-프롬프트-원문">3. 프롬프트 원문</a><a class="l2" href="#4-다음-세션에서-쓸-시작-프롬프트-템플릿">4. 다음 세션에서 쓸 시작 프롬프트 (템플릿)</a></nav>
+<main><p class="meta">기획 · 구조 · 전달받은 프롬프트 — docs/handbook/*.md 에서 생성 (scripts/build-handbook.py)</p><h1 id="모두의창업-플랫폼-기획-정리">모두의창업 플랫폼 — 기획 정리</h1>
+<blockquote>정리일 2026-09-08 · 대상 리포 <code>dalgme/modu</code> · 브랜치 <code>claude/modu-platform-audit-tutute</code> 원본 뼈대 <code>dalgme/restart</code>(재기지원사업 운영관리 플랫폼)를 복제해 "모두의창업" 사업용으로 개조한 결과를 기획 관점에서 정리한 문서다. 상세 설계 원문은 <code>docs/MODU-DESIGN.md</code>, 세션 규칙은 <code>CLAUDE.md</code>.</blockquote>
+<hr>
+<h2 id="1-사업-개요">1. 사업 개요</h2>
+<div class='tbl'><table><thead><tr><th>항목</th><th>내용</th></tr></thead><tbody><tr><td>사업명</td><td>모두의창업</td></tr><tr><td>발주·승인</td><td>세종창조경제혁신센터 (화면 표기 "발주처", 행사 설정에서 기관명 등록)</td></tr><tr><td>운영 총괄</td><td>(주)렛츠 (화면 표기 "운영사", 행사 설정에서 기관명 등록)</td></tr><tr><td>한 줄 정의</td><td>참여 <strong>멘티와 멘토를 1:1로 연결·배정</strong>하고, <strong>멘토링 운영과정(회차·보고서·관찰의견서·정산)</strong> 을 관리하는 플랫폼</td></tr><tr><td>확장 요건</td><td>같은 운영방식을 <strong>계정 추가만으로 여러 행사에 복제</strong>할 수 있어야 한다 → 한 배포 안의 행사(<code>programs</code>) 계층</td></tr></tbody></table></div>
+<h3 id="주체별로-얻는-것">주체별로 얻는 것</h3>
+<div class='tbl'><table><thead><tr><th>주체</th><th>시스템에서 얻는 것</th></tr></thead><tbody><tr><td>발주처(센터)</td><td>멘토별·멘티별 실시간 진행현황, 정산 확인(종결 확정), 리포트</td></tr><tr><td>운영사(렛츠)</td><td>사업그룹 개설, 멘토 배정·중간 교체, 회차·보고서 검수, 관찰의견서 검수, 정산 확정·지급 품의, 각종 설정</td></tr><tr><td>멘토 (약 80명)</td><td>담당 멘티 컨설팅 회차 등록(웹 작성/업로드·사진), 관찰의견서, 종결 요청, 추가 회차·중도 종료 요청, 정산 내역 확인</td></tr><tr><td>멘티 (약 400명)</td><td>본인 진행현황, 회차 확인 서명, 만족도 조사, 멘토 변경 요청, 필수서류·자유서류 제출</td></tr><tr><td>플랫폼 통합관리자</td><td>행사 개설·복제·종료, 전 행사 계정 통합 관리, 플랫폼 관리자 지정, 통합 감사로그, 시스템 상태</td></tr></tbody></table></div>
+<hr>
+<h2 id="2-역할과-계정-정책">2. 역할과 계정 정책</h2>
+<div class='tbl'><table><thead><tr><th>역할 키</th><th>화면 표기</th><th>인원</th><th>비고</th></tr></thead><tbody><tr><td><code>institution</code></td><td>발주처 (행사 설정의 발주 기관명)</td><td>소수</td><td>열람·정산 확인</td></tr><tr><td><code>nextlab</code></td><td>운영사 (행사 설정의 용역사 기관명)</td><td>소수</td><td>운영 총괄. 역할 키는 원본 그대로 유지</td></tr><tr><td><code>mentor</code></td><td>멘토</td><td>약 80</td><td>회차·관찰의견서</td></tr><tr><td><code>mentee</code></td><td>멘티</td><td>약 400</td><td>서명·설문·서류</td></tr><tr><td>(플래그) <code>is_platform_admin</code></td><td>플랫폼 통합관리자</td><td>1~2</td><td>역할 enum 을 늘리지 않고 <code>users.is_platform_admin</code> 로 부여</td></tr></tbody></table></div>
+<ul><li><strong>셀프 가입 없음.</strong> 운영사가 계정 발급 → 임시 비밀번호(멘티는 휴대폰 번호) → 최초 로그인 시 변경 강제 + 개인정보 동의.</li><li><strong>한 계정은 여러 행사·여러 그룹에 귀속</strong>될 수 있다(<code>program_members</code>, <code>support_type_members</code>, 멘티는 케이스로 그룹 귀속). 역할은 계정 전역으로 하나.</li><li><strong>통합 로그인</strong> <code>/login</code> → 허브 <code>/hub</code> 에서 활성 행사 배너 → 그룹 배너. 활성 행사가 1개면 자동 진입, 그룹이 1개면 그룹까지 자동 진입. 상단에 <code>행사명 › 그룹명</code> 표시.</li><li>플랫폼 통합관리자는 상단 보라색 배지가 항상 뜨고, 어느 행사든 운영사 화면에 들어갈 수 있다(모든 행위는 실제 신원으로 감사 기록).</li></ul>
+<hr>
+<h2 id="3-핵심-운영-흐름-사용자-답변-1-을-그대로-상태머신으로">3. 핵심 운영 흐름 (사용자 답변 1 을 그대로 상태머신으로)</h2>
+<pre><code>[운영사] 멘티 등록 ──▶ 멘토 배정 ──▶ [멘토] 회차 등록 ×N (일시·장소·온/오프·내용·사진, 웹작성 또는 업로드)
+                                          │   멘티: 회차 확인 서명(정책) · 멘토 서명 자동 부착(정책)
+                                          ▼
+                              [멘토] 관찰의견서 작성 + 종결 요청
+                                          ▼
+                     [운영사] 검수 ─ 보완 요청 ⇄ ─ 승인 = 정산 확정 스냅샷 → 지급 대기
+                                          ▼
+                     [운영사] 지급 품의 편성·제출 ──▶ [발주처] 정산 확인 = 종결 확정
+       ※ 멘티 중도 종료 / 멘토 자진·강제 중도 종료 → 이행 회차 부분 정산, 잔여 회차는 타 멘토 재배정</code></pre>
+<p>멘티 부가 기능: 회차 서명 · 만족도 조사(종결 요청 이후 1회, 그룹별 표준양식) · 멘토 변경 요청(운영사 수락 시 교체).</p>
+<hr>
+<h2 id="4-요구사항-목록-전달받은-답변-지시-반영">4. 요구사항 목록 (전달받은 답변·지시 → 반영)</h2>
+<h3 id="4-1-1차-답변-6건-2026-09-07">4-1. 1차 답변 6건 (2026-09-07)</h3>
+<div class='tbl'><table><thead><tr><th>#</th><th>요구</th><th>반영</th></tr></thead><tbody><tr><td>1</td><td>승인 게이트: 멘토 회차 → 관찰의견서·종결 → 운영사 검수·정산 상신 → 발주처 확인·정산 → 종결. 멘티는 서명·만족도·멘토 변경 요청</td><td>상태머신 v2 (<code>registered → … → closed</code>), 멘티 기능 P5</td></tr><tr><td>2</td><td>평가서 = 관찰의견서, 멘티당 1건, 담당 멘토가 마무리 후 작성</td><td><code>observation_report</code> 단일본 doc_key + DB 유니크 인덱스</td></tr><tr><td>3</td><td>온라인 8만/회 · 오프라인 10만/회, 1일 1건당 상한 온 24만/오프 30만, 멘토 1일 최대 3건, 사유 있으면 멘토 요청으로 1회 추가</td><td><code>consulting_rates</code>·<code>operating_limits</code>(이력·그룹 override), 회차 검증 7항목, <code>round_extension_requests</code></td></tr><tr><td>4</td><td>정산 주기 미정. 종결 요청 시 정산정보(유형별 회차·단가·합계·원천징수·실지급) 생성 → 운영사 검토 승인 → 지급 대기 → 선택적으로 모아 지급 품의</td><td><code>settlements</code> 스냅샷, <code>settlement_batches</code> 2단계 게이트</td></tr><tr><td>5</td><td>보고서 등록 = 회차 이행(예상 비용, 변경 가능) / 관찰의견서 제출 + 운영사 승인 = 회차 완료(정산 확정)</td><td>예상/확정 이원화, 같은 계산 함수 <code>computeSettlement</code></td></tr><tr><td>6</td><td>사업그룹 A(1기/2R) B(2기/1R) C(2기/2R) D(2기/탈락자), 추가 생성 가능, 그룹 간 멘티·멘토 승계(데이터 독립, 이력 열람)</td><td><code>support_types</code> 동적 생성, <code>cases.predecessor_case_id</code>, <code>/nextlab/succession</code></td></tr><tr><td>+</td><td>이 운영방식을 계정 추가로 복제해 여러 행사에 사용</td><td><code>programs</code> 계층, <code>/platform</code> 콘솔의 행사 개설·설정 복제</td></tr></tbody></table></div>
+<h3 id="4-2-2차-답변-10건-2026-09-07">4-2. 2차 답변 10건 (2026-09-07)</h3>
+<div class='tbl'><table><thead><tr><th>#</th><th>요구</th><th>반영</th></tr></thead><tbody><tr><td>1</td><td>원천징수 = 기타소득세 일괄</td><td>필요경비 60%·세율 20%·지방세 10% → 실효 8.8%, 파라미터는 행사 설정, 스냅샷에 적용값 저장</td></tr><tr><td>2</td><td>같은 날·같은 멘티 합산 상한</td><td>회차 검증: 같은 케이스·같은 날짜 합산(회차 수 ≤ 3, 유형별 금액 ≤ 상한)</td></tr><tr><td>3</td><td>추가 회차 승인 주체 = 운영사</td><td>요청함 <code>/nextlab/requests</code></td></tr><tr><td>4</td><td>종결 게이트(멘티 서명 필수·필수서류 완료) 기본 아니오</td><td><code>closure_policy</code> 기본 꺼짐, 설정으로 켬</td></tr><tr><td>5</td><td>만족도: 문항 추가, 유형(척도·단일·복수·주관식·순위) 선택, 운영기관 설정에 그룹별 표준양식</td><td><code>survey_templates</code>·<code>survey_questions</code>·<code>survey_responses</code>, 응답 생기면 잠금·새 버전</td></tr><tr><td>6</td><td>중도 종료 시 이행 회차 정산, 멘토가 사유 작성, 잔여 회차는 타 멘토 배정</td><td><code>reassignment_pending</code> 상태, 정산 단위 = 케이스×멘토, <code>partial</code> 정산</td></tr><tr><td>7</td><td>케이스 등록 = 운영사, 발주처는 열람</td><td>전이 T1 주체</td></tr><tr><td>8</td><td>그룹별 회차 기본 4회, 설정에서 조정</td><td><code>support_types.required_rounds</code></td></tr><tr><td>9</td><td>로그인 화면은 행사별, 플랫폼 총괄관리자만 통합 로그인</td><td>→ 3차 답변에서 <strong>통합 로그인 + 허브</strong>로 개정(행사별 로그인 URL 폐기)</td></tr><tr><td>10</td><td>1일 건수·한도 등 조건은 행사/그룹별 설정 · 멘토/멘티 다중 키워드 → AI 매칭 추천(객관·정성 근거 기록) · 멘토 명단에 지급서류 수령 체크(비밀번호 재입력, 일괄)</td><td>운영 설정 8탭, <code>match_recommendations</code>(자동 배정 없음), <code>mentor_payment_docs</code>(재인증·일괄·대행 불가)</td></tr></tbody></table></div>
+<h3 id="4-3-3차-지시-2026-09-07-12-23">4-3. 3차 지시 (2026-09-07 12:23)</h3>
+<div class='tbl'><table><thead><tr><th>요구</th><th>반영</th></tr></thead><tbody><tr><td>원천징수: 그룹별 일괄(기타소득/사업소득) + 그룹 내 멘토별 override</td><td>결정 순서 멘토별(그룹 내) → 그룹 → 행사 기본</td></tr><tr><td>멘토 중도 종료: 자진(멘토 사유 → 운영사 승인) / 강제(운영사 사유, 운영사·발주처만 열람)</td><td>T11a / T11b, <code>reason_visibility='staff_only'</code></td></tr><tr><td>1일 상한 등 규칙은 행사별 설정</td><td><code>operating_limits</code> 행사 단위(+그룹 override)</td></tr><tr><td>발주처/운영사 리포트 메뉴 + 대시보드 성과·잔여과업·정산 통계 타일, 지표별 팝업 드릴다운</td><td><code>reports/metrics.ts</code> 단일 계산, <code>/nextlab/reports</code>·<code>/institution/reports</code>, 대시보드 타일</td></tr><tr><td>그룹별 멘토 리스트에 운영사 평가·메모(그룹 귀속, 멘토별 통합 로그)</td><td><code>mentor_group_reviews</code></td></tr><tr><td>1계정 = 여러 행사·그룹, 통합 로그인, 활성 행사/그룹 배너, 종료 탭, 단일 활성 시 자동 진입, 상단에 행사명/그룹명</td><td>허브 <code>/hub</code>, 컨텍스트 쿠키 <code>modu_ctx</code>, <code>AppHeader</code></td></tr></tbody></table></div>
+<h3 id="4-4-추가-요건-2026-09-07-오후-2026-09-08">4-4. 추가 요건 (2026-09-07 오후 ~ 2026-09-08)</h3>
+<div class='tbl'><table><thead><tr><th>시각</th><th>요구</th><th>반영</th></tr></thead><tbody><tr><td>09:06</td><td>행사 기본에서 발주처/용역사 기관명을 등록하면 행사 전체에 반영</td><td><code>programs.client_name/operator_name</code> → <code>getBranding()</code>·<code>roleLabel()</code>, 코드에 기관명 리터럴 금지(<code>scripts/check-brand-strings.sh</code>, lint 편입, 0건)</td></tr><tr><td>13:26</td><td>멘토/멘티 엑셀 일괄 등록 · 멘티 서류 첨부에 멘토 공개/비공개 체크 · 행사별 문자 API를 운영사가 등록, API 번호 유출 방지 다중 보안</td><td><code>/nextlab/members/import</code>(xlsx) · <code>documents.mentor_visible</code> · <code>program_sms_settings</code> 봉투암호화(<code>SMS_KEK</code>)·비밀번호 재인증·힌트만 표시·접근 로그 (7겹, 설계 §21)</td></tr><tr><td>16:16</td><td>멘티 "알림 발송 후 확인 서명" 또는 보고서 저장 시 멘토 서명 자동 부착. 단, 보고서 양식에 멘토 서명 컬럼이 있을 때만. 양식은 행사/그룹 단위 등록</td><td><code>document_templates</code>(행사/그룹 스코프) + <code>round_report_policy</code> + <code>mentor_signatures</code>, 양식에 <code>{{{sign_mentor}}}</code> 있을 때만 정책 유효 (설계 §22)</td></tr><tr><td>09-08 04:12</td><td>플랫폼 총괄관리자는 행사/그룹을 넘어 플랫폼 전체를 관리해야 하고, 로그인 상태가 상단에 직관적으로 보여야 함. 행사·그룹 설정은 운영사가</td><td>통합관리 콘솔 7탭(통합 현황·행사 관리·행사 개설·계정 통합 조회·플랫폼 관리자·통합 감사로그·시스템 상태) + 상단 보라색 "플랫폼 통합관리자" 배지</td></tr></tbody></table></div>
+<hr>
+<h2 id="5-확정-수치-정책-요약">5. 확정 수치·정책 요약</h2>
+<div class='tbl'><table><thead><tr><th>항목</th><th>값</th><th>어디서 바꾸나</th></tr></thead><tbody><tr><td>단가</td><td>온라인 80,000원/회 · 오프라인 100,000원/회</td><td>운영 설정 → 단가·한도 (적용일 이력)</td></tr><tr><td>1일 상한(같은 멘티·같은 날)</td><td>온라인 240,000 · 오프라인 300,000 · 회차 ≤ 3</td><td>운영 설정</td></tr><tr><td>멘토 1일 최대</td><td>3건(멘티)</td><td>운영 설정</td></tr><tr><td>기본 회차</td><td>그룹별 4회(3~4) + 승인된 추가 회차</td><td>그룹 설정, 요청함</td></tr><tr><td>원천징수</td><td>기타소득 8.8% (필요경비 60%, 세율 20%, 지방세 10%, 과세최저한 5만원) / 사업소득 3.3% / 없음</td><td>행사 정산 설정, 그룹 일괄, 그룹 내 멘토별</td></tr><tr><td>정산 단위</td><td>케이스 × 멘토, 종결 검수 승인 시 확정 스냅샷</td><td>자동</td></tr><tr><td>종결 게이트</td><td>멘티 서명 필수·필수서류 완료 = 기본 꺼짐</td><td>운영 설정 → 종결 게이트</td></tr><tr><td>보고서 서명 정책</td><td>멘티 확인 서명(기본 켬) · 멘토 자동 서명(기본 끔), 양식에 서명 컬럼 있을 때만</td><td>운영 설정 → 정책 / 그룹</td></tr><tr><td>만족도</td><td>종결 요청 이후 1회, 정산 게이트 아님</td><td>운영 설정 → 만족도</td></tr><tr><td>AI 매칭</td><td>객관 점수(태그 겹침·지역·유형·부하) + 모델 정성 근거(선택). 자동 배정 없음</td><td><code>ANTHROPIC_API_KEY</code> 유무</td></tr></tbody></table></div>
+<hr>
+<h2 id="6-결정-기록-연대기">6. 결정 기록 (연대기)</h2>
+<div class='tbl'><table><thead><tr><th>날짜</th><th>결정</th></tr></thead><tbody><tr><td>2026-09-03</td><td><code>dalgme/restart</code>(커밋 <code>5ca3db0</code>)에서 복제, 슬러그 <code>modu</code></td></tr><tr><td>2026-09-07</td><td>역할 4개 확정, 1멘티:1멘토 케이스 모델 유지, 사업그룹 = <code>support_types</code>, 컨설팅 4회·멘토 변경 시 잔여 회차 승계, Supabase <code>modu</code> 생성</td></tr><tr><td>2026-09-07</td><td>현행 코드 전수 조사(<code>docs/CURRENT-STATE.md</code>), 상태머신 v2·관찰의견서 단일본·단가/상한·정산 흐름 확정</td></tr><tr><td>2026-09-07</td><td>다중 행사 = 한 배포 안의 <code>programs</code> 계층(B안), 플랫폼 관리자 플래그, 그룹 동적 생성, 승계 = <code>predecessor_case_id</code></td></tr><tr><td>2026-09-07</td><td>2차·3차 답변 반영(원천징수·합산 상한·부분 정산·만족도 양식·설정 페이지·AI 매칭·지급서류 체크·리포트·멘토 평가·통합 로그인+허브)</td></tr><tr><td>2026-09-07</td><td>P1~P7 구현 완료(마이그레이션 0046~0058, 도메인 코어, 멘토·정산·멘티·운영·플랫폼), 브랜딩 잔재 0건, 검증 4종 그린</td></tr><tr><td>2026-09-08</td><td>P8 배포 완료: Vercel <code>modu</code>, 환경변수, 배포 보호 해제, <code>/api/setup</code> 부트스트랩, 플랫폼 관리자 로그인 확인</td></tr><tr><td>2026-09-08</td><td>플랫폼 통합관리 콘솔 확장 + 상단 통합관리자 배지</td></tr></tbody></table></div>
+<h2 id="7-남은-항목">7. 남은 항목</h2>
+<ul><li>런북 §4 기능 검증(멘티 등록 → 배정 → 회차 PDF → 서명 → 종결·검수·정산·품의 → 문자 1건).</li><li>도메인 연결, <code>NEXT_PUBLIC_APP_URL</code> 갱신, <code>main</code> 머지 및 Vercel Production Branch 정리(현재 작업 브랜치가 Production).</li><li>알림 이벤트별 on/off 설정, 레거시 <code>/admin/settings/features</code> 정리.</li></ul><hr><h1 id="모두의창업-플랫폼-구조-정리">모두의창업 플랫폼 — 구조 정리</h1>
+<blockquote>정리일 2026-09-08 · 코드 기준 <code>claude/modu-platform-audit-tutute</code> · DB 기준 Supabase <code>modu</code> 마이그레이션 0001~0058 설계 원문 <code>docs/MODU-DESIGN.md</code>, 배포 절차 <code>docs/DEPLOY-RUNBOOK.md</code>, 세션 규칙 <code>CLAUDE.md</code>.</blockquote>
+<hr>
+<h2 id="1-기술-스택">1. 기술 스택</h2>
+<div class='tbl'><table><thead><tr><th>계층</th><th>기술</th></tr></thead><tbody><tr><td>프런트/서버</td><td>Next.js 14.2 App Router · TypeScript · React Server Components + 서버 액션</td></tr><tr><td>UI</td><td>Tailwind CSS · shadcn/ui(Radix) · lucide 아이콘 · react-hook-form + zod v4</td></tr><tr><td>데이터</td><td>Supabase (Postgres · Auth · Storage · RLS) · 서비스롤은 서버 전용</td></tr><tr><td>문서</td><td>playwright-core + @sparticuz/chromium (HTML → PDF) · pdf-lib(병합) · 서명 캔버스</td></tr><tr><td>파일</td><td>xlsx (엑셀 일괄 등록·리포트·품의 내보내기)</td></tr><tr><td>알림</td><td>알림 큐(<code>notifications</code>) + Vercel Cron 디스패치 · Solapi 문자(플랫폼 폴백 + 행사별 API) · nodemailer 이메일 · 인앱</td></tr><tr><td>AI</td><td><code>@anthropic-ai/sdk</code> — 멘토 매칭 정성 근거(<code>claude-opus-5</code>, 구조화 출력), 키 없으면 객관 점수만</td></tr><tr><td>테스트·품질</td><td><code>tsc --noEmit</code> · ESLint + 브랜딩 리터럴 검사 · <code>next build</code> · vitest(정산 계산 15건 + 매칭 점수 6건)</td></tr><tr><td>배포</td><td>Vercel (팀 <code>dalgmes-projects</code>, 프로젝트 <code>modu</code>, 리전 icn1, Cron 3개)</td></tr></tbody></table></div>
+<hr>
+<h2 id="2-계층-구조">2. 계층 구조</h2>
+<pre><code>플랫폼 (한 배포)  ── 플랫폼 통합관리자 (users.is_platform_admin)
+ └ programs (행사)  ── 발주처·용역사 기관명 = 브랜딩, 원천징수·정책·보고서 양식·문자 꼬리말
+     ├ program_members (계정 ↔ 행사 소속, 다대다)
+     ├ support_types (사업그룹 A·B·C·D…, 회차 수·기간·승계 원천)
+     │    ├ support_type_members (그룹 명부: 멘토·스태프, 멘토별 원천징수 override)
+     │    ├ support_type_documents (그룹별 필수서류 슬롯)
+     │    └ cases (멘티 1명 = 1건, predecessor_case_id 로 그룹 간 승계)
+     │         ├ mentor_assignments (활성 1명, is_active 로 교체 이력)
+     │         ├ mentoring_logs (회차: 일시·장소·online/offline·단가 스냅샷·서명)
+     │         ├ documents (doc_key 체계, mentor_visible)
+     │         ├ observation_reports · reviews · signatures · survey_responses
+     │         ├ round_extension_requests · mentor_withdrawal_requests · mentor_change_requests
+     │         └ settlements (케이스×멘토 확정 스냅샷) → settlement_batches (지급 품의)
+     ├ consulting_rates · operating_limits (단가·한도, 적용일 이력, 그룹 override)
+     ├ document_templates (회차 보고서 양식, 행사/그룹 스코프) · survey_templates/questions
+     ├ tag_catalog · mentee_profiles · mentor_profiles · match_recommendations
+     ├ mentor_payment_docs · mentor_group_reviews · mentor_signatures
+     └ program_sms_settings (+ program_sms_access_log) — 행사별 문자 API 봉투암호화
+공통: users · audit_logs · notifications · scheduled_messages · app_settings · faqs · inquiries · board_* · operator_requests · supplement_requests · password_reset_otps · case_status_history</code></pre>
+<p><strong>격리 원칙(두 겹)</strong>: RLS 헬퍼(<code>private.is_program_member/is_program_staff</code>) + 서비스롤 경로의 모든 스태프 조회·알림 수신자 조회에 컨텍스트 쿠키 <code>modu_ctx</code> 의 <code>program_id</code>(+<code>support_type_id</code>) 코드 필터. 새 페이지는 반드시 <code>requireContext(profile)</code>.</p>
+<hr>
+<h2 id="3-데이터-모델-45개-테이블">3. 데이터 모델 (45개 테이블)</h2>
+<div class='tbl'><table><thead><tr><th>묶음</th><th>테이블</th></tr></thead><tbody><tr><td>행사·소속</td><td><code>programs</code> <code>program_members</code> <code>support_types</code> <code>support_type_members</code> <code>support_type_documents</code></td></tr><tr><td>계정</td><td><code>users</code>(role enum 4 + <code>is_platform_admin</code>) <code>password_reset_otps</code></td></tr><tr><td>케이스·회차</td><td><code>cases</code> <code>case_status_history</code> <code>mentor_assignments</code> <code>mentoring_logs</code> <code>round_extension_requests</code> <code>mentor_withdrawal_requests</code> <code>mentor_change_requests</code> <code>observation_reports</code> <code>reviews</code> <code>signatures</code> <code>documents</code> <code>supplement_requests</code></td></tr><tr><td>단가·정산</td><td><code>consulting_rates</code> <code>operating_limits</code> <code>settlements</code> <code>settlement_batches</code> <code>mentor_payment_docs</code></td></tr><tr><td>만족도</td><td><code>survey_templates</code> <code>survey_questions</code> <code>survey_responses</code></td></tr><tr><td>매칭·평가</td><td><code>tag_catalog</code> <code>mentee_profiles</code> <code>mentor_profiles</code> <code>match_recommendations</code> <code>mentor_group_reviews</code></td></tr><tr><td>양식·서명</td><td><code>document_templates</code> <code>mentor_signatures</code></td></tr><tr><td>문자·알림</td><td><code>program_sms_settings</code> <code>program_sms_access_log</code> <code>notifications</code> <code>scheduled_messages</code> <code>app_settings</code></td></tr><tr><td>커뮤니케이션</td><td><code>inquiries</code> <code>operator_requests</code> <code>faqs</code> <code>board_posts</code> <code>board_replies</code></td></tr><tr><td>감사</td><td><code>audit_logs</code>(INSERT-only, <code>actor_id = auth.uid()</code> 강제, <code>program_id</code> null = 플랫폼 행위)</td></tr></tbody></table></div>
+<p>스토리지 버킷 3개(경로 <code>{caseId}/…</code> 전역 유일). 마이그레이션: 원본 0001~0045 중 선별 적용 + 모두의창업 0046~0058.</p>
+<div class='tbl'><table><thead><tr><th>마이그레이션</th><th>내용</th></tr></thead><tbody><tr><td>0046</td><td>programs · 멤버십 · 플랫폼 관리자 플래그</td></tr><tr><td>0047</td><td>support_types v2(동적 그룹) · 그룹 명부</td></tr><tr><td>0048</td><td>case_status v2 · cases 정리 · 배정 종료 사유 · 자진 종료 요청</td></tr><tr><td>0049</td><td>consulting_mode · 단가 · 한도 · mentoring_logs v2 · 추가 회차 요청</td></tr><tr><td>0050</td><td>settlements · 품의</td></tr><tr><td>0051</td><td>멘토 변경 요청 · 만족도 양식 · 멘토 그룹 평가 · reviews 재사용</td></tr><tr><td>0052</td><td>단일본 doc_key 유니크 인덱스 v2</td></tr><tr><td>0053</td><td>레거시 5테이블 삭제 · app_settings · 서식 · 알림 · 감사 행사 범위</td></tr><tr><td>0054</td><td>매칭 프로필 · 추천 · 멘토 지급서류</td></tr><tr><td>0055</td><td>시드(행사 <code>modu-2026</code>, 그룹 A~D, 단가·한도, 만족도 양식, 키워드)</td></tr><tr><td>0056</td><td>서류 공개 범위 · 관찰의견서 · 행사별 문자 설정</td></tr><tr><td>0057</td><td>멘티 기능(<code>signatures.log_id</code> 회차 귀속)</td></tr><tr><td>0058</td><td>보고서 양식 스코프 · 서명 정책 · 멘토 서명</td></tr></tbody></table></div>
+<hr>
+<h2 id="4-상태머신-case-status-v2">4. 상태머신 (<code>case_status</code> v2)</h2>
+<pre><code>registered → mentor_assigned → in_progress ⇄ reassignment_pending
+   → closure_requested ⇄ revision_requested
+   → settlement_pending → settlement_batched → closed
+   ※ withdrawn 은 어느 비종결 상태에서든</code></pre>
+<div class='tbl'><table><thead><tr><th>전이</th><th>from → to</th><th>주체</th><th>게이트 요지</th><th>부수효과</th></tr></thead><tbody><tr><td>T1</td><td>∅ → registered</td><td>운영사</td><td>—</td><td>멘티 계정 발급, 승계 링크</td></tr><tr><td>T2</td><td>registered → mentor_assigned</td><td>운영사</td><td>상태 = registered</td><td>알림 멘토·멘티, 추천 채택 기록</td></tr><tr><td>T3</td><td>(유지) 멘토 교체</td><td>운영사</td><td>∉ {registered, closed, withdrawn}</td><td>배정 <code>is_active</code> 교체, 회차는 케이스 누적</td></tr><tr><td>T4</td><td>mentor_assigned → in_progress</td><td>멘토</td><td>1회차 등록</td><td>회차 검증 7항목</td></tr><tr><td>T5</td><td>in_progress/revision_requested → closure_requested</td><td>멘토</td><td>회차 ≥ 필수 + 관찰의견서 + (설정) 서명·필수서류</td><td>정산 예상본, 알림 운영사</td></tr><tr><td>T6</td><td>closure_requested → revision_requested</td><td>운영사</td><td>—</td><td>reviews 기록, 알림 멘토</td></tr><tr><td>T7</td><td>closure_requested → settlement_pending</td><td>운영사</td><td>스냅샷 저장 성공 후에만 전이</td><td>settlements 확정, 정산서 PDF, 알림 멘토(금액)·발주처</td></tr><tr><td>T8/T8'</td><td>settlement_pending ⇄ settlement_batched</td><td>운영사</td><td>품의 draft 일 때만 제외</td><td>batch_id</td></tr><tr><td>T9</td><td>settlement_batched → closed</td><td>발주처</td><td>품의 제출됨</td><td>알림 멘토·멘티, 만족도 안내</td></tr><tr><td>T10</td><td>비종결 → withdrawn</td><td>스태프</td><td>—</td><td>배정 해제, 이행 회차 부분 정산</td></tr><tr><td>T11a</td><td>in_progress → reassignment_pending</td><td>멘토 요청 → 운영사 승인</td><td>활성 배정 = 요청 멘토</td><td>배정 종료(사유 공개), 부분 정산</td></tr><tr><td>T11b</td><td>→ reassignment_pending (강제)</td><td>운영사(사유 필수)</td><td>활성 배정 존재</td><td>사유는 운영사·발주처만 열람, 부분 정산</td></tr><tr><td>T12</td><td>reassignment_pending → in_progress</td><td>운영사</td><td>활성 배정 없음</td><td>새 멘토는 잔여 회차만</td></tr></tbody></table></div>
+<p>전이 상수는 <code>src/lib/workflow/transitions.ts</code> 한 곳. <strong>UI 버튼 조건과 서버 게이트가 같은 상수를 읽는다.</strong></p>
+<h3 id="회차-규칙">회차 규칙</h3>
+<p>1회차 = <code>mentoring_logs</code> 1행(웹작성/업로드 공통). 필수: 시작·종료 일시, 장소, 유형(online/offline), 내용 또는 파일·사진, <strong>단가 스냅샷</strong>. 검증: 회차 ≤ 필수 회차 + 승인 추가 / 같은 멘티·같은 날 합산(회차 ≤ 3, 유형별 금액 ≤ 상한) / 멘토 1일 최대 3건 / 시간 겹침 불가 / 멘티 서명 후 수정 잠금. 웹작성 회차는 저장·서명 시 양식 PDF 재생성.</p>
+<hr>
+<h2 id="5-서류-체계-doc-key">5. 서류 체계 (<code>doc_key</code>)</h2>
+<div class='tbl'><table><thead><tr><th>doc_key</th><th>성격</th><th>강제</th></tr></thead><tbody><tr><td><code>mentoring_report:{logId}</code></td><td>회차 보고서(업로드본 또는 양식 렌더본), 회차당 1</td><td>유니크 인덱스 접두</td></tr><tr><td><code>mentoring_photo:{logId}</code></td><td>회차 사진, 누적</td><td>—</td></tr><tr><td><code>observation_report</code></td><td>관찰의견서(=평가서), 케이스당 1 <strong>단일본</strong></td><td>DB 유니크 인덱스 + delete-then-insert</td></tr><tr><td><code>settlement_statement</code></td><td>정산서(확정 시 생성), 이력 보존</td><td>—</td></tr><tr><td><code>req:{key}</code> / <code>req1:{key}</code></td><td>그룹별 필수서류 슬롯</td><td><code>req1:</code> 유니크</td></tr><tr><td><code>case_doc</code></td><td>멘티 자유 첨부, <code>mentor_visible</code> 로 멘토 공개/비공개</td><td>RLS + 코드 필터</td></tr><tr><td><code>application_pdf</code></td><td>등록 원본, 이력 보존</td><td>—</td></tr></tbody></table></div>
+<hr>
+<h2 id="6-정산">6. 정산</h2>
+<ul><li>계산은 <code>src/lib/settlement/compute.ts</code> 의 <code>computeSettlement({rounds, withholding})</code> <strong>한 곳</strong>. 화면 예상액과 확정 저장액이 같은 함수에서 나온다. vitest 15건.</li><li>원천징수 방식 결정 순서: 그룹 내 멘토별 → 그룹 일괄 → 행사 기본. 파라미터(경비율·세율·지방세·과세최저한·절사)는 행사 설정, 스냅샷에 적용값 저장.</li><li>정산 단위 = 케이스 × 멘토(<code>settlements</code> unique). kind <code>closure</code>(종결) / <code>partial</code>(중도 종료 이행분).</li><li>흐름: 검수 승인 시 스냅샷 선저장 → <code>settlement_pending</code> → 품의 편성·제출(운영사) → 정산 확인(발주처) → <code>closed</code> → 지급 완료 표시. 확정 후 회차 변경은 다음 정산에 반영, 확정본 불변.</li><li>산출물: 정산서 PDF(<code>settlement_statement</code>), 품의 엑셀, 멘토 통보(인앱 + 문자, 금액 포함), 지급서류 미비 멘토 품의 차단(설정).</li></ul>
+<hr>
+<h2 id="7-권한-보안-감사">7. 권한·보안·감사</h2>
+<div class='tbl'><table><thead><tr><th>원칙</th><th>구현</th></tr></thead><tbody><tr><td>신원 분리</td><td>스태프 특권·감사 실행자 = <code>getRealSessionProfile()</code>, 업무 명의 = <code>getSessionProfile()</code> (대행 view-as 시 다름)</td></tr><tr><td>범위 강제</td><td>RLS 에 의존하지 않고 코드에서 배정·행사 소속 직접 확인</td></tr><tr><td>가드</td><td><code>requireNextlab</code> <code>requireInstitution</code> <code>requireMentor</code> <code>requireMentee</code> <code>requireStaff</code> <code>requirePlatformAdmin</code> <code>mentorOfCaseOrNull</code> + <code>requireContext</code></td></tr><tr><td>감사</td><td><code>audit_logs</code> INSERT-only, 실행자 강제, 대행은 <code>metadata.on_behalf_of</code>, 플랫폼 콘솔 행위는 <code>program_id null</code></td></tr><tr><td>재인증</td><td>멘토 지급서류 체크·행사별 문자 API 등록은 비밀번호 재입력, 대행 불가</td></tr><tr><td>문자 API 보안(7겹)</td><td><code>SMS_KEK</code> 봉투암호화(DEK 래핑) · 힌트만 표시 · 재인증 · 접근 로그 · 서비스롤 전용 테이블 · 감사 · 키 회전</td></tr><tr><td>서버 액션</td><td>역할 불일치 시 <code>redirect()</code> 금지, <code>{ ok:false, error }</code> 반환</td></tr><tr><td>비밀값</td><td>코드에 없음(<code>.env.example</code> 만). Supabase <code>modu</code> 는 restart 와 별개 프로젝트</td></tr></tbody></table></div>
+<hr>
+<h2 id="8-화면-라우트-지도">8. 화면·라우트 지도</h2>
+<div class='tbl'><table><thead><tr><th>영역</th><th>라우트</th><th>내용</th></tr></thead><tbody><tr><td>공통</td><td><code>/login</code> <code>/change-password</code> <code>/reset-password</code> <code>/privacy-policy</code> <code>/terms</code> <code>/hub</code> <code>/hub/enter</code></td><td>통합 로그인, 허브(행사·그룹 배너, 자동 진입)</td></tr><tr><td>플랫폼</td><td><code>/platform</code> <code>/platform/programs</code> <code>/platform/programs/[id]</code> <code>/platform/new</code> <code>/platform/users</code> <code>/platform/admins</code> <code>/platform/audit</code> <code>/platform/system</code></td><td>통합 현황 · 행사 관리·개설(설정 복제, 첫 운영사 계정) · 계정 통합 조회(비밀번호 재발급·활성화·행사 소속) · 플랫폼 관리자 · 통합 감사로그 · 시스템 상태</td></tr><tr><td>운영사</td><td><code>/nextlab/dashboard</code> <code>/nextlab/cases/new</code> <code>/nextlab/cases/[id]</code> <code>/nextlab/requests</code> <code>/nextlab/settlements</code> <code>/nextlab/settlements/batches/[id]</code> <code>/nextlab/mentors</code> <code>/nextlab/members</code> <code>/nextlab/members/import</code> <code>/nextlab/succession</code> <code>/nextlab/settings</code> <code>/nextlab/settings/sms-api</code> <code>/nextlab/reports</code> <code>/nextlab/inquiries</code> <code>/nextlab/qna</code> <code>/nextlab/mentee-board</code> <code>/nextlab/mentor-board</code> <code>/nextlab/view/[userId]</code></td><td>대시보드 타일, 멘티 등록·케이스 상세(배정·AI 추천·검수·정산·중도 종료·서류), 요청함, 정산·품의, 멘토 명단(지급서류·원천징수·평가), 회원관리·엑셀, 승계 개설, 운영 설정 8탭, 리포트, 문의·게시판, 대행</td></tr><tr><td>운영·공용</td><td><code>/admin/audit-logs</code> <code>/admin/settings/sms</code> <code>/admin/settings/faq</code> <code>/admin/settings/features</code></td><td>행사 감사로그, 문자 발송·예약, FAQ, 기능 토글(레거시)</td></tr><tr><td>발주처</td><td><code>/institution/dashboard</code> <code>/institution/cases/[id]</code> <code>/institution/settlements</code> <code>/institution/settlements/[id]</code> <code>/institution/reports</code> <code>/institution/mentors</code> <code>/institution/requests</code> <code>/institution/guide</code> <code>/institution/install</code> 게시판</td><td>열람, 정산 확인(T9), 리포트</td></tr><tr><td>멘토</td><td><code>/mentor/dashboard</code> <code>/mentor/cases/[id]</code> <code>/mentor/settlements</code> <code>/mentor/profile</code> <code>/mentor/signature</code> <code>/mentor/qna</code> <code>/mentor/guide</code> <code>/mentor/install</code></td><td>회차·관찰의견서·종결·요청, 정산 내역, 매칭 프로필, 서명 등록</td></tr><tr><td>멘티</td><td><code>/mentee/dashboard</code> <code>/mentee/rounds</code> <code>/mentee/survey</code> <code>/mentee/documents</code> <code>/mentee/inquiries</code> <code>/mentee/consent</code></td><td>할 일 카드, 회차 서명, 만족도, 필수·자유 서류, 문의</td></tr><tr><td>API</td><td><code>/api/setup</code> <code>/api/cron/dispatch-notifications</code> <code>/api/cron/overdue-reminders</code> <code>/api/cron/mentor-weekly-reminder</code> <code>/api/reports/export</code> <code>/api/nextlab/batches/[id]/export</code></td><td>부트스트랩(1회), Cron(<code>CRON_SECRET</code>), 엑셀 내보내기</td></tr></tbody></table></div>
+<p>PDF 를 만드는 페이지 5개(<code>/mentor/cases/[id]</code> <code>/mentee/rounds</code> <code>/nextlab/cases/[id]</code> <code>/nextlab/requests</code> <code>/institution/cases/[id]</code>)는 <code>maxDuration = 60</code> + Chromium 트레이싱.</p>
+<hr>
+<h2 id="9-코드-디렉터리-지도">9. 코드 디렉터리 지도</h2>
+<div class='tbl'><table><thead><tr><th>경로</th><th>역할</th></tr></thead><tbody><tr><td>`src/app/(auth</td><td>hub</td><td>platform</td><td>nextlab</td><td>institution</td><td>mentor</td><td>mentee</td><td>admin)`</td><td>라우트 그룹별 레이아웃(가드 + 컨텍스트) 과 페이지</td></tr><tr><td><code>src/lib/auth</code></td><td>가드, 세션·대행, 계정 발급(<code>admin-accounts.ts</code>), 회원 액션, 비밀번호 재설정</td></tr><tr><td><code>src/lib/programs</code></td><td>브랜딩(<code>branding.ts</code>), 행사·그룹 조회, 컨텍스트 쿠키(<code>context.ts</code>), 허브 진입</td></tr><tr><td><code>src/lib/workflow</code></td><td>전이 상수(<code>transitions.ts</code>), 케이스(<code>cases.ts</code>), 회차(<code>rounds.ts</code>), 종결(<code>closure.ts</code>), 검수(<code>review.ts</code>), 품의(<code>batches.ts</code>), 중도 종료(<code>withdrawal.ts</code>), 멘티(<code>mentee.ts</code>), 승계(<code>succession.ts</code>), 서류(<code>case-documents.ts</code>) + <code>*-actions.ts</code></td></tr><tr><td><code>src/lib/settlement</code></td><td><code>compute.ts</code>(단일 계산) <code>policy.ts</code>(원천징수 결정) <code>rates.ts</code>(단가·한도 이력) <code>settle.ts</code>(스냅샷·정산서) <code>export.ts</code> <code>labels.ts</code> <code>actions.ts</code></td></tr><tr><td><code>src/lib/documents</code></td><td>회차 보고서 양식 해석·PDF 재생성·서명 정책(<code>round-report.ts</code>), 렌더</td></tr><tr><td><code>src/lib/matching</code></td><td>객관 점수(<code>score.ts</code>) 추천 생성·모델 근거(<code>recommend.ts</code>) 액션</td></tr><tr><td><code>src/lib/settings</code> <code>src/lib/mentors</code> <code>src/lib/reports</code> <code>src/lib/platform</code> <code>src/lib/import</code> <code>src/lib/sms</code> <code>src/lib/notifications</code> <code>src/lib/data</code></td><td>운영 설정, 멘토 명단, 리포트 계산·내보내기, 플랫폼 콘솔 데이터·액션, 엑셀 가져오기, 행사별 문자 보안, 알림 큐·디스패치, 조회 전용 모듈</td></tr><tr><td><code>src/components/*</code></td><td>영역별 UI (cases, settlement, settings, matching, platform, hub, common …)</td></tr><tr><td><code>src/types</code></td><td><code>database.ts</code>(Supabase 생성) <code>case-status.ts</code>(상태 메타)</td></tr><tr><td><code>supabase/migrations</code></td><td>0001~0058</td></tr><tr><td><code>scripts</code></td><td><code>check-brand-strings.sh</code>(브랜딩 리터럴 0건 강제) <code>bootstrap-admin.mjs</code></td></tr><tr><td><code>docs</code></td><td>설계·조사·런북·핸드북</td></tr></tbody></table></div>
+<hr>
+<h2 id="10-알림-cron">10. 알림·Cron</h2>
+<div class='tbl'><table><thead><tr><th>Cron</th><th>주기</th><th>역할</th></tr></thead><tbody><tr><td><code>/api/cron/dispatch-notifications</code></td><td>5분</td><td><code>notifications</code> 큐 pending → 인앱·문자(행사별 API → 플랫폼 폴백)·이메일 발송, <code>payload.message</code> 를 문자 본문에 부착</td></tr><tr><td><code>/api/cron/overdue-reminders</code></td><td>매일 00:00 UTC</td><td>정체 회차·미처리 요청 리마인더</td></tr><tr><td><code>/api/cron/mentor-weekly-reminder</code></td><td>월 03:30 UTC</td><td>멘토 주간 안내(설정으로 on/off)</td></tr></tbody></table></div>
+<p>문자 실패는 try/catch 로 격리되어 본 작업을 막지 않는다. 시스템 상태 페이지에서 마지막 발송 시각과 대기 건수로 Cron 생존을 본다.</p>
+<hr>
+<h2 id="11-인프라-배포">11. 인프라·배포</h2>
+<div class='tbl'><table><thead><tr><th>항목</th><th>값</th></tr></thead><tbody><tr><td>GitHub</td><td><code>dalgme/modu</code>, 작업 브랜치 <code>claude/modu-platform-audit-tutute</code> (현재 Vercel Production)</td></tr><tr><td>Supabase</td><td><code>modu</code> (<code>osrigknfrzsqjrgihgao</code>, ap-northeast-2)</td></tr><tr><td>Vercel</td><td>팀 <code>dalgmes-projects</code> · 프로젝트 <code>modu</code> · <code>https://modu-dalgmes-projects.vercel.app</code> · icn1 · Node 24</td></tr><tr><td>환경변수</td><td>필수 <code>NEXT_PUBLIC_SUPABASE_URL</code> <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> <code>SUPABASE_SERVICE_ROLE_KEY</code> <code>NEXT_PUBLIC_APP_URL</code> <code>CRON_SECRET</code> · 권장 <code>VIEW_AS_SECRET</code> <code>SMS_KEK</code> · 선택 <code>SOLAPI_*</code> <code>SMTP_*</code> <code>ANTHROPIC_API_KEY</code> · 1회 <code>BOOTSTRAP_TOKEN</code>(사용 후 삭제)</td></tr><tr><td>규칙</td><td><code>NEXT_PUBLIC_</code> 은 Config 타입, 나머지는 Secret · Vercel Authentication 은 Disabled · <code>NEXT_PUBLIC_*</code> 변경 시 캐시 없이 재배포</td></tr><tr><td>검증 4종</td><td><code>npm run typecheck</code> · <code>npm run lint</code>(ESLint + 브랜딩 검사) · <code>npm run build</code> · <code>npm run test</code></td></tr></tbody></table></div>
+<h2 id="12-불변-규칙-원본에서-사고가-났던-지점">12. 불변 규칙 (원본에서 사고가 났던 지점)</h2>
+<ol><li>스태프 특권·감사 실행자는 실제 신원, 업무 명의는 유효 신원.</li><li>RLS 를 범위 강제에 쓰지 말고 코드에서 직접 확인.</li><li><code>audit_logs</code> insert 에러를 삼키지 말 것(조용히 유실).</li><li>PDF 라우트는 <code>maxDuration = 60</code>.</li><li>문자 발송은 try/catch 격리.</li><li><code>NEXT_PUBLIC_*</code> 변경 시 캐시 없이 재배포.</li><li>서버 액션에서 역할 불일치 시 <code>redirect()</code> 금지.</li><li>단일본 doc_key 는 DB 유니크 인덱스.</li><li>회차 카운트는 케이스 단위(멘토 변경 시 리셋 금지).</li><li>기관명 리터럴 금지, <code>{client}</code> <code>{operator}</code> <code>{program}</code> 플레이스홀더만.</li></ol><hr><h1 id="모두의창업-플랫폼-전달받은-프롬프트-정리">모두의창업 플랫폼 — 전달받은 프롬프트 정리</h1>
+<blockquote>정리일 2026-09-08 · 세션 <code>claude/modu-platform-audit-tutute</code> 의 사용자 지시 원문을 시간순으로 모았다. 비밀값(부트스트랩 토큰 등)은 기록에서 제외했다. 시스템 자동 메시지(컨텍스트 요약, 스킬 로드)는 프롬프트가 아니므로 표에만 표시한다. modu 이전 단계(restart 세션에서의 기획·인프라 구축)의 프롬프트는 이 세션에 없으며, 그 산출물은 <code>docs/START-HERE.md</code> <code>docs/CLAUDE-CODE-PROMPTS.md</code> 로 인계됐다.</blockquote>
+<hr>
+<h2 id="1-상시-작업-원칙-모든-세션에-적용">1. 상시 작업 원칙 (모든 세션에 적용)</h2>
+<p>첫 프롬프트에서 전달받아 <code>CLAUDE.md</code> 에 고정된 규칙이다.</p>
+<ol><li>추측하지 말고 실제 파일을 읽고 판단할 것.</li><li>코드 변경 후 <code>npm run typecheck</code> / <code>lint</code> / <code>build</code> 3종을 모두 통과시킬 것 (P4 이후 <code>npm run test</code> 포함 4종).</li><li><code>case_status</code> 나 <code>doc_key</code> 를 바꿀 때는 UI 버튼 활성 조건과 서버 액션의 상태 게이트를 반드시 함께 수정할 것.</li><li>단일본 <code>doc_key</code> 는 반드시 DB 유니크 인덱스로 강제할 것.</li><li>정산 금액은 화면 표시액과 확정 저장액이 같은 함수에서 나오게 할 것.</li><li>환경변수 값은 절대 리포에 커밋하지 말 것. 원본 restart 의 <code>.env</code> 값을 복사하지 말 것.</li><li>작업은 지정 브랜치에서만, PR 은 요청 시에만.</li></ol>
+<hr>
+<h2 id="2-프롬프트-연대기">2. 프롬프트 연대기</h2>
+<div class='tbl'><table><thead><tr><th>#</th><th>시각(UTC)</th><th>요지</th><th>결과</th></tr></thead><tbody><tr><td>1</td><td>09-07 07:06</td><td>세션 시작: 문서 4개 읽기, 인프라 현황, 작업 원칙, 현행 코드 전수 조사 → 질문 6건</td><td><code>docs/CURRENT-STATE.md</code>, 질문 6건 제시</td></tr><tr><td>2</td><td>09-07 08:01</td><td>Supabase 키 분리 확인 + 1차 답변 6건 + "계정 추가로 여러 행사에 복제"</td><td><code>docs/MODU-DESIGN.md</code> v1, 상태머신·서류·정산·다중 행사 설계</td></tr><tr><td>3</td><td>09-07 08:51</td><td>2차 답변 10건 (원천징수·합산 상한·설문·중도 종료·설정·AI 매칭·지급서류)</td><td>설계 §0-2, §14~§16</td></tr><tr><td>—</td><td>09-07 08:53</td><td>(시스템) 스킬 로드</td><td>—</td></tr><tr><td>5</td><td>09-07 09:06</td><td>행사 기본에서 발주처/용역사 기관명 등록 → 행사 전체 반영</td><td>설계 §17 브랜딩, <code>getBranding()</code></td></tr><tr><td>6</td><td>09-07 12:23</td><td>3차 지시: 원천징수 그룹/멘토별, 중도 종료 자진/강제, 행사별 한도, 리포트·대시보드, 멘토 평가·메모, 다중 소속·통합 로그인·허브·자동 진입·상단 표시 + "P1 마이그레이션 진행"</td><td>설계 개정(§1-3, §18~§20), P1 0046~0055 적용</td></tr><tr><td>7</td><td>09-07 12:52</td><td>"진행하세요"</td><td>P2 도메인 코어 + 레거시 삭제</td></tr><tr><td>8</td><td>09-07 13:26</td><td>엑셀 일괄 등록, 멘티 서류 공개/비공개, 행사별 문자 API 다중 보안 + "p3 진행"</td><td>P3 + 설계 §21</td></tr><tr><td>—</td><td>09-07 13:41</td><td>(시스템) 컨텍스트 요약</td><td>—</td></tr><tr><td>10</td><td>09-07 14:32</td><td>"진행중인가요?"</td><td>상태 보고</td></tr><tr><td>11</td><td>09-07 14:37</td><td>"P4진행하세요"</td><td>P4 정산</td></tr><tr><td>12</td><td>09-07 15:28</td><td>"p5진행하세요"</td><td>P5 멘티 기능</td></tr><tr><td>13</td><td>09-07 16:16</td><td>멘티 확인 서명 / 멘토 서명 자동 부착(양식에 서명 컬럼 있을 때만), 행사·그룹 단위 보고서 양식 + "p6 진행"</td><td>0058, 설계 §22, P6</td></tr><tr><td>14</td><td>09-07 21:36</td><td>"p7진행"</td><td>P7 플랫폼 콘솔·브랜딩 0건·AI 매칭</td></tr><tr><td>—</td><td>09-07 21:37</td><td>(시스템) 스킬 로드</td><td>—</td></tr><tr><td>16</td><td>09-07 22:01</td><td>"진행하세요"</td><td>P8 배포 준비</td></tr><tr><td>—</td><td>09-07 22:05</td><td>(시스템) 컨텍스트 요약</td><td>—</td></tr><tr><td>18</td><td>09-08 03:12</td><td>"진행중인가요?"</td><td>P8 상태 보고(Vercel 403 → 사용자 조치 안내)</td></tr><tr><td>19</td><td>09-08 03:23</td><td>비밀키 4종은 어디서 가져오나</td><td>난수 생성 안내</td></tr><tr><td>20</td><td>09-08 03:25</td><td>생성한 난수를 어디에 넣나</td><td>Vercel 환경변수 입력 위치 안내</td></tr><tr><td>21</td><td>09-08 03:35</td><td>난수 4개 넣었는데 deploy 가 안 됨</td><td>배포 0건 확인 → Create Deployment 안내</td></tr><tr><td>22</td><td>09-08 03:41</td><td><code>NEXT_PUBLIC_SUPABASE_URL</code> 입력부터 에러 (스크린샷)</td><td>Secret → Config 타입 안내</td></tr><tr><td>23</td><td>09-08 03:45</td><td>"모두 완료"</td><td>빌드 성공 확인, 배포 보호 해제 안내</td></tr><tr><td>24</td><td>09-08 03:56</td><td>(부트스트랩 토큰 — 기록 생략)</td><td>이메일·이름 확인 후 실행 명령 제공</td></tr><tr><td>25</td><td>09-08 04:08</td><td>"BOOTSTRAP_TOKEN 삭제 완료. 다음 진행하세요."</td><td>스모크 테스트, 제목 중복 수정, 검증 안내</td></tr><tr><td>26</td><td>09-08 04:12</td><td>플랫폼 총괄관리자 통합관리 기능 부재 + 상단 로그인 상태 표시 요구</td><td>통합관리 콘솔 7탭 + 상단 배지</td></tr><tr><td>27</td><td>09-08 04:3x</td><td>기획·구조·프롬프트를 md·html 파일로 정리</td><td>이 핸드북</td></tr></tbody></table></div>
+<hr>
+<h2 id="3-프롬프트-원문">3. 프롬프트 원문</h2>
+<h3 id="1-세션-시작-2026-09-07-07-06">#1 — 세션 시작 (2026-09-07 07:06)</h3>
+<pre><code>이 리포(dalgme/modu)는 dalgme/restart(재기지원사업 운영관리 플랫폼)를 복제해
+&quot;모두의창업&quot; 사업용으로 개조하는 프로젝트입니다.
+기획과 인프라 구축은 이전 세션에서 끝났고, 이 창에서 코드 개조를 이어받습니다.
+
+■ 먼저 이 4개 문서를 읽고 시작하세요 (순서대로)
+  1. docs/START-HERE.md            — 현재 상태, 남은 일, 확정 필요 질문
+  2. CLAUDE.md                     — 확정된 도메인 정의(역할·데이터모델·정산요건)
+  3. docs/PLATFORM-CLONE-HANDOVER.md — 스택, 환경변수, 마이그레이션, 버킷, 크론
+  4. docs/DOMAIN-REMODEL-GUIDE.md  — 원본에서 무엇을 바꾸고 무엇을 건드리면 안 되는지
+
+■ 인프라 현황 (이미 완료 — 다시 만들지 마세요)
+  - GitHub: dalgme/modu (restart 코드 전체 복제 완료)
+  - Supabase: 프로젝트 modu / id osrigknfrzsqjrgihgao / ap-northeast-2
+              테이블 27개 · 스토리지 버킷 3개 · RLS 전부 활성
+  - 재기지원 전용 시드/서식 21종은 일부러 적용하지 않았습니다.
+    상세 목록은 docs/START-HERE.md 1절. 새 환경에 재적용할 때도 그대로 건너뛰세요.
+  - Vercel 프로젝트와 /api/setup 초기 계정 부트스트랩은 아직 미실행입니다.
+
+■ 작업 원칙
+  - 추측하지 말고 실제 파일을 읽고 판단할 것
+  - 코드 변경 후 npm run typecheck / lint / build 3종을 모두 통과시킬 것
+  - case_status 나 doc_key 를 바꿀 때는 UI 버튼 활성 조건과 서버 액션의 상태 게이트를
+    반드시 함께 수정할 것 (어긋나면 &quot;버튼은 눌리는데 실패&quot;가 납니다 — 원본 실제 버그)
+  - 단일본 doc_key 는 반드시 DB 유니크 인덱스로 강제할 것
+    (원본에서 앱 코드만 믿었다가 같은 보고서가 5건까지 쌓인 사고가 있었습니다)
+  - 정산 금액은 화면 표시액과 확정 저장액이 같은 함수에서 나오게 할 것
+
+■ 첫 작업 (코드는 아직 바꾸지 마세요)
+  CLAUDE.md 의 §3(진행 단계)과 §4(서류 체계)가 아직 미확정입니다.
+  현재 restart 코드를 전수 조사해 docs/CURRENT-STATE.md 로 정리해 주세요.
+    1) user_role 이 쓰이는 곳
+    2) case_status 상태 전이가 일어나는 서버 액션 전부 (표로)
+    3) doc_key 카탈로그 — 각각 단일본/누적/이력보존 중 무엇인지
+    4) &quot;재기지원 / 진흥원 / 넥스트랩 / 대전&quot; 등 원본 고유 문자열이 몇 곳에 있는지
+
+  조사 결과를 보고한 뒤, docs/START-HERE.md 3절의 &quot;확정 필요 질문 6건&quot;을
+  저에게 물어봐 주세요. 그 답이 나와야 상태머신과 서류 체계를 확정할 수 있습니다.</code></pre>
+<h3 id="2-1차-답변-6건-복제-요건-2026-09-07-08-01">#2 — 1차 답변 6건 + 복제 요건 (2026-09-07 08:01)</h3>
+<pre><code>supabase를 새로 만들어서 이 프로젝트에 새로 써야하는데, 키를 교체하여 단독으로 사용해야하지 않나요!??
+
+답변1) 멘토는 멘티와 컨설팅을 수행하고 기초정보(날짜/시간/장소/방법(온/오프라인)를 선택&gt;컨설팅보고서 웹작성 또는 업로드&gt;컨설팅 종료시 &quot;관찰의견서&quot;를 작성하고 종결 클릭&gt;렛츠 검수 및 정산정보 상신&gt;센터 담당자 확인 및 정산 클릭&gt;종결 확정....  이런 과정이며, 멘티는 &quot;서명/만족도 조사/멘토 변경 요청&quot;의 기능이 있어야 합니다.
+
+답변2) 평가서는 &quot;관찰의견서&quot;이며, 각 멘티별 컨설팅 최종 마무리 후 담당 멘토가 1회 작성하여, 운영기관에  종결 요청합니다.
+
+답변3) 컨설팅 유형이란, 온라인 컨설팅의 경우 회당 8만원, 오프라인의 경우 회당 10만원입니다. 다만 오프라인 컨설팅은 1일 1건당 최대 30만원까지만 가능하며, 온라인 컨설팅은 1일 1건당 최대 24만원까지만 가능합니다! 특정한 사유가 있을 경우, 멘토의 요청으로 특정 멘티에 대해 1회 추가할 수 있는 별도 기능이 있어야 합니다.
+그리고 멘토 1인은 1일 최대 3건(3명의 멘티)의 컨설팅을 진행하로수 있습니다.
+
+답변4) 정산주기는 아직 정해진 바가 없습니다. 다만 각 멘토들이 멘티별로 지정된 컨설팅 회차(3~4회)를  종료하고 종결 요청하면, 정산 정보(멘티당 컨설팅 유형별 회차와 단가, 합계액, 원천징수액, 실지급요청액)을 생산하여 렛츠가 컨설팅 진행내역과 서류 등을 함께 검토하여 승인하면, 지급(종결) 대기상태로 전환하고 이렇게 전환된 사례들을 선택적으로 모아서 지급 품의로 넘기는 과정이 필요함
+
+답변5) 보고서 등록(날짜,시간, 장소,멘토링 유형,멘토링 내용, 사진)이 완료되면 &quot;회차 이행&quot;으로 인정하고, 추후 &quot;관찰보고서&quot;를 제출하면 렛츠가 검수하여 승인처리하면 &quot;회차 완료이자 정산 집계 대상&quot;입니다. 다만 &quot;회차 이행&quot; 상태이면 &quot;예상 비용&quot;으로 집계하여 &quot;확정되지 않은, 변경가능한 예상금액&quot;으로 렛츠 담당자에게 노출되어야 합니다.
+
+답변6) A그룹 : 모두의 창업 1기 / 2라운드, B그룹 : 모두의 창업 2기/1라운드, C그룹  : 모두의 창업 2/2라운드, D그룹 : 모두의 창업 2기/탈락자
+
+위와 같이 예상 되며, 그룹은 더 생성될 수 있음. 또한 각 그룹은 다른 그룹의 멘티와 멘토를 승계할 수 있으며, 각 그룹별 데이터가 영향관계는 없으나, 데이터 기록을 이어받아 확인하거나 활용은 할 수 있음.
+
+이 플랫폼의 이런 운영방식을 계정 추가로 복제/생성하여 여러 행사에 사용할 수 있도록 설계하세요!</code></pre>
+<h3 id="3-2차-답변-10건-2026-09-07-08-51">#3 — 2차 답변 10건 (2026-09-07 08:51)</h3>
+<pre><code>1.원천징수는 기타소득세(일괄) 처리
+2.같은 날/같은 멘티로 합산 상한
+3. 렛츠가 승인주체
+4. 기본 아니오
+5. 네! 다만 문항은 추가 가능하고, 복수선택 응답/주관식/순위 등 유형을 선택해서 사용하도록 함. 운영기관 설정페이지에 그룹별로 만족도표준양식 만들어놓고 사용
+6.중도 종료시에도 이행회차 정산, 중도 종료시 멘토가 사유 작성, 중도 종료 후 잔여회차는 타멘토 배정하여 진행하고 정산할 수 있음
+7. 맞음
+8. 그룹별 회차수는 기본 4회, 다만 운영기관 설정페이지에서 조정하여 셋팅
+9. 로그인 화면은 행사별로 가능해야함. 플랫폼 개발 총괄관리자만 플랫폼 통합로그인
+10. 1일 몇 건, 얼마 한도로 컨설팅 진행하는지 등의 조건이 행사별/그룹별로 다를 수 있음! 설정페이지에서 이의 제한 조건을 등록하도록 함. 그리고 멘토/멘티 등록시 다양한 키워드를 다중 등록하도록 하여, 여러 조건에서 AI가 매칭 추천(멘티에게 적합한 멘토 매칭 추천)이 되도록 하고, 이에 대한 추천 근거를 객관적/정성적으로 작성해 둘것 그리고 멘토들의 경우, 지급관련 서류(이력서, 통장사본, 신분증사본)를 수령해뒀는지 체크할 수 있도록 &quot;멘토별 명단&quot;에 체크 기능을 포함(입력/변경시 비번 입력, 여러 멘토 일괄입력 가능해야 함)</code></pre>
+<blockquote>9번(행사별 로그인)은 #6 의 "통합 로그인 + 허브" 지시로 개정됐다.</blockquote>
+<h3 id="5-브랜딩-2026-09-07-09-06">#5 — 브랜딩 (2026-09-07 09:06)</h3>
+<pre><code>행사기본에서는 &quot;발주처/용역사(운영)&quot; 기관명을 등록하면 해당 행사에 모두 반영하여 보여주세요</code></pre>
+<h3 id="6-3차-지시-p1-착수-2026-09-07-12-23">#6 — 3차 지시 + P1 착수 (2026-09-07 12:23)</h3>
+<pre><code>원천징수 기능은 그룹별 일괄 적용 설정(기타소득세, 사업소득세), 그룹별 멘토별 적용 설정(그룹내에서만 멘토별 원천징수 유형 설정)하는 기능으로 만들어주세요!
+
+멘토 중도 종료는 &quot;멘토가 사유를 적고 종료 요청하면, 운영사(렛츠)가 승인하여 중도 종료확정하는 방법과 운영사(렛츠)가 사유를 적고(운영사, 발주사만 내용 확인 가능) 강제 종료하는 방식으로 만들어 주세요!
+
+1일 상한 등의 규칙은 행사별로 설정하여 적용되도록 해주세요!
+
+발주처/운영사 메뉴에서 각종 리포트를 볼수있게 만들어 주세요! 대시보드에서는 수행성과와 비수행 잔여과업 등 성과평가/정산관련 통계를 직관적으로 표시하도록 하고, 자세한 내역은 각 통계지표별로 버튼을 클릭하여 팝업으로 확인하게 해 주세요!
+
+각 그룹별 멘토리스트에서는 해당 그룹내에서 멘토에 대한 운영사 평가와 메모도 가능하게 해 주시고 해당 평가/메모는 그룹내 활동에만 귀속되도록 하되, 멘토별 모든 그룹활동의 평가와 메모는 로그로 확인하거나 추후 데이터 통합 활용이 가능하도록 해 주세요!
+
+변경사항으로 멘토/멘티/운영사/발주처는 여러 행사/여러 그룹에 귀속될 수 있습니다. 통합로그인으로 들어오고, 활성화된 행사/그룹을 배너형태로 보여주고, 종료된 행사/그룹은 별도 탭에서 확인하도록 해주세요! 각 행사배너를 클릭하여 업무를 관리하도록 해주세요! 만약에 로그인 당시에 하나의 행사만 활성화되어 있다면, 로그인과 동시에 해당 행사로 자동진입하세요! 하나의 그룹만 활성되어있다면, 로그인과 동시에 해당 그룹으로 자동 진입하세요.
+
+행사영역으로 들어가게 되면, 행사명을 알수 있도록 상단에 표시하고, 그룹을 들어가게 되면 행사명/그룹명을 알 수 있도록 상단에 표시하세요!
+
+P1 마이그레이션 진행하세요</code></pre>
+<h3 id="7-2026-09-07-12-52">#7 — (2026-09-07 12:52)</h3>
+<pre><code>진행하세요</code></pre>
+<h3 id="8-p3-추가-요건-2026-09-07-13-26">#8 — P3 추가 요건 (2026-09-07 13:26)</h3>
+<pre><code>멘토/멘티는 운영사에서 엑셀 일괄 등록할 수 있게 구현하고, 멘티 관련 서류 첨부기능(첨부파일 올릴때, 멘토 공개용과 비공개용 체크)을 구현하세요
+
+문자API는 행사별로 운영사가 등록하여 사용하되, API번호가 유출되지 않도록 보안기능을 다중화하여 구축하세요!
+
+p3진행하세요!</code></pre>
+<h3 id="10-11-12-2026-09-07-14-32-14-37-15-28">#10 · #11 · #12 — (2026-09-07 14:32 / 14:37 / 15:28)</h3>
+<pre><code>진행중인가요?
+P4진행하세요
+p5진행하세요</code></pre>
+<h3 id="13-보고서-양식-서명-정책-p6-2026-09-07-16-16">#13 — 보고서 양식·서명 정책 + P6 (2026-09-07 16:16)</h3>
+<pre><code>멘티에게 &quot;알림 발송후, 확인 서명&quot;을 하도록 설정하거나 컨설팅 보고서가 작성/저장되면 멘토 서명이 자동으로 붙도록 하세요! 다만, 컨설팅 보고서 양식에 멘토서명 컬럼이 포함된 경우에 한해 기능 설정을 사용합니다.
+
+각 그룹단위/행사단위로 컨설팅 보고서 양식을 등록하여 사용할 수 있도록 주세요!
+
+p6진행하세요</code></pre>
+<h3 id="14-16-2026-09-07-21-36-22-01">#14 · #16 — (2026-09-07 21:36 / 22:01)</h3>
+<pre><code>p7진행
+진행하세요</code></pre>
+<h3 id="18-25-배포-진행-문답-2026-09-08-03-12-04-08">#18 ~ #25 — 배포 진행 문답 (2026-09-08 03:12 ~ 04:08)</h3>
+<pre><code>진행중인가요?
+CRON_SECRET, VIEW_AS_SECRET, SMS_KEK, BOOTSTRAP_TOKEN 키값은 어디에서 가져와야 하나요?
+&quot;-join ((1..32) | ForEach-Object { &#x27;{0:x2}&#x27; -f (Get-Random -Maximum 256) })&quot;를 실행해서 나온 난수를 어디에 넣나요?
+4개의 난수를 넣었는데, deploy가 안 됩니다.
+1번 완료했는데, &quot;NEXT_PUBLIC_SUPABASE_URL&quot; 입력부터는 에러가 나옵니다.  (스크린샷: Secret 타입 저장 오류)
+모두 완료
+(부트스트랩 토큰 전달 — 기록 생략)
+BOOTSTRAP_TOKEN 삭제 완료. 다음 진행하세요.</code></pre>
+<h3 id="26-플랫폼-통합관리-2026-09-08-04-12">#26 — 플랫폼 통합관리 (2026-09-08 04:12)</h3>
+<pre><code>플랫폼 전체 총괄관리자는 &quot;행사별/그룹별&quot;관리를 넘어서서 플랫폼 전체를 관리할 수 있어야 하는데, 그런 기능은 보이지 않네요. 대체로 &quot;행사, 그룹&quot;에 대한 대부분의 설정은 &quot;운영사(렛츠 등)&quot;가 설정해서 사용하면 될 것 같습니다. 물론 &quot;행사&quot;를 개설해 주거나, 일부 특수한 기능들은 &quot;플랫폼 전체 총괄관리자&quot;가 제어할 수 있어야 하겠죠.
+현재로서는 &quot;플랫폼 전체 총괄관리자&quot;가 플랫폼 통합관리하는 메뉴는 없는 것처럼 보입니다.
+그리고 로그인했을 때, 상단 어딘가에는 &quot;플랫폼 통합관리자&quot;의 로그인상태임을 직관적으로 보여주어야 합니다.</code></pre>
+<h3 id="27-문서-정리-2026-09-08">#27 — 문서 정리 (2026-09-08)</h3>
+<pre><code>이 사이트의 &quot;기획/구조/전달받은 프롬프트&quot; 등을 모두 정리해서 파일들(md, html)로 정리해주세요.</code></pre>
+<hr>
+<h2 id="4-다음-세션에서-쓸-시작-프롬프트-템플릿">4. 다음 세션에서 쓸 시작 프롬프트 (템플릿)</h2>
+<pre><code>이 리포(dalgme/modu)는 &quot;모두의창업&quot; 멘토링 운영관리 플랫폼입니다. 배포·부트스트랩까지 끝났습니다.
+먼저 CLAUDE.md 와 docs/handbook/ (01 기획 · 02 구조 · 03 프롬프트) 를 읽고 시작하세요.
+
+작업 원칙:
+- 추측하지 말고 실제 파일을 읽고 판단할 것
+- 코드 변경 후 npm run typecheck / lint / build / test 4종을 모두 통과시킬 것
+- case_status 나 doc_key 를 바꿀 때는 UI 버튼 조건과 서버 액션 게이트를 함께 수정할 것
+- 단일본 doc_key 는 DB 유니크 인덱스로 강제할 것
+- 정산 금액은 화면 표시액과 확정 저장액이 같은 함수(src/lib/settlement/compute.ts)에서 나오게 할 것
+- 기관명 리터럴 금지 ({client} {operator} {program} 플레이스홀더만), npm run lint 의 브랜딩 검사 0건 유지
+- 새 스태프 페이지는 requireContext(profile) 로 행사 범위를 강제할 것
+- 환경변수 값은 리포에 커밋하지 말 것
+
+이번 작업: &lt;여기에 요청&gt;</code></pre></main></div></body></html>
