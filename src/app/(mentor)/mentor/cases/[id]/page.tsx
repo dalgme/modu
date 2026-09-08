@@ -4,6 +4,7 @@ import { requireMentor } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { getCaseById, getCaseStatusHistory, listPredecessorCases } from '@/lib/data/cases';
 import { getObservationReport, getObservationReportFile, getRoundAllowance, listPendingRequestsForCase, listRounds } from '@/lib/data/rounds';
+import { listTeamMembers } from '@/lib/data/team-members';
 import { listCaseDocuments, listRequiredDocSlots } from '@/lib/workflow/case-documents';
 import { RequiredDocsPanel } from '@/components/cases/required-docs-panel';
 import { normalizeObservation } from '@/lib/workflow/closure';
@@ -47,6 +48,19 @@ export default async function Page({ params }: { params: { id: string } }) {
     estimateSettlements(item.id, profile.id),
     listRequiredDocSlots(item.id, 'mentor'),
   ]);
+  const teamMembers = await listTeamMembers(item.id);
+  // 참가자 선택지 — 멘티 본인(대표)이 항상 첫 항목. 팀원 명단에 대표 표시가 있으면 함께 노출
+  const participantOptions = [
+    { key: 'mentee', name: item.owner_name, role: 'representative' as const, subLabel: '멘티' },
+    ...teamMembers
+      .filter((m) => m.name.trim() !== item.owner_name.trim() || !m.is_representative)
+      .map((m) => ({
+        key: m.id,
+        name: m.name,
+        role: m.is_representative ? ('representative' as const) : ('member' as const),
+        subLabel: m.member_role ?? undefined,
+      })),
+  ];
   const myEstimate = estimates[0] ?? null;
 
   const maxRounds = item.requiredRounds + allowance.approvedExtra;
@@ -93,6 +107,7 @@ export default async function Page({ params }: { params: { id: string } }) {
                 nextRoundNo={rounds.length + 1}
                 maxRounds={maxRounds}
                 rates={{ online: online?.unitPrice ?? null, offline: offline?.unitPrice ?? null }}
+                participantOptions={participantOptions}
               />
             )}
           </CardHeader>

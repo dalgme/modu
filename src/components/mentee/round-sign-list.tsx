@@ -52,7 +52,11 @@ export function RoundSignList({ caseId, rounds, signEnabled = true }: { caseId: 
               <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-800">
                 <CheckCircle2 className="h-3.5 w-3.5" /> 서명 완료 {formatDateTime(r.mentee_signed_at)}
               </span>
-            ) : !signEnabled ? null : (
+            ) : !signEnabled ? null : !r.report_registered_at ? (
+              <span className="rounded-full bg-muted px-2 py-0.5 text-xs text-muted-foreground" title="멘토가 보고서를 등록하면 확인 서명을 할 수 있습니다.">
+                {new Date(r.started_at).getTime() > Date.now() ? '진행 예정' : '보고서 등록 대기'}
+              </span>
+            ) : (
               <Button size="sm" variant={openId === r.id ? 'ghost' : 'default'} className="gap-1" disabled={pending} onClick={() => { setOpenId(openId === r.id ? null : r.id); setSig(null); }}>
                 <PenLine className="h-4 w-4" /> {openId === r.id ? '닫기' : '확인 · 서명'}
               </Button>

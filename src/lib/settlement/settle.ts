@@ -21,7 +21,11 @@ export interface SettlementEstimate {
   withholding: ResolvedWithholding;
 }
 
-/** 케이스의 아직 정산되지 않은 회차 (멘토 지정 시 그 멘토분만) */
+/**
+ * 케이스의 아직 정산되지 않은 회차 (멘토 지정 시 그 멘토분만).
+ * 보고서(2단계)가 등록된 회차만 — 계획만 등록된 회차는 이행으로 인정하지 않는다 (P12).
+ * 예상 표시와 확정 저장이 모두 이 함수를 지나므로 두 값이 어긋나지 않는다.
+ */
 export async function loadUnsettledRounds(caseId: string, mentorId?: string): Promise<SettlementRoundInput[]> {
   const admin = createAdminClient();
   let q = admin
@@ -29,6 +33,7 @@ export async function loadUnsettledRounds(caseId: string, mentorId?: string): Pr
     .select('id, round_no, mode, started_at, unit_price_snapshot, amount_snapshot, is_extra, mentor_id')
     .eq('case_id', caseId)
     .is('settlement_id', null)
+    .not('report_registered_at', 'is', null)
     .order('round_no');
   if (mentorId) q = q.eq('mentor_id', mentorId);
   const { data } = await q;

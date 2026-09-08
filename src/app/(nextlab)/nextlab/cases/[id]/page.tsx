@@ -8,6 +8,8 @@ import { getCaseById, getCaseStatusHistory, listMentorsForProgram, listPredecess
 import { getObservationReportFile, listPendingRequestsForCase, listRounds } from '@/lib/data/rounds';
 import { listCaseDocuments, listRequiredDocSlots } from '@/lib/workflow/case-documents';
 import { getCaseSurvey } from '@/lib/data/survey';
+import { listTeamMembers } from '@/lib/data/team-members';
+import { TeamPanel } from '@/components/cases/team-panel';
 import { RequiredDocsPanel } from '@/components/cases/required-docs-panel';
 import { SurveyResultCard } from '@/components/cases/survey-result-card';
 import { MentorChangePanel } from '@/components/nextlab/mentor-change-panel';
@@ -56,6 +58,7 @@ export default async function Page({ params }: { params: { id: string } }) {
     createAdminClient().from('mentee_profiles').select('*').eq('case_id', item.id).maybeSingle(),
     listTags(ctx.programId),
   ]);
+  const teamMembers = await listTeamMembers(item.id);
   const tagOptions: TagOptions = {};
   for (const t of tags) (tagOptions[t.category] ??= []).push(t.label);
   const mp = menteeProfile.data;
@@ -86,6 +89,13 @@ export default async function Page({ params }: { params: { id: string } }) {
           <MatchRecommendations caseId={item.id} initial={recs} assignable={canTransition('assign_mentor', item.status)} reassignable={item.mentorId !== null && canTransition('reassign_mentor', item.status)} currentMentorId={item.mentorId} modelConfigured={!!process.env.ANTHROPIC_API_KEY} />
         )}
         <MenteeProfileForm caseId={item.id} value={mp ? { industry: mp.industry, stage: mp.stage, region: mp.region, preferred_mode: mp.preferred_mode, needs: mp.needs, keywords: mp.keywords, summary: mp.summary } : null} tags={tagOptions} />
+
+        <TeamPanel
+          caseId={item.id}
+          item={item.item}
+          itemDescription={mp?.item_description ?? null}
+          members={teamMembers.map((m) => ({ id: m.id, name: m.name, member_role: m.member_role, phone: m.phone, email: m.email, is_representative: m.is_representative }))}
+        />
 
         {canTransition('review_approve', item.status) && (
           <ClosureReviewPanel caseId={item.id} estimates={estimateProps} observationUrl={obsFile?.url ?? null} />

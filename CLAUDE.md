@@ -150,9 +150,11 @@ registered(멘티 등록) → mentor_assigned(멘토 배정) → in_progress(컨
 - **⚠ 불변 규칙**: 화면 버튼의 활성 조건과 서버 액션의 상태 게이트는 **반드시 같이** 수정한다.
   어긋나면 "버튼은 눌리는데 실패"가 난다 (원본에서 실제 발생한 버그).
 
-### 3-1. 회차 규칙 (답변 3·5)
-- 1회차 = `mentoring_logs` 1행(웹작성이든 파일 업로드든). 필수: 일시(시작·종료)·장소·**유형(online/offline)**·내용 또는 파일·사진.
-- **회차 이행** = 행 등록(예상 비용, 미확정) / **회차 완료** = 케이스가 `settlement_pending` 이상(확정). 회차 행에 별도 상태 컬럼 없음.
+### 3-1. 회차 규칙 (답변 3·5 · **P12 2단계 개정 2026-09-08**)
+- 1회차 = `mentoring_logs` 1행. **등록은 2단계**: ① **1단계 계획/실행**(사전·사후 모두 가능) = 일자·시작/종료 시각(24시간제 10분 단위)·운영시간 자동계산·방법(온/오프)·**참가자(멘티 개인/팀 대표/팀원/복수 구성원, `participants` jsonb 스냅샷)**·장소 — 장소 외 전부 클릭 선택, 통계·정산 기본데이터 ② **2단계 실서류(보고서)** = 웹작성 또는 파일 + 사진 (`report_registered_at` 기록, 진행 전(미래) 회차는 불가).
+- **회차 이행 = 보고서(2단계)까지 등록된 회차**. 정산(`loadUnsettledRounds`)·종결 요청·멘티 서명은 전부 `report_registered_at is not null` 게이트. 계획만 등록된 회차는 정산에 포함되지 않는다.
+- **회차 완료** = 케이스가 `settlement_pending` 이상(확정). 회차 행에 별도 상태 컬럼 없음(계획/이행은 `report_registered_at` 로 구분).
+- 멘티는 개인 또는 팀 — 팀원 명단은 `case_team_members`(운영사 케이스 상세 [팀 정보]에서 관리), 회차 참가자는 등록 시점 스냅샷이라 명단 변경에 영향받지 않는다.
 - 검증(서버 코드에서 직접): 회차 ≤ `support_types.required_rounds` + 승인된 추가 회차 / **같은 멘티·같은 날·같은 유형 합산 ≤ 일일 상한**(온 24만·오프 30만) / **멘토 1일 최대 3건(멘티)** / 시간 겹침 불가 / 단가 스냅샷 필수.
 - 추가 회차는 `round_extension_requests`(멘토 요청 → 렛츠 승인).
 
@@ -260,6 +262,7 @@ npm run lint:brand   # scripts/check-brand-strings.sh — 0건 (npm run lint 에
 - **P9 완료(2026-09-08)**: 0060 적용(직위·행사별 등급/담당·플랫폼 owner·staff_permissions·report_snapshots·플랫폼 관리자 소속 차단 트리거). ① 플랫폼 콘솔 행사 개설정보 수정(관리코드 `p{연도}-{순번}` 자동 부여, 슬러그 입력 폐지) ② **플랫폼 관리자 = 통합관리 전용 계정**(행사·그룹 소속 불가 — DB 트리거, 허브 진입 없음), owner(`platform_role`)만 부관리자 지정·해제, 부관리자는 소속·역할 무관, 전용 계정 발급 ③ 감사로그 = 사람 언어 설명(`src/lib/audit/describe.ts`) + [소스] 팝업(`AuditTable`), 행사 감사로그는 행사 범위 ④ **운영사 담당 등급** PL/PM/부PM/옵저버(`program_members.grade`) + 권한표(`src/lib/auth/capabilities.ts`, 행사별 override = `programs.staff_permissions`, 설정 8+1탭 '담당 권한') — 모든 운영사 서버 액션에 `denyUnless(ctx, key)`, 옵저버는 열람+리포트만(상단 배너) ⑤ 직위(`users.position`, 발주처·운영사 필수)·행사 담당역할(`program_members.duty`)·그룹 담당역할(`support_type_members.duty`) ⑥ **종합결과리포트**(`report_snapshots` 생성일 고정 스냅샷, `src/lib/reports/{summary,summary-export}.ts`, `/nextlab/reports/summary`, `/api/reports/summary/[id]/export` — html·pdf·docx·xlsx·pptx, 의존성 `docx`·`pptxgenjs`).
 - **P10 완료(2026-09-08)**: 0061 조사 캠페인 — `survey_campaigns`·`survey_campaign_targets`(대상자 생성 시점 스냅샷 + 개인 토큰). 운영사가 여러 [조사](만족도·사전선호도·중간 등)를 행사 전체/그룹/개별 구성원 대상으로 기간을 정해 개설(`/nextlab/surveys`, 내비 '조사' 탭, 권한 키 `surveys`). 응답은 플랫폼 내 할 일 카드(멘티·멘토 대시보드)와 문자 링크(`/s/{token}`, 로그인 불필요) 공용 — 채널 기록, 미참여자 항상 파악. 상세 화면 = 실시간 분석(응답률·경로·문항 5종별 집계) + 대상자 표 + 초대/미참여 독려 문자(행사별 문자 API → 플랫폼 폴백, `notify_count` 기록). 종결 만족도(케이스 자동 조사)도 같은 화면에서 실시간 분석 + 미응답 멘티 일괄 독려. 검증·집계는 `src/lib/surveys/validate.ts` 한 곳.
 - **P11 완료(2026-09-08)**: 0062 적용(`users.organization` 소속 + `roster_columns`/`roster_values` 임의 컬럼). **명단 우선 등록 운영 흐름** — ① 운영사가 이름/이메일/연락처/소속/직위로 멘티·멘토 리스트 우선 등록(발급 폼·엑셀 일괄 등록에 소속·직위 컬럼) ② 회원관리에서 선택 회원에게 **로그인 안내 문자 일괄 발송**(`sendLoginGuideAction`, 행사별 문자 API→플랫폼 폴백, `{name}` 치환, 발송 이력 audit `sms.login_guide` 로 명단에 표시) ③ **멘토 = Pool 등록(미확정)**, 배정된 멘티 수>0 이면 그 멘티에 대해 "확정" — 회원관리·멘토 명단에 Pool/확정 배지(스키마 변경 없음, `mentor_assignments` 가 원본) ④ 회원 정보 수정 확장(`updateMemberDetailsAction`: 이름·휴대폰·이메일(auth 동기화)·소속·직위·등급·담당역할, 확장 편집 패널) ⑤ **임의 컬럼**: 멘티/멘토 리스트별 최대 8개 컬럼을 운영사가 정의(`roster_columns`), 회원별 값(`roster_values`)을 셀에서 인라인 편집 — 카테고리 마크 용도.
+- **P12 완료(2026-09-08)**: 0063 적용(`case_team_members` 팀원, `mentoring_logs.participants`+`report_registered_at`(기존 행 created_at 백필), `mentee_profiles.item_description`). **회차 2단계 분리** — 1단계 계획/실행(`submitRound`: 미래 60일까지 사전 등록 허용, 참가자 필수, 클릭형 UI `round-form.tsx`) / 2단계 보고서(`registerRoundReport`+`round-report-form.tsx`, 진행 전 회차 불가, 멘티 서명 알림은 이 시점). 게이트 3곳: 종결 요청(전 회차 보고서 필수)·멘티 서명(`signRound`)·정산(`loadUnsettledRounds` 필터 — 예상/확정 동일). 팀 정보 패널(`team-panel.tsx`, 아이템명·아이템설명·팀원 CRUD, `team-actions.ts` `case.manage` 게이트) + 보고서 PDF 양식에 `participants` 필드.
 - 남은 것: 알림 이벤트별 on/off 설정, 레거시 `/admin/settings/features`(붙임서식 토글) 정리 — P8 이후.
 
 ---
@@ -304,6 +307,7 @@ npm run lint:brand   # scripts/check-brand-strings.sh — 0건 (npm run lint 에
 - 2026-09-08 **P9**: 플랫폼 관리자 = 통합관리 전용 계정(owner/부관리자 계층, 소속 불가), 행사 관리코드 자동 부여, 행사 개설정보 수정, 감사로그 설명+소스 팝업, 운영사 등급 PL/PM/부PM/옵저버 + 행사별 권한 override, 직위·담당역할 기록, 종합결과리포트(스냅샷, 5개 형식 내보내기).
 - 2026-09-08 **행사별 역할(설계 B) 확정·구현**: `program_members.role` 신설(0059), 가드가 컨텍스트 행사의 역할로 프로필 role 치환, 명단·알림·매칭·배정은 멤버십 역할 기준, 회원관리에 기존 계정 추가·역할 변경·소속 해제, 케이스 등록 시 기존 계정 자동 연결. 회원관리·문자 수신자·발주처 멘토 현황을 행사 범위로 교정.
 - 2026-09-08 **P11 명단 우선 등록**: 멘티·멘토는 이름/이메일/연락처/소속/직위로 우선 등록 → 로그인 안내 문자(행사별 SMS API) → 첫 로그인. 멘티 = 등록 즉시 확정, 멘토 = Pool(배정 시 그 멘티에 대해서만 확정). 운영사 담당자가 회원 정보 수정(이메일은 auth 동기화). 멘티/멘토 리스트 임의 컬럼(카테고리 마크) = `roster_columns`/`roster_values` (0062).
+- 2026-09-08 **P12 팀·회차 2단계**: 멘티 = 개인 또는 팀(팀명·아이템명·아이템설명·지역·팀원, `case_team_members`), 팀 대표가 아닌 팀원도 멘토링 참여 가능(회차 `participants` 스냅샷). 회차 등록 = 1단계 계획/실행(사전/사후, 일자·10분 단위 시간·운영시간 자동계산·방법·참가자·장소 — 장소 외 클릭 선택) → 2단계 실서류(보고서). 이행 인정·정산·종결·멘티 서명은 보고서 등록(`report_registered_at`) 기준.
 - 2026-09-08 **P8 배포 완료**: Vercel `modu` 를 대시보드에서 생성(작업 브랜치가 Production 으로 배포됨), `NEXT_PUBLIC_*` 는 Config 타입·나머지는 Secret, Vercel Authentication 해제, `/api/setup` 부트스트랩 → 플랫폼 관리자 로그인·`/hub`·대시보드 확인. 첫 배포의 런타임 오류(Supabase URL 누락)는 환경변수 재입력으로 해소.
 - 2026-09-07 **P5 완료**: 회차 서명은 `signatures.log_id` 로 회차에 귀속, 서명 후 멘토 수정 잠금. 만족도는 종결 요청 이후 1회, 정산 게이트 아님. 멘토 변경 요청 수락 = T3 교체. 필수서류 게이트는 설정 `closure_policy.require_group_docs`(기본 꺼짐).
 - 2026-09-07 **P4 완료**: 정산 계산 단일 함수(`compute.ts`) + vitest, 검수 승인 시 스냅샷 선저장 후 전이, 품의 2단계 게이트(렛츠 제출 → 센터 확인 → closed), 부분 정산(T10/T11a/T11b). 추가 회차 요청 승인함은 P6.

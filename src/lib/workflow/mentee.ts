@@ -17,9 +17,10 @@ export async function signRound(caseId: string, logId: string, mentee: { id: str
   if (!parsed || !parsed.mimeType.startsWith('image/')) return { ok: false, error: '서명 이미지가 올바르지 않습니다.' };
   if (parsed.buffer.byteLength > 2 * 1024 * 1024) return { ok: false, error: '서명 이미지가 너무 큽니다(2MB 이하).' };
   const admin = createAdminClient();
-  const { data: log } = await admin.from('mentoring_logs').select('id, case_id, mentor_id, mentee_signed_at, round_no').eq('id', logId).eq('case_id', caseId).maybeSingle();
+  const { data: log } = await admin.from('mentoring_logs').select('id, case_id, mentor_id, mentee_signed_at, report_registered_at, round_no').eq('id', logId).eq('case_id', caseId).maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
   if (log.mentee_signed_at) return { ok: false, error: '이미 서명한 회차입니다.' };
+  if (!log.report_registered_at) return { ok: false, error: '멘토가 보고서를 등록한 뒤에 확인 서명을 할 수 있습니다.' };
   const { data: c } = await admin.from('cases').select('id, program_id, support_type_id, mentee_id, status').eq('id', caseId).maybeSingle();
   if (!c || c.mentee_id !== mentee.id) return { ok: false, error: '본인 케이스의 회차만 서명할 수 있습니다.' };
   const policy = await resolveRoundReportPolicy(c.program_id, c.support_type_id);

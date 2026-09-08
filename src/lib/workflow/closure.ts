@@ -112,7 +112,7 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
   const [{ data: group }, { data: program }, { data: logs }, { data: obs }, { data: obsFile }, allowance] = await Promise.all([
     admin.from('support_types').select('required_rounds, name').eq('id', c.support_type_id).maybeSingle(),
     admin.from('programs').select('closure_policy').eq('id', c.program_id).maybeSingle(),
-    admin.from('mentoring_logs').select('id, round_no, mode, started_at, ended_at, place, mentee_signed_at').eq('case_id', caseId).order('round_no'),
+    admin.from('mentoring_logs').select('id, round_no, mode, started_at, ended_at, place, mentee_signed_at, report_registered_at').eq('case_id', caseId).order('round_no'),
     admin.from('observation_reports').select('*').eq('case_id', caseId).maybeSingle(),
     admin.from('documents').select('id').eq('case_id', caseId).eq('doc_key', 'observation_report').maybeSingle(),
     getRoundAllowance(caseId),
@@ -122,6 +122,11 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
   const required = group.required_rounds;
   if (rounds.length < required) {
     return { ok: false, error: `필수 회차 ${required}회를 모두 등록한 뒤 종결을 요청할 수 있습니다. (현재 ${rounds.length}회, 승인된 추가 ${allowance.approvedExtra}회)` };
+  }
+  // 2단계(보고서) 미등록 회차가 있으면 종결 불가 — 정산은 보고서가 등록된 회차만 인정된다
+  const unreported = rounds.filter((r) => !r.report_registered_at).map((r) => r.round_no);
+  if (unreported.length > 0) {
+    return { ok: false, error: `보고서가 등록되지 않은 회차가 있습니다 (${unreported.join('·')}회차). 각 회차의 [보고서 등록]을 먼저 완료하세요.` };
   }
   const policy = (program?.closure_policy ?? {}) as { require_mentee_signature?: boolean; require_group_docs?: boolean };
   if (policy.require_mentee_signature && rounds.some((r) => !r.mentee_signed_at)) {

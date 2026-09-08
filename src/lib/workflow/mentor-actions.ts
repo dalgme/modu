@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { mentorOrNull, mentorOfCaseOrNull, MENTOR_ONLY_ERROR, NOT_ASSIGNED_ERROR } from '@/lib/auth/guards';
 import { getImpersonation } from '@/lib/auth/impersonation';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { submitRound, updateRound, deleteRound, type RoundInput, type RoundResult } from '@/lib/workflow/rounds';
+import { submitRound, updateRound, deleteRound, registerRoundReport, type RoundInput, type RoundReportInput, type RoundResult } from '@/lib/workflow/rounds';
 import {
   normalizeObservation,
   requestClosure,
@@ -38,13 +38,25 @@ async function auditOnBehalf(action: string, caseId: string, mentorId: string, m
   });
 }
 
-/** 멘토: 회차 등록 */
+/** 멘토: 회차 1단계 등록 (계획/실행 — 일시·유형·참가자·장소) */
 export async function submitRoundAction(input: Omit<RoundInput, 'mentorId'>): Promise<RoundResult> {
   const profile = await mentorOfCaseOrNull(input.caseId);
   if (!profile) return { ok: false, error: (await mentorOrNull()) ? NOT_ASSIGNED_ERROR : MENTOR_ONLY_ERROR };
   const result = await submitRound({ ...input, mentorId: profile.id });
   if (result.ok) {
     await auditOnBehalf('round.create', input.caseId, profile.id, { round_no: result.roundNo });
+    revalidate(input.caseId);
+  }
+  return result;
+}
+
+/** 멘토: 회차 2단계 — 실서류(보고서) 등록 */
+export async function registerRoundReportAction(input: { caseId: string } & Omit<RoundReportInput, 'mentorId'>): Promise<WorkflowResult> {
+  const profile = await mentorOfCaseOrNull(input.caseId);
+  if (!profile) return { ok: false, error: (await mentorOrNull()) ? NOT_ASSIGNED_ERROR : MENTOR_ONLY_ERROR };
+  const result = await registerRoundReport({ ...input, mentorId: profile.id });
+  if (result.ok) {
+    await auditOnBehalf('round.report', input.caseId, profile.id, { log_id: input.logId });
     revalidate(input.caseId);
   }
   return result;

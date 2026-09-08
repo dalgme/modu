@@ -229,6 +229,60 @@ export type Database = {
           },
         ];
       };
+      case_team_members: {
+        Row: {
+          case_id: string;
+          created_at: string;
+          email: string | null;
+          id: string;
+          is_representative: boolean;
+          member_role: string | null;
+          name: string;
+          phone: string | null;
+          program_id: string;
+          sort_order: number;
+        };
+        Insert: {
+          case_id: string;
+          created_at?: string;
+          email?: string | null;
+          id?: string;
+          is_representative?: boolean;
+          member_role?: string | null;
+          name: string;
+          phone?: string | null;
+          program_id: string;
+          sort_order?: number;
+        };
+        Update: {
+          case_id?: string;
+          created_at?: string;
+          email?: string | null;
+          id?: string;
+          is_representative?: boolean;
+          member_role?: string | null;
+          name?: string;
+          phone?: string | null;
+          program_id?: string;
+          sort_order?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'case_team_members_case_id_fkey';
+            columns: ['case_id'];
+            isOneToOne: false;
+            referencedRelation: 'cases';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'case_team_members_program_id_fkey';
+            columns: ['program_id'];
+            isOneToOne: false;
+            referencedRelation: 'programs';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       cases: {
         Row: {
           address: string | null;
@@ -714,6 +768,7 @@ export type Database = {
           created_at: string;
           industry: string | null;
           keywords: string[];
+          item_description: string | null;
           needs: string[];
           preferred_mode: Database['public']['Enums']['consulting_mode'] | null;
           program_id: string;
@@ -727,6 +782,7 @@ export type Database = {
           created_at?: string;
           industry?: string | null;
           keywords?: string[];
+          item_description?: string | null;
           needs?: string[];
           preferred_mode?: Database['public']['Enums']['consulting_mode'] | null;
           program_id: string;
@@ -740,6 +796,7 @@ export type Database = {
           created_at?: string;
           industry?: string | null;
           keywords?: string[];
+          item_description?: string | null;
           needs?: string[];
           preferred_mode?: Database['public']['Enums']['consulting_mode'] | null;
           program_id?: string;
@@ -1214,9 +1271,11 @@ export type Database = {
           mentee_signed_at: string | null;
           mentor_id: string;
           mode: Database['public']['Enums']['consulting_mode'];
+          participants: Json;
           place: string | null;
           rate_id: string | null;
           report_kind: string;
+          report_registered_at: string | null;
           result: string | null;
           round_no: number;
           settlement_id: string | null;
@@ -1237,9 +1296,11 @@ export type Database = {
           mentee_signed_at?: string | null;
           mentor_id: string;
           mode: Database['public']['Enums']['consulting_mode'];
+          participants?: Json;
           place?: string | null;
           rate_id?: string | null;
           report_kind?: string;
+          report_registered_at?: string | null;
           result?: string | null;
           round_no: number;
           settlement_id?: string | null;
@@ -1260,9 +1321,11 @@ export type Database = {
           mentee_signed_at?: string | null;
           mentor_id?: string;
           mode?: Database['public']['Enums']['consulting_mode'];
+          participants?: Json;
           place?: string | null;
           rate_id?: string | null;
           report_kind?: string;
+          report_registered_at?: string | null;
           result?: string | null;
           round_no?: number;
           settlement_id?: string | null;

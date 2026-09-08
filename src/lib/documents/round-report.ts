@@ -28,6 +28,7 @@ export const ROUND_REPORT_PLACEHOLDERS: { key: string; label: string; raw?: bool
   { key: 'date', label: '컨설팅 일자' },
   { key: 'time_range', label: '시작~종료 시각' },
   { key: 'place', label: '장소' },
+  { key: 'participants', label: '참가자 (대표·팀원)' },
   { key: 'topic', label: '주제' },
   { key: 'content', label: '컨설팅 내용(줄바꿈 유지)', raw: true },
   { key: 'result', label: '결과·다음 과제(줄바꿈 유지)', raw: true },
@@ -54,6 +55,7 @@ export const DEFAULT_ROUND_REPORT_TEMPLATE = `
   <tr><th>사업그룹</th><td>{{group}}</td><th>회차</th><td>{{round_no}} / {{round_total}}</td></tr>
   <tr><th>멘티(기업·팀)</th><td>{{business_name}} ({{owner_name}})</td><th>담당 멘토</th><td>{{mentor_name}}</td></tr>
   <tr><th>일시</th><td>{{date}} {{time_range}}</td><th>유형 / 장소</th><td>{{mode}} / {{place}}</td></tr>
+  <tr><th>참가자</th><td colspan="3">{{participants}}</td></tr>
   <tr><th>주제</th><td colspan="3">{{topic}}</td></tr>
 </table>
 <table>
@@ -200,6 +202,7 @@ export async function renderRoundReport(logId: string): Promise<{ ok: true; skip
       date: kstDate(log.started_at),
       time_range: `${kstTime(log.started_at)} ~ ${kstTime(log.ended_at)}`,
       place: log.place ?? '',
+      participants: (Array.isArray(log.participants) ? (log.participants as { name?: string; role?: string }[]) : []).map((p) => `${p.name ?? ''}${p.role === 'member' ? '(팀원)' : '(대표)'}`).join(', '),
       topic: log.topic ?? '',
       content: nl(log.content ?? ''),
       result: nl(log.result ?? ''),
