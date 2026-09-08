@@ -29,6 +29,7 @@ export type CapabilityKey =
   | 'settings'
   | 'settings.money'
   | 'sms'
+  | 'surveys'
   | 'reports';
 
 export const CAPABILITIES: { key: CapabilityKey; label: string; desc: string }[] = [
@@ -43,6 +44,7 @@ export const CAPABILITIES: { key: CapabilityKey; label: string; desc: string }[]
   { key: 'settings', label: '운영 설정(일반)', desc: '행사 기본·그룹·필수서류·정책·양식·키워드' },
   { key: 'settings.money', label: '운영 설정(금액)', desc: '단가·한도·원천징수 방식' },
   { key: 'sms', label: '문자 발송·문자 API', desc: '문자 일괄 발송·예약, 행사별 문자 API 등록' },
+  { key: 'surveys', label: '조사 개설·독려', desc: '조사(만족도·선호도 등) 개설·종료, 초대·미참여 독려 문자' },
   { key: 'reports', label: '리포트·종합결과리포트', desc: '리포트 열람·내보내기, 종합결과리포트 생성' },
 ];
 const ALL = CAPABILITIES.map((c) => c.key);

@@ -2572,6 +2572,121 @@ export type Database = {
           },
         ];
       };
+      survey_campaign_targets: {
+        Row: {
+          answers: Json | null;
+          campaign_id: string;
+          channel: string | null;
+          created_at: string;
+          id: string;
+          last_notified_at: string | null;
+          name: string;
+          notify_count: number;
+          phone: string | null;
+          responded_at: string | null;
+          role: Database['public']['Enums']['user_role'];
+          score: number | null;
+          support_type_id: string | null;
+          token: string;
+          user_id: string;
+        };
+        Insert: {
+          answers?: Json | null;
+          campaign_id: string;
+          channel?: string | null;
+          created_at?: string;
+          id?: string;
+          last_notified_at?: string | null;
+          name: string;
+          notify_count?: number;
+          phone?: string | null;
+          responded_at?: string | null;
+          role: Database['public']['Enums']['user_role'];
+          score?: number | null;
+          support_type_id?: string | null;
+          token: string;
+          user_id: string;
+        };
+        Update: {
+          answers?: Json | null;
+          campaign_id?: string;
+          channel?: string | null;
+          created_at?: string;
+          id?: string;
+          last_notified_at?: string | null;
+          name?: string;
+          notify_count?: number;
+          phone?: string | null;
+          responded_at?: string | null;
+          role?: Database['public']['Enums']['user_role'];
+          score?: number | null;
+          support_type_id?: string | null;
+          token?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'survey_campaign_targets_campaign_id_fkey';
+            columns: ['campaign_id'];
+            isOneToOne: false;
+            referencedRelation: 'survey_campaigns';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      survey_campaigns: {
+        Row: {
+          created_at: string;
+          created_by: string | null;
+          description: string | null;
+          ends_at: string | null;
+          id: string;
+          program_id: string;
+          starts_at: string;
+          status: string;
+          support_type_id: string | null;
+          template_id: string;
+          title: string;
+          updated_at: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          ends_at?: string | null;
+          id?: string;
+          program_id: string;
+          starts_at?: string;
+          status?: string;
+          support_type_id?: string | null;
+          template_id: string;
+          title: string;
+          updated_at?: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string | null;
+          description?: string | null;
+          ends_at?: string | null;
+          id?: string;
+          program_id?: string;
+          starts_at?: string;
+          status?: string;
+          support_type_id?: string | null;
+          template_id?: string;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'survey_campaigns_program_id_fkey';
+            columns: ['program_id'];
+            isOneToOne: false;
+            referencedRelation: 'programs';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       survey_questions: {
         Row: {
           created_at: string;

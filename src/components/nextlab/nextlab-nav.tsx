@@ -12,6 +12,7 @@ const TABS = [
   { href: '/nextlab/inquiries', label: '멘티 문의' },
   { href: '/nextlab/qna', label: '멘토·운영 게시판' },
   { href: '/nextlab/settlements', label: '정산·품의' },
+  { href: '/nextlab/surveys', label: '조사' },
   { href: '/nextlab/mentors', label: '멘토 명단' },
   { href: '/nextlab/members', label: '회원관리' },
   { href: '/nextlab/succession', label: '승계 개설' },

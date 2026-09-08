@@ -9,6 +9,8 @@ import { SURVEY_OPEN_STATUSES } from '@/lib/workflow/mentee';
 import { canTransition } from '@/lib/workflow/transitions';
 import { resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import { MenteeDashboardBody } from '@/components/mentee/mentee-dashboard-body';
+import { listMyOpenSurveys } from '@/lib/surveys/campaigns';
+import { OpenSurveysCard } from '@/components/surveys/open-surveys-card';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,11 +26,13 @@ export default async function Page() {
   const [rounds, survey, changeRequests, slots, policy] = primary
     ? await Promise.all([listRounds(primary.id), getCaseSurvey(primary.id), listMentorChangeRequests(primary.id), listRequiredDocSlots(primary.id, 'mentee'), resolveRoundReportPolicy(primary.program_id, primary.support_type_id)])
     : [[], null, [], [], null];
+  const openSurveys = await listMyOpenSurveys(profile.id, ctx.programId);
   const pendingChange = changeRequests.find((r) => r.status === 'pending') ?? null;
   const lastDecision = changeRequests.find((r) => r.status !== 'pending') ?? null;
 
   return (
     <main className="flex flex-col gap-5">
+      {openSurveys.length > 0 && <div className="mb-4"><OpenSurveysCard surveys={openSurveys} /></div>}
       <MenteeDashboardBody
         name={profile.name}
         cases={cases}
