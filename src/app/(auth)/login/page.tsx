@@ -5,6 +5,7 @@ import { useFormState, useFormStatus } from 'react-dom';
 
 import { signIn, type ActionState } from '@/lib/auth/actions';
 import { LoginHeroBg } from '@/components/auth/login-hero-bg';
+import { LoginHeroWords } from '@/components/auth/login-hero-words';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -33,41 +34,10 @@ export default function LoginPage({
 
   return (
     <main className="grid min-h-screen lg:grid-cols-2">
-      {/* 브랜드 히어로 (도시 황혼 야경 보정 배경 + 코랄 글로우) */}
-      <div className="relative hidden flex-col justify-between overflow-hidden bg-midnight p-12 text-midnight-foreground lg:flex">
+      {/* 브랜드 히어로 — 실사 배경 + 브랜딩 개념어 오버레이 */}
+      <div className="relative hidden flex-col overflow-hidden bg-midnight p-12 text-midnight-foreground lg:flex">
         <LoginHeroBg />
-
-        <div className="relative z-10">
-          <span className="inline-flex items-center rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-medium tracking-wide">
-            멘토링 운영관리 플랫폼
-          </span>
-        </div>
-
-        <div className="relative z-10 max-w-md space-y-5">
-          <h1 className="text-4xl font-bold leading-[1.2]">
-            멘토와 멘티를
-            <br />
-            <span className="text-primary">1:1</span>로 연결하고 관리
-          </h1>
-          <p className="text-sm leading-relaxed text-midnight-foreground/70">
-            멘토 배정부터 컨설팅 회차·보고서·관찰의견서, 정산·지급 품의까지 한 플랫폼에서. 여러 행사를
-            계정 추가만으로 운영합니다.
-          </p>
-          <ul className="space-y-2 pt-2 text-sm text-midnight-foreground/80">
-            {['멘토·멘티별 진행현황 실시간 확인', '회차 보고서·서명·정산 자동화', '역할별 처리 대기 알림'].map(
-              (t) => (
-                <li key={t} className="flex items-center gap-2">
-                  <span className="h-1.5 w-1.5 rounded-full bg-primary" />
-                  {t}
-                </li>
-              ),
-            )}
-          </ul>
-        </div>
-
-        <div className="relative z-10 text-xs text-midnight-foreground/45">
-          © 2026 · 내부 업무용 시스템
-        </div>
+        <LoginHeroWords />
       </div>
 
       {/* 로그인 폼 */}
