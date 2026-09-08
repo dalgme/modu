@@ -29,8 +29,22 @@ function revalidate() {
   revalidatePath('/hub');
 }
 
+/**
+ * 관리코드(슬러그) 자동 부여 — 플랫폼이 체계를 갖고 직접 관리한다 (2026-09-08 지시).
+ * 형식: p{개설연도}-{연도별 3자리 순번}. 예) p2026-001, p2026-002 … 연도가 바뀌면 001 부터.
+ */
+async function nextProgramSlug(admin: ReturnType<typeof createAdminClient>): Promise<string> {
+  const year = new Date().getFullYear();
+  const prefix = `p${year}-`;
+  const { data } = await admin.from('programs').select('slug').like('slug', `${prefix}%`);
+  const max = (data ?? []).reduce((m, r) => {
+    const n = Number(r.slug.slice(prefix.length));
+    return Number.isFinite(n) && n > m ? n : m;
+  }, 0);
+  return `${prefix}${String(max + 1).padStart(3, '0')}`;
+}
+
 const programSchema = z.object({
-  slug: z.string().trim().toLowerCase().regex(/^[a-z0-9][a-z0-9-]{1,48}$/, '슬러그는 영문 소문자·숫자·하이픈 2~49자'),
   name: z.string().trim().min(1, '행사명을 입력하세요.'),
   client_name: z.string().trim().min(1, '발주처 기관명을 입력하세요.'),
   client_short: z.string().trim().optional().transform((v) => v || null),
@@ -66,11 +80,12 @@ export async function createProgramAction(input: unknown): Promise<Result<{ prog
     if (!src) return { ok: false, error: '복제 원천 행사를 찾을 수 없습니다.' };
     base = src;
   }
+  const slug = await nextProgramSlug(admin);
   const { data: created, error } = await admin
     .from('programs')
     .insert({
       ...base,
-      slug: d.slug,
+      slug,
       name: d.name,
       client_name: d.client_name,
       client_short: d.client_short,
@@ -85,7 +100,7 @@ export async function createProgramAction(input: unknown): Promise<Result<{ prog
     } as never)
     .select('id')
     .single();
-  if (error || !created) return { ok: false, error: error?.code === '23505' ? '같은 슬러그의 행사가 있습니다.' : (error?.message ?? '행사 생성 실패') };
+  if (error || !created) return { ok: false, error: error?.code === '23505' ? '관리코드 부여가 겹쳤습니다. 다시 시도하세요.' : (error?.message ?? '행사 생성 실패') };
 
   if (d.clone_from) {
     const r = await cloneProgramSettings(d.clone_from, created.id, op.id);
@@ -103,7 +118,7 @@ export async function createProgramAction(input: unknown): Promise<Result<{ prog
       warn = err instanceof Error ? err.message : '계정 발급 실패';
     }
   }
-  await audit(op.id, 'program.create', created.id, { slug: d.slug, name: d.name, clone_from: d.clone_from, first_account: !!credential, first_account_error: warn ?? null });
+  await audit(op.id, 'program.create', created.id, { slug, name: d.name, clone_from: d.clone_from, first_account: !!credential, first_account_error: warn ?? null });
   revalidate();
   return { ok: true, programId: created.id, credential, warn };
 }
@@ -189,7 +204,7 @@ export async function setProgramStatusAction(programId: string, status: 'active'
 }
 
 /** 행사에 스태프 계정 추가 (기존 계정 이메일로 멤버십 추가, 없으면 발급) */
-export async function addProgramStaffAction(programId: string, input: { email: string; name?: string; phone?: string; role: 'nextlab' | 'institution' }): Promise<Result<{ credential?: { email: string; tempPassword: string } }>> {
+export async function addProgramStaffAction(programId: string, input: { email: string; name?: string; phone?: string; role: 'nextlab' | 'institution'; position?: string }): Promise<Result<{ credential?: { email: string; tempPassword: string } }>> {
   const op = await platformAdmin();
   if ('error' in op) return { ok: false, error: op.error };
   const email = (input.email ?? '').trim().toLowerCase();
@@ -206,7 +221,7 @@ export async function addProgramStaffAction(programId: string, input: { email: s
   } else {
     if (!input.name?.trim()) return { ok: false, error: '새 계정은 이름이 필요합니다.' };
     try {
-      const acc = await createStaffOrMentorAccount({ email, name: input.name.trim(), phone: input.phone?.trim() || undefined, role: input.role, actorId: op.id });
+      const acc = await createStaffOrMentorAccount({ email, name: input.name.trim(), phone: input.phone?.trim() || undefined, role: input.role, position: input.position, actorId: op.id });
       userId = acc.userId;
       credential = { email: acc.email, tempPassword: acc.tempPassword };
     } catch (err) {
@@ -220,19 +235,82 @@ export async function addProgramStaffAction(programId: string, input: { email: s
   return { ok: true, credential };
 }
 
-/** 플랫폼 관리자 지정/해제 (이메일 기준). 자기 자신 해제 불가. */
+/** 플랫폼 통합관리자(owner) — 부관리자 지정·해제는 owner 만 */
+async function platformOwner(): Promise<{ id: string } | { error: string }> {
+  const real = await getRealSessionProfile();
+  if (!real || !real.is_active) return { error: '로그인이 필요합니다.' };
+  if (!real.is_platform_admin || real.platform_role !== 'owner') return { error: '플랫폼 통합관리자(owner)만 부관리자를 지정·해제할 수 있습니다.' };
+  return { id: real.id };
+}
+
+/**
+ * 플랫폼 부관리자 지정/해제 (이메일 기준) — **owner 전용**.
+ * 플랫폼을 개발·운영하는 주체는 행사의 운영사·발주처와 무관하므로, 어느 역할·어느 소속의 계정이든 지정할 수 있다.
+ */
 export async function setPlatformAdminAction(email: string, isAdmin: boolean): Promise<Result> {
-  const op = await platformAdmin();
+  const op = await platformOwner();
   if ('error' in op) return { ok: false, error: op.error };
   const admin = createAdminClient();
-  const { data: u } = await admin.from('users').select('id, role').eq('email', email.trim().toLowerCase()).maybeSingle();
-  if (!u) return { ok: false, error: '해당 이메일의 계정이 없습니다.' };
-  if (u.id === op.id && !isAdmin) return { ok: false, error: '자기 자신의 플랫폼 관리자 권한은 해제할 수 없습니다.' };
-  if (isAdmin && u.role !== 'nextlab' && u.role !== 'institution') return { ok: false, error: '스태프(운영사·발주처) 계정만 플랫폼 관리자로 지정할 수 있습니다.' };
-  const { error } = await admin.from('users').update({ is_platform_admin: isAdmin }).eq('id', u.id);
-  if (error) return { ok: false, error: error.message };
+  const { data: u } = await admin.from('users').select('id, platform_role').eq('email', email.trim().toLowerCase()).maybeSingle();
+  if (!u) return { ok: false, error: '해당 이메일의 계정이 없습니다. 아래에서 새 부관리자 계정을 발급할 수 있습니다.' };
+  if (u.platform_role === 'owner') return { ok: false, error: '통합관리자(owner) 계정은 변경할 수 없습니다.' };
+  if (isAdmin) {
+    const { count } = await admin.from('program_members').select('id', { count: 'exact', head: true }).eq('user_id', u.id).eq('is_active', true);
+    if ((count ?? 0) > 0) return { ok: false, error: '행사에 소속된 계정은 부관리자로 지정할 수 없습니다. 플랫폼 관리자는 통합관리 전용 계정이어야 합니다 — 아래에서 전용 계정을 발급하세요.' };
+  }
+  const { error } = await admin.from('users').update({ is_platform_admin: isAdmin, platform_role: isAdmin ? 'admin' : null }).eq('id', u.id);
+  if (error) return { ok: false, error: error.message.includes('소속') ? error.message : error.message };
   await audit(op.id, isAdmin ? 'platform.admin_granted' : 'platform.admin_revoked', null, { user_id: u.id });
   revalidate();
+  return { ok: true };
+}
+
+/** 소속 없는 새 플랫폼 부관리자 계정 발급 — owner 전용. 기본 역할은 nextlab 이지만 행사 소속은 없다(콘솔 전용). */
+export async function createPlatformAdminAction(input: { email: string; name: string; phone?: string; position?: string }): Promise<Result<{ credential: { email: string; tempPassword: string } }>> {
+  const op = await platformOwner();
+  if ('error' in op) return { ok: false, error: op.error };
+  const email = input.email.trim().toLowerCase();
+  const name = input.name.trim();
+  if (!email || !name) return { ok: false, error: '이메일과 이름을 입력하세요.' };
+  try {
+    const acc = await createStaffOrMentorAccount({ email, name, phone: input.phone?.trim() || undefined, role: 'nextlab', actorId: op.id });
+    const admin = createAdminClient();
+    await admin.from('users').update({ is_platform_admin: true, platform_role: 'admin', position: input.position?.trim() || null }).eq('id', acc.userId);
+    await audit(op.id, 'platform.admin_created', null, { user_id: acc.userId, email });
+    revalidate();
+    return { ok: true, credential: { email: acc.email, tempPassword: acc.tempPassword } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : '계정 발급 실패' };
+  }
+}
+
+const programInfoSchema = z.object({
+  name: z.string().trim().min(1, '행사명을 입력하세요.'),
+  client_name: z.string().trim().min(1, '발주처 기관명을 입력하세요.'),
+  client_short: z.string().trim().optional().transform((v) => v || null),
+  operator_name: z.string().trim().min(1, '용역사(운영) 기관명을 입력하세요.'),
+  operator_short: z.string().trim().optional().transform((v) => v || null),
+  app_title: z.string().trim().optional().transform((v) => v || null),
+  default_required_rounds: z.coerce.number().int().min(1).max(20),
+  starts_on: z.string().trim().optional().transform((v) => v || null),
+  ends_on: z.string().trim().optional().transform((v) => v || null),
+});
+
+/** 행사 개설정보 수정 (플랫폼 관리자). 브랜딩 세부(직인 명의·연락처·문자 꼬리말 등)는 운영사의 운영 설정에서도 고칠 수 있다. */
+export async function updateProgramInfoAction(programId: string, input: unknown): Promise<Result> {
+  const op = await platformAdmin();
+  if ('error' in op) return { ok: false, error: op.error };
+  const parsed = programInfoSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? '입력값을 확인하세요.' };
+  const admin = createAdminClient();
+  const { data: before } = await admin.from('programs').select('name, client_name, client_short, operator_name, operator_short, app_title, default_required_rounds, starts_on, ends_on').eq('id', programId).maybeSingle();
+  if (!before) return { ok: false, error: '행사를 찾을 수 없습니다.' };
+  const { error } = await admin.from('programs').update(parsed.data).eq('id', programId);
+  if (error) return { ok: false, error: error.message };
+  await audit(op.id, 'program.update', programId, { before, after: parsed.data } as unknown as Json);
+  revalidate();
+  revalidatePath(`/platform/programs/${programId}`);
+  revalidatePath('/', 'layout');
   return { ok: true };
 }
 
@@ -287,9 +365,10 @@ export async function platformSetMembershipAction(userId: string, programId: str
   const op = await platformAdmin();
   if ('error' in op) return { ok: false, error: op.error };
   const admin = createAdminClient();
-  const [{ data: u }, { data: p }] = await Promise.all([admin.from('users').select('id, role').eq('id', userId).maybeSingle(), admin.from('programs').select('id, name').eq('id', programId).maybeSingle()]);
+  const [{ data: u }, { data: p }] = await Promise.all([admin.from('users').select('id, role, is_platform_admin').eq('id', userId).maybeSingle(), admin.from('programs').select('id, name').eq('id', programId).maybeSingle()]);
   if (!u) return { ok: false, error: '계정을 찾을 수 없습니다.' };
   if (!p) return { ok: false, error: '행사를 찾을 수 없습니다.' };
+  if (u.is_platform_admin && member) return { ok: false, error: '플랫폼 관리자 계정은 통합관리 전용이라 행사 소속을 가질 수 없습니다.' };
   const now = new Date().toISOString();
   const { error } = member
     ? await admin.from('program_members').upsert({ program_id: programId, user_id: userId, role: role ?? (u.role as 'institution' | 'nextlab' | 'mentor' | 'mentee'), is_active: true, left_at: null, joined_at: now }, { onConflict: 'program_id,user_id' })

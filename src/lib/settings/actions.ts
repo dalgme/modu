@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { realRoleOrNull } from '@/lib/auth/guards';
+import { denyUnless, CAPABILITIES, STAFF_GRADES } from '@/lib/auth/capabilities';
+
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { policyFromParams } from '@/lib/settlement/compute';
@@ -14,11 +16,13 @@ type Result = { ok: true; id?: string } | { ok: false; error: string };
 const OPERATOR_ONLY = '운영사 담당자만 실행할 수 있습니다.';
 
 /** 운영사 + 행사 컨텍스트. 설정 변경은 실제 신원(대행 불가). */
-async function operator(): Promise<{ id: string; programId: string } | { error: string }> {
+async function operator(cap: 'settings' | 'settings.money' = 'settings'): Promise<{ id: string; programId: string } | { error: string }> {
   const profile = await realRoleOrNull(['nextlab']);
   if (!profile) return { error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { error: '행사를 먼저 선택하세요.' };
+  const denied = denyUnless(ctx, cap);
+  if (denied) return { error: denied };
   return { id: profile.id, programId: ctx.programId };
 }
 
@@ -186,7 +190,7 @@ const rateSchema = z.object({
 });
 
 export async function addRateAction(input: unknown): Promise<Result> {
-  const op = await operator();
+  const op = await operator('settings.money');
   if ('error' in op) return { ok: false, error: op.error };
   const parsed = rateSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? '입력값을 확인하세요.' };
@@ -210,7 +214,7 @@ const limitSchema = z.object({
 });
 
 export async function addLimitAction(input: unknown): Promise<Result> {
-  const op = await operator();
+  const op = await operator('settings.money');
   if ('error' in op) return { ok: false, error: op.error };
   const parsed = limitSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? '입력값을 확인하세요.' };
@@ -227,7 +231,7 @@ export async function addLimitAction(input: unknown): Promise<Result> {
 
 /** 미래 적용일 행만 삭제 가능 (과거 정산 불변) */
 export async function deleteFutureRowAction(table: 'consulting_rates' | 'operating_limits', id: string): Promise<Result> {
-  const op = await operator();
+  const op = await operator('settings.money');
   if ('error' in op) return { ok: false, error: op.error };
   const admin = createAdminClient();
   const { data: row } = await admin.from(table).select('*').eq('id', id).maybeSingle();
@@ -248,7 +252,7 @@ const withholdingSchema = z.object({
 });
 
 export async function updateWithholdingAction(input: unknown): Promise<Result> {
-  const op = await operator();
+  const op = await operator('settings.money');
   if ('error' in op) return { ok: false, error: op.error };
   const parsed = withholdingSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? '입력값을 확인하세요.' };
@@ -462,5 +466,33 @@ export async function deleteTagAction(id: string): Promise<Result> {
   if (!row) return { ok: false, error: '이 행사의 키워드가 아닙니다.' };
   await admin.from('tag_catalog').delete().eq('id', id);
   revalidateAll();
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------- 담당 등급별 권한 (행사별 override)
+/** 등급별 권한표 저장 — 메인 담당자(PL)만. { grade: [capability...] } */
+export async function updateStaffPermissionsAction(input: unknown): Promise<Result> {
+  const profile = await realRoleOrNull(['nextlab']);
+  if (!profile) return { ok: false, error: OPERATOR_ONLY };
+  const ctx = await contextOrNull(profile);
+  if (!ctx) return { ok: false, error: '행사를 먼저 선택하세요.' };
+  if (ctx.grade && ctx.grade !== 'pl') return { ok: false, error: '담당 등급별 권한은 메인 담당자(PL)만 변경할 수 있습니다.' };
+  const parsed = z.record(z.string(), z.array(z.string())).safeParse(input);
+  if (!parsed.success) return { ok: false, error: '입력값을 확인하세요.' };
+  const valid = new Set(CAPABILITIES.map((c) => c.key as string));
+  const clean: Record<string, string[]> = {};
+  for (const g of STAFF_GRADES) {
+    const list = parsed.data[g];
+    if (Array.isArray(list)) clean[g] = list.filter((k) => valid.has(k));
+  }
+  // PL 은 항상 전체 권한 (잠금 방지)
+  delete clean.pl;
+  const admin = createAdminClient();
+  const { data: before } = await admin.from('programs').select('staff_permissions').eq('id', ctx.programId).maybeSingle();
+  const { error } = await admin.from('programs').update({ staff_permissions: clean as Json }).eq('id', ctx.programId);
+  if (error) return { ok: false, error: error.message };
+  await audit(profile.id, ctx.programId, 'staff_permissions', before?.staff_permissions, clean, ctx.programId);
+  revalidateAll();
+  revalidatePath('/', 'layout');
   return { ok: true };
 }

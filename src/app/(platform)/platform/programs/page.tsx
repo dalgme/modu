@@ -21,7 +21,7 @@ export default async function Page() {
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-              <th className="px-3 py-2">행사</th><th className="px-3 py-2">슬러그</th><th className="px-3 py-2">발주처 / 운영사</th><th className="px-3 py-2">기간</th><th className="px-3 py-2 text-right">그룹</th><th className="px-3 py-2 text-right">케이스</th><th className="px-3 py-2">계정(운영/발주/멘토/멘티)</th><th className="px-3 py-2">상태</th><th className="px-3 py-2" />
+              <th className="px-3 py-2">행사</th><th className="px-3 py-2">관리코드</th><th className="px-3 py-2">발주처 / 운영사</th><th className="px-3 py-2">기간</th><th className="px-3 py-2 text-right">그룹</th><th className="px-3 py-2 text-right">케이스</th><th className="px-3 py-2">계정(운영/발주/멘토/멘티)</th><th className="px-3 py-2">상태</th><th className="px-3 py-2" />
             </tr>
           </thead>
           <tbody>

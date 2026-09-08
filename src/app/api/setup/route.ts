@@ -50,6 +50,7 @@ export async function POST(request: Request) {
     id: data.user.id,
     role: 'nextlab',
     is_platform_admin: true,
+    platform_role: 'owner',
     name: body.name,
     phone: body.phone ?? null,
     email: body.email,
@@ -60,18 +61,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: profileError.message }, { status: 500 });
   }
 
-  // 이미 시드된 행사가 있으면 전부 멤버십 부여 (허브에서 바로 진입 가능)
-  const { data: programs } = await admin.from('programs').select('id');
-  for (const p of programs ?? []) {
-    await admin.from('program_members').upsert({ program_id: p.id, user_id: data.user.id, role: 'nextlab', is_active: true }, { onConflict: 'program_id,user_id' });
-  }
+  // 플랫폼 통합관리자는 통합관리 전용 계정 — 행사 소속을 만들지 않는다 (행사 운영은 각 행사의 운영사 계정으로)
+  const { count: programCount } = await admin.from('programs').select('id', { count: 'exact', head: true });
 
   await admin.from('audit_logs').insert({
     actor_id: null,
     action: 'account.bootstrap',
     entity_type: 'users',
     entity_id: data.user.id,
-    metadata: { role: 'nextlab', is_platform_admin: true, email: body.email, programs: (programs ?? []).length },
+    metadata: { role: 'nextlab', is_platform_admin: true, platform_role: 'owner', email: body.email, programs: programCount ?? 0 },
   });
 
   return NextResponse.json({ email: body.email, tempPassword, userId: data.user.id, next: '/platform' });

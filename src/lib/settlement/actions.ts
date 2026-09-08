@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache';
 
 import { realRoleOrNull } from '@/lib/auth/guards';
+import { denyUnless } from '@/lib/auth/capabilities';
+
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { reviewClosure } from '@/lib/workflow/review';
@@ -47,6 +49,7 @@ export async function reviewClosureAction(caseId: string, result: 'approved' | '
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'review'); if (denied) return { ok: false, error: denied }; }
   if (!(await caseInProgram(caseId, ctx.programId))) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
   const r = await reviewClosure(caseId, profile.id, result, comment ?? '');
   if (r.ok) revalidateCase(caseId);
@@ -59,6 +62,7 @@ export async function cancelSettlementAction(settlementId: string, reason: strin
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'settlement'); if (denied) return { ok: false, error: denied }; }
   const { data: s } = await createAdminClient().from('settlements').select('program_id').eq('id', settlementId).maybeSingle();
   if (!s || s.program_id !== ctx.programId) return { ok: false, error: '이 행사의 정산 건이 아닙니다.' };
   const r = await cancelSettlement(settlementId, profile.id, reason ?? '');
@@ -75,6 +79,7 @@ export async function createBatchAction(title: string, settlementIds: string[], 
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'settlement'); if (denied) return { ok: false, error: denied }; }
   const r = await createBatch({ programId: ctx.programId, title, settlementIds, actorId: profile.id, note });
   if (r.ok) revalidateBatches(r.batchId);
   return r;
@@ -85,6 +90,7 @@ export async function addToBatchAction(batchId: string, settlementIds: string[])
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'settlement'); if (denied) return { ok: false, error: denied }; }
   if (!(await batchInProgram(batchId, ctx.programId))) return { ok: false, error: '이 행사의 품의가 아닙니다.' };
   const r = await addToBatch(batchId, settlementIds, profile.id);
   if (r.ok) revalidateBatches(batchId);
@@ -96,6 +102,7 @@ export async function removeFromBatchAction(batchId: string, settlementId: strin
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'settlement'); if (denied) return { ok: false, error: denied }; }
   if (!(await batchInProgram(batchId, ctx.programId))) return { ok: false, error: '이 행사의 품의가 아닙니다.' };
   const r = await removeFromBatch(batchId, settlementId, profile.id);
   if (r.ok) revalidateBatches(batchId);
@@ -107,6 +114,7 @@ export async function deleteBatchAction(batchId: string): Promise<{ ok: true } |
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'settlement'); if (denied) return { ok: false, error: denied }; }
   if (!(await batchInProgram(batchId, ctx.programId))) return { ok: false, error: '이 행사의 품의가 아닙니다.' };
   const r = await deleteDraftBatch(batchId, profile.id);
   if (r.ok) revalidateBatches(batchId);
@@ -118,6 +126,7 @@ export async function submitBatchAction(batchId: string): Promise<BatchResult> {
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'settlement.submit'); if (denied) return { ok: false, error: denied }; }
   if (!(await batchInProgram(batchId, ctx.programId))) return { ok: false, error: '이 행사의 품의가 아닙니다.' };
   const r = await submitBatch(batchId, profile.id);
   if (r.ok) revalidateBatches(batchId);
@@ -129,6 +138,7 @@ export async function unsubmitBatchAction(batchId: string): Promise<BatchResult>
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'settlement.submit'); if (denied) return { ok: false, error: denied }; }
   if (!(await batchInProgram(batchId, ctx.programId))) return { ok: false, error: '이 행사의 품의가 아닙니다.' };
   const r = await unsubmitBatch(batchId, profile.id);
   if (r.ok) revalidateBatches(batchId);
@@ -157,6 +167,7 @@ export async function markBatchPaidAction(batchId: string, paidAt?: string): Pro
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'settlement.submit'); if (denied) return { ok: false, error: denied }; }
   if (!(await batchInProgram(batchId, ctx.programId))) return { ok: false, error: '이 행사의 품의가 아닙니다.' };
   const r = await markBatchPaid(batchId, profile.id, paidAt);
   if (r.ok) revalidateBatches(batchId);
@@ -169,6 +180,7 @@ export async function withdrawCaseAction(caseId: string, reason: string): Promis
   if (!profile) return { ok: false, error: '운영사·발주처 담당자만 실행할 수 있습니다.' };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  if (ctx.role === 'nextlab') { const denied = denyUnless(ctx, 'review'); if (denied) return { ok: false, error: denied }; }
   if (!(await caseInProgram(caseId, ctx.programId))) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
   const r = await withdrawCase(caseId, profile.id, reason ?? '');
   if (r.ok) revalidateCase(caseId);
@@ -181,6 +193,7 @@ export async function decideMentorWithdrawalAction(requestId: string, decision: 
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'review'); if (denied) return { ok: false, error: denied }; }
   const { data: req } = await createAdminClient().from('mentor_withdrawal_requests').select('case_id').eq('id', requestId).maybeSingle();
   if (!req || !(await caseInProgram(req.case_id, ctx.programId))) return { ok: false, error: '이 행사의 요청이 아닙니다.' };
   const r = await decideMentorWithdrawal(requestId, profile.id, decision, note ?? '');
@@ -194,6 +207,7 @@ export async function forceEndMentorAction(caseId: string, reason: string): Prom
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'review'); if (denied) return { ok: false, error: denied }; }
   if (!(await caseInProgram(caseId, ctx.programId))) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
   const r = await forceEndMentor(caseId, profile.id, reason ?? '');
   if (r.ok) revalidateCase(caseId);
@@ -206,6 +220,7 @@ export async function decideExtensionAction(requestId: string, decision: 'approv
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'review'); if (denied) return { ok: false, error: denied }; }
   const { data: req } = await createAdminClient().from('round_extension_requests').select('case_id').eq('id', requestId).maybeSingle();
   if (!req || !(await caseInProgram(req.case_id, ctx.programId))) return { ok: false, error: '이 행사의 요청이 아닙니다.' };
   const r = await decideRoundExtension(requestId, profile.id, decision, note ?? '');

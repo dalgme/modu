@@ -33,9 +33,7 @@ export function PlatformNav() {
             </Link>
           );
         })}
-        <Link href="/hub?pick=1" className="ml-auto shrink-0 rounded-lg px-3.5 py-2 text-muted-foreground hover:bg-violet-100 dark:hover:bg-violet-900/60">
-          행사로 들어가기 →
-        </Link>
+        <span className="ml-auto shrink-0 px-2 py-2 text-[11px] text-muted-foreground">통합관리 전용 계정 · 행사 화면은 각 행사의 운영사 계정으로</span>
       </div>
     </nav>
   );

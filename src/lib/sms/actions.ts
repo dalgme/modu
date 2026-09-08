@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { realRoleOrNull } from '@/lib/auth/guards';
+import { denyUnless } from '@/lib/auth/capabilities';
 import { contextOrNull } from '@/lib/programs/context';
 import { reauthenticate } from '@/lib/sms/reauth';
 import { disableProgramSms, logSmsAccess, markSmsVerified, resolveSmsCredentials, storeProgramSmsCredentials } from '@/lib/sms/secrets';
@@ -16,6 +17,8 @@ async function guard(): Promise<{ id: string; email: string | null; phone: strin
   if (!profile) return { error: '운영사 담당자만 설정할 수 있습니다.' };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { error: '행사를 먼저 선택하세요.' };
+  const denied = denyUnless(ctx, 'sms');
+  if (denied) return { error: denied };
   return { id: profile.id, email: profile.email, phone: profile.phone, programId: ctx.programId };
 }
 

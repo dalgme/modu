@@ -16,7 +16,7 @@ export interface MentorRosterItem {
   signatureRegistered: boolean;
   paymentDocs: { resume: string | null; bankbook: string | null; idCard: string | null; note: string | null };
   /** 그룹 명부 (그룹별 원천징수 override) */
-  groups: { supportTypeId: string; supportTypeName: string; withholdingMethod: string | null; isActive: boolean }[];
+  groups: { supportTypeId: string; supportTypeName: string; withholdingMethod: string | null; isActive: boolean; duty: string | null }[];
   reviews: (Tables<'mentor_group_reviews'> & { authorName: string; supportTypeName: string })[];
   reviewAvg: number | null;
 }
@@ -76,7 +76,7 @@ export async function listProgramMentors(programId: string, supportTypeId?: stri
         surveyAvg: scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100 : null,
         signatureRegistered: (sigs ?? []).some((s) => s.user_id === m.id),
         paymentDocs: { resume: d?.resume_received_at ?? null, bankbook: d?.bankbook_received_at ?? null, idCard: d?.id_card_received_at ?? null, note: d?.note ?? null },
-        groups: myGroups.map((r) => ({ supportTypeId: r.support_type_id, supportTypeName: groupName.get(r.support_type_id) ?? '-', withholdingMethod: r.withholding_method, isActive: r.is_active })),
+        groups: myGroups.map((r) => ({ supportTypeId: r.support_type_id, supportTypeName: groupName.get(r.support_type_id) ?? '-', withholdingMethod: r.withholding_method, isActive: r.is_active, duty: r.duty })),
         reviews: myReviews,
         reviewAvg: ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10 : null,
       };

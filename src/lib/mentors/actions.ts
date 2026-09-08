@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { getRealSessionProfile, realRoleOrNull } from '@/lib/auth/guards';
+import { denyUnless } from '@/lib/auth/capabilities';
 import { getImpersonation } from '@/lib/auth/impersonation';
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -17,6 +18,8 @@ async function operator(): Promise<{ id: string; email: string | null; programId
   if (!profile) return { error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { error: '행사를 먼저 선택하세요.' };
+  const denied = denyUnless(ctx, 'mentors.docs');
+  if (denied) return { error: denied };
   return { id: profile.id, email: profile.email, programId: ctx.programId };
 }
 
@@ -110,6 +113,19 @@ export async function deleteMentorGroupReviewAction(id: string): Promise<Result>
   const { data: row } = await admin.from('mentor_group_reviews').select('id, program_id').eq('id', id).maybeSingle();
   if (!row || row.program_id !== op.programId) return { ok: false, error: '이 행사의 기록이 아닙니다.' };
   await admin.from('mentor_group_reviews').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+  revalidatePath('/nextlab/mentors');
+  return { ok: true };
+}
+
+/** 그룹별 담당역할 메모 (support_type_members.duty) */
+export async function setMentorGroupDutyAction(supportTypeId: string, userId: string, duty: string): Promise<Result> {
+  const op = await operator();
+  if ('error' in op) return { ok: false, error: op.error };
+  const admin = createAdminClient();
+  const { data: g } = await admin.from('support_types').select('program_id').eq('id', supportTypeId).maybeSingle();
+  if (!g || g.program_id !== op.programId) return { ok: false, error: '이 행사의 그룹이 아닙니다.' };
+  const { error } = await admin.from('support_type_members').upsert({ support_type_id: supportTypeId, user_id: userId, member_role: 'mentor', is_active: true, duty: duty.trim() || null }, { onConflict: 'support_type_id,user_id' });
+  if (error) return { ok: false, error: error.message };
   revalidatePath('/nextlab/mentors');
   return { ok: true };
 }

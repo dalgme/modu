@@ -16,6 +16,8 @@ import {
 } from '@/lib/auth/impersonation';
 import { roleHome } from '@/lib/auth/roles';
 import { contextOrNull } from '@/lib/programs/context';
+import { denyUnless } from '@/lib/auth/capabilities';
+
 import { membershipRole } from '@/lib/auth/program-role';
 
 export type ViewAsResult = { ok: true } | { ok: false; error: string };
@@ -27,6 +29,11 @@ export type ViewAsResult = { ok: true } | { ok: false; error: string };
  */
 export async function startViewAsAction(targetUserId: string): Promise<ViewAsResult> {
   const real = await requireNextlab();
+  {
+    const c = await contextOrNull(real);
+    const denied = c ? denyUnless(c, 'members.sensitive') : '행사를 먼저 선택하세요.';
+    if (denied) return { ok: false, error: denied };
+  }
   if (!viewAsConfigured()) {
     return { ok: false, error: '대행 기능이 구성되지 않았습니다. (서버 시크릿 미설정)' };
   }

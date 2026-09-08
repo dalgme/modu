@@ -18,6 +18,7 @@ const nextConfig = {
       '/nextlab/cases/[id]': ['./node_modules/@sparticuz/chromium/bin/**'],
       '/nextlab/requests': ['./node_modules/@sparticuz/chromium/bin/**'],
       '/institution/cases/[id]': ['./node_modules/@sparticuz/chromium/bin/**'],
+      '/api/reports/summary/[id]/export': ['./node_modules/@sparticuz/chromium/bin/**'],
     },
   },
 };

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
 import { realRoleOrNull, mentorOrNull } from '@/lib/auth/guards';
+import { denyUnless } from '@/lib/auth/capabilities';
 import { getImpersonation } from '@/lib/auth/impersonation';
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -17,6 +18,8 @@ async function operatorCase(caseId: string): Promise<{ id: string; programId: st
   if (!profile) return { error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { error: '행사를 먼저 선택하세요.' };
+  const denied = denyUnless(ctx, 'case.assign');
+  if (denied) return { error: denied };
   const { data } = await createAdminClient().from('cases').select('program_id').eq('id', caseId).maybeSingle();
   if (!data || data.program_id !== ctx.programId) return { error: '이 행사의 케이스가 아닙니다.' };
   return { id: profile.id, programId: ctx.programId };

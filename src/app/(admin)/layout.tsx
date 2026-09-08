@@ -3,6 +3,7 @@ import { requireContext } from '@/lib/programs/context';
 import { AppHeader } from '@/components/common/app-header';
 import { NextlabNav } from '@/components/nextlab/nextlab-nav';
 import { InstitutionNav } from '@/components/nav/institution-nav';
+import { GRADE_LABELS } from '@/lib/auth/capabilities';
 
 // 관리 화면(감사로그·설정·문자발송)은 발주처·운영사 공용. 각 역할의 상단 탭을 유지한다.
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -15,6 +16,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         role={profile.role}
         branding={ctx.branding}
         context={{ programName: ctx.program.name, groupName: ctx.group?.name ?? null }}
+        gradeLabel={ctx.grade && ctx.grade !== 'pl' ? GRADE_LABELS[ctx.grade] : null}
       />
       {profile.role === 'nextlab' && <NextlabNav />}
       {profile.role === 'institution' && <InstitutionNav />}

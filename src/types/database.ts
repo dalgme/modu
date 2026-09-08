@@ -1571,6 +1571,8 @@ export type Database = {
       program_members: {
         Row: {
           created_at: string;
+          duty: string | null;
+          grade: string | null;
           id: string;
           is_active: boolean;
           joined_at: string;
@@ -1583,6 +1585,8 @@ export type Database = {
         };
         Insert: {
           created_at?: string;
+          duty?: string | null;
+          grade?: string | null;
           id?: string;
           is_active?: boolean;
           joined_at?: string;
@@ -1595,6 +1599,8 @@ export type Database = {
         };
         Update: {
           created_at?: string;
+          duty?: string | null;
+          grade?: string | null;
           id?: string;
           is_active?: boolean;
           joined_at?: string;
@@ -1769,6 +1775,7 @@ export type Database = {
           round_report_policy: Json;
           slug: string;
           sms_footer: string | null;
+          staff_permissions: Json;
           starts_on: string | null;
           status: string;
           updated_at: string;
@@ -1796,6 +1803,7 @@ export type Database = {
           round_report_policy?: Json;
           slug: string;
           sms_footer?: string | null;
+          staff_permissions?: Json;
           starts_on?: string | null;
           status?: string;
           updated_at?: string;
@@ -1823,6 +1831,7 @@ export type Database = {
           round_report_policy?: Json;
           slug?: string;
           sms_footer?: string | null;
+          staff_permissions?: Json;
           starts_on?: string | null;
           status?: string;
           updated_at?: string;
@@ -1834,6 +1843,50 @@ export type Database = {
             columns: ['created_by'];
             isOneToOne: false;
             referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      report_snapshots: {
+        Row: {
+          created_at: string;
+          generated_at: string;
+          generated_by: string | null;
+          id: string;
+          metrics: Json;
+          narrative: Json;
+          program_id: string;
+          support_type_id: string | null;
+          title: string;
+        };
+        Insert: {
+          created_at?: string;
+          generated_at?: string;
+          generated_by?: string | null;
+          id?: string;
+          metrics: Json;
+          narrative?: Json;
+          program_id: string;
+          support_type_id?: string | null;
+          title: string;
+        };
+        Update: {
+          created_at?: string;
+          generated_at?: string;
+          generated_by?: string | null;
+          id?: string;
+          metrics?: Json;
+          narrative?: Json;
+          program_id?: string;
+          support_type_id?: string | null;
+          title?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'report_snapshots_program_id_fkey';
+            columns: ['program_id'];
+            isOneToOne: false;
+            referencedRelation: 'programs';
             referencedColumns: ['id'];
           },
         ];
@@ -2390,6 +2443,7 @@ export type Database = {
       support_type_members: {
         Row: {
           created_at: string;
+          duty: string | null;
           id: string;
           is_active: boolean;
           joined_at: string;
@@ -2403,6 +2457,7 @@ export type Database = {
         };
         Insert: {
           created_at?: string;
+          duty?: string | null;
           id?: string;
           is_active?: boolean;
           joined_at?: string;
@@ -2416,6 +2471,7 @@ export type Database = {
         };
         Update: {
           created_at?: string;
+          duty?: string | null;
           id?: string;
           is_active?: boolean;
           joined_at?: string;
@@ -2721,6 +2777,8 @@ export type Database = {
           name: string;
           password_changed_at: string | null;
           phone: string | null;
+          platform_role: string | null;
+          position: string | null;
           privacy_agreed_at: string | null;
           role: Database['public']['Enums']['user_role'];
           updated_at: string;
@@ -2737,6 +2795,8 @@ export type Database = {
           name: string;
           password_changed_at?: string | null;
           phone?: string | null;
+          platform_role?: string | null;
+          position?: string | null;
           privacy_agreed_at?: string | null;
           role: Database['public']['Enums']['user_role'];
           updated_at?: string;
@@ -2753,6 +2813,8 @@ export type Database = {
           name?: string;
           password_changed_at?: string | null;
           phone?: string | null;
+          platform_role?: string | null;
+          position?: string | null;
           privacy_agreed_at?: string | null;
           role?: Database['public']['Enums']['user_role'];
           updated_at?: string;

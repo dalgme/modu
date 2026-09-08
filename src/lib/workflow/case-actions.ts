@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache';
 
 import { realRoleOrNull } from '@/lib/auth/guards';
+import { denyUnless } from '@/lib/auth/capabilities';
+
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { assignMentorSchema, caseFormSchema } from '@/lib/validations/case';
@@ -47,6 +49,7 @@ export async function registerCaseAction(input: unknown): Promise<CreateCaseResu
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'case.manage'); if (denied) return { ok: false, error: denied }; }
   const parsed = caseFormSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? '입력값을 확인하세요.' };
 
@@ -61,6 +64,7 @@ export async function assignMentorAction(caseId: string, mentorId: string): Prom
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'case.assign'); if (denied) return { ok: false, error: denied }; }
   const parsed = assignMentorSchema.safeParse({ caseId, mentorId });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? '입력값을 확인하세요.' };
   if (!(await caseInProgram(parsed.data.caseId, ctx.programId))) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
@@ -79,6 +83,7 @@ export async function reassignMentorAction(caseId: string, newMentorId: string, 
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'case.assign'); if (denied) return { ok: false, error: denied }; }
   const parsed = assignMentorSchema.safeParse({ caseId, mentorId: newMentorId });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? '입력값을 확인하세요.' };
   if (!(await caseInProgram(parsed.data.caseId, ctx.programId))) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
@@ -97,6 +102,7 @@ export async function recallMentorAction(caseId: string, reason?: string): Promi
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'case.assign'); if (denied) return { ok: false, error: denied }; }
   if (!(await caseInProgram(caseId, ctx.programId))) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
 
   const result = await recallMentor(caseId, profile.id, reason);
@@ -110,6 +116,7 @@ export async function succeedCasesAction(input: { sourceCaseIds: string[]; targe
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'case.manage'); if (denied) return { ok: false, error: denied }; }
   const r = await succeedCases({ programId: ctx.programId, actorId: profile.id, sourceCaseIds: input.sourceCaseIds ?? [], targetGroupId: input.targetGroupId, keepMentor: !!input.keepMentor });
   if (r.ok) {
     revalidatePath('/nextlab/dashboard');

@@ -36,6 +36,11 @@ export function ReportsBody({ m, tab, base, cases, settlements, branding, export
             </Link>
           ))}
         </nav>
+        {base === '/nextlab' && (
+          <Link href={`${reportsHref}/summary`} className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-800 hover:bg-violet-200">
+            종합결과리포트 →
+          </Link>
+        )}
         <a href={`${exportHref}?tab=${tab}`} className="inline-flex items-center gap-1 rounded-lg border bg-background px-3 py-1.5 text-xs font-semibold hover:bg-accent">
           <Download className="h-4 w-4" /> 엑셀 내보내기
         </a>

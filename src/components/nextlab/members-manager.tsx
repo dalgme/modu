@@ -8,6 +8,7 @@ import {
   createMemberAction,
   addExistingMemberAction,
   setMemberRoleAction,
+  updateMemberDetailsAction,
   removeMemberFromProgramAction,
   setMemberActiveAction,
   resetMemberPasswordAction,
@@ -15,6 +16,7 @@ import {
   type MemberActionState,
 } from '@/lib/auth/member-actions';
 import { ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
+import { GRADE_LABELS, STAFF_GRADES, type StaffGrade } from '@/lib/auth/capabilities';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -44,6 +46,9 @@ export interface MemberItem {
   memberActive: boolean;
   is_active: boolean;
   must_change_password: boolean;
+  position: string | null;
+  grade: string | null;
+  duty: string | null;
 }
 
 const ALL_ROLES: UserRole[] = ['institution', 'nextlab', 'mentor', 'mentee'];
@@ -129,6 +134,22 @@ function CreateMemberForm() {
                 ))}
               </select>
             </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="m-position">직위 <span className="text-xs font-normal text-muted-foreground">(발주처·운영사 필수)</span></Label>
+              <Input id="m-position" name="position" autoComplete="off" placeholder="예: 팀장, 주임" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="m-grade">운영사 등급 <span className="text-xs font-normal text-muted-foreground">(운영사 역할일 때)</span></Label>
+              <select id="m-grade" name="grade" defaultValue="pl" className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+                {STAFF_GRADES.map((g) => (
+                  <option key={g} value={g}>{GRADE_LABELS[g]}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-2 sm:col-span-2">
+              <Label htmlFor="m-duty">이 행사에서의 담당역할</Label>
+              <Input id="m-duty" name="duty" autoComplete="off" placeholder="예: 정산 담당, A·B그룹 담당" />
+            </div>
           </div>
 
           {state?.ok === false && (
@@ -191,6 +212,27 @@ function AddExistingMemberForm() {
         </form>
       </CardContent>
     </Card>
+  );
+}
+
+function MemberDetailsForm({ member }: { member: MemberItem }) {
+  const [state, action] = useFormState<MemberActionState, FormData>(updateMemberDetailsAction, undefined);
+  const staff = member.role === 'nextlab' || member.role === 'institution';
+  return (
+    <form action={action} className="flex flex-wrap items-center gap-1">
+      <input type="hidden" name="userId" value={member.id} />
+      <Input name="position" defaultValue={member.position ?? ''} placeholder={staff ? '직위 *' : '직위'} className="h-8 w-24 text-xs" />
+      {member.role === 'nextlab' && (
+        <select name="grade" defaultValue={(member.grade as StaffGrade | null) ?? 'pl'} className="h-8 rounded-md border border-input bg-background px-2 text-xs" title="운영사 등급">
+          {STAFF_GRADES.map((g) => (
+            <option key={g} value={g}>{GRADE_LABELS[g]}</option>
+          ))}
+        </select>
+      )}
+      <Input name="duty" defaultValue={member.duty ?? ''} placeholder="담당역할" className="h-8 w-32 text-xs" />
+      <RowSubmit>저장</RowSubmit>
+      {state?.ok === false && <span className="text-xs text-destructive">{state.error}</span>}
+    </form>
   );
 }
 
@@ -367,7 +409,11 @@ export function MembersManager({ members }: { members: MemberItem[] }) {
                   <TableCell className="text-sm text-muted-foreground">{m.email ?? '-'}</TableCell>
                   <TableCell>
                     <div className="flex flex-col items-start gap-1">
-                      <Badge variant="secondary">{ROLE_LABELS[m.role]}</Badge>
+                      <Badge variant="secondary">
+                        {ROLE_LABELS[m.role]}
+                        {m.role === 'nextlab' && <span className="ml-1 font-normal text-muted-foreground">· {GRADE_LABELS[(m.grade as StaffGrade | null) ?? 'pl']}</span>}
+                      </Badge>
+                      {(m.position || m.duty) && <span className="text-[11px] text-muted-foreground">{[m.position, m.duty].filter(Boolean).join(' · ')}</span>}
                       {m.primaryRole !== m.role && (
                         <span className="text-[10px] text-violet-700" title="계정 기본 역할과 다름 — 다른 행사에서는 이 역할로 활동">기본 {ROLE_LABELS[m.primaryRole]}</span>
                       )}
@@ -403,6 +449,7 @@ export function MembersManager({ members }: { members: MemberItem[] }) {
                           <Link href={`/nextlab/view/${m.id}`}>화면 보기</Link>
                         </Button>
                       )}
+                      <MemberDetailsForm member={m} />
                       <RoleSelectForm member={m} />
                       {m.memberActive && <RemoveFromProgramForm member={m} />}
                       <ToggleActiveForm member={m} />

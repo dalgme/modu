@@ -33,6 +33,9 @@ export default async function Page() {
           role: m.role,
           primaryRole: m.primaryRole,
           memberActive: m.memberActive,
+          position: m.position,
+          grade: m.grade,
+          duty: m.duty,
           is_active: m.is_active,
           must_change_password: m.must_change_password,
         }))}

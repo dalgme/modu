@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { roleOrNull, realRoleOrNull } from '@/lib/auth/guards';
+import { denyUnless } from '@/lib/auth/capabilities';
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { decideMentorChange, requestMentorChange, signRound, submitSurvey } from '@/lib/workflow/mentee';
@@ -52,6 +53,7 @@ export async function decideMentorChangeAction(requestId: string, decision: 'acc
   if (!profile) return { ok: false, error: '운영사 담당자만 실행할 수 있습니다.' };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: '행사를 먼저 선택하세요.' };
+  { const denied = denyUnless(ctx, 'review'); if (denied) return { ok: false, error: denied }; }
   const admin = createAdminClient();
   const { data: req } = await admin.from('mentor_change_requests').select('case_id, cases!inner(program_id)').eq('id', requestId).maybeSingle();
   const program = (req?.cases as unknown as { program_id: string } | null)?.program_id;

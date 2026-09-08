@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { realRoleOrNull } from '@/lib/auth/guards';
+import { denyUnless } from '@/lib/auth/capabilities';
 import { contextOrNull } from '@/lib/programs/context';
 import { commitImport, parseSheet, previewImport, type ImportKind, type ImportPreview, type ImportResult, type ImportRow } from '@/lib/import/bulk-import';
 
@@ -14,6 +15,8 @@ async function operatorContext(): Promise<{ id: string; programId: string } | { 
   if (!profile) return { error: '운영사 담당자만 실행할 수 있습니다.' };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { error: '행사를 먼저 선택하세요.' };
+  const denied = denyUnless(ctx, 'members');
+  if (denied) return { error: denied };
   return { id: profile.id, programId: ctx.programId };
 }
 

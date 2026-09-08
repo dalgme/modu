@@ -63,6 +63,12 @@ export type MemberRow = Pick<
   /** 이 행사 소속 활성 여부 */
   memberActive: boolean;
   joinedAt: string;
+  /** 직위 (발주처·운영사 담당자) */
+  position: string | null;
+  /** 운영사 등급 (nextlab) */
+  grade: string | null;
+  /** 이 행사 담당역할 메모 */
+  duty: string | null;
 };
 
 /** 역할 표시 정렬 순서 (운영사 → 발주처 → 멘토 → 멘티) */
@@ -81,21 +87,21 @@ export async function listProgramMembers(programId: string): Promise<MemberRow[]
   const admin = createAdminClient();
   const { data: memberships } = await admin
     .from('program_members')
-    .select('user_id, role, is_active, joined_at')
+    .select('user_id, role, is_active, joined_at, grade, duty')
     .eq('program_id', programId)
     .order('joined_at', { ascending: true });
   const ids = (memberships ?? []).map((m) => m.user_id);
   if (ids.length === 0) return [];
   const { data: users } = await admin
     .from('users')
-    .select('id, email, name, phone, role, is_active, must_change_password, invited_at, activated_at, created_at')
+    .select('id, email, name, phone, role, is_active, must_change_password, invited_at, activated_at, created_at, position')
     .in('id', ids);
   const byId = new Map((users ?? []).map((u) => [u.id, u]));
   const rows: MemberRow[] = [];
   for (const m of memberships ?? []) {
     const u = byId.get(m.user_id);
     if (!u) continue;
-    rows.push({ ...u, primaryRole: u.role, role: m.role as UserRole, memberActive: m.is_active, joinedAt: m.joined_at });
+    rows.push({ ...u, primaryRole: u.role, role: m.role as UserRole, memberActive: m.is_active, joinedAt: m.joined_at, position: u.position, grade: m.grade, duty: m.duty });
   }
   return rows.sort((a, b) => {
     const r = ROLE_ORDER[a.role] - ROLE_ORDER[b.role];

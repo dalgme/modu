@@ -1,6 +1,16 @@
 'use server';
 
 import { requireStaff } from '@/lib/auth/guards';
+import { contextOrNull } from '@/lib/programs/context';
+import { denyUnless } from '@/lib/auth/capabilities';
+
+/** 운영사 담당 등급 권한(sms) — 발주처는 대상 아님 */
+async function smsDenied(): Promise<string | null> {
+  const profile = await requireStaff();
+  if (profile.role !== 'nextlab') return null;
+  const ctx = await contextOrNull(profile);
+  return ctx ? denyUnless(ctx, 'sms') : null;
+}
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendSms } from '@/lib/notifications/provider';
 import { sendSolapiSms, getSolapiBalance } from '@/lib/notifications/solapi';
@@ -32,6 +42,7 @@ export type ReminderSendResult =
 /** 관리자: 문자 테스트 발송 */
 export async function sendTestSmsAction(input: { to: string; text: string }): Promise<TestSmsResult> {
   await requireStaff();
+  { const denied = await smsDenied(); if (denied) return { ok: false, error: denied }; }
   const to = (input.to ?? '').trim();
   const text = (input.text ?? '').trim();
   if (!/^01[0-9]{7,9}$/.test(to.replace(/[^0-9]/g, ''))) {
@@ -51,6 +62,7 @@ export async function sendBulkSmsAction(input: {
   senderIndex?: 1 | 2;
 }): Promise<BulkSmsResult> {
   const actor = await requireStaff();
+  { const denied = await smsDenied(); if (denied) return { ok: false, error: denied }; }
   const text = (input.text ?? '').trim();
   const ids = Array.from(new Set(input.recipientIds ?? [])).filter(Boolean);
   if (!text) return { ok: false, error: '메시지 내용을 입력하세요.' };
@@ -105,6 +117,7 @@ export async function scheduleBulkSmsAction(input: {
   senderIndex?: 1 | 2;
 }): Promise<ScheduleSmsResult> {
   const actor = await requireStaff();
+  { const denied = await smsDenied(); if (denied) return { ok: false, error: denied }; }
   const text = (input.text ?? '').trim();
   const ids = Array.from(new Set(input.recipientIds ?? [])).filter(Boolean);
   if (!text) return { ok: false, error: '메시지 내용을 입력하세요.' };
@@ -143,6 +156,7 @@ export async function scheduleBulkSmsAction(input: {
 /** 관리자: 예약 발송 취소 (pending 만 취소 가능) */
 export async function cancelScheduledSmsAction(id: string): Promise<SimpleResult> {
   await requireStaff();
+  { const denied = await smsDenied(); if (denied) return { ok: false, error: denied }; }
   if (!id) return { ok: false, error: '잘못된 요청입니다.' };
   const admin = createAdminClient();
   const { data, error } = await admin
@@ -161,6 +175,7 @@ export async function cancelScheduledSmsAction(id: string): Promise<SimpleResult
 /** 관리자: 주간 멘토 안내문 문구·활성 여부 저장 */
 export async function saveMentorReminderAction(input: MentorReminderConfig): Promise<SimpleResult> {
   const actor = await requireStaff();
+  { const denied = await smsDenied(); if (denied) return { ok: false, error: denied }; }
   const template = (input.template ?? '').trim();
   if (!template) return { ok: false, error: '안내문 내용을 입력하세요.' };
   await saveMentorReminderConfig({ template, enabled: !!input.enabled }, actor.id);
@@ -170,6 +185,7 @@ export async function saveMentorReminderAction(input: MentorReminderConfig): Pro
 /** 관리자: 주간 멘토 안내문 지금 즉시 발송(수동 트리거·테스트) */
 export async function sendMentorReminderNowAction(): Promise<ReminderSendResult> {
   await requireStaff();
+  { const denied = await smsDenied(); if (denied) return { ok: false, error: denied }; }
   const result = await sendMentorWeeklyReminders();
   return { ok: true, ...result };
 }

@@ -13,6 +13,8 @@ import { createAccountSchema, inviteMenteeSchema } from '@/lib/validations/auth'
 import { contextOrNull } from '@/lib/programs/context';
 import { resolveUserByIdentifier } from '@/lib/auth/identifier';
 import type { UserRole } from '@/lib/auth/roles';
+import { denyUnless, isStaffGrade } from '@/lib/auth/capabilities';
+
 
 const ALL_ROLES: UserRole[] = ['institution', 'nextlab', 'mentor', 'mentee'];
 
@@ -20,6 +22,13 @@ const ALL_ROLES: UserRole[] = ['institution', 'nextlab', 'mentor', 'mentee'];
 async function currentProgramId(actor: Parameters<typeof contextOrNull>[0]): Promise<string | null> {
   const ctx = await contextOrNull(actor);
   return ctx?.programId ?? null;
+}
+
+/** 담당 등급 권한 검사 — 없으면 안내 문구 */
+async function deniedFor(actor: Parameters<typeof contextOrNull>[0], key: 'members' | 'members.sensitive'): Promise<string | null> {
+  const ctx = await contextOrNull(actor);
+  if (!ctx) return '행사를 먼저 선택하세요.';
+  return denyUnless(ctx, key);
 }
 
 /** 대상이 이 행사의 소속인지 (운영사 회원관리 액션의 범위 강제) */
@@ -43,26 +52,31 @@ export async function createMemberAction(
   formData: FormData,
 ): Promise<MemberActionState> {
   const actor = await requireNextlab();
+  { const denied = await deniedFor(actor, 'members'); if (denied) return { ok: false, error: denied }; }
 
   const parsed = createAccountSchema.safeParse({
     email: formData.get('email'),
     name: formData.get('name'),
     phone: formData.get('phone') || undefined,
     role: formData.get('role'),
+    position: formData.get('position') || undefined,
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? '입력값을 확인하세요.' };
   }
+  const gradeRaw = String(formData.get('grade') ?? '');
+  const grade = parsed.data.role === 'nextlab' && isStaffGrade(gradeRaw) ? gradeRaw : null;
+  const duty = String(formData.get('duty') ?? '').trim() || null;
 
   const programId = await currentProgramId(actor);
   if (!programId) return { ok: false, error: '행사를 먼저 선택하세요.' };
 
   try {
     const result = await createStaffOrMentorAccount({ ...parsed.data, actorId: actor.id });
-    // 이 행사 소속 + 행사 안 역할 (설계 B)
+    // 이 행사 소속 + 행사 안 역할 (설계 B) + 운영사 등급·담당
     await createAdminClient()
       .from('program_members')
-      .upsert({ program_id: programId, user_id: result.userId, role: parsed.data.role, is_active: true, left_at: null }, { onConflict: 'program_id,user_id' });
+      .upsert({ program_id: programId, user_id: result.userId, role: parsed.data.role, grade, duty, is_active: true, left_at: null }, { onConflict: 'program_id,user_id' });
     revalidatePath('/nextlab/members');
     return {
       ok: true,
@@ -85,6 +99,7 @@ export async function inviteMenteeAction(
   formData: FormData,
 ): Promise<MemberActionState> {
   const actor = await requireNextlab();
+  { const denied = await deniedFor(actor, 'members'); if (denied) return { ok: false, error: denied }; }
 
   const parsed = inviteMenteeSchema.safeParse({
     caseId: formData.get('caseId'),
@@ -132,6 +147,7 @@ export async function setMemberActiveAction(
   formData: FormData,
 ): Promise<MemberActionState> {
   const actor = await requireNextlab();
+  { const denied = await deniedFor(actor, 'members.sensitive'); if (denied) return { ok: false, error: denied }; }
   const userId = String(formData.get('userId') ?? '');
   const active = String(formData.get('active') ?? '') === 'true';
 
@@ -170,6 +186,7 @@ export async function deleteMemberAction(
   formData: FormData,
 ): Promise<MemberActionState> {
   const actor = await requireNextlab();
+  { const denied = await deniedFor(actor, 'members.sensitive'); if (denied) return { ok: false, error: denied }; }
   const userId = String(formData.get('userId') ?? '');
   if (!userId) return { ok: false, error: '대상 회원을 확인할 수 없습니다.' };
   if (userId === actor.id) return { ok: false, error: '본인 계정은 삭제할 수 없습니다.' };
@@ -235,6 +252,7 @@ export async function resetMemberPasswordAction(
   formData: FormData,
 ): Promise<MemberActionState> {
   const actor = await requireNextlab();
+  { const denied = await deniedFor(actor, 'members.sensitive'); if (denied) return { ok: false, error: denied }; }
   const userId = String(formData.get('userId') ?? '');
   if (!userId) return { ok: false, error: '대상 회원을 확인할 수 없습니다.' };
   const programId = await currentProgramId(actor);
@@ -284,6 +302,7 @@ export async function addExistingMemberAction(
   formData: FormData,
 ): Promise<MemberActionState> {
   const actor = await requireNextlab();
+  { const denied = await deniedFor(actor, 'members'); if (denied) return { ok: false, error: denied }; }
   const programId = await currentProgramId(actor);
   if (!programId) return { ok: false, error: '행사를 먼저 선택하세요.' };
   const identifier = String(formData.get('identifier') ?? '').trim();
@@ -296,6 +315,8 @@ export async function addExistingMemberAction(
   if (!found) return { ok: false, error: '해당 계정을 찾을 수 없습니다. 새 계정은 위의 발급 폼을 사용하세요.' };
 
   const admin = createAdminClient();
+  const { data: target } = await admin.from('users').select('is_platform_admin').eq('id', found.id).maybeSingle();
+  if (target?.is_platform_admin) return { ok: false, error: '플랫폼 관리자 계정은 통합관리 전용이라 행사에 소속시킬 수 없습니다.' };
   const { data: existing } = await admin.from('program_members').select('id, role, is_active').eq('program_id', programId).eq('user_id', found.id).maybeSingle();
   if (existing?.is_active && existing.role === role) return { ok: false, error: '이미 이 행사에 같은 역할로 소속되어 있습니다.' };
   const { error } = await admin
@@ -321,6 +342,7 @@ export async function setMemberRoleAction(
   formData: FormData,
 ): Promise<MemberActionState> {
   const actor = await requireNextlab();
+  { const denied = await deniedFor(actor, 'members'); if (denied) return { ok: false, error: denied }; }
   const programId = await currentProgramId(actor);
   const userId = String(formData.get('userId') ?? '');
   const role = String(formData.get('role') ?? '') as UserRole;
@@ -342,6 +364,7 @@ export async function removeMemberFromProgramAction(
   formData: FormData,
 ): Promise<MemberActionState> {
   const actor = await requireNextlab();
+  { const denied = await deniedFor(actor, 'members'); if (denied) return { ok: false, error: denied }; }
   const programId = await currentProgramId(actor);
   const userId = String(formData.get('userId') ?? '');
   if (!programId || !userId || !(await assertMemberOfProgram(programId, userId))) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
@@ -354,4 +377,38 @@ export async function removeMemberFromProgramAction(
   await admin.from('audit_logs').insert({ actor_id: actor.id, program_id: programId, action: 'membership.remove', entity_type: 'users', entity_id: userId, metadata: {} });
   revalidatePath('/nextlab/members');
   return { ok: true, message: '이 행사 소속을 해제했습니다.' };
+}
+
+/**
+ * 담당자 상세 — 직위(계정), 이 행사에서의 담당역할 메모, 운영사 등급(PL/PM/부PM/옵저버).
+ * 등급은 역할이 운영사일 때만 의미가 있다. 본인 등급은 낮출 수 없다(잠금 방지).
+ */
+export async function updateMemberDetailsAction(
+  _prev: MemberActionState,
+  formData: FormData,
+): Promise<MemberActionState> {
+  const actor = await requireNextlab();
+  { const denied = await deniedFor(actor, 'members'); if (denied) return { ok: false, error: denied }; }
+  const programId = await currentProgramId(actor);
+  const userId = String(formData.get('userId') ?? '');
+  if (!programId || !userId || !(await assertMemberOfProgram(programId, userId))) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
+  const position = String(formData.get('position') ?? '').trim() || null;
+  const duty = String(formData.get('duty') ?? '').trim() || null;
+  const gradeRaw = String(formData.get('grade') ?? '');
+  const admin = createAdminClient();
+  const { data: mem } = await admin.from('program_members').select('role, grade').eq('program_id', programId).eq('user_id', userId).maybeSingle();
+  const grade = mem?.role === 'nextlab' ? (isStaffGrade(gradeRaw) ? gradeRaw : null) : null;
+  if (userId === actor.id && mem?.role === 'nextlab' && grade !== (mem.grade ?? null) && grade !== null && grade !== 'pl') {
+    return { ok: false, error: '본인 등급은 낮출 수 없습니다. 다른 메인 담당자가 변경해야 합니다.' };
+  }
+  if ((mem?.role === 'institution' || mem?.role === 'nextlab') && !position) return { ok: false, error: '발주처·운영사 담당자는 직위를 입력하세요.' };
+  const [{ error: e1 }, { error: e2 }] = await Promise.all([
+    admin.from('users').update({ position, updated_at: new Date().toISOString() }).eq('id', userId),
+    admin.from('program_members').update({ duty, grade }).eq('program_id', programId).eq('user_id', userId),
+  ]);
+  if (e1 || e2) return { ok: false, error: (e1 ?? e2)!.message };
+  await admin.from('audit_logs').insert({ actor_id: actor.id, program_id: programId, action: grade !== (mem?.grade ?? null) ? 'membership.grade' : 'membership.profile', entity_type: 'users', entity_id: userId, metadata: { position, duty, grade, previous_grade: mem?.grade ?? null } });
+  revalidatePath('/nextlab/members');
+  revalidatePath('/', 'layout');
+  return { ok: true, message: '담당자 정보를 저장했습니다.' };
 }

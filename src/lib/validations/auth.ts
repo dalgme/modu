@@ -23,7 +23,8 @@ export const createAccountSchema = z.object({
   name: z.string().min(1, '이름을 입력하세요.'),
   phone: z.string().optional(),
   role: z.enum(['institution', 'nextlab', 'mentor']),
-});
+  position: z.string().trim().max(60).optional(),
+}).refine((v) => v.role === 'mentor' || !!v.position?.trim(), { message: '발주처·운영사 담당자는 직위를 입력하세요.', path: ['position'] });
 export type CreateAccountInput = z.infer<typeof createAccountSchema>;
 
 /** 멘티 초대 (케이스 등록 후 운영사가 계정 발급) */

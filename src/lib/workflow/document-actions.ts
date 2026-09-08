@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { getSessionProfile, mentorOfCaseOrNull, realRoleOrNull, roleOrNull } from '@/lib/auth/guards';
+import { denyUnless } from '@/lib/auth/capabilities';
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { attachCaseDocument, deleteCaseDocument, setCaseDocumentVisibility } from '@/lib/workflow/case-documents';
@@ -23,7 +24,7 @@ async function actorForCase(caseId: string): Promise<{ id: string; role: 'nextla
   if (staff) {
     const ctx = await contextOrNull(staff);
     const { data } = await createAdminClient().from('cases').select('program_id').eq('id', caseId).maybeSingle();
-    if (ctx && data && data.program_id === ctx.programId) return { id: staff.id, role: 'nextlab' };
+    if (ctx && data && data.program_id === ctx.programId && !denyUnless(ctx, 'case.manage')) return { id: staff.id, role: 'nextlab' };
   }
   const mentee = await roleOrNull(['mentee']);
   if (mentee) {

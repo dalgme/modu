@@ -5,6 +5,7 @@ import { cache } from 'react';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { readContextPayload } from '@/lib/programs/context-cookie';
 import type { UserRole } from '@/lib/auth/roles';
+import { isStaffGrade, type StaffGrade } from '@/lib/auth/capabilities';
 
 /**
  * 행사별 역할 (설계 B, 마이그레이션 0059).
@@ -13,16 +14,21 @@ import type { UserRole } from '@/lib/auth/roles';
  * 가드(`getRealSessionProfile`/`getSessionProfile`)가 프로필의 role 을 이 값으로 바꿔 주기 때문에
  * 하위 코드는 `profile.role` 만 읽으면 된다.
  */
-export const membershipRole = cache(async (userId: string, programId: string): Promise<UserRole | null> => {
+export const membershipInfo = cache(async (userId: string, programId: string): Promise<{ role: UserRole; grade: StaffGrade | null; duty: string | null } | null> => {
   const { data } = await createAdminClient()
     .from('program_members')
-    .select('role')
+    .select('role, grade, duty')
     .eq('program_id', programId)
     .eq('user_id', userId)
     .eq('is_active', true)
     .maybeSingle();
-  return (data?.role as UserRole | undefined) ?? null;
+  if (!data) return null;
+  return { role: data.role as UserRole, grade: isStaffGrade(data.grade) ? data.grade : null, duty: data.duty };
 });
+
+export async function membershipRole(userId: string, programId: string): Promise<UserRole | null> {
+  return (await membershipInfo(userId, programId))?.role ?? null;
+}
 
 /** 현재 컨텍스트 쿠키가 가리키는 행사 id (서명·만료만 검사) */
 export function currentProgramIdFromCookie(): string | null {

@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from 'react';
 import { CheckCircle2, ClipboardCheck, MessageSquare, PenLine, XCircle } from 'lucide-react';
 
 import type { MentorRosterItem } from '@/lib/data/mentors';
-import { addMentorGroupReviewAction, checkPaymentDocsAction, deleteMentorGroupReviewAction, setMentorGroupWithholdingAction } from '@/lib/mentors/actions';
+import { addMentorGroupReviewAction, checkPaymentDocsAction, deleteMentorGroupReviewAction, setMentorGroupDutyAction, setMentorGroupWithholdingAction } from '@/lib/mentors/actions';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -150,6 +150,15 @@ export function MentorsRoster({ mentors, groups }: { mentors: MentorRosterItem[]
                           <option value="business_income">사업소득</option>
                           <option value="none">없음</option>
                         </select>
+                        <input
+                          defaultValue={g.duty ?? ''}
+                          placeholder="그룹 담당역할"
+                          title="이 그룹에서의 담당역할 메모 (포커스를 벗어나면 저장)"
+                          disabled={pending}
+                          onBlur={(e) => { if (e.target.value !== (g.duty ?? '')) start(async () => { const r = await setMentorGroupDutyAction(g.supportTypeId, m.id, e.target.value); toast(r.ok ? { title: '저장' } : { title: r.error, variant: 'destructive' }); }); }}
+                          className="h-7 w-28 rounded border bg-background px-1 text-xs"
+                        />
+                        
                       </label>
                     ))}
                     {m.groups.length === 0 && <span className="text-xs text-muted-foreground">그룹 명부 없음</span>}

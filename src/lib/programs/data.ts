@@ -38,14 +38,8 @@ export interface MyProgram {
  */
 export async function listMyPrograms(userId: string, isPlatformAdmin: boolean, defaultRole: UserRole): Promise<MyProgram[]> {
   const admin = createAdminClient();
-  if (isPlatformAdmin) {
-    const [{ data }, { data: mine }] = await Promise.all([
-      admin.from('programs').select('*').order('status').order('created_at', { ascending: false }),
-      admin.from('program_members').select('program_id, role').eq('user_id', userId).eq('is_active', true),
-    ]);
-    const roleOf = new Map((mine ?? []).map((m) => [m.program_id, m.role as UserRole]));
-    return (data ?? []).map((program) => ({ program, memberActive: true, joinedAt: null, role: roleOf.get(program.id) ?? defaultRole }));
-  }
+  // 플랫폼 관리자는 통합관리 전용 계정 — 행사 소속·진입이 없다 (행사 관리는 /platform 에서)
+  if (isPlatformAdmin) return [];
   const { data: memberships } = await admin
     .from('program_members')
     .select('program_id, is_active, joined_at, role')
@@ -64,9 +58,9 @@ export async function listMyPrograms(userId: string, isPlatformAdmin: boolean, d
   );
 }
 
-/** 행사 멤버십(활성) 여부 — 플랫폼 관리자는 항상 true */
+/** 행사 멤버십(활성) 여부 — 플랫폼 관리자는 행사 소속이 없으므로 항상 false (통합관리 전용 계정) */
 export async function isProgramMember(userId: string, programId: string, isPlatformAdmin: boolean): Promise<boolean> {
-  if (isPlatformAdmin) return true;
+  if (isPlatformAdmin) return false;
   const { data } = await createAdminClient()
     .from('program_members')
     .select('id')

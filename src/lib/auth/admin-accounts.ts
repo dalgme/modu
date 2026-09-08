@@ -40,6 +40,8 @@ interface CreateStaffOrMentorInput {
   name: string;
   phone?: string;
   role: Extract<UserRole, 'institution' | 'nextlab' | 'mentor'>;
+  /** 직위 (발주처·운영사 담당자) */
+  position?: string;
   /** 발급을 수행하는 관리자 (감사로그용) */
   actorId: string;
 }
@@ -77,6 +79,7 @@ export async function createStaffOrMentorAccount(
     name: input.name,
     phone: toStoredPhone(input.phone),
     email: input.email,
+    position: input.position?.trim() || null,
     must_change_password: true,
   });
   if (profileError) {

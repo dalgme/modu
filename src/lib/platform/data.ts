@@ -33,8 +33,8 @@ export async function listAllPrograms(): Promise<PlatformProgramItem[]> {
   });
 }
 
-export async function listPlatformAdmins(): Promise<Pick<Tables<'users'>, 'id' | 'name' | 'email' | 'role' | 'is_active'>[]> {
-  const { data } = await createAdminClient().from('users').select('id, name, email, role, is_active').eq('is_platform_admin', true).order('name');
+export async function listPlatformAdmins(): Promise<Pick<Tables<'users'>, 'id' | 'name' | 'email' | 'role' | 'is_active' | 'platform_role' | 'position'>[]> {
+  const { data } = await createAdminClient().from('users').select('id, name, email, role, is_active, platform_role, position').eq('is_platform_admin', true).order('platform_role').order('name');
   return data ?? [];
 }
 
@@ -158,6 +158,7 @@ export interface PlatformUserRow {
   role: UserRole;
   is_active: boolean;
   is_platform_admin: boolean;
+  platform_role: string | null;
   must_change_password: boolean;
   created_at: string;
   activated_at: string | null;
@@ -177,7 +178,7 @@ export interface UserSearch {
 /** 계정 통합 조회 — 전 행사 검색 (최대 200건, 최신 순) */
 export async function searchPlatformUsers(f: UserSearch): Promise<{ rows: PlatformUserRow[]; total: number; programs: { id: string; name: string; status: string }[] }> {
   const admin = createAdminClient();
-  let q = admin.from('users').select('id, name, email, phone, role, is_active, is_platform_admin, must_change_password, created_at, activated_at', { count: 'exact' }).order('created_at', { ascending: false }).limit(200);
+  let q = admin.from('users').select('id, name, email, phone, role, is_active, is_platform_admin, platform_role, must_change_password, created_at, activated_at', { count: 'exact' }).order('created_at', { ascending: false }).limit(200);
   if (f.inactiveOnly) q = q.eq('is_active', false);
   const term = f.q?.trim();
   if (term) {
@@ -211,6 +212,8 @@ export interface PlatformAuditRow {
   entity_type: string | null;
   entity_id: string | null;
   metadata: unknown;
+  actor_id: string | null;
+  program_id: string | null;
   actorName: string | null;
   programName: string | null;
   onBehalfOfName: string | null;
@@ -248,6 +251,8 @@ export async function listPlatformAudit(f: { programId?: string; action?: string
       entity_type: l.entity_type,
       entity_id: l.entity_id,
       metadata: l.metadata,
+      actor_id: l.actor_id,
+      program_id: l.program_id,
       actorName: l.actor_id ? (nameById.get(l.actor_id) ?? '알 수 없음') : null,
       programName: l.program_id ? (pName.get(l.program_id) ?? null) : null,
       onBehalfOfName: (() => {

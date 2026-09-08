@@ -12,6 +12,7 @@ import { GatesForm, WithholdingForm } from '@/components/settings/policy-forms';
 import { ReportTemplatesManager } from '@/components/settings/report-templates-manager';
 import { SurveyTemplatesManager } from '@/components/settings/survey-templates-manager';
 import { TagsManager } from '@/components/settings/tags-manager';
+import { StaffPermissionsForm } from '@/components/settings/staff-permissions-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,7 @@ const TABS = [
   { key: 'reports', label: '보고서 양식' },
   { key: 'survey', label: '만족도 양식' },
   { key: 'tags', label: '키워드 사전' },
+  { key: 'permissions', label: '담당 권한' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
@@ -73,6 +75,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     body = <SurveyTemplatesManager templates={templates} groups={groups.map((g) => ({ id: g.id, name: g.name }))} />;
   }
   if (tab === 'tags') body = <TagsManager tags={await listTags(ctx.programId)} />;
+  if (tab === 'permissions') body = <StaffPermissionsForm override={ctx.program.staff_permissions} canEdit={!ctx.grade || ctx.grade === 'pl'} />;
 
   return (
     <main className="flex flex-col gap-5">

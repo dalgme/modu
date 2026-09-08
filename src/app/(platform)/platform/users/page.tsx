@@ -78,18 +78,29 @@ export default async function Page({ searchParams }: { searchParams: { q?: strin
                   <p className="text-xs text-muted-foreground">{u.email ?? '-'}{u.phone ? ` · ${u.phone}` : ''}</p>
                 </td>
                 <td className="px-3 py-2">
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-[11px]">{ROLE_LABELS[u.role]}</span>
-                  <p className="mt-0.5 text-[10px] text-muted-foreground">기본 역할 · 행사별 역할은 오른쪽</p>
+                  {u.is_platform_admin ? (
+                    <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-semibold text-violet-800">{u.platform_role === 'owner' ? '플랫폼 통합관리자' : '플랫폼 부관리자'}</span>
+                  ) : (
+                    <>
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[11px]">{ROLE_LABELS[u.role]}</span>
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">기본 역할 · 행사별 역할은 오른쪽</p>
+                    </>
+                  )}
                 </td>
                 <td className="px-3 py-2 text-xs">
                   {u.is_active ? <span className="text-emerald-700">활성</span> : <span className="font-semibold text-destructive">비활성</span>}
                   {u.must_change_password && <p className="text-[11px] text-amber-700">임시 비밀번호 상태</p>}
                 </td>
                 <td className="px-3 py-2 text-xs tabular-nums text-muted-foreground">
-                  {formatDate(u.created_at)}<br />{u.activated_at ? formatDate(u.activated_at) : <span className="text-amber-700">미활성화(첫 로그인 전)</span>}
+                  {formatDate(u.created_at)}<br />
+                  {u.must_change_password ? <span className="text-amber-700">임시 비밀번호 (첫 로그인 전)</span> : u.activated_at ? formatDate(u.activated_at) : <span className="text-emerald-700">비밀번호 설정 완료</span>}
                 </td>
                 <td className="px-3 py-2">
-                  <PlatformUserActions userId={u.id} isActive={u.is_active} isSelf={u.id === me.id} isPlatformAdmin={u.is_platform_admin} memberOf={u.programs.map((p) => ({ id: p.id, role: p.role }))} programs={programs} defaultRole={u.role} />
+                  {u.is_platform_admin ? (
+                    <p className="text-xs text-muted-foreground">통합관리 전용 계정 — 행사 소속 없음</p>
+                  ) : (
+                    <PlatformUserActions userId={u.id} isActive={u.is_active} isSelf={u.id === me.id} isPlatformAdmin={u.is_platform_admin} memberOf={u.programs.map((p) => ({ id: p.id, role: p.role }))} programs={programs} defaultRole={u.role} />
+                  )}
                 </td>
               </tr>
             ))}

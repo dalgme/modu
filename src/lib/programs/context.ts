@@ -5,8 +5,9 @@ import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 
 import { CONTEXT_COOKIE, CONTEXT_TTL_SEC, encodeContextCookie, readContextPayload } from '@/lib/programs/context-cookie';
-import { membershipRole } from '@/lib/auth/program-role';
+import { membershipInfo } from '@/lib/auth/program-role';
 import type { UserRole } from '@/lib/auth/roles';
+import { resolveGrants, type CapabilityKey, type StaffGrade } from '@/lib/auth/capabilities';
 
 import { getSessionProfile, type Profile } from '@/lib/auth/guards';
 import {
@@ -31,6 +32,12 @@ export interface ProgramContext {
   branding: Branding;
   /** 이 행사 안에서의 역할 (program_members.role, 없으면 계정 기본 역할) */
   role: UserRole;
+  /** 운영사 담당 등급 (nextlab 일 때. null = 메인 담당 PL 로 취급) */
+  grade: StaffGrade | null;
+  /** 이 행사에서의 담당역할 메모 */
+  duty: string | null;
+  /** 등급 + 행사별 override 로 계산한 권한 (nextlab 외에는 빈 배열) */
+  grants: CapabilityKey[];
 }
 
 /** 컨텍스트 쿠키 저장 (서버 액션·라우트 핸들러에서만 호출) */
@@ -71,7 +78,9 @@ export const getContext = cache(async (profileArg?: Profile | null): Promise<Pro
     group = await getSupportType(payload.g);
     if (!group || group.program_id !== program.id) group = null;
   }
-  const role = (await membershipRole(profile.id, program.id)) ?? profile.role;
+  const info = await membershipInfo(profile.id, program.id);
+  const role = info?.role ?? profile.role;
+  const grade = role === 'nextlab' ? (info?.grade ?? null) : null;
   return {
     programId: program.id,
     supportTypeId: group?.id ?? null,
@@ -79,6 +88,9 @@ export const getContext = cache(async (profileArg?: Profile | null): Promise<Pro
     group,
     branding: brandingFromProgram(program),
     role,
+    grade,
+    duty: info?.duty ?? null,
+    grants: role === 'nextlab' ? resolveGrants(grade, program.staff_permissions) : [],
   };
 });
 

@@ -65,6 +65,7 @@ const { error: profileError } = await admin.from('users').insert({
   id: data.user.id,
   role: 'nextlab',
   is_platform_admin: true,
+  platform_role: 'owner',
   name,
   phone: phone ?? null,
   email,
@@ -84,10 +85,7 @@ await admin.from('audit_logs').insert({
   metadata: { role: 'nextlab', is_platform_admin: true, email },
 });
 
-const { data: programs } = await admin.from('programs').select('id');
-for (const p of programs ?? []) {
-  await admin.from('program_members').upsert({ program_id: p.id, user_id: data.user.id, role: 'nextlab', is_active: true }, { onConflict: 'program_id,user_id' });
-}
+// 통합관리 전용 계정 — 행사 소속 없음
 
 console.log('✅ 플랫폼 관리자 계정 생성 완료 — 로그인 후 /platform 에서 행사를 개설하세요');
 console.log('  email        :', email);

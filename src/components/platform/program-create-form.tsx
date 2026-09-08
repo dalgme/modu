@@ -46,7 +46,7 @@ export function ProgramCreateForm({ sources }: { sources: { id: string; name: st
         })
       }
     >
-      <F name="slug" label="슬러그 *" placeholder="modu-2027" hint="영문 소문자·숫자·하이픈. URL·식별자로 쓰입니다." required />
+      <p className="rounded-md bg-muted/60 px-3 py-2 text-xs text-muted-foreground sm:col-span-2">관리코드는 플랫폼이 자동 부여합니다 (형식 <code className="font-mono">p{new Date().getFullYear()}-001</code> — 개설연도 + 연도별 순번).</p>
       <F name="name" label="행사명 *" placeholder="모두의창업 2027" required />
       <F name="client_name" label="발주처 기관명 *" required />
       <F name="client_short" label="발주처 약칭" />

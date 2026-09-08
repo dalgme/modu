@@ -18,6 +18,8 @@ interface AppHeaderProps {
   context?: { programName: string; groupName: string | null } | null;
   /** 플랫폼 통합관리 콘솔 안 — 타이틀·색을 콘솔용으로 바꾼다 */
   platformMode?: boolean;
+  /** 운영사 담당 등급 라벨 (PM·부PM·옵저버일 때 역할 배지 옆에 표시) */
+  gradeLabel?: string | null;
 }
 
 /**
@@ -25,9 +27,10 @@ interface AppHeaderProps {
  * **실제 신원**이 플랫폼 통합관리자면 어느 화면(행사 안 포함)에서든 보라색 "플랫폼 통합관리자" 배지가 뜨고,
  * 누르면 통합관리 콘솔(`/platform`)로 간다. 대행 중이어도 실제 신원 기준(CLAUDE.md §6-1).
  */
-export async function AppHeader({ name, role, branding = PLATFORM_BRANDING, context = null, platformMode = false }: AppHeaderProps) {
+export async function AppHeader({ name, role, branding = PLATFORM_BRANDING, context = null, platformMode = false, gradeLabel = null }: AppHeaderProps) {
   const real = await getRealSessionProfile();
   const isPlatformAdmin = !!real?.is_platform_admin;
+  const platformBadge = real?.platform_role === 'admin' ? '플랫폼 부관리자' : '플랫폼 통합관리자';
   const initial = platformMode ? 'P' : (branding.programName || branding.appTitle).slice(0, 1);
   return (
     <header className={`sticky top-0 z-40 border-b border-white/10 text-midnight-foreground ${platformMode ? 'bg-violet-950' : 'bg-midnight'}`}>
@@ -62,6 +65,7 @@ export async function AppHeader({ name, role, branding = PLATFORM_BRANDING, cont
           {!platformMode && (
             <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-xs font-medium">
               {roleLabel(role, branding)}
+              {gradeLabel && <span className="ml-1 text-midnight-foreground/70">· {gradeLabel}</span>}
             </span>
           )}
         </div>
@@ -73,7 +77,7 @@ export async function AppHeader({ name, role, branding = PLATFORM_BRANDING, cont
               className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 transition-colors ${platformMode ? 'bg-violet-500 text-white ring-violet-300/60' : 'bg-violet-500/25 text-violet-100 ring-violet-300/50 hover:bg-violet-500/40'}`}
             >
               <ShieldCheck className="h-3.5 w-3.5" />
-              플랫폼 통합관리자
+              {platformBadge}
             </Link>
           )}
           {context && (
