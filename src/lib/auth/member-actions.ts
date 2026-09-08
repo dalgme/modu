@@ -10,6 +10,23 @@ import {
   phoneTempPassword,
 } from '@/lib/auth/admin-accounts';
 import { createAccountSchema, inviteMenteeSchema } from '@/lib/validations/auth';
+import { contextOrNull } from '@/lib/programs/context';
+import { resolveUserByIdentifier } from '@/lib/auth/identifier';
+import type { UserRole } from '@/lib/auth/roles';
+
+const ALL_ROLES: UserRole[] = ['institution', 'nextlab', 'mentor', 'mentee'];
+
+/** 현재 행사 컨텍스트 (없으면 null) — 회원관리는 항상 행사 범위 안에서 동작한다 (설계 B) */
+async function currentProgramId(actor: Parameters<typeof contextOrNull>[0]): Promise<string | null> {
+  const ctx = await contextOrNull(actor);
+  return ctx?.programId ?? null;
+}
+
+/** 대상이 이 행사의 소속인지 (운영사 회원관리 액션의 범위 강제) */
+async function assertMemberOfProgram(programId: string, userId: string): Promise<boolean> {
+  const { data } = await createAdminClient().from('program_members').select('id').eq('program_id', programId).eq('user_id', userId).maybeSingle();
+  return !!data;
+}
 
 /** 계정 발급·비밀번호 재설정 결과 (임시 비밀번호 1회 노출) */
 export type MemberActionState =
@@ -37,8 +54,15 @@ export async function createMemberAction(
     return { ok: false, error: parsed.error.issues[0]?.message ?? '입력값을 확인하세요.' };
   }
 
+  const programId = await currentProgramId(actor);
+  if (!programId) return { ok: false, error: '행사를 먼저 선택하세요.' };
+
   try {
     const result = await createStaffOrMentorAccount({ ...parsed.data, actorId: actor.id });
+    // 이 행사 소속 + 행사 안 역할 (설계 B)
+    await createAdminClient()
+      .from('program_members')
+      .upsert({ program_id: programId, user_id: result.userId, role: parsed.data.role, is_active: true, left_at: null }, { onConflict: 'program_id,user_id' });
     revalidatePath('/nextlab/members');
     return {
       ok: true,
@@ -113,6 +137,8 @@ export async function setMemberActiveAction(
 
   if (!userId) return { ok: false, error: '대상 회원을 확인할 수 없습니다.' };
   if (userId === actor.id) return { ok: false, error: '본인 계정은 비활성화할 수 없습니다.' };
+  const programId = await currentProgramId(actor);
+  if (!programId || !(await assertMemberOfProgram(programId, userId))) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
 
   const admin = createAdminClient();
   const { error } = await admin
@@ -147,6 +173,11 @@ export async function deleteMemberAction(
   const userId = String(formData.get('userId') ?? '');
   if (!userId) return { ok: false, error: '대상 회원을 확인할 수 없습니다.' };
   if (userId === actor.id) return { ok: false, error: '본인 계정은 삭제할 수 없습니다.' };
+  const programId = await currentProgramId(actor);
+  if (!programId || !(await assertMemberOfProgram(programId, userId))) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
+  // 다른 행사에도 소속된 계정은 삭제 대신 이 행사 소속 해제로 유도
+  const { count: otherPrograms } = await createAdminClient().from('program_members').select('id', { count: 'exact', head: true }).eq('user_id', userId).neq('program_id', programId);
+  if ((otherPrograms ?? 0) > 0) return { ok: false, error: '다른 행사에도 소속된 계정입니다. 삭제 대신 [소속 해제]를 사용하세요.' };
 
   const admin = createAdminClient();
 
@@ -206,6 +237,8 @@ export async function resetMemberPasswordAction(
   const actor = await requireNextlab();
   const userId = String(formData.get('userId') ?? '');
   if (!userId) return { ok: false, error: '대상 회원을 확인할 수 없습니다.' };
+  const programId = await currentProgramId(actor);
+  if (!programId || !(await assertMemberOfProgram(programId, userId))) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
 
   const admin = createAdminClient();
   const { data: member } = await admin
@@ -240,4 +273,85 @@ export async function resetMemberPasswordAction(
     message: '임시 비밀번호를 재발급했습니다. 회원에게 전달하세요.',
     tempPassword,
   };
+}
+
+/**
+ * 기존 계정을 이 행사에 추가 (설계 B — 같은 사람이 행사마다 다른 역할을 가질 수 있다).
+ * 식별자(이메일·휴대폰·멘티 아이디)로 계정을 찾아 program_members 에 역할과 함께 소속시킨다. 새 계정은 만들지 않는다.
+ */
+export async function addExistingMemberAction(
+  _prev: MemberActionState,
+  formData: FormData,
+): Promise<MemberActionState> {
+  const actor = await requireNextlab();
+  const programId = await currentProgramId(actor);
+  if (!programId) return { ok: false, error: '행사를 먼저 선택하세요.' };
+  const identifier = String(formData.get('identifier') ?? '').trim();
+  const role = String(formData.get('role') ?? '') as UserRole;
+  if (!identifier) return { ok: false, error: '이메일·휴대폰·아이디를 입력하세요.' };
+  if (!ALL_ROLES.includes(role)) return { ok: false, error: '역할을 선택하세요.' };
+
+  const found = await resolveUserByIdentifier(identifier);
+  if (found === 'ambiguous') return { ok: false, error: '여러 계정이 일치합니다. 이메일로 지정하세요.' };
+  if (!found) return { ok: false, error: '해당 계정을 찾을 수 없습니다. 새 계정은 위의 발급 폼을 사용하세요.' };
+
+  const admin = createAdminClient();
+  const { data: existing } = await admin.from('program_members').select('id, role, is_active').eq('program_id', programId).eq('user_id', found.id).maybeSingle();
+  if (existing?.is_active && existing.role === role) return { ok: false, error: '이미 이 행사에 같은 역할로 소속되어 있습니다.' };
+  const { error } = await admin
+    .from('program_members')
+    .upsert({ program_id: programId, user_id: found.id, role, is_active: true, left_at: null, joined_at: new Date().toISOString() }, { onConflict: 'program_id,user_id' });
+  if (error) return { ok: false, error: error.message };
+
+  await admin.from('audit_logs').insert({
+    actor_id: actor.id,
+    program_id: programId,
+    action: existing ? 'membership.update' : 'membership.add',
+    entity_type: 'users',
+    entity_id: found.id,
+    metadata: { role, previous_role: existing?.role ?? null, identifier: identifier.includes('@') ? identifier : null },
+  });
+  revalidatePath('/nextlab/members');
+  return { ok: true, message: `이 행사에 ${role === 'mentee' ? '멘티' : role === 'mentor' ? '멘토' : role === 'nextlab' ? '운영사' : '발주처'} 역할로 추가했습니다.` };
+}
+
+/** 이 행사 안에서의 역할 변경 (계정 기본 역할은 바뀌지 않는다) */
+export async function setMemberRoleAction(
+  _prev: MemberActionState,
+  formData: FormData,
+): Promise<MemberActionState> {
+  const actor = await requireNextlab();
+  const programId = await currentProgramId(actor);
+  const userId = String(formData.get('userId') ?? '');
+  const role = String(formData.get('role') ?? '') as UserRole;
+  if (!programId || !userId || !(await assertMemberOfProgram(programId, userId))) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
+  if (!ALL_ROLES.includes(role)) return { ok: false, error: '역할을 선택하세요.' };
+  if (userId === actor.id) return { ok: false, error: '본인 역할은 바꿀 수 없습니다.' };
+  const admin = createAdminClient();
+  const { data: prev } = await admin.from('program_members').select('role').eq('program_id', programId).eq('user_id', userId).maybeSingle();
+  const { error } = await admin.from('program_members').update({ role }).eq('program_id', programId).eq('user_id', userId);
+  if (error) return { ok: false, error: error.message };
+  await admin.from('audit_logs').insert({ actor_id: actor.id, program_id: programId, action: 'membership.role', entity_type: 'users', entity_id: userId, metadata: { role, previous_role: prev?.role ?? null } });
+  revalidatePath('/nextlab/members');
+  return { ok: true, message: '이 행사에서의 역할을 변경했습니다.' };
+}
+
+/** 이 행사 소속 해제 — 계정은 남기고 멤버십만 비활성(이력 보존). 다른 행사 활동에는 영향 없음. */
+export async function removeMemberFromProgramAction(
+  _prev: MemberActionState,
+  formData: FormData,
+): Promise<MemberActionState> {
+  const actor = await requireNextlab();
+  const programId = await currentProgramId(actor);
+  const userId = String(formData.get('userId') ?? '');
+  if (!programId || !userId || !(await assertMemberOfProgram(programId, userId))) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
+  if (userId === actor.id) return { ok: false, error: '본인 소속은 해제할 수 없습니다.' };
+  const admin = createAdminClient();
+  const { count: activeAssign } = await admin.from('mentor_assignments').select('id, cases!inner(program_id)', { count: 'exact', head: true }).eq('mentor_id', userId).eq('is_active', true).eq('cases.program_id', programId);
+  if ((activeAssign ?? 0) > 0) return { ok: false, error: '이 행사에서 활성 배정이 있는 멘토입니다. 먼저 배정을 교체·회수하세요.' };
+  const { error } = await admin.from('program_members').update({ is_active: false, left_at: new Date().toISOString() }).eq('program_id', programId).eq('user_id', userId);
+  if (error) return { ok: false, error: error.message };
+  await admin.from('audit_logs').insert({ actor_id: actor.id, program_id: programId, action: 'membership.remove', entity_type: 'users', entity_id: userId, metadata: {} });
+  revalidatePath('/nextlab/members');
+  return { ok: true, message: '이 행사 소속을 해제했습니다.' };
 }

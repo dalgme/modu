@@ -33,6 +33,11 @@
 
 - **멘토와 멘티는 별도 선발하여 등록**한다. 셀프 가입 없음 — 운영진이 계정 발급 → 임시 비밀번호 → 최초 로그인 시 변경 강제 (원본 구조 그대로).
 - 역할 **4개 그대로** → `user_role` enum 구조 변경 불필요. **라벨과 라우트 그룹명만 교체**하면 된다.
+- **역할은 행사별이다 (설계 B, 2026-09-08, 마이그레이션 0059).** `program_members.role` 이 그 행사 안에서의 역할이고 `users.role` 은 기본 역할(행사 밖·새 소속 기본값). 같은 사람이 A 행사 멘토·B 행사 멘티가 될 수 있고 계정은 1개다.
+  - 가드 `getRealSessionProfile()`/`getSessionProfile()` 이 컨텍스트 쿠키의 행사에 맞춰 `profile.role` 을 치환하므로(`src/lib/auth/program-role.ts`) 하위 코드는 `profile.role` 만 읽는다. `ctx.role` 도 같은 값.
+  - 명단·배정 후보·알림 수신자·매칭 후보는 **`program_members.role` 로 필터**한다. `users.role` 로 사람을 고르지 말 것.
+  - 소속 추가는 운영사 회원관리 "기존 계정을 이 행사에 추가"(역할 지정) 또는 플랫폼 콘솔. 케이스 등록 시 이메일·휴대폰이 기존 계정과 일치하면 새 계정 대신 그 계정을 멘티로 연결한다.
+  - RLS 헬퍼 `is_staff/is_nextlab/is_institution` 은 "어느 행사에서든 그 역할"(has_role), 행사 범위는 `program_role(pid)`.
   - `src/lib/auth/roles.ts` 의 `ROLE_LABELS`, 라우트 그룹 폴더 `(nextlab)` 등.
   - RLS 헬퍼(`private.is_staff/is_nextlab/is_institution`)는 **이름만 바꾸거나 그대로 둘 것** — 동작은 그대로.
 
@@ -250,6 +255,7 @@ npm run lint:brand   # scripts/check-brand-strings.sh — 0건 (npm run lint 에
 - **P5 완료(2026-09-07)**: 0057 적용. `src/lib/workflow/{mentee,mentee-actions}.ts` · `src/lib/data/{survey,mentee}.ts` · `case-documents.ts` 필수서류 슬롯(`listRequiredDocSlots`·`missingRequiredMenteeDocs`) · 페이지 `/mentee/rounds`(서명) `/mentee/survey` `/mentee/documents`(필수서류+자유첨부) · 대시보드 할 일 카드 · 운영사 케이스 상세에 멘토 변경 요청 처리·만족도 응답·필수서류 패널. 4종 그린.
 - **P6 완료(2026-09-07)**: 0058 적용. `src/lib/settings/{data,actions}.ts` + `src/components/settings/*`(`/nextlab/settings` 8탭) · `src/lib/documents/round-report.ts`(양식 해석·PDF 재생성·서명 정책, `docs/MODU-DESIGN.md §22`) · `src/lib/data/requests.ts`+`/nextlab/requests` · `/nextlab/cases/new` · `src/lib/workflow/succession.ts`+`/nextlab/succession` · `src/lib/data/mentors.ts`+`src/lib/mentors/actions.ts`+`/nextlab/mentors` · `src/lib/reports/{metrics,export,page-data}.ts`+`/nextlab/reports`·`/institution/reports`·대시보드 타일 · `/mentor/signature`. 4종 그린.
 - **P7 완료(2026-09-07)**: `src/lib/platform/{data,actions}.ts`+`/platform`(`(platform)` 레이아웃, `requirePlatformAdmin`) · `/api/setup`·`scripts/bootstrap-admin.mjs` = 첫 플랫폼 관리자(nextlab+is_platform_admin, 시드 행사 멤버십 자동) · `scripts/check-brand-strings.sh`(lint 편입, 0건) · `src/lib/matching/{score,recommend,actions}.ts`+`src/components/matching/*`(`@anthropic-ai/sdk`, 환경변수 `ANTHROPIC_API_KEY` 선택) · `/mentor/profile`. 4종 그린.
+- **0059 적용(2026-09-08)**: 행사별 역할 — `program_members.role`(users.role 백필, insert 트리거 기본값), RLS 헬퍼 `has_role`·`program_role`, `is_staff/is_nextlab/is_institution/is_program_staff/is_program_nextlab` 재정의.
 - **P8 코드 준비(2026-09-07)**: `next.config.mjs` `outputFileTracingIncludes` 를 실제 PDF 생성 라우트 5개(`/mentor/cases/[id]` `/mentee/rounds` `/nextlab/cases/[id]` `/nextlab/requests` `/institution/cases/[id]`)로 정리(구 `/apply` 제거), `/mentee/rounds`·`/nextlab/requests` 에 `maxDuration = 60`. Supabase 보안 어드바이저 INFO 2건(서비스롤 전용 테이블, 의도)뿐. 4종 그린.
 - 남은 것: 알림 이벤트별 on/off 설정, 레거시 `/admin/settings/features`(붙임서식 토글) 정리 — P8 이후.
 
@@ -291,6 +297,7 @@ npm run lint:brand   # scripts/check-brand-strings.sh — 0건 (npm run lint 에
 - 2026-09-07 **P6 완료**: 설정·요청함·승계·멘토 명단·리포트. 멘토 지급서류 체크는 비밀번호 재인증 + 대행 불가 + 멘토별 감사로그.
 - 2026-09-07 **P8 코드 준비 완료**, Vercel 프로젝트 생성은 사용자 조치(런북 `docs/DEPLOY-RUNBOOK.md`). main 머지는 Preview 검증 후.
 - 2026-09-08 **플랫폼 통합관리 콘솔 확장**(통합 현황·행사 관리·계정 통합 조회·통합 감사로그·시스템 상태) + 상단 "플랫폼 통합관리자" 배지. 행사·그룹 설정은 운영사, 개설·계정·시스템은 플랫폼 관리자로 역할 분담. 핸드북 `docs/handbook/` 작성.
+- 2026-09-08 **행사별 역할(설계 B) 확정·구현**: `program_members.role` 신설(0059), 가드가 컨텍스트 행사의 역할로 프로필 role 치환, 명단·알림·매칭·배정은 멤버십 역할 기준, 회원관리에 기존 계정 추가·역할 변경·소속 해제, 케이스 등록 시 기존 계정 자동 연결. 회원관리·문자 수신자·발주처 멘토 현황을 행사 범위로 교정.
 - 2026-09-08 **P8 배포 완료**: Vercel `modu` 를 대시보드에서 생성(작업 브랜치가 Production 으로 배포됨), `NEXT_PUBLIC_*` 는 Config 타입·나머지는 Secret, Vercel Authentication 해제, `/api/setup` 부트스트랩 → 플랫폼 관리자 로그인·`/hub`·대시보드 확인. 첫 배포의 런타임 오류(Supabase URL 누락)는 환경변수 재입력으로 해소.
 - 2026-09-07 **P5 완료**: 회차 서명은 `signatures.log_id` 로 회차에 귀속, 서명 후 멘토 수정 잠금. 만족도는 종결 요청 이후 1회, 정산 게이트 아님. 멘토 변경 요청 수락 = T3 교체. 필수서류 게이트는 설정 `closure_policy.require_group_docs`(기본 꺼짐).
 - 2026-09-07 **P4 완료**: 정산 계산 단일 함수(`compute.ts`) + vitest, 검수 승인 시 스냅샷 선저장 후 전이, 품의 2단계 게이트(렛츠 제출 → 센터 확인 → closed), 부분 정산(T10/T11a/T11b). 추가 회차 요청 승인함은 P6.

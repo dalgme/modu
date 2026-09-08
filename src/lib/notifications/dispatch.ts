@@ -126,13 +126,14 @@ export async function queueOverdueReminders(): Promise<{ queued: number }> {
   const programIds = Array.from(new Set(overdue.map((c) => c.program_id)));
   const { data: members } = await admin
     .from('program_members')
-    .select('program_id, user_id, users!inner(role, is_active)')
+    .select('program_id, user_id, users!inner(is_active)')
     .in('program_id', programIds)
+    .eq('role', 'nextlab')
     .eq('is_active', true);
   const staffByProgram = new Map<string, string[]>();
   for (const m of members ?? []) {
-    const u = m.users as unknown as { role: string; is_active: boolean } | null;
-    if (!u || u.role !== 'nextlab' || !u.is_active) continue;
+    const u = m.users as unknown as { is_active: boolean } | null;
+    if (!u || !u.is_active) continue;
     const list = staffByProgram.get(m.program_id) ?? [];
     list.push(m.user_id);
     staffByProgram.set(m.program_id, list);

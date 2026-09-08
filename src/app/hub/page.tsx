@@ -31,7 +31,7 @@ export default async function HubPage({
     if (target) redirect(`/hub/enter?program=${target}`);
   }
 
-  const programs = await listMyPrograms(profile.id, real.is_platform_admin);
+  const programs = await listMyPrograms(profile.id, real.is_platform_admin, profile.role);
   const selected = searchParams.program ? await getProgram(searchParams.program) : null;
   const groups = selected
     ? await listMyGroups(selected.id, { id: profile.id, role: profile.role, isPlatformAdmin: real.is_platform_admin })

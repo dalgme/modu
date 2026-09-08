@@ -20,7 +20,7 @@ export interface CreateCaseInput extends CaseFormInput {
 }
 
 export type CreateCaseResult =
-  | { ok: true; caseId: string; menteeCredential?: { email: string; tempPassword: string } }
+  | { ok: true; caseId: string; menteeCredential?: { email: string; tempPassword: string }; linkedExisting?: boolean }
   | { ok: false; error: string };
 
 /**
@@ -83,6 +83,26 @@ export async function createCase(input: CreateCaseInput): Promise<CreateCaseResu
   // 멘티 계정: 기존 계정 연결(승계) 또는 휴대폰 기반 자동 발급. 실패해도 케이스는 유지.
   let menteeCredential: { email: string; tempPassword: string } | undefined;
   let menteeId = input.menteeId ?? null;
+  let linkedExisting = false;
+  if (!menteeId) {
+    // 설계 B: 이메일·휴대폰이 기존 계정(예: 다른 행사의 멘토)과 일치하면 새 계정을 만들지 않고 그 계정을 이 케이스의 멘티로 연결한다.
+    const existing = await findExistingAccount(input.email, input.phone);
+    if (existing) {
+      const { error: linkError } = await admin.from('cases').update({ mentee_id: existing.id }).eq('id', created.id);
+      if (!linkError) {
+        menteeId = existing.id;
+        linkedExisting = true;
+        await admin.from('audit_logs').insert({
+          actor_id: input.createdBy,
+          program_id: input.programId,
+          action: 'case.mentee_linked_existing',
+          entity_type: 'cases',
+          entity_id: created.id,
+          metadata: { mentee_id: existing.id, matched_by: existing.matchedBy },
+        });
+      }
+    }
+  }
   if (!menteeId) {
     const phoneDigits = (input.phone ?? '').replace(/\D/g, '');
     if (phoneDigits.length >= 10) {
@@ -106,27 +126,46 @@ export async function createCase(input: CreateCaseInput): Promise<CreateCaseResu
   if (menteeId) {
     await admin
       .from('program_members')
-      .upsert({ program_id: input.programId, user_id: menteeId, is_active: true }, { onConflict: 'program_id,user_id' });
+      .upsert({ program_id: input.programId, user_id: menteeId, role: 'mentee', is_active: true }, { onConflict: 'program_id,user_id' });
   }
 
-  return { ok: true, caseId: created.id, menteeCredential };
+  return { ok: true, caseId: created.id, menteeCredential, linkedExisting };
+}
+
+/** 이메일(정확히) 또는 휴대폰(숫자 정규화)으로 기존 계정 1건을 찾는다. 둘 이상이면 연결하지 않는다(null). */
+async function findExistingAccount(email: string | null | undefined, phone: string | null | undefined): Promise<{ id: string; matchedBy: 'email' | 'phone' } | null> {
+  const admin = createAdminClient();
+  const e = email?.trim().toLowerCase();
+  if (e) {
+    const { data } = await admin.from('users').select('id').ilike('email', e).limit(2);
+    if (data && data.length === 1) return { id: data[0]!.id, matchedBy: 'email' };
+    if (data && data.length > 1) return null;
+  }
+  const digits = (phone ?? '').replace(/\D/g, '');
+  if (digits.length >= 10) {
+    const { data } = await admin.from('users').select('id, phone').not('phone', 'is', null);
+    const hits = (data ?? []).filter((u) => (u.phone ?? '').replace(/\D/g, '') === digits);
+    if (hits.length === 1) return { id: hits[0]!.id, matchedBy: 'phone' };
+  }
+  return null;
 }
 
 /** 멘토가 이 행사의 활성 멤버(역할 mentor)인지 */
 async function assertMentorInProgram(programId: string, mentorId: string): Promise<string | null> {
   const admin = createAdminClient();
   const [{ data: user }, { data: member }] = await Promise.all([
-    admin.from('users').select('role, is_active').eq('id', mentorId).maybeSingle(),
+    admin.from('users').select('is_active').eq('id', mentorId).maybeSingle(),
     admin
       .from('program_members')
-      .select('id')
+      .select('id, role')
       .eq('program_id', programId)
       .eq('user_id', mentorId)
       .eq('is_active', true)
       .maybeSingle(),
   ]);
-  if (!user || user.role !== 'mentor' || !user.is_active) return '멘토 계정이 아니거나 비활성 상태입니다.';
+  if (!user || !user.is_active) return '비활성 계정입니다.';
   if (!member) return '이 행사에 소속되지 않은 멘토입니다. 회원관리에서 먼저 초대하세요.';
+  if (member.role !== 'mentor') return '이 행사에서 멘토 역할이 아닌 계정입니다. 회원관리에서 역할을 확인하세요.';
   return null;
 }
 

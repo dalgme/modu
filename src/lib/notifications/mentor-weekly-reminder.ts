@@ -53,12 +53,13 @@ export async function listMentorsNeedingWeeklyReminder(): Promise<EligibleMentor
   const mentorIds = Array.from(byMentor.keys());
   const { data: mentors } = await admin
     .from('users')
-    .select('id, name, phone, is_active, role')
+    .select('id, name, phone, is_active')
     .in('id', mentorIds);
 
   const result: EligibleMentor[] = [];
   for (const m of mentors ?? []) {
-    if (m.role !== 'mentor' || !m.is_active) continue;
+    // 활성 배정이 있으면 그 행사에서 멘토다 (역할은 program_members.role — 배정 시 검증됨)
+    if (!m.is_active) continue;
     const companies = byMentor.get(m.id) ?? [];
     if (companies.length === 0) continue;
     result.push({ mentorId: m.id, name: m.name, phone: m.phone, companies });

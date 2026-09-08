@@ -1577,6 +1577,7 @@ export type Database = {
           left_at: string | null;
           note: string | null;
           program_id: string;
+          role: Database['public']['Enums']['user_role'];
           updated_at: string;
           user_id: string;
         };
@@ -1588,6 +1589,7 @@ export type Database = {
           left_at?: string | null;
           note?: string | null;
           program_id: string;
+          role?: Database['public']['Enums']['user_role'];
           updated_at?: string;
           user_id: string;
         };
@@ -1599,6 +1601,7 @@ export type Database = {
           left_at?: string | null;
           note?: string | null;
           program_id?: string;
+          role?: Database['public']['Enums']['user_role'];
           updated_at?: string;
           user_id?: string;
         };

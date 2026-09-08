@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { getMemberById } from '@/lib/data/members';
+import { membershipRole } from '@/lib/auth/program-role';
 import { listCases, listMentorCases, listMenteeCases } from '@/lib/data/cases';
 import { ViewAsShell, VIEW_AS_TABS } from '@/components/nextlab/view-as-shell';
 import { MentorDashboardBody } from '@/components/mentor/mentor-dashboard-body';
@@ -15,6 +16,8 @@ export default async function Page({ params, searchParams }: { params: { userId:
   const ctx = await requireContext(profile);
   const target = await getMemberById(params.userId);
   if (!target) notFound();
+  // 이 행사 안에서의 역할로 화면을 고른다 (설계 B)
+  target.role = (await membershipRole(target.id, ctx.programId)) ?? target.role;
 
   const tabs = VIEW_AS_TABS[target.role];
   const activeTab = tabs.find((t) => t.key === searchParams.tab)?.key ?? tabs[0]!.key;

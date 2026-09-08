@@ -6,6 +6,9 @@ import Link from 'next/link';
 
 import {
   createMemberAction,
+  addExistingMemberAction,
+  setMemberRoleAction,
+  removeMemberFromProgramAction,
   setMemberActiveAction,
   resetMemberPasswordAction,
   deleteMemberAction,
@@ -33,10 +36,17 @@ export interface MemberItem {
   email: string | null;
   name: string;
   phone: string | null;
+  /** 이 행사 안에서의 역할 (program_members.role) */
   role: UserRole;
+  /** 계정 기본 역할 (users.role) — 다르면 배지로 표시 */
+  primaryRole: UserRole;
+  /** 이 행사 소속 활성 여부 */
+  memberActive: boolean;
   is_active: boolean;
   must_change_password: boolean;
 }
+
+const ALL_ROLES: UserRole[] = ['institution', 'nextlab', 'mentor', 'mentee'];
 
 /** 발급 가능한 역할 (멘티는 케이스 초대 플로우로만 생성) */
 const ISSUABLE_ROLES: UserRole[] = ['institution', 'nextlab', 'mentor'];
@@ -142,6 +152,75 @@ function CreateMemberForm() {
   );
 }
 
+function AddExistingMemberForm() {
+  const [state, action] = useFormState<MemberActionState, FormData>(addExistingMemberAction, undefined);
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (state?.ok) formRef.current?.reset();
+  }, [state]);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-lg">기존 계정을 이 행사에 추가</CardTitle>
+        <CardDescription>
+          다른 행사에서 이미 쓰는 계정을 이 행사에 소속시킵니다. 역할은 행사마다 따로 정합니다(예: 다른 행사의 멘토를 이 행사에서는 멘티로). 새 계정은 만들지 않습니다.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <form ref={formRef} action={action} className="flex flex-col gap-3">
+          <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto]">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ex-identifier">이메일 · 휴대폰 · 멘티 아이디</Label>
+              <Input id="ex-identifier" name="identifier" required autoComplete="off" placeholder="example@domain.com" />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="ex-role">이 행사에서의 역할</Label>
+              <select id="ex-role" name="role" required defaultValue="mentee" className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+                {ALL_ROLES.map((r) => (
+                  <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex items-end">
+              <RowSubmit>행사에 추가</RowSubmit>
+            </div>
+          </div>
+          {state?.ok === false && <p className="text-sm font-medium text-destructive" role="alert">{state.error}</p>}
+          {state?.ok && <p className="text-sm font-medium text-status-approved">{state.message}</p>}
+          <p className="text-xs text-muted-foreground">멘티로 추가한 뒤에는 멘티 등록 화면에서 이 계정을 케이스에 연결하세요. 케이스 등록 시 자동 발급된 멘티 계정은 이미 소속되어 있습니다.</p>
+        </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+function RoleSelectForm({ member }: { member: MemberItem }) {
+  const [state, action] = useFormState<MemberActionState, FormData>(setMemberRoleAction, undefined);
+  return (
+    <form action={action} className="flex items-center gap-1">
+      <input type="hidden" name="userId" value={member.id} />
+      <select name="role" defaultValue={member.role} className="h-8 rounded-md border border-input bg-background px-2 text-xs" title="이 행사에서의 역할">
+        {ALL_ROLES.map((r) => (
+          <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+        ))}
+      </select>
+      <RowSubmit>역할 변경</RowSubmit>
+      {state?.ok === false && <span className="text-xs text-destructive">{state.error}</span>}
+    </form>
+  );
+}
+
+function RemoveFromProgramForm({ member }: { member: MemberItem }) {
+  const [state, action] = useFormState<MemberActionState, FormData>(removeMemberFromProgramAction, undefined);
+  return (
+    <form action={action} onSubmit={(e) => { if (!confirm(`${member.name} 님의 이 행사 소속을 해제할까요? 계정과 다른 행사 활동은 유지됩니다.`)) e.preventDefault(); }}>
+      <input type="hidden" name="userId" value={member.id} />
+      <RowSubmit variant="outline">소속 해제</RowSubmit>
+      {state?.ok === false && <span className="ml-1 text-xs text-destructive">{state.error}</span>}
+    </form>
+  );
+}
+
 function RowSubmit({ children, variant }: { children: string; variant?: 'outline' | 'destructive' }) {
   const { pending } = useFormStatus();
   return (
@@ -232,6 +311,7 @@ export function MembersManager({ members }: { members: MemberItem[] }) {
   return (
     <div className="flex flex-col gap-6">
       <CreateMemberForm />
+      <AddExistingMemberForm />
 
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap gap-1 border-b">
@@ -286,7 +366,13 @@ export function MembersManager({ members }: { members: MemberItem[] }) {
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">{m.email ?? '-'}</TableCell>
                   <TableCell>
-                    <Badge variant="secondary">{ROLE_LABELS[m.role]}</Badge>
+                    <div className="flex flex-col items-start gap-1">
+                      <Badge variant="secondary">{ROLE_LABELS[m.role]}</Badge>
+                      {m.primaryRole !== m.role && (
+                        <span className="text-[10px] text-violet-700" title="계정 기본 역할과 다름 — 다른 행사에서는 이 역할로 활동">기본 {ROLE_LABELS[m.primaryRole]}</span>
+                      )}
+                      {!m.memberActive && <span className="text-[10px] text-muted-foreground">소속 해제됨</span>}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap gap-1">
@@ -317,6 +403,8 @@ export function MembersManager({ members }: { members: MemberItem[] }) {
                           <Link href={`/nextlab/view/${m.id}`}>화면 보기</Link>
                         </Button>
                       )}
+                      <RoleSelectForm member={m} />
+                      {m.memberActive && <RemoveFromProgramForm member={m} />}
                       <ToggleActiveForm member={m} />
                       <ResetPasswordForm member={m} />
                       <DeleteMemberForm member={m} />

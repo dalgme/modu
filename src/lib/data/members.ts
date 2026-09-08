@@ -1,7 +1,6 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
-import { createClient } from '@/lib/supabase/server';
 import type { Tables } from '@/types/database';
 import type { UserRole } from '@/lib/auth/roles';
 
@@ -18,21 +17,21 @@ export interface MentorLoad {
  * 멘토 현황: 멘토별 이름·이메일·연락처 + 배정받은 멘티(케이스) 수.
  * (운영진 열람 — RLS 로 접근 제어) 활성 멘토만, 이름순.
  */
-export async function listMentorsWithLoad(): Promise<MentorLoad[]> {
-  const supabase = createClient();
+export async function listMentorsWithLoad(programId: string): Promise<MentorLoad[]> {
+  const admin = createAdminClient();
+  // 이 행사에서 역할이 멘토인 소속 (설계 B: program_members.role)
+  const { data: members } = await admin.from('program_members').select('user_id').eq('program_id', programId).eq('role', 'mentor').eq('is_active', true);
+  const ids = (members ?? []).map((m) => m.user_id);
+  if (ids.length === 0) return [];
   const [{ data: mentors }, { data: assigns }] = await Promise.all([
-    supabase
-      .from('users')
-      .select('id, name, email, phone')
-      .eq('role', 'mentor')
-      .eq('is_active', true)
-      .order('name'),
-    supabase.from('mentor_assignments').select('mentor_id, case_id').eq('is_active', true),
+    admin.from('users').select('id, name, email, phone').in('id', ids).eq('is_active', true).order('name'),
+    admin.from('mentor_assignments').select('mentor_id, case_id, cases!inner(program_id)').in('mentor_id', ids).eq('is_active', true),
   ]);
 
-  // 멘토별 현재 활성 배정 케이스(중복 제외) 집계 — 회수·재배정된 과거 배정은 제외
+  // 멘토별 이 행사 케이스의 활성 배정(중복 제외) 집계
   const casesByMentor = new Map<string, Set<string>>();
   for (const a of assigns ?? []) {
+    if ((a.cases as unknown as { program_id: string } | null)?.program_id !== programId) continue;
     if (!casesByMentor.has(a.mentor_id)) casesByMentor.set(a.mentor_id, new Set());
     casesByMentor.get(a.mentor_id)!.add(a.case_id);
   }
@@ -58,7 +57,13 @@ export type MemberRow = Pick<
   | 'invited_at'
   | 'activated_at'
   | 'created_at'
->;
+> & {
+  /** 계정 기본 역할 (users.role). `role` 은 이 행사에서의 역할 */
+  primaryRole: UserRole;
+  /** 이 행사 소속 활성 여부 */
+  memberActive: boolean;
+  joinedAt: string;
+};
 
 /** 역할 표시 정렬 순서 (운영사 → 발주처 → 멘토 → 멘티) */
 const ROLE_ORDER: Record<UserRole, number> = {
@@ -69,20 +74,30 @@ const ROLE_ORDER: Record<UserRole, number> = {
 };
 
 /**
- * 전 회원 목록 (운영사 총괄관리자 전용).
- * service_role 로 조회 — 호출부(page)에서 requireNextlab 으로 권한 강제.
+ * 이 행사의 회원 목록 (운영사 전용). 역할은 **행사 안 역할**(program_members.role, 설계 B).
+ * service_role 로 조회 — 호출부(page)에서 requireNextlab + requireContext 로 권한·범위 강제.
  */
-export async function listMembers(): Promise<MemberRow[]> {
+export async function listProgramMembers(programId: string): Promise<MemberRow[]> {
   const admin = createAdminClient();
-  const { data, error } = await admin
+  const { data: memberships } = await admin
+    .from('program_members')
+    .select('user_id, role, is_active, joined_at')
+    .eq('program_id', programId)
+    .order('joined_at', { ascending: true });
+  const ids = (memberships ?? []).map((m) => m.user_id);
+  if (ids.length === 0) return [];
+  const { data: users } = await admin
     .from('users')
-    .select(
-      'id, email, name, phone, role, is_active, must_change_password, invited_at, activated_at, created_at',
-    )
-    .order('created_at', { ascending: true });
-  if (error || !data) return [];
-
-  return [...data].sort((a, b) => {
+    .select('id, email, name, phone, role, is_active, must_change_password, invited_at, activated_at, created_at')
+    .in('id', ids);
+  const byId = new Map((users ?? []).map((u) => [u.id, u]));
+  const rows: MemberRow[] = [];
+  for (const m of memberships ?? []) {
+    const u = byId.get(m.user_id);
+    if (!u) continue;
+    rows.push({ ...u, primaryRole: u.role, role: m.role as UserRole, memberActive: m.is_active, joinedAt: m.joined_at });
+  }
+  return rows.sort((a, b) => {
     const r = ROLE_ORDER[a.role] - ROLE_ORDER[b.role];
     return r !== 0 ? r : a.created_at.localeCompare(b.created_at);
   });
@@ -109,14 +124,18 @@ export interface SmsRecipient {
  * 문자 발송 수신 대상 목록: 활성·휴대폰 보유 회원 (운영사 전용 호출부 가드).
  * 역할순(운영사→발주처→멘토→멘티) 정렬. 멘티는 소속 기업명을 함께 반환.
  */
-export async function listSmsRecipients(): Promise<SmsRecipient[]> {
+export async function listSmsRecipients(programId: string): Promise<SmsRecipient[]> {
   const admin = createAdminClient();
-  const { data } = await admin
-    .from('users')
-    .select('id, name, phone, role, is_active')
-    .eq('is_active', true)
-    .not('phone', 'is', null);
-  const rows = (data ?? []).filter((u) => (u.phone ?? '').replace(/\D/g, '').length >= 10);
+  // 이 행사 소속만, 역할은 행사 안 역할 (설계 B)
+  const { data: memberships } = await admin.from('program_members').select('user_id, role').eq('program_id', programId).eq('is_active', true);
+  const roleOf = new Map((memberships ?? []).map((m) => [m.user_id, m.role as UserRole]));
+  const ids = Array.from(roleOf.keys());
+  const { data } = ids.length
+    ? await admin.from('users').select('id, name, phone, is_active').in('id', ids).eq('is_active', true).not('phone', 'is', null)
+    : { data: [] as { id: string; name: string; phone: string | null; is_active: boolean }[] };
+  const rows = (data ?? [])
+    .filter((u) => (u.phone ?? '').replace(/\D/g, '').length >= 10)
+    .map((u) => ({ ...u, role: roleOf.get(u.id)! }));
 
   // 멘티 소속 기업명 매핑 (mentee_id → business_name)
   const menteeIds = rows.filter((u) => u.role === 'mentee').map((u) => u.id);

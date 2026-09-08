@@ -63,7 +63,7 @@ export async function POST(request: Request) {
   // 이미 시드된 행사가 있으면 전부 멤버십 부여 (허브에서 바로 진입 가능)
   const { data: programs } = await admin.from('programs').select('id');
   for (const p of programs ?? []) {
-    await admin.from('program_members').upsert({ program_id: p.id, user_id: data.user.id, is_active: true }, { onConflict: 'program_id,user_id' });
+    await admin.from('program_members').upsert({ program_id: p.id, user_id: data.user.id, role: 'nextlab', is_active: true }, { onConflict: 'program_id,user_id' });
   }
 
   await admin.from('audit_logs').insert({

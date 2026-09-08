@@ -14,13 +14,18 @@ interface ProgramOpt {
 }
 
 /** 계정 통합 조회 행 액션 — 임시 비밀번호 재발급 · 활성/비활성 · 행사 소속 추가/해제 */
-export function PlatformUserActions({ userId, isActive, isSelf, isPlatformAdmin, memberOf, programs }: { userId: string; isActive: boolean; isSelf: boolean; isPlatformAdmin: boolean; memberOf: string[]; programs: ProgramOpt[] }) {
+type Role = 'institution' | 'nextlab' | 'mentor' | 'mentee';
+const ROLE_LABEL: Record<Role, string> = { institution: '발주처', nextlab: '운영사', mentor: '멘토', mentee: '멘티' };
+
+export function PlatformUserActions({ userId, isActive, isSelf, isPlatformAdmin, memberOf, programs, defaultRole }: { userId: string; isActive: boolean; isSelf: boolean; isPlatformAdmin: boolean; memberOf: { id: string; role: Role }[]; programs: ProgramOpt[]; defaultRole: Role }) {
   const { toast } = useToast();
   const router = useRouter();
   const [pending, start] = useTransition();
   const [temp, setTemp] = useState<string | null>(null);
   const [addId, setAddId] = useState('');
-  const addable = programs.filter((p) => !memberOf.includes(p.id));
+  const [addRole, setAddRole] = useState<Role>(defaultRole);
+  const memberIds = memberOf.map((m) => m.id);
+  const addable = programs.filter((p) => !memberIds.includes(p.id));
 
   const run = (fn: () => Promise<{ ok: true } | { ok: false; error: string }>, done: string) =>
     start(async () => {
@@ -74,12 +79,13 @@ export function PlatformUserActions({ userId, isActive, isSelf, isPlatformAdmin,
         </p>
       )}
       <div className="flex flex-wrap items-center gap-1">
-        {memberOf.map((pid) => {
+        {memberOf.map(({ id: pid, role }) => {
           const p = programs.find((x) => x.id === pid);
           if (!p) return null;
           return (
             <span key={pid} className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5">
               {p.name}
+              <span className={`rounded-full px-1.5 text-[10px] font-semibold ${role === defaultRole ? 'bg-background text-foreground' : 'bg-violet-100 text-violet-800'}`}>{ROLE_LABEL[role]}</span>
               {p.status !== 'active' && <span className="text-muted-foreground">(종료)</span>}
               <button
                 type="button"
@@ -108,13 +114,20 @@ export function PlatformUserActions({ userId, isActive, isSelf, isPlatformAdmin,
               ))}
             </select>
             {addId && (
-              <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={pending} onClick={() => {
-                  run(() => platformSetMembershipAction(userId, addId, true), '행사에 추가했습니다.');
-                  setAddId('');
-                }}
-              >
-                추가
-              </Button>
+              <>
+                <select value={addRole} onChange={(e) => setAddRole(e.target.value as Role)} className="h-7 rounded-md border bg-background px-1 text-xs" title="이 행사에서의 역할">
+                  {(Object.keys(ROLE_LABEL) as Role[]).map((r) => (
+                    <option key={r} value={r}>{ROLE_LABEL[r]}</option>
+                  ))}
+                </select>
+                <Button size="sm" variant="outline" className="h-7 px-2 text-xs" disabled={pending} onClick={() => {
+                    run(() => platformSetMembershipAction(userId, addId, true, addRole), '행사에 추가했습니다.');
+                    setAddId('');
+                  }}
+                >
+                  추가
+                </Button>
+              </>
             )}
           </span>
         )}

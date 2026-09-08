@@ -44,13 +44,13 @@ async function loadInputs(caseId: string) {
   if (!c) return null;
   const [{ data: prof }, { data: members }, { data: assigns }, priorMentor] = await Promise.all([
     admin.from('mentee_profiles').select('*').eq('case_id', caseId).maybeSingle(),
-    admin.from('program_members').select('user_id, users!inner(id, name, role, is_active)').eq('program_id', c.program_id).eq('is_active', true),
+    admin.from('program_members').select('user_id, users!inner(id, name, is_active)').eq('program_id', c.program_id).eq('role', 'mentor').eq('is_active', true),
     admin.from('mentor_assignments').select('mentor_id, case_id').eq('is_active', true),
     c.predecessor_case_id
       ? admin.from('mentor_assignments').select('mentor_id').eq('case_id', c.predecessor_case_id).order('is_active', { ascending: false }).order('assigned_at', { ascending: false }).limit(1).maybeSingle().then((r) => r.data?.mentor_id ?? null)
       : Promise.resolve(null as string | null),
   ]);
-  const mentorUsers = (members ?? []).map((m) => m.users as unknown as { id: string; name: string; role: string; is_active: boolean }).filter((u) => u.role === 'mentor' && u.is_active);
+  const mentorUsers = (members ?? []).map((m) => m.users as unknown as { id: string; name: string; is_active: boolean }).filter((u) => u.is_active);
   const mentorIds = mentorUsers.map((u) => u.id);
   const { data: profiles } = mentorIds.length ? await admin.from('mentor_profiles').select('*').eq('program_id', c.program_id).in('user_id', mentorIds) : { data: [] as Tables<'mentor_profiles'>[] };
   // 부하: 이 행사 케이스의 활성 배정만

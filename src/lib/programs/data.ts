@@ -28,21 +28,27 @@ export interface MyProgram {
   /** 멤버십 활성 여부 (플랫폼 관리자는 항상 true) */
   memberActive: boolean;
   joinedAt: string | null;
+  /** 이 행사 안에서의 역할 (program_members.role, 소속 없는 플랫폼 관리자는 기본 역할) */
+  role: UserRole;
 }
 
 /**
  * 내가 귀속된 행사 목록. 플랫폼 관리자는 전체.
  * 허브(§18-2)가 활성/종료 탭으로 나눠 보여준다.
  */
-export async function listMyPrograms(userId: string, isPlatformAdmin: boolean): Promise<MyProgram[]> {
+export async function listMyPrograms(userId: string, isPlatformAdmin: boolean, defaultRole: UserRole): Promise<MyProgram[]> {
   const admin = createAdminClient();
   if (isPlatformAdmin) {
-    const { data } = await admin.from('programs').select('*').order('status').order('created_at', { ascending: false });
-    return (data ?? []).map((program) => ({ program, memberActive: true, joinedAt: null }));
+    const [{ data }, { data: mine }] = await Promise.all([
+      admin.from('programs').select('*').order('status').order('created_at', { ascending: false }),
+      admin.from('program_members').select('program_id, role').eq('user_id', userId).eq('is_active', true),
+    ]);
+    const roleOf = new Map((mine ?? []).map((m) => [m.program_id, m.role as UserRole]));
+    return (data ?? []).map((program) => ({ program, memberActive: true, joinedAt: null, role: roleOf.get(program.id) ?? defaultRole }));
   }
   const { data: memberships } = await admin
     .from('program_members')
-    .select('program_id, is_active, joined_at')
+    .select('program_id, is_active, joined_at, role')
     .eq('user_id', userId);
   const ids = (memberships ?? []).map((m) => m.program_id);
   if (ids.length === 0) return [];
@@ -51,7 +57,7 @@ export async function listMyPrograms(userId: string, isPlatformAdmin: boolean): 
   const out: MyProgram[] = [];
   for (const m of memberships ?? []) {
     const program = byId.get(m.program_id);
-    if (program) out.push({ program, memberActive: m.is_active, joinedAt: m.joined_at });
+    if (program) out.push({ program, memberActive: m.is_active, joinedAt: m.joined_at, role: (m.role as UserRole) ?? defaultRole });
   }
   return out.sort((a, b) =>
     a.program.status === b.program.status ? 0 : a.program.status === 'active' ? -1 : 1,

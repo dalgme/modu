@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server';
 import type { Tables } from '@/types/database';
 import { roleHome, type UserRole } from '@/lib/auth/roles';
 import { getImpersonation } from '@/lib/auth/impersonation';
+import { withProgramRole } from '@/lib/auth/program-role';
 
 export type Profile = Tables<'users'>;
 
@@ -22,7 +23,8 @@ export const getRealSessionProfile = cache(async (): Promise<Profile | null> => 
   if (!user) return null;
 
   const { data: profile } = await supabase.from('users').select('*').eq('id', user.id).single();
-  return profile ?? null;
+  // 행사 컨텍스트 안에서는 그 행사에서의 역할(program_members.role)로 치환한다 (설계 B)
+  return profile ? withProgramRole(profile) : null;
 });
 
 /**
@@ -34,7 +36,7 @@ export const getRealSessionProfile = cache(async (): Promise<Profile | null> => 
  */
 export async function getSessionProfile(): Promise<Profile | null> {
   const imp = await getImpersonation();
-  if (imp) return imp.target;
+  if (imp) return withProgramRole(imp.target);
   return getRealSessionProfile();
 }
 
@@ -55,7 +57,7 @@ export async function requireUser(): Promise<Profile> {
   if (real.must_change_password) {
     redirect('/change-password');
   }
-  const profile = imp?.target ?? real;
+  const profile = imp ? await withProgramRole(imp.target) : real;
   if (!profile.is_active) {
     redirect('/login');
   }
@@ -86,7 +88,7 @@ export async function roleOrNull(allowed: UserRole[]): Promise<Profile | null> {
   const imp = await getImpersonation();
   const real = await getRealSessionProfile();
   if (!real || !real.is_active || real.must_change_password) return null;
-  const profile = imp?.target ?? real;
+  const profile = imp ? await withProgramRole(imp.target) : real;
   if (!profile.is_active) return null;
   if (!allowed.includes(profile.role)) return null;
   return profile;

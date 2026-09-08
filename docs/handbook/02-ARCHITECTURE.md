@@ -26,7 +26,7 @@
 ```
 플랫폼 (한 배포)  ── 플랫폼 통합관리자 (users.is_platform_admin)
  └ programs (행사)  ── 발주처·용역사 기관명 = 브랜딩, 원천징수·정책·보고서 양식·문자 꼬리말
-     ├ program_members (계정 ↔ 행사 소속, 다대다)
+     ├ program_members (계정 ↔ 행사 소속, 다대다, **role = 그 행사 안에서의 역할**)
      ├ support_types (사업그룹 A·B·C·D…, 회차 수·기간·승계 원천)
      │    ├ support_type_members (그룹 명부: 멘토·스태프, 멘토별 원천징수 override)
      │    ├ support_type_documents (그룹별 필수서류 슬롯)
@@ -54,7 +54,7 @@
 | 묶음 | 테이블 |
 |---|---|
 | 행사·소속 | `programs` `program_members` `support_types` `support_type_members` `support_type_documents` |
-| 계정 | `users`(role enum 4 + `is_platform_admin`) `password_reset_otps` |
+| 계정 | `users`(role = 기본 역할, `is_platform_admin`) `password_reset_otps` · 행사 안 역할은 `program_members.role` |
 | 케이스·회차 | `cases` `case_status_history` `mentor_assignments` `mentoring_logs` `round_extension_requests` `mentor_withdrawal_requests` `mentor_change_requests` `observation_reports` `reviews` `signatures` `documents` `supplement_requests` |
 | 단가·정산 | `consulting_rates` `operating_limits` `settlements` `settlement_batches` `mentor_payment_docs` |
 | 만족도 | `survey_templates` `survey_questions` `survey_responses` |
@@ -81,6 +81,7 @@
 | 0056 | 서류 공개 범위 · 관찰의견서 · 행사별 문자 설정 |
 | 0057 | 멘티 기능(`signatures.log_id` 회차 귀속) |
 | 0058 | 보고서 양식 스코프 · 서명 정책 · 멘토 서명 |
+| 0059 | 행사별 역할 `program_members.role`(백필·기본값 트리거), RLS 헬퍼 `has_role`·`program_role` |
 
 ---
 
@@ -147,6 +148,7 @@ registered → mentor_assigned → in_progress ⇄ reassignment_pending
 | 신원 분리 | 스태프 특권·감사 실행자 = `getRealSessionProfile()`, 업무 명의 = `getSessionProfile()` (대행 view-as 시 다름) |
 | 범위 강제 | RLS 에 의존하지 않고 코드에서 배정·행사 소속 직접 확인 |
 | 가드 | `requireNextlab` `requireInstitution` `requireMentor` `requireMentee` `requireStaff` `requirePlatformAdmin` `mentorOfCaseOrNull` + `requireContext` |
+| 행사별 역할 | 세션 프로필의 `role` 은 컨텍스트 쿠키의 행사에서의 `program_members.role` 로 치환된다(`auth/program-role.ts`). 명단·배정 후보·알림 수신자·매칭 후보는 멤버십 역할로 필터. 한 계정이 행사마다 다른 역할 가능 |
 | 감사 | `audit_logs` INSERT-only, 실행자 강제, 대행은 `metadata.on_behalf_of`, 플랫폼 콘솔 행위는 `program_id null` |
 | 재인증 | 멘토 지급서류 체크·행사별 문자 API 등록은 비밀번호 재입력, 대행 불가 |
 | 문자 API 보안(7겹) | `SMS_KEK` 봉투암호화(DEK 래핑) · 힌트만 표시 · 재인증 · 접근 로그 · 서비스롤 전용 테이블 · 감사 · 키 회전 |

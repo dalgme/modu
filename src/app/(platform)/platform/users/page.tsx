@@ -77,7 +77,10 @@ export default async function Page({ searchParams }: { searchParams: { q?: strin
                   </p>
                   <p className="text-xs text-muted-foreground">{u.email ?? '-'}{u.phone ? ` · ${u.phone}` : ''}</p>
                 </td>
-                <td className="px-3 py-2"><span className="rounded-full bg-muted px-2 py-0.5 text-[11px]">{ROLE_LABELS[u.role]}</span></td>
+                <td className="px-3 py-2">
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[11px]">{ROLE_LABELS[u.role]}</span>
+                  <p className="mt-0.5 text-[10px] text-muted-foreground">기본 역할 · 행사별 역할은 오른쪽</p>
+                </td>
                 <td className="px-3 py-2 text-xs">
                   {u.is_active ? <span className="text-emerald-700">활성</span> : <span className="font-semibold text-destructive">비활성</span>}
                   {u.must_change_password && <p className="text-[11px] text-amber-700">임시 비밀번호 상태</p>}
@@ -86,7 +89,7 @@ export default async function Page({ searchParams }: { searchParams: { q?: strin
                   {formatDate(u.created_at)}<br />{u.activated_at ? formatDate(u.activated_at) : <span className="text-amber-700">미활성화(첫 로그인 전)</span>}
                 </td>
                 <td className="px-3 py-2">
-                  <PlatformUserActions userId={u.id} isActive={u.is_active} isSelf={u.id === me.id} isPlatformAdmin={u.is_platform_admin} memberOf={u.programs.map((p) => p.id)} programs={programs} />
+                  <PlatformUserActions userId={u.id} isActive={u.is_active} isSelf={u.id === me.id} isPlatformAdmin={u.is_platform_admin} memberOf={u.programs.map((p) => ({ id: p.id, role: p.role }))} programs={programs} defaultRole={u.role} />
                 </td>
               </tr>
             ))}

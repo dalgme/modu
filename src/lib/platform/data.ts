@@ -20,14 +20,14 @@ export async function listAllPrograms(): Promise<PlatformProgramItem[]> {
   const [{ data: groups }, { data: cases }, { data: members }] = await Promise.all([
     admin.from('support_types').select('program_id').in('program_id', ids),
     admin.from('cases').select('program_id').in('program_id', ids),
-    admin.from('program_members').select('program_id, user_id, users!inner(role)').in('program_id', ids).eq('is_active', true),
+    admin.from('program_members').select('program_id, user_id, role').in('program_id', ids).eq('is_active', true),
   ]);
   return rows.map((p) => {
     const m = { nextlab: 0, institution: 0, mentor: 0, mentee: 0 };
     for (const x of members ?? []) {
       if (x.program_id !== p.id) continue;
-      const role = (x.users as unknown as { role: keyof typeof m } | null)?.role;
-      if (role && role in m) m[role] += 1;
+      const role = x.role as keyof typeof m;
+      if (role in m) m[role] += 1;
     }
     return { program: p, groups: (groups ?? []).filter((g) => g.program_id === p.id).length, cases: (cases ?? []).filter((c) => c.program_id === p.id).length, members: m };
   });
@@ -42,10 +42,9 @@ export async function getProgramWithStaff(programId: string): Promise<{ program:
   const admin = createAdminClient();
   const { data: program } = await admin.from('programs').select('*').eq('id', programId).maybeSingle();
   if (!program) return null;
-  const { data: members } = await admin.from('program_members').select('user_id, users!inner(id, name, email, role, is_active)').eq('program_id', programId).eq('is_active', true);
+  const { data: members } = await admin.from('program_members').select('user_id, role, users!inner(id, name, email, is_active)').eq('program_id', programId).in('role', ['nextlab', 'institution']).eq('is_active', true);
   const staff = (members ?? [])
-    .map((m) => m.users as unknown as { id: string; name: string; email: string | null; role: string; is_active: boolean })
-    .filter((u) => u.role === 'nextlab' || u.role === 'institution')
+    .map((m) => ({ ...(m.users as unknown as { id: string; name: string; email: string | null; is_active: boolean }), role: m.role as string }))
     .sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name, 'ko'));
   return { program, staff };
 }
@@ -88,7 +87,7 @@ export async function getPlatformOverview(): Promise<PlatformOverview> {
     admin.from('programs').select('id, name, slug, status, client_name, operator_name').order('status').order('created_at', { ascending: false }),
     admin.from('support_types').select('program_id'),
     admin.from('cases').select('program_id, status'),
-    admin.from('program_members').select('program_id, users!inner(role)').eq('is_active', true),
+    admin.from('program_members').select('program_id, role').eq('is_active', true),
     admin.from('users').select('role, is_active, is_platform_admin'),
     admin.from('settlements').select('program_id, status, net'),
     admin.from('notifications').select('status, created_at').gte('created_at', since7d),
@@ -108,8 +107,8 @@ export async function getPlatformOverview(): Promise<PlatformOverview> {
     const m = emptyRoles();
     for (const x of members ?? []) {
       if (x.program_id !== p.id) continue;
-      const role = (x.users as unknown as { role: UserRole } | null)?.role;
-      if (role && role in m) m[role] += 1;
+      const role = x.role as UserRole;
+      if (role in m) m[role] += 1;
     }
     const pendingNet = (settlements ?? []).filter((s) => s.program_id === p.id && s.status === 'pending').reduce((a, s) => a + Number(s.net ?? 0), 0);
     return {
@@ -162,8 +161,8 @@ export interface PlatformUserRow {
   must_change_password: boolean;
   created_at: string;
   activated_at: string | null;
-  /** 활성 멤버십 행사 (id·이름) */
-  programs: { id: string; name: string; status: string }[];
+  /** 활성 멤버십 행사 (id·이름·이 행사에서의 역할) */
+  programs: { id: string; name: string; status: string; role: UserRole }[];
 }
 
 export interface UserSearch {
@@ -179,7 +178,6 @@ export interface UserSearch {
 export async function searchPlatformUsers(f: UserSearch): Promise<{ rows: PlatformUserRow[]; total: number; programs: { id: string; name: string; status: string }[] }> {
   const admin = createAdminClient();
   let q = admin.from('users').select('id, name, email, phone, role, is_active, is_platform_admin, must_change_password, created_at, activated_at', { count: 'exact' }).order('created_at', { ascending: false }).limit(200);
-  if (f.role) q = q.eq('role', f.role);
   if (f.inactiveOnly) q = q.eq('is_active', false);
   const term = f.q?.trim();
   if (term) {
@@ -189,17 +187,19 @@ export async function searchPlatformUsers(f: UserSearch): Promise<{ rows: Platfo
   const [{ data: users, count }, { data: programs }, { data: memberships }] = await Promise.all([
     q,
     admin.from('programs').select('id, name, status').order('created_at', { ascending: false }),
-    admin.from('program_members').select('user_id, program_id').eq('is_active', true),
+    admin.from('program_members').select('user_id, program_id, role').eq('is_active', true),
   ]);
   const pById = new Map((programs ?? []).map((p) => [p.id, p]));
-  const memByUser = new Map<string, { id: string; name: string; status: string }[]>();
+  const memByUser = new Map<string, { id: string; name: string; status: string; role: UserRole }[]>();
   for (const m of memberships ?? []) {
     const p = pById.get(m.program_id);
     if (!p) continue;
-    (memByUser.get(m.user_id) ?? memByUser.set(m.user_id, []).get(m.user_id)!).push(p);
+    (memByUser.get(m.user_id) ?? memByUser.set(m.user_id, []).get(m.user_id)!).push({ ...p, role: m.role as UserRole });
   }
   let rows: PlatformUserRow[] = (users ?? []).map((u) => ({ ...u, role: u.role as UserRole, programs: memByUser.get(u.id) ?? [] }));
-  if (f.programId) rows = rows.filter((r) => r.programs.some((p) => p.id === f.programId));
+  // 역할 필터 = 기본 역할이거나 어느 행사에서든 그 역할로 소속 (설계 B)
+  if (f.role) rows = rows.filter((r) => r.role === f.role || r.programs.some((p) => p.role === f.role));
+  if (f.programId) rows = rows.filter((r) => r.programs.some((p) => p.id === f.programId && (!f.role || p.role === f.role)));
   if (f.membership === 'none') rows = rows.filter((r) => r.programs.length === 0);
   return { rows, total: count ?? rows.length, programs: programs ?? [] };
 }

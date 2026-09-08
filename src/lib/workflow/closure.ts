@@ -267,12 +267,13 @@ export async function notifyProgramStaff(programId: string, caseId: string | nul
   const admin = createAdminClient();
   const { data: members } = await admin
     .from('program_members')
-    .select('user_id, users!inner(role, is_active)')
+    .select('user_id, role, users!inner(is_active)')
     .eq('program_id', programId)
+    .in('role', roles)
     .eq('is_active', true);
   for (const m of members ?? []) {
-    const u = m.users as unknown as { role: string; is_active: boolean } | null;
-    if (!u || !u.is_active || !(roles as string[]).includes(u.role)) continue;
+    const u = m.users as unknown as { is_active: boolean } | null;
+    if (!u || !u.is_active) continue;
     await queueNotification(admin, { caseId, programId, recipientId: m.user_id, triggerEvent });
   }
 }

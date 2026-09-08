@@ -28,7 +28,7 @@ export function HubProgramList({
         <div>
           <h1 className="text-2xl font-semibold">행사 선택</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {ROLE_LABELS[role]} 권한으로 참여 중인 행사입니다. 배너를 눌러 업무를 시작하세요.
+            참여 중인 행사입니다. 행사마다 역할이 다를 수 있으며(예: 한 행사에서는 멘토, 다른 행사에서는 멘티) 배너의 역할 배지로 확인합니다. 배너를 눌러 업무를 시작하세요.
           </p>
         </div>
         <nav className="flex gap-1 rounded-lg bg-muted p-1 text-sm">
@@ -43,7 +43,7 @@ export function HubProgramList({
         </p>
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2">
-          {list.map(({ program, memberActive }) => {
+          {list.map(({ program, memberActive, role: programRole }) => {
             const endedView = program.status !== 'active' || !memberActive;
             return (
               <li key={program.id}>
@@ -64,9 +64,12 @@ export function HubProgramList({
                         {program.client_name} · {program.operator_name}
                       </p>
                     </div>
-                    {endedView && (
-                      <span className="ml-auto shrink-0 rounded-full bg-muted px-2 py-0.5 text-xs">종료</span>
-                    )}
+                    <span className="ml-auto flex shrink-0 flex-col items-end gap-1">
+                      <span className={cn('rounded-full px-2 py-0.5 text-xs font-semibold', programRole === role ? 'bg-primary/10 text-primary' : 'bg-violet-100 text-violet-800')}>
+                        {ROLE_LABELS[programRole]}
+                      </span>
+                      {endedView && <span className="rounded-full bg-muted px-2 py-0.5 text-xs">종료</span>}
+                    </span>
                   </div>
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span className="inline-flex items-center gap-1">

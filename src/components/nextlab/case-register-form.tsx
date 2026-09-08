@@ -13,7 +13,7 @@ import { useToast } from '@/hooks/use-toast';
 export function CaseRegisterForm({ groups, defaultGroupId }: { groups: { id: string; name: string; code: string }[]; defaultGroupId?: string | null }) {
   const { toast } = useToast();
   const [pending, start] = useTransition();
-  const [done, setDone] = useState<{ caseId: string; credential?: { email: string; tempPassword: string } } | null>(null);
+  const [done, setDone] = useState<{ caseId: string; credential?: { email: string; tempPassword: string }; linkedExisting?: boolean } | null>(null);
 
   if (done) {
     return (
@@ -22,6 +22,10 @@ export function CaseRegisterForm({ groups, defaultGroupId }: { groups: { id: str
         {done.credential ? (
           <p>
             로그인 이메일 <b>{done.credential.email}</b> · 임시 비밀번호 <b className="font-mono">{done.credential.tempPassword}</b> (최초 로그인 시 변경 강제). 이 화면을 벗어나면 다시 볼 수 없으니 지금 안내하세요.
+          </p>
+        ) : done.linkedExisting ? (
+          <p>
+            이메일·휴대폰이 일치하는 <b>기존 계정을 이 케이스의 멘티로 연결</b>했습니다(새 계정 발급 없음). 그 계정은 기존 비밀번호로 로그인하며, 허브에서 이 행사를 고르면 멘티 화면이 열립니다.
           </p>
         ) : (
           <p className="text-muted-foreground">멘티 계정은 발급되지 않았습니다(휴대폰 형식 확인). 케이스 상세에서 초대할 수 있습니다.</p>
@@ -48,7 +52,7 @@ export function CaseRegisterForm({ groups, defaultGroupId }: { groups: { id: str
             toast({ title: r.error, variant: 'destructive' });
             return;
           }
-          setDone({ caseId: r.caseId, credential: r.menteeCredential });
+          setDone({ caseId: r.caseId, credential: r.menteeCredential, linkedExisting: r.linkedExisting });
         })
       }
     >

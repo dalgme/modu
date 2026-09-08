@@ -97,7 +97,7 @@ export async function createProgramAction(input: unknown): Promise<Result<{ prog
   if (d.first_email && d.first_name) {
     try {
       const acc = await createStaffOrMentorAccount({ email: d.first_email, name: d.first_name, phone: d.first_phone ?? undefined, role: 'nextlab', actorId: op.id });
-      await admin.from('program_members').upsert({ program_id: created.id, user_id: acc.userId, is_active: true }, { onConflict: 'program_id,user_id' });
+      await admin.from('program_members').upsert({ program_id: created.id, user_id: acc.userId, role: 'nextlab', is_active: true }, { onConflict: 'program_id,user_id' });
       credential = { email: acc.email, tempPassword: acc.tempPassword };
     } catch (err) {
       warn = err instanceof Error ? err.message : '계정 발급 실패';
@@ -213,7 +213,7 @@ export async function addProgramStaffAction(programId: string, input: { email: s
       return { ok: false, error: err instanceof Error ? err.message : '계정 발급 실패' };
     }
   }
-  await admin.from('program_members').upsert({ program_id: programId, user_id: userId, is_active: true, left_at: null }, { onConflict: 'program_id,user_id' });
+  await admin.from('program_members').upsert({ program_id: programId, user_id: userId, role: input.role, is_active: true, left_at: null }, { onConflict: 'program_id,user_id' });
   await audit(op.id, 'program.staff_added', programId, { user_id: userId, role: input.role, issued: !!credential });
   revalidate();
   revalidatePath(`/platform/programs/${programId}`);
@@ -282,8 +282,8 @@ export async function platformSetUserActiveAction(userId: string, active: boolea
   return { ok: true };
 }
 
-/** 행사 소속 추가/해제 — 어느 역할이든 가능. 해제는 멤버십 행을 지우지 않고 is_active=false·left_at 기록(이력 보존). */
-export async function platformSetMembershipAction(userId: string, programId: string, member: boolean): Promise<Result> {
+/** 행사 소속 추가/해제 — 행사별 역할(설계 B)을 지정한다. 해제는 멤버십 행을 지우지 않고 is_active=false·left_at 기록(이력 보존). */
+export async function platformSetMembershipAction(userId: string, programId: string, member: boolean, role?: 'institution' | 'nextlab' | 'mentor' | 'mentee'): Promise<Result> {
   const op = await platformAdmin();
   if ('error' in op) return { ok: false, error: op.error };
   const admin = createAdminClient();
@@ -292,10 +292,10 @@ export async function platformSetMembershipAction(userId: string, programId: str
   if (!p) return { ok: false, error: '행사를 찾을 수 없습니다.' };
   const now = new Date().toISOString();
   const { error } = member
-    ? await admin.from('program_members').upsert({ program_id: programId, user_id: userId, is_active: true, left_at: null, joined_at: now }, { onConflict: 'program_id,user_id' })
+    ? await admin.from('program_members').upsert({ program_id: programId, user_id: userId, role: role ?? (u.role as 'institution' | 'nextlab' | 'mentor' | 'mentee'), is_active: true, left_at: null, joined_at: now }, { onConflict: 'program_id,user_id' })
     : await admin.from('program_members').update({ is_active: false, left_at: now }).eq('program_id', programId).eq('user_id', userId);
   if (error) return { ok: false, error: error.message };
-  await auditUser(op.id, member ? 'platform.membership.add' : 'platform.membership.remove', userId, { program_id: programId, program: p.name, role: u.role });
+  await auditUser(op.id, member ? 'platform.membership.add' : 'platform.membership.remove', userId, { program_id: programId, program: p.name, role: member ? (role ?? u.role) : null });
   revalidateUsers();
   return { ok: true };
 }

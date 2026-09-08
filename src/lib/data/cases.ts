@@ -190,15 +190,17 @@ export async function listMentorsForProgram(
   supportTypeId?: string | null,
 ): Promise<{ id: string; name: string; inGroup: boolean }[]> {
   const supabase = createClient();
+  // 이 행사에서 역할이 멘토인 소속(설계 B: program_members.role)
   const { data: members } = await supabase
     .from('program_members')
     .select('user_id')
     .eq('program_id', programId)
+    .eq('role', 'mentor')
     .eq('is_active', true);
   const ids = (members ?? []).map((m) => m.user_id);
   if (ids.length === 0) return [];
   const [{ data: users }, { data: roster }] = await Promise.all([
-    supabase.from('users').select('id, name').in('id', ids).eq('role', 'mentor').eq('is_active', true).order('name'),
+    supabase.from('users').select('id, name').in('id', ids).eq('is_active', true).order('name'),
     supportTypeId
       ? supabase.from('support_type_members').select('user_id').eq('support_type_id', supportTypeId).eq('is_active', true)
       : Promise.resolve({ data: [] as { user_id: string }[] }),

@@ -1,10 +1,12 @@
 import { requireInstitution } from '@/lib/auth/guards';
+import { requireContext } from '@/lib/programs/context';
 import { listMentorsWithLoad } from '@/lib/data/members';
 import { Card, CardContent } from '@/components/ui/card';
 
 export default async function Page() {
-  await requireInstitution();
-  const mentors = await listMentorsWithLoad();
+  const profile = await requireInstitution();
+  const ctx = await requireContext(profile);
+  const mentors = await listMentorsWithLoad(ctx.programId);
 
   return (
     <main className="flex flex-col gap-5">

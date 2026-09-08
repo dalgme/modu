@@ -86,7 +86,7 @@ await admin.from('audit_logs').insert({
 
 const { data: programs } = await admin.from('programs').select('id');
 for (const p of programs ?? []) {
-  await admin.from('program_members').upsert({ program_id: p.id, user_id: data.user.id, is_active: true }, { onConflict: 'program_id,user_id' });
+  await admin.from('program_members').upsert({ program_id: p.id, user_id: data.user.id, role: 'nextlab', is_active: true }, { onConflict: 'program_id,user_id' });
 }
 
 console.log('✅ 플랫폼 관리자 계정 생성 완료 — 로그인 후 /platform 에서 행사를 개설하세요');

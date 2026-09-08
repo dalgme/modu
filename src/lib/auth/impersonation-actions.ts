@@ -15,6 +15,8 @@ import {
   viewAsConfigured,
 } from '@/lib/auth/impersonation';
 import { roleHome } from '@/lib/auth/roles';
+import { contextOrNull } from '@/lib/programs/context';
+import { membershipRole } from '@/lib/auth/program-role';
 
 export type ViewAsResult = { ok: true } | { ok: false; error: string };
 
@@ -37,6 +39,9 @@ export async function startViewAsAction(targetUserId: string): Promise<ViewAsRes
     .maybeSingle();
   if (!target) return { ok: false, error: '대상 회원을 찾을 수 없습니다.' };
   if (!target.is_active) return { ok: false, error: '비활성 회원은 대행할 수 없습니다.' };
+  // 이 행사 안에서의 역할로 판정 (설계 B)
+  const ctx = await contextOrNull(real);
+  if (ctx) target.role = (await membershipRole(target.id, ctx.programId)) ?? target.role;
   if (!ALLOWED_TARGET_ROLES.includes(target.role)) {
     return { ok: false, error: '멘토 계정만 대행할 수 있습니다.' };
   }

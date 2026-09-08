@@ -150,7 +150,7 @@ export async function commitImport(programId: string, kind: ImportKind, rows: Im
         } else {
           result.linked += 1;
         }
-        await admin.from('program_members').upsert({ program_id: programId, user_id: userId, is_active: true }, { onConflict: 'program_id,user_id' });
+        await admin.from('program_members').upsert({ program_id: programId, user_id: userId, role: 'mentor', is_active: true }, { onConflict: 'program_id,user_id' });
         const groupId = v['소속그룹코드'] ? groupByCode.get(v['소속그룹코드']) : undefined;
         if (groupId) {
           await admin.from('support_type_members').upsert({ support_type_id: groupId, user_id: userId, member_role: 'mentor', is_active: true, left_at: null }, { onConflict: 'support_type_id,user_id' });
