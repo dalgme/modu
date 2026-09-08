@@ -16,7 +16,7 @@ const pretendard = localFont({
 });
 
 export const metadata: Metadata = {
-  title: '멘토링 운영관리 플랫폼 플랫폼',
+  title: '멘토링 운영관리 플랫폼',
   description: '멘토링 프로그램 운영관리 시스템',
   // 내부 업무도구 — 전체 페이지 검색 비노출 (CLAUDE.md 14절)
   robots: { index: false, follow: false, nocache: true },
