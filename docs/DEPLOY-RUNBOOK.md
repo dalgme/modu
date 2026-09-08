@@ -1,7 +1,7 @@
 # 모두의창업(modu) — P8 배포 런북
 
 > 2026-09-07 기준. Supabase `modu`(`osrigknfrzsqjrgihgao`, ap-northeast-2)에 마이그레이션 0001~0058 적용 완료, 코드는 `claude/modu-platform-audit-tutute` 브랜치.
-> Vercel 프로젝트는 **아직 없다**. 연동 토큰에 프로젝트 생성 권한이 없어(403) 대시보드에서 직접 만들어야 한다(1절 ⓪).
+> **2026-09-08 진행 상황**: ⓪~④ 완료. Vercel 프로젝트 `modu` 생성(대시보드, MCP 토큰은 403), 환경변수 입력, Vercel Authentication 해제, `/api/setup` 부트스트랩, 플랫폼 관리자 로그인·대시보드 확인. 운영 URL `https://modu-dalgmes-projects.vercel.app` — **작업 브랜치 `claude/modu-platform-audit-tutute` 가 Production** 으로 배포돼 있다. 남은 것: ⑤ 검증 체크리스트 → ⑥ 도메인·main 머지.
 
 ## 1. 배포 순서 (요약)
 
@@ -38,6 +38,8 @@
 - `CHROMIUM_EXECUTABLE_PATH` 는 **넣지 않는다** (Vercel 은 `@sparticuz/chromium` 자동 사용, `next.config.mjs` 의 `outputFileTracingIncludes` 로 바이너리 포함).
 - 원본 `restart` 프로젝트의 `.env` 값을 복사하지 말 것 — Supabase 프로젝트가 다르다.
 - `NEXT_PUBLIC_*` 를 바꾸면 **빌드 캐시 없이 재배포**(Redeploy → "Use existing Build Cache" 해제).
+- **Type**: `NEXT_PUBLIC_` 접두 변수는 **Config**, 나머지는 **Secret**. `NEXT_PUBLIC_` 을 Secret 으로 저장하면 Vercel 이 거부한다(공개 접두 + 비밀 타입 불일치). 이미 Secret 으로 저장한 것은 Config 로 못 바꾸므로 삭제 후 재추가.
+- **Deployment Protection**: Settings → Deployment Protection → Vercel Authentication 을 **Disabled** 로. 켜져 있으면 멘토·멘티가 Vercel 로그인 화면으로 튕긴다.
 
 ## 3. 최초 플랫폼 관리자 부트스트랩 (1회)
 
