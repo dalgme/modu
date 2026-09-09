@@ -960,6 +960,103 @@ export type Database = {
           },
         ];
       };
+      mentor_form_settings: {
+        Row: {
+          content: string;
+          enabled: boolean;
+          form_key: string;
+          id: string;
+          method: string;
+          program_id: string;
+          title: string;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          content: string;
+          enabled?: boolean;
+          form_key: string;
+          id?: string;
+          method?: string;
+          program_id: string;
+          title: string;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          content?: string;
+          enabled?: boolean;
+          form_key?: string;
+          id?: string;
+          method?: string;
+          program_id?: string;
+          title?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'mentor_form_settings_program_id_fkey';
+            columns: ['program_id'];
+            isOneToOne: false;
+            referencedRelation: 'programs';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      mentor_form_submissions: {
+        Row: {
+          answers: Json;
+          content_snapshot: string | null;
+          file_name: string | null;
+          file_path: string | null;
+          form_key: string;
+          id: string;
+          method: string;
+          program_id: string;
+          rrn_sealed: string | null;
+          signed_name: string | null;
+          submitted_at: string;
+          user_id: string;
+        };
+        Insert: {
+          answers?: Json;
+          content_snapshot?: string | null;
+          file_name?: string | null;
+          file_path?: string | null;
+          form_key: string;
+          id?: string;
+          method: string;
+          program_id: string;
+          rrn_sealed?: string | null;
+          signed_name?: string | null;
+          submitted_at?: string;
+          user_id: string;
+        };
+        Update: {
+          answers?: Json;
+          content_snapshot?: string | null;
+          file_name?: string | null;
+          file_path?: string | null;
+          form_key?: string;
+          id?: string;
+          method?: string;
+          program_id?: string;
+          rrn_sealed?: string | null;
+          signed_name?: string | null;
+          submitted_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'mentor_form_submissions_program_id_fkey';
+            columns: ['program_id'];
+            isOneToOne: false;
+            referencedRelation: 'programs';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       mentor_group_reviews: {
         Row: {
           author_id: string;

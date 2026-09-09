@@ -13,6 +13,9 @@ import { ReportTemplatesManager } from '@/components/settings/report-templates-m
 import { SurveyTemplatesManager } from '@/components/settings/survey-templates-manager';
 import { TagsManager } from '@/components/settings/tags-manager';
 import { StaffPermissionsForm } from '@/components/settings/staff-permissions-form';
+import { MentorFormsManager } from '@/components/settings/mentor-forms-manager';
+import { getMentorFormSettings } from '@/lib/mentor-forms/data';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +27,7 @@ const TABS = [
   { key: 'gates', label: '종결 게이트·서명 정책' },
   { key: 'reports', label: '보고서 양식' },
   { key: 'survey', label: '만족도 양식' },
+  { key: 'mentor-forms', label: '위촉 서식' },
   { key: 'tags', label: '키워드 사전' },
   { key: 'permissions', label: '담당 권한' },
 ] as const;
@@ -73,6 +77,15 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   if (tab === 'survey') {
     const [templates, groups] = await Promise.all([listSurveyTemplates(ctx.programId), listGroupsWithDocs(ctx.programId)]);
     body = <SurveyTemplatesManager templates={templates} groups={groups.map((g) => ({ id: g.id, name: g.name }))} />;
+  }
+  if (tab === 'mentor-forms') {
+    const [settings, { data: subs }] = await Promise.all([
+      getMentorFormSettings(ctx.programId),
+      createAdminClient().from('mentor_form_submissions').select('form_key').eq('program_id', ctx.programId),
+    ]);
+    const countOf = new Map<string, number>();
+    for (const s of subs ?? []) countOf.set(s.form_key, (countOf.get(s.form_key) ?? 0) + 1);
+    body = <MentorFormsManager items={settings.map((s) => ({ ...s, submittedCount: countOf.get(s.formKey) ?? 0 }))} />;
   }
   if (tab === 'tags') body = <TagsManager tags={await listTags(ctx.programId)} />;
   if (tab === 'permissions') body = <StaffPermissionsForm override={ctx.program.staff_permissions} canEdit={!ctx.grade || ctx.grade === 'pl'} />;

@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 const TABS = [
   { href: '/mentor/dashboard', label: '대시보드' },
   { href: '/mentor/settlements', label: '정산 내역' },
+  { href: '/mentor/forms', label: '위촉 서류' },
   { href: '/mentor/profile', label: '내 프로필' },
   { href: '/mentor/signature', label: '내 서명' },
   { href: '/mentor/qna', label: '문의 및 요청하기' },
