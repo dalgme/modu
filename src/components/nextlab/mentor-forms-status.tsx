@@ -22,7 +22,8 @@ import { formatDateTime } from '@/lib/utils/format';
 
 export interface FormStatusItem {
   formKey: MentorFormKey;
-  method: MentorFormMethod;
+  /** 그룹별 override 로 방식이 갈리면 'mixed' */
+  method: MentorFormMethod | 'mixed';
   title: string;
   submitted: {
     id: string;
@@ -148,7 +149,7 @@ export function MentorFormsStatus({ items }: { items: FormStatusItem[] }) {
           {items.map((it) => (
             <div key={it.formKey} className="flex flex-col gap-2">
               <p className="text-sm font-semibold">
-                {FORM_LABELS[it.formKey]} <span className="font-normal text-muted-foreground">· {METHOD_LABELS[it.method]}</span>
+                {FORM_LABELS[it.formKey]} <span className="font-normal text-muted-foreground">· {it.method === 'mixed' ? '그룹별 상이' : METHOD_LABELS[it.method]}</span>
               </p>
               {it.submitted.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">

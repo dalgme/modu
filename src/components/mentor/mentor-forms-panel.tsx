@@ -3,7 +3,7 @@
 import { useRef, useState, useTransition } from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, FileUp } from 'lucide-react';
+import { CheckCircle2, Download, FileUp } from 'lucide-react';
 
 import {
   submitMentorFormWebAction,
@@ -37,6 +37,9 @@ export interface MentorFormView {
   submittedAt: string | null;
   submittedMethod: MentorFormMethod | null;
   fileName: string | null;
+  /** 파일 첨부 방식: 운영사가 등록한 표준양식 다운로드 URL */
+  templateUrl: string | null;
+  templateName: string | null;
   /** 인적사항 기본값 (위촉 동의서) */
   defaults: { organization: string; position: string };
 }
@@ -180,7 +183,18 @@ function FileForm({ form }: { form: MentorFormView }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="max-h-60 overflow-y-auto whitespace-pre-wrap rounded-md border bg-muted/30 p-4 text-sm leading-relaxed">{form.content}</div>
-      <p className="text-xs text-muted-foreground">위 내용의 서식을 작성·서명한 파일(PDF·HWP·이미지 등)을 첨부해 제출하세요.</p>
+      {form.templateUrl ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
+          <Download className="h-4 w-4 text-primary" />
+          <span className="text-sm">① 표준양식을 다운로드해 작성·서명하세요:</span>
+          <a href={form.templateUrl} target="_blank" rel="noreferrer" className="text-sm font-semibold text-primary underline">
+            {form.templateName ?? '표준양식 다운로드'}
+          </a>
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">위 내용의 서식을 작성·서명한 파일(PDF·HWP·이미지 등)을 첨부해 제출하세요.</p>
+      )}
+      {form.templateUrl && <p className="text-xs text-muted-foreground">② 작성한 파일을 아래에 첨부해 제출하세요.</p>}
       <div className="flex flex-wrap items-center gap-2">
         <Input ref={fileRef} type="file" accept=".pdf,.hwp,.hwpx,.doc,.docx,.png,.jpg,.jpeg" className="max-w-xs" />
         <Button onClick={submit} disabled={pending} className="gap-1">

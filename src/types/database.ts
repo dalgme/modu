@@ -968,6 +968,9 @@ export type Database = {
           id: string;
           method: string;
           program_id: string;
+          support_type_id: string | null;
+          template_name: string | null;
+          template_path: string | null;
           title: string;
           updated_at: string;
           updated_by: string | null;
@@ -979,6 +982,9 @@ export type Database = {
           id?: string;
           method?: string;
           program_id: string;
+          support_type_id?: string | null;
+          template_name?: string | null;
+          template_path?: string | null;
           title: string;
           updated_at?: string;
           updated_by?: string | null;
@@ -990,6 +996,9 @@ export type Database = {
           id?: string;
           method?: string;
           program_id?: string;
+          support_type_id?: string | null;
+          template_name?: string | null;
+          template_path?: string | null;
           title?: string;
           updated_at?: string;
           updated_by?: string | null;

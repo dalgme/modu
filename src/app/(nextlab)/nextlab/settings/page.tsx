@@ -13,8 +13,9 @@ import { ReportTemplatesManager } from '@/components/settings/report-templates-m
 import { SurveyTemplatesManager } from '@/components/settings/survey-templates-manager';
 import { TagsManager } from '@/components/settings/tags-manager';
 import { StaffPermissionsForm } from '@/components/settings/staff-permissions-form';
-import { MentorFormsManager } from '@/components/settings/mentor-forms-manager';
-import { getMentorFormSettings } from '@/lib/mentor-forms/data';
+import { MentorFormsManager, type MentorFormScope } from '@/components/settings/mentor-forms-manager';
+import { getMentorFormSettings, templateSignedUrl } from '@/lib/mentor-forms/data';
+import { listSupportTypes } from '@/lib/programs/data';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -79,13 +80,32 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     body = <SurveyTemplatesManager templates={templates} groups={groups.map((g) => ({ id: g.id, name: g.name }))} />;
   }
   if (tab === 'mentor-forms') {
-    const [settings, { data: subs }] = await Promise.all([
-      getMentorFormSettings(ctx.programId),
+    const [groups, { data: subs }] = await Promise.all([
+      listSupportTypes(ctx.programId),
       createAdminClient().from('mentor_form_submissions').select('form_key').eq('program_id', ctx.programId),
     ]);
     const countOf = new Map<string, number>();
     for (const s of subs ?? []) countOf.set(s.form_key, (countOf.get(s.form_key) ?? 0) + 1);
-    body = <MentorFormsManager items={settings.map((s) => ({ ...s, submittedCount: countOf.get(s.formKey) ?? 0 }))} />;
+    const scopes: MentorFormScope[] = [];
+    for (const sc of [{ id: null as string | null, name: '행사 공통' }, ...groups.map((g) => ({ id: g.id as string | null, name: g.name }))]) {
+      const settings = await getMentorFormSettings(ctx.programId, sc.id);
+      const items = [];
+      for (const s of settings) {
+        items.push({
+          formKey: s.formKey,
+          enabled: s.enabled,
+          method: s.method,
+          title: s.title,
+          content: s.content,
+          defined: s.defined,
+          templateName: s.templateName,
+          templateUrl: s.templatePath ? await templateSignedUrl(s.templatePath, s.templateName) : null,
+          submittedCount: countOf.get(s.formKey) ?? 0,
+        });
+      }
+      scopes.push({ id: sc.id, name: sc.name, items });
+    }
+    body = <MentorFormsManager scopes={scopes} />;
   }
   if (tab === 'tags') body = <TagsManager tags={await listTags(ctx.programId)} />;
   if (tab === 'permissions') body = <StaffPermissionsForm override={ctx.program.staff_permissions} canEdit={!ctx.grade || ctx.grade === 'pl'} />;

@@ -28,6 +28,8 @@ export default async function Page() {
           submittedAt: f.submittedAt,
           submittedMethod: f.submittedMethod,
           fileName: f.fileName,
+          templateUrl: f.templateUrl,
+          templateName: f.templateName,
           defaults: { organization: profile.organization ?? '', position: profile.position ?? '' },
         }))}
       />
