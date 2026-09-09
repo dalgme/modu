@@ -1935,6 +1935,7 @@ export type Database = {
           default_withholding_method: string;
           email_subject_prefix: string | null;
           ends_on: string | null;
+          features: Json;
           id: string;
           logo_path: string | null;
           name: string;
@@ -1963,6 +1964,7 @@ export type Database = {
           default_withholding_method?: string;
           email_subject_prefix?: string | null;
           ends_on?: string | null;
+          features?: Json;
           id?: string;
           logo_path?: string | null;
           name: string;
@@ -1991,6 +1993,7 @@ export type Database = {
           default_withholding_method?: string;
           email_subject_prefix?: string | null;
           ends_on?: string | null;
+          features?: Json;
           id?: string;
           logo_path?: string | null;
           name?: string;

@@ -19,8 +19,11 @@ import {
   type MentorFormKey,
 } from '@/lib/mentor-forms/defs';
 import { answersToJson, effectiveSettingForMentor, formsCryptoConfigured, sealRrn } from '@/lib/mentor-forms/data';
+import { featureEnabled } from '@/lib/platform/features';
 
 export type MentorFormActionState = { ok: true; message: string } | { ok: false; error: string } | undefined;
+
+const FEATURE_OFF_ERROR = '위촉 서식 기능이 이 행사에서 비활성 상태입니다. 플랫폼 통합관리자에게 문의하세요.';
 
 function isFormKey(v: string): v is MentorFormKey {
   return (FORM_KEYS as readonly string[]).includes(v);
@@ -43,6 +46,7 @@ async function settingGuard(formData: FormData): Promise<
   const actor = await requireNextlab();
   const ctx = await contextOrNull(actor);
   if (!ctx) return { ok: false, error: '행사를 먼저 선택하세요.' };
+  if (!featureEnabled(ctx.program.features, 'mentor_forms')) return { ok: false, error: FEATURE_OFF_ERROR };
   const denied = denyUnless(ctx, 'settings');
   if (denied) return { ok: false, error: denied };
   const supportTypeId = String(formData.get('supportTypeId') ?? '').trim() || null;
@@ -186,6 +190,7 @@ async function mentorFormGuard(formKey: string): Promise<
   if (!profile) return { ok: false, error: MENTOR_ONLY_ERROR };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: '행사를 먼저 선택하세요.' };
+  if (!featureEnabled(ctx.program.features, 'mentor_forms')) return { ok: false, error: FEATURE_OFF_ERROR };
   if (!isFormKey(formKey)) return { ok: false, error: '서식을 확인할 수 없습니다.' };
   // 유효 설정 = 소속 그룹 override → 행사 공통 (그룹별 셋팅 반영)
   const setting = await effectiveSettingForMentor(ctx.programId, profile.id, formKey);
@@ -345,6 +350,7 @@ export async function rejectMentorFormSubmissionAction(
   const actor = await requireNextlab();
   const ctx = await contextOrNull(actor);
   if (!ctx) return { ok: false, error: '행사를 먼저 선택하세요.' };
+  if (!featureEnabled(ctx.program.features, 'mentor_forms')) return { ok: false, error: FEATURE_OFF_ERROR };
   {
     const denied = denyUnless(ctx, 'mentors.docs');
     if (denied) return { ok: false, error: denied };

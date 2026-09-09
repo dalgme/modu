@@ -4,7 +4,14 @@ import { createCipheriv, createDecipheriv, createHmac, randomBytes } from 'node:
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { DEFAULT_FORMS, FORM_KEYS, type MentorFormAnswers, type MentorFormKey, type MentorFormMethod } from '@/lib/mentor-forms/defs';
+import { featureEnabled } from '@/lib/platform/features';
 import type { Json } from '@/types/database';
+
+/** 위촉 서식 기능 활성 여부 (플랫폼 통합관리자가 행사별로 켠다 — 기본 비활성, P15) */
+export async function mentorFormsFeatureEnabled(programId: string): Promise<boolean> {
+  const { data } = await createAdminClient().from('programs').select('features').eq('id', programId).maybeSingle();
+  return featureEnabled(data?.features, 'mentor_forms');
+}
 
 /* ── 주민등록번호 봉투암호화 — SMS_KEK 에서 용도 분리 키 파생 (원문은 DB 에 남지 않는다) ── */
 
@@ -167,8 +174,9 @@ export interface MentorFormForMentor extends MentorFormSetting {
   templateUrl: string | null;
 }
 
-/** 멘토 화면용 — 이 멘토에게 유효한(그룹 우선) 사용 중 서식 + 본인 제출 여부 */
+/** 멘토 화면용 — 이 멘토에게 유효한(그룹 우선) 사용 중 서식 + 본인 제출 여부. 기능 비활성이면 빈 목록 */
 export async function getMentorFormsForMentor(programId: string, userId: string): Promise<MentorFormForMentor[]> {
+  if (!(await mentorFormsFeatureEnabled(programId))) return [];
   const [{ effectiveFor }, groupMap] = await Promise.all([
     resolveEffectiveSettings(programId),
     mentorGroupMap(programId, [userId]),
@@ -236,6 +244,7 @@ export interface FormStatus {
  * revealSensitive 는 members.sensitive 권한자만 true 로 호출할 것.
  */
 export async function getMentorFormStatus(programId: string, revealSensitive: boolean): Promise<FormStatus[]> {
+  if (!(await mentorFormsFeatureEnabled(programId))) return [];
   const admin = createAdminClient();
   const [{ effectiveFor }, { data: members }, { data: subs }] = await Promise.all([
     resolveEffectiveSettings(programId),

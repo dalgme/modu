@@ -4,6 +4,8 @@ import { notFound } from 'next/navigation';
 import { getProgramWithStaff } from '@/lib/platform/data';
 import { AddStaffForm } from '@/components/platform/program-actions';
 import { ProgramEditForm } from '@/components/platform/program-edit-form';
+import { ProgramFeaturesForm } from '@/components/platform/program-features-form';
+import { FEATURE_KEYS } from '@/lib/platform/features';
 import { formatDate } from '@/lib/utils/format';
 
 export const dynamic = 'force-dynamic';
@@ -25,6 +27,16 @@ export default async function Page({ params }: { params: { id: string } }) {
       <section className="flex flex-col gap-2">
         <h2 className="text-base font-semibold">개설정보 수정</h2>
         <ProgramEditForm program={{ id: p.id, slug: p.slug, name: p.name, client_name: p.client_name, client_short: p.client_short, operator_name: p.operator_name, operator_short: p.operator_short, app_title: p.app_title, default_required_rounds: p.default_required_rounds, starts_on: p.starts_on, ends_on: p.ends_on }} />
+      </section>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-base font-semibold">기능 활성화 (플랫폼 관리)</h2>
+        <p className="text-xs text-muted-foreground">
+          아래 기능은 플랫폼 통합관리자가 행사별로 켭니다. 비활성이면 운영사 설정 메뉴와 관련 화면에 노출되지 않습니다.
+        </p>
+        <ProgramFeaturesForm
+          programId={p.id}
+          features={Object.fromEntries(FEATURE_KEYS.map((k) => [k, ((p.features as Record<string, unknown> | null) ?? {})[k] === true]))}
+        />
       </section>
       <section className="rounded-xl border bg-background p-4">
         <h2 className="text-base font-semibold">스태프 계정 (운영사 · 발주처)</h2>

@@ -7,6 +7,7 @@ import { getRealSessionProfile } from '@/lib/auth/guards';
 import { createStaffOrMentorAccount, phoneTempPassword } from '@/lib/auth/admin-accounts';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ROUND_REPORT_TEMPLATE_KEY } from '@/lib/documents/round-report';
+import { FEATURE_KEYS } from '@/lib/platform/features';
 import type { Json } from '@/types/database';
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -376,5 +377,29 @@ export async function platformSetMembershipAction(userId: string, programId: str
   if (error) return { ok: false, error: error.message };
   await auditUser(op.id, member ? 'platform.membership.add' : 'platform.membership.remove', userId, { program_id: programId, program: p.name, role: member ? (role ?? u.role) : null });
   revalidateUsers();
+  return { ok: true };
+}
+
+/**
+ * 행사 기능 플래그 전환 (P15) — 플랫폼 통합관리자 전용.
+ * 비활성 기능은 운영사 설정·역할 화면에 노출되지 않고 서버 액션도 차단된다 (기본 전부 비활성).
+ */
+export async function setProgramFeatureAction(programId: string, key: string, enabled: boolean): Promise<Result> {
+  const op = await platformAdmin();
+  if ('error' in op) return { ok: false, error: op.error };
+  if (!(FEATURE_KEYS as readonly string[]).includes(key)) return { ok: false, error: '알 수 없는 기능입니다.' };
+  const admin = createAdminClient();
+  const { data: p } = await admin.from('programs').select('features').eq('id', programId).maybeSingle();
+  if (!p) return { ok: false, error: '행사를 찾을 수 없습니다.' };
+  const features = { ...((p.features as Record<string, unknown> | null) ?? {}), [key]: enabled };
+  const { error } = await admin.from('programs').update({ features: features as Json }).eq('id', programId);
+  if (error) return { ok: false, error: error.message };
+  await audit(op.id, 'program.feature', programId, { key, enabled } as unknown as Json);
+  revalidate();
+  revalidatePath(`/platform/programs/${programId}`);
+  revalidatePath('/nextlab/settings');
+  revalidatePath('/nextlab/mentors');
+  revalidatePath('/mentor/forms');
+  revalidatePath('/mentor/dashboard');
   return { ok: true };
 }

@@ -16,6 +16,7 @@ import { StaffPermissionsForm } from '@/components/settings/staff-permissions-fo
 import { MentorFormsManager, type MentorFormScope } from '@/components/settings/mentor-forms-manager';
 import { getMentorFormSettings, templateSignedUrl } from '@/lib/mentor-forms/data';
 import { listSupportTypes } from '@/lib/programs/data';
+import { featureEnabled } from '@/lib/platform/features';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -38,7 +39,10 @@ type TabKey = (typeof TABS)[number]['key'];
 export default async function Page({ searchParams }: { searchParams: { tab?: string } }) {
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
-  const tab = (TABS.find((t) => t.key === searchParams.tab)?.key ?? 'program') as TabKey;
+  // 플랫폼 기능 플래그 (P15) — 비활성 기능의 탭은 노출하지 않는다
+  const mentorFormsOn = featureEnabled(ctx.program.features, 'mentor_forms');
+  const visibleTabs = TABS.filter((t) => t.key !== 'mentor-forms' || mentorFormsOn);
+  const tab = (visibleTabs.find((t) => t.key === searchParams.tab)?.key ?? 'program') as TabKey;
   const program = await getProgramSettings(ctx.programId);
   if (!program) notFound();
   const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
@@ -79,7 +83,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     const [templates, groups] = await Promise.all([listSurveyTemplates(ctx.programId), listGroupsWithDocs(ctx.programId)]);
     body = <SurveyTemplatesManager templates={templates} groups={groups.map((g) => ({ id: g.id, name: g.name }))} />;
   }
-  if (tab === 'mentor-forms') {
+  if (tab === 'mentor-forms' && mentorFormsOn) {
     const [groups, { data: subs }] = await Promise.all([
       listSupportTypes(ctx.programId),
       createAdminClient().from('mentor_form_submissions').select('form_key').eq('program_id', ctx.programId),
@@ -117,7 +121,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         <p className="mt-1 text-sm text-muted-foreground">{ctx.program.name} — 저장 즉시 이 행사 전체에 반영됩니다. 숫자 한도는 적용일 이력으로 쌓이며 과거 정산은 바뀌지 않습니다.</p>
       </div>
       <nav className="flex flex-wrap gap-1.5">
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <Link key={t.key} href={`/nextlab/settings?tab=${t.key}`} className={`rounded-full px-3 py-1 text-xs font-semibold ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}>
             {t.label}
           </Link>
