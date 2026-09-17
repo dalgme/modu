@@ -26,7 +26,7 @@ export default async function Page({ params }: { params: { id: string } }) {
       </div>
       <section className="flex flex-col gap-2">
         <h2 className="text-base font-semibold">개설정보 수정</h2>
-        <ProgramEditForm program={{ id: p.id, slug: p.slug, name: p.name, client_name: p.client_name, client_short: p.client_short, operator_name: p.operator_name, operator_short: p.operator_short, app_title: p.app_title, default_required_rounds: p.default_required_rounds, starts_on: p.starts_on, ends_on: p.ends_on }} />
+        <ProgramEditForm program={{ id: p.id, slug: p.slug, name: p.name, client_name: p.client_name, client_short: p.client_short, operator_name: p.operator_name, operator_short: p.operator_short, app_title: p.app_title, default_required_rounds: p.default_required_rounds, starts_on: p.starts_on, ends_on: p.ends_on, operator_signup_code: p.operator_signup_code }} />
       </section>
       <section className="flex flex-col gap-2">
         <h2 className="text-base font-semibold">기능 활성화 (플랫폼 관리)</h2>

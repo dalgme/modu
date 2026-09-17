@@ -21,6 +21,7 @@ export interface ProgramInfo {
   default_required_rounds: number;
   starts_on: string | null;
   ends_on: string | null;
+  operator_signup_code: string | null;
 }
 
 const FIELDS: { name: keyof Omit<ProgramInfo, 'id' | 'slug'>; label: string; type?: string; required?: boolean; hint?: string }[] = [
@@ -33,6 +34,7 @@ const FIELDS: { name: keyof Omit<ProgramInfo, 'id' | 'slug'>; label: string; typ
   { name: 'default_required_rounds', label: '기본 회차 수', type: 'number', hint: '새 그룹의 기본값 (그룹별 조정 가능)' },
   { name: 'starts_on', label: '시작일', type: 'date' },
   { name: 'ends_on', label: '종료일', type: 'date' },
+  { name: 'operator_signup_code', label: '운영사 총괄담당자 등록 확인코드', hint: '/register/operator 셀프 등록에 필요한 코드. 비우면 셀프 등록이 닫힙니다. 코드를 아는 사람은 이 행사의 운영사 메인 담당(PL)으로 등록되니 유출 시 즉시 변경하세요.' },
 ];
 
 /** 플랫폼 콘솔 — 행사 개설정보 수정 */

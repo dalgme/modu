@@ -1941,6 +1941,7 @@ export type Database = {
           name: string;
           operator_contact: string | null;
           operator_name: string;
+          operator_signup_code: string | null;
           operator_short: string | null;
           round_report_policy: Json;
           slug: string;
@@ -1970,6 +1971,7 @@ export type Database = {
           name: string;
           operator_contact?: string | null;
           operator_name: string;
+          operator_signup_code?: string | null;
           operator_short?: string | null;
           round_report_policy?: Json;
           slug: string;
@@ -1999,6 +2001,7 @@ export type Database = {
           name?: string;
           operator_contact?: string | null;
           operator_name?: string;
+          operator_signup_code?: string | null;
           operator_short?: string | null;
           round_report_policy?: Json;
           slug?: string;

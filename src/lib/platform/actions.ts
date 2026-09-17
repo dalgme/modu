@@ -295,6 +295,8 @@ const programInfoSchema = z.object({
   default_required_rounds: z.coerce.number().int().min(1).max(20),
   starts_on: z.string().trim().optional().transform((v) => v || null),
   ends_on: z.string().trim().optional().transform((v) => v || null),
+  // 운영사 총괄담당자 셀프 등록 확인코드 (P16) — 비우면 셀프 등록이 닫힌다
+  operator_signup_code: z.string().trim().max(60).optional().transform((v) => v || null),
 });
 
 /** 행사 개설정보 수정 (플랫폼 관리자). 브랜딩 세부(직인 명의·연락처·문자 꼬리말 등)는 운영사의 운영 설정에서도 고칠 수 있다. */
@@ -304,7 +306,7 @@ export async function updateProgramInfoAction(programId: string, input: unknown)
   const parsed = programInfoSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? '입력값을 확인하세요.' };
   const admin = createAdminClient();
-  const { data: before } = await admin.from('programs').select('name, client_name, client_short, operator_name, operator_short, app_title, default_required_rounds, starts_on, ends_on').eq('id', programId).maybeSingle();
+  const { data: before } = await admin.from('programs').select('name, client_name, client_short, operator_name, operator_short, app_title, default_required_rounds, starts_on, ends_on, operator_signup_code').eq('id', programId).maybeSingle();
   if (!before) return { ok: false, error: '행사를 찾을 수 없습니다.' };
   const { error } = await admin.from('programs').update(parsed.data).eq('id', programId);
   if (error) return { ok: false, error: error.message };
