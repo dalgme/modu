@@ -31,6 +31,8 @@ export function OperatorRegisterForm() {
           <b>{state.programName}</b>의 운영사 총괄담당자로 등록되었습니다.
           <br />
           아이디 <b>{state.email}</b> 와 방금 정한 비밀번호로 로그인하세요.
+          <br />
+          확인코드는 사용되어 이 등록 창구는 자동으로 닫혔습니다. 추가 담당자·옵저버는 로그인 후 <b>회원 관리</b>에서 직접 발급합니다.
         </p>
         <Button asChild className="mt-2 w-full">
           <Link href="/login">로그인하러 가기</Link>
@@ -69,7 +71,7 @@ export function OperatorRegisterForm() {
         <div className="flex flex-col gap-1.5 sm:col-span-2">
           <Label htmlFor="r-code">확인코드 *</Label>
           <Input id="r-code" name="code" required autoComplete="off" placeholder="운영사 내부 안내로 전달받은 코드" />
-          <p className="text-[11px] text-muted-foreground">확인코드가 일치하는 행사의 운영사 총괄담당자로 등록됩니다.</p>
+          <p className="text-[11px] text-muted-foreground">확인코드가 일치하는 행사의 운영사 총괄담당자로 등록됩니다. <b>코드는 1회용</b>이라 등록이 완료되면 자동으로 닫힙니다.</p>
         </div>
       </div>
 

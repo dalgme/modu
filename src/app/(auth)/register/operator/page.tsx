@@ -19,6 +19,7 @@ export default function Page() {
           <CardTitle className="text-xl">운영사 총괄담당자 등록</CardTitle>
           <CardDescription>
             행사 운영을 총괄하는 담당자 계정을 만듭니다. 등록에는 운영사 내부로 전달된 <b>확인코드</b>가 필요하며,
+            <b>행사당 1명</b>이 등록하면 코드가 소진되어 이 창구는 자동으로 닫힙니다.
             등록 후에는 회원 관리에서 추가 담당자·옵저버 계정을 직접 발급할 수 있습니다.
           </CardDescription>
         </CardHeader>

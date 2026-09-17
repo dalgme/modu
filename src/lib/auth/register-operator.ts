@@ -13,6 +13,11 @@ export type OperatorRegisterState =
  * 확인코드(programs.operator_signup_code)가 일치하는 활성 행사에
  * 운영사(nextlab) · 메인 담당(PL) 로 등록된다. 아이디(이메일)·비밀번호는 본인이 정하므로
  * 임시 비밀번호 없이 바로 로그인한다. 코드가 비어 있는 행사는 셀프 등록이 닫힌 상태.
+ *
+ * **확인코드는 1회용이다 (P17).** 등록 성공과 동시에 코드가 소진(null)되어 셀프 등록이
+ * 자동으로 닫힌다 — 소진은 조건부 UPDATE 로 원자적이라 동시에 두 명이 코드를 쓰면 한 명만
+ * 성공한다. 등록이 중간에 실패하면 코드를 복원한다. 다시 열려면 플랫폼 통합관리자가
+ * 행사 개설정보에서 새 코드를 입력한다. 추가 담당자·옵저버는 총괄담당자가 회원 관리에서 발급.
  */
 export async function registerOperatorAction(
   _prev: OperatorRegisterState,
@@ -36,22 +41,30 @@ export async function registerOperatorAction(
   if (!code) return { ok: false, error: '확인코드를 입력하세요.' };
 
   const admin = createAdminClient();
-  // 확인코드 → 행사 매칭 (활성 행사만). 코드 노출을 줄이려 오류 문구는 일치 여부만 알려준다.
-  const { data: program } = await admin
-    .from('programs')
-    .select('id, name')
-    .eq('operator_signup_code', code)
-    .eq('status', 'active')
-    .maybeSingle();
-  if (!program) return { ok: false, error: '확인코드가 올바르지 않습니다. 운영사 내부 안내를 확인하세요.' };
 
-  // 중복 계정 방지 — 이미 있는 이메일·휴대폰이면 로그인/비밀번호 재설정으로 안내
+  // 중복 계정 방지 — 이미 있는 이메일·휴대폰이면 로그인/비밀번호 재설정으로 안내 (코드 소진 전에 거른다)
   const [{ data: byEmail }, { data: byPhone }] = await Promise.all([
     admin.from('users').select('id').eq('email', email).maybeSingle(),
     admin.from('users').select('id').eq('phone', phone).maybeSingle(),
   ]);
   if (byEmail) return { ok: false, error: '이미 등록된 이메일입니다. 로그인하거나 비밀번호 재설정을 이용하세요.' };
   if (byPhone) return { ok: false, error: '이미 등록된 휴대폰 번호입니다. 로그인하거나 운영사에 문의하세요.' };
+
+  // 확인코드 → 행사 매칭 + 1회용 소진 (원자적): 코드가 일치하는 활성 행사의 코드를 지우면서 그 행을 가져온다.
+  // 동시에 두 명이 같은 코드를 제출해도 이 UPDATE 는 한 요청에만 행을 돌려준다.
+  const { data: claimed } = await admin
+    .from('programs')
+    .update({ operator_signup_code: null })
+    .eq('operator_signup_code', code)
+    .eq('status', 'active')
+    .select('id, name');
+  const program = claimed?.[0];
+  if (!program) return { ok: false, error: '확인코드가 올바르지 않거나 이미 사용되었습니다. 운영사 내부 안내를 확인하세요.' };
+
+  // 이후 단계가 실패하면 코드를 복원해 재시도할 수 있게 한다 (그 사이 다른 값이 설정됐다면 건드리지 않음)
+  const restoreCode = async () => {
+    await admin.from('programs').update({ operator_signup_code: code }).eq('id', program.id).is('operator_signup_code', null);
+  };
 
   const { data: created, error: authError } = await admin.auth.admin.createUser({
     email,
@@ -60,6 +73,7 @@ export async function registerOperatorAction(
     user_metadata: { name },
   });
   if (authError || !created.user) {
+    await restoreCode();
     return { ok: false, error: authError?.message ?? '계정 생성에 실패했습니다.' };
   }
 
@@ -77,6 +91,7 @@ export async function registerOperatorAction(
   });
   if (profileError) {
     await admin.auth.admin.deleteUser(created.user.id);
+    await restoreCode();
     return { ok: false, error: profileError.message };
   }
 
@@ -88,6 +103,7 @@ export async function registerOperatorAction(
     );
   if (memberError) {
     await admin.auth.admin.deleteUser(created.user.id);
+    await restoreCode();
     return { ok: false, error: memberError.message };
   }
 
@@ -97,7 +113,7 @@ export async function registerOperatorAction(
     action: 'account.self_register',
     entity_type: 'users',
     entity_id: created.user.id,
-    metadata: { role: 'nextlab', grade: 'pl', email, via: 'operator_signup_code' },
+    metadata: { role: 'nextlab', grade: 'pl', email, via: 'operator_signup_code', code_closed: true },
   });
 
   return { ok: true, programName: program.name, email };
