@@ -7,256 +7,575 @@
 <title>모두의창업 플랫폼 사용 안내</title>
 <style>
   :root{
-    --navy:#103355; --teal:#2AD1BF; --teal-dark:#0e9c8d;
-    --ink:#1c2733; --sub:#5b6b7b; --line:#dde5ec; --bg:#f4f8fa; --card:#ffffff;
-    --amber:#b45309; --amber-bg:#fef3c7; --green:#047857; --green-bg:#d1fae5;
+    --navy:#103355; --navy2:#1a4a74; --teal:#2AD1BF; --teal-dark:#0e9c8d;
+    --ink:#1c2733; --sub:#5b6b7b; --line:#dde5ec; --bg:#f4f8fa; --card:#fff;
+    --amber:#b45309; --amber-bg:#fff7e0; --green:#047857; --green-bg:#d1fae5;
+    --violet:#5b21b6; --violet-bg:#ede9fe; --pink:#9d174d; --pink-bg:#fce7f3; --blue:#075985; --blue-bg:#e0f2fe;
   }
-  *{box-sizing:border-box; margin:0; padding:0;}
-  body{font-family:'Pretendard','맑은 고딕','Apple SD Gothic Neo',sans-serif; color:var(--ink); background:var(--bg); line-height:1.65; font-size:16px;}
-  .wrap{max-width:920px; margin:0 auto; padding:0 20px 80px;}
-  header.hero{background:linear-gradient(135deg,var(--navy) 0%,#1a4a74 70%,#155e6e 100%); color:#fff; padding:44px 20px 52px; text-align:center;}
-  .hero .badge{display:inline-block; background:var(--teal); color:var(--navy); font-weight:800; font-size:13px; border-radius:999px; padding:4px 14px; letter-spacing:.06em;}
-  .hero h1{font-size:30px; margin-top:14px; font-weight:800;}
-  .hero p{margin-top:10px; color:#cfe6ef; font-size:15px;}
-  section{margin-top:44px;}
-  h2{font-size:22px; color:var(--navy); display:flex; align-items:center; gap:10px; margin-bottom:6px;}
-  h2 .num{flex:none; width:34px; height:34px; border-radius:50%; background:var(--navy); color:#fff; font-size:16px; display:flex; align-items:center; justify-content:center; font-weight:800;}
-  .lead{color:var(--sub); font-size:15px; margin-bottom:16px;}
-  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px;}
-  .grid{display:grid; gap:12px;}
-  @media(min-width:640px){ .g2{grid-template-columns:1fr 1fr;} .g4{grid-template-columns:repeat(4,1fr);} }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{font-family:'Pretendard','맑은 고딕','Apple SD Gothic Neo',sans-serif;color:var(--ink);background:var(--bg);line-height:1.65;font-size:16px}
+  .wrap{max-width:960px;margin:0 auto;padding:0 18px 90px}
 
-  /* 역할 카드 */
-  .role{border-top:5px solid var(--teal); text-align:center; padding:16px 12px;}
-  .role .shape{width:52px; height:52px; margin:0 auto 8px; display:flex; align-items:center; justify-content:center;}
-  .role b{display:block; font-size:16px; color:var(--navy);}
-  .role span{font-size:13px; color:var(--sub);}
+  /* ── 헤더 ── */
+  header.hero{background:linear-gradient(135deg,var(--navy) 0%,var(--navy2) 60%,#155e6e 100%);color:#fff;padding:34px 18px 26px;text-align:center}
+  .hero .badge{display:inline-block;background:var(--teal);color:var(--navy);font-weight:800;font-size:12.5px;border-radius:999px;padding:3px 14px;letter-spacing:.06em}
+  .hero h1{font-size:26px;margin-top:10px;font-weight:800}
+  .hero p{margin-top:8px;color:#cfe6ef;font-size:14px}
 
-  /* 흐름 체인 */
-  .flow{display:flex; flex-wrap:wrap; gap:6px; align-items:stretch;}
-  .step{flex:1 1 150px; min-width:140px; background:var(--card); border:2px solid var(--line); border-radius:12px; padding:12px 10px 12px; position:relative; text-align:center;}
-  .step .no{position:absolute; top:-12px; left:50%; transform:translateX(-50%); background:var(--teal); color:var(--navy); font-weight:800; font-size:13px; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; border:2px solid #fff;}
-  .step b{display:block; color:var(--navy); font-size:14px; margin-top:6px;}
-  .step span{font-size:12px; color:var(--sub); display:block; margin-top:2px;}
-  .step .who{display:inline-block; margin-top:6px; font-size:11px; font-weight:700; border-radius:999px; padding:1px 8px;}
-  .who.op{background:#e0f2fe; color:#075985;} .who.mt{background:#ede9fe; color:#5b21b6;} .who.me{background:#fce7f3; color:#9d174d;} .who.cl{background:#fef3c7; color:#92400e;}
-  .arrow{align-self:center; color:var(--teal-dark); font-size:20px; font-weight:800; flex:none;}
+  /* ── 탭 바 ── */
+  .tabbar-outer{position:sticky;top:0;z-index:50;background:var(--navy);box-shadow:0 2px 10px rgba(16,51,85,.25)}
+  .tabbar{max-width:960px;margin:0 auto;display:flex;gap:4px;overflow-x:auto;padding:8px 12px;scrollbar-width:thin}
+  .tabbar button{flex:none;border:0;background:transparent;color:#bcd6e6;font:inherit;font-size:13.5px;font-weight:700;padding:7px 12px;border-radius:999px;cursor:pointer;white-space:nowrap;transition:.15s}
+  .tabbar button:hover{background:rgba(255,255,255,.12);color:#fff}
+  .tabbar button.on{background:var(--teal);color:var(--navy)}
 
-  /* URL 박스 */
-  .urlbox{display:flex; flex-direction:column; gap:6px; background:#0d2a46; color:#fff; border-radius:12px; padding:16px 18px;}
-  .urlbox small{color:#9fc3d8; font-weight:700; letter-spacing:.04em;}
-  .urlbox a{color:var(--teal); font-weight:800; font-size:17px; word-break:break-all; text-decoration:none;}
-  .urlbox a:hover{text-decoration:underline;}
-  .code{display:inline-block; background:var(--teal); color:var(--navy); font-family:ui-monospace,Consolas,monospace; font-weight:800; font-size:18px; border-radius:8px; padding:4px 14px; letter-spacing:.08em;}
+  /* ── 공통 ── */
+  section.tab{display:none;animation:fade .25s ease}
+  section.tab.on{display:block}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  h2.tt{font-size:23px;color:var(--navy);margin:34px 0 4px;display:flex;align-items:center;gap:10px}
+  h2.tt .em{font-size:28px}
+  .lead{color:var(--sub);font-size:14.5px;margin-bottom:18px}
+  h3{font-size:16px;color:var(--navy);margin:22px 0 8px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .grid{display:grid;gap:12px}
+  @media(min-width:640px){.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}}
+  .menu{display:inline-block;background:#eef4f9;border:1px solid var(--line);border-radius:6px;font-size:12px;padding:1px 8px;color:var(--navy);font-weight:700;white-space:nowrap}
+  .tip{border-left:5px solid var(--teal);background:#e8faf7;border-radius:0 12px 12px 0;padding:11px 15px;font-size:14px;margin-top:12px}
+  .warn{border-left:5px solid #f59e0b;background:var(--amber-bg);border-radius:0 12px 12px 0;padding:11px 15px;font-size:14px;margin-top:12px;color:var(--amber)}
+  .pill{display:inline-block;font-size:11px;font-weight:800;border-radius:999px;padding:2px 9px}
+  .p-op{background:var(--blue-bg);color:var(--blue)} .p-mt{background:var(--violet-bg);color:var(--violet)}
+  .p-me{background:var(--pink-bg);color:var(--pink)} .p-cl{background:var(--amber-bg);color:var(--amber)}
+  .p-ok{background:var(--green-bg);color:var(--green)} .p-no{background:#fee2e2;color:#b91c1c}
+  table{width:100%;border-collapse:collapse;background:var(--card);border-radius:12px;overflow:hidden;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:9px 11px;text-align:left;vertical-align:top}
+  th{background:var(--navy);color:#fff;font-size:12.5px}
+  td b{color:var(--navy)}
+  details{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-top:8px}
+  summary{font-weight:700;color:var(--navy);cursor:pointer;font-size:14.5px}
+  summary::marker{color:var(--teal-dark)}
+  details p, details ul{margin-top:8px;font-size:14px;color:var(--sub)}
+  details ul{padding-left:18px}
+  .urlbox{display:flex;flex-direction:column;gap:5px;background:#0d2a46;color:#fff;border-radius:12px;padding:15px 17px}
+  .urlbox small{color:#9fc3d8;font-weight:700;letter-spacing:.04em;font-size:11.5px}
+  .urlbox a{color:var(--teal);font-weight:800;font-size:16px;word-break:break-all;text-decoration:none}
+  .urlbox a:hover{text-decoration:underline}
+  .code{display:inline-block;background:var(--teal);color:var(--navy);font-family:ui-monospace,Consolas,monospace;font-weight:800;font-size:17px;border-radius:8px;padding:3px 13px;letter-spacing:.08em}
 
-  /* 등급 표 */
-  table{width:100%; border-collapse:collapse; background:var(--card); border-radius:12px; overflow:hidden; font-size:14px;}
-  th,td{border:1px solid var(--line); padding:10px 12px; text-align:left; vertical-align:top;}
-  th{background:var(--navy); color:#fff; font-size:13px;}
-  td b{color:var(--navy);}
-  .ok{color:var(--green); font-weight:700;} .no2{color:#b91c1c; font-weight:700;}
+  /* ── 클릭형 흐름 (fsteps) ── */
+  .fsteps{display:flex;flex-wrap:wrap;gap:6px}
+  .fstep{flex:1 1 96px;min-width:92px;background:var(--card);border:2px solid var(--line);border-radius:12px;padding:10px 6px;text-align:center;cursor:pointer;transition:.15s;position:relative}
+  .fstep:hover{border-color:var(--teal)}
+  .fstep.on{border-color:var(--teal);background:#e8faf7}
+  .fstep .fe{font-size:22px;display:block}
+  .fstep b{display:block;font-size:12.5px;color:var(--navy);margin-top:3px;line-height:1.35}
+  .fstep .no{position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--teal);color:var(--navy);font-weight:800;font-size:11px;width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff}
+  .fdetail{margin-top:10px;background:var(--navy);color:#e6f2f8;border-radius:12px;padding:13px 16px;font-size:14px;min-height:52px}
+  .fdetail b{color:var(--teal)}
+  .hintline{font-size:11.5px;color:var(--sub);margin-top:6px}
 
-  .tip{border-left:5px solid var(--teal); background:#e8faf7; border-radius:0 12px 12px 0; padding:12px 16px; font-size:14px; margin-top:12px;}
-  .warn{border-left:5px solid #f59e0b; background:var(--amber-bg); border-radius:0 12px 12px 0; padding:12px 16px; font-size:14px; margin-top:12px; color:var(--amber);}
-  .menu{display:inline-block; background:#eef4f9; border:1px solid var(--line); border-radius:6px; font-size:12.5px; padding:1px 8px; color:var(--navy); font-weight:700; white-space:nowrap;}
-  details{background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 18px; margin-top:10px;}
-  summary{font-weight:700; color:var(--navy); cursor:pointer;}
-  details p{margin-top:8px; font-size:14.5px; color:var(--sub);}
-  footer{margin-top:60px; text-align:center; font-size:13px; color:var(--sub);}
-  svg{max-width:100%; height:auto;}
+  /* ── 미니탭 ── */
+  .minitabs{display:flex;gap:6px;flex-wrap:wrap;margin:14px 0 0}
+  .minitabs button{border:1.5px solid var(--line);background:var(--card);color:var(--sub);font:inherit;font-size:13.5px;font-weight:700;padding:6px 14px;border-radius:999px;cursor:pointer;transition:.15s}
+  .minitabs button.on{background:var(--navy);border-color:var(--navy);color:#fff}
+  .minipane{display:none;margin-top:12px}
+  .minipane.on{display:block;animation:fade .2s ease}
+
+  /* ── 슬라이드 ── */
+  .slider{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 16px 12px;margin-top:12px}
+  .slide{display:none}
+  .slide.on{display:block;animation:fade .2s ease}
+  .slide .s-emoji{font-size:34px}
+  .slide h4{color:var(--navy);font-size:15.5px;margin:6px 0 4px}
+  .slide p{font-size:14px;color:var(--sub)}
+  .snav{display:flex;align-items:center;justify-content:space-between;margin-top:12px;border-top:1px dashed var(--line);padding-top:10px}
+  .snav button{border:1.5px solid var(--line);background:#fff;border-radius:8px;font:inherit;font-weight:800;font-size:13px;color:var(--navy);padding:5px 14px;cursor:pointer}
+  .snav button:hover{border-color:var(--teal)}
+  .sdots{display:flex;gap:5px}
+  .sdots i{width:8px;height:8px;border-radius:50%;background:var(--line)}
+  .sdots i.on{background:var(--teal)}
+
+  /* ── 역할 카드 / 화면 목업 ── */
+  .role{border-top:5px solid var(--teal);text-align:center;padding:14px 10px}
+  .role .em{font-size:34px}
+  .role b{display:block;font-size:15px;color:var(--navy);margin-top:4px}
+  .role span{font-size:12.5px;color:var(--sub)}
+  .screen{border:2px solid var(--navy);border-radius:12px;overflow:hidden;background:#fff;font-size:12.5px}
+  .screen .sbar{background:var(--navy);color:#fff;padding:6px 10px;font-weight:700;display:flex;gap:6px;align-items:center}
+  .screen .sbar i{width:8px;height:8px;border-radius:50%;background:var(--teal);display:inline-block}
+  .screen .srow{display:flex;gap:6px;flex-wrap:wrap;padding:8px 10px;border-bottom:1px dashed var(--line)}
+  .screen .schip{background:#eef4f9;border-radius:6px;padding:2px 8px;color:var(--navy);font-weight:700;font-size:11.5px}
+  .screen .sbody{padding:10px;color:var(--sub)}
+  .kv{display:flex;gap:8px;align-items:flex-start;margin-top:8px;font-size:14px}
+  .kv .k{flex:none;font-size:18px}
+  footer{margin-top:56px;text-align:center;font-size:12.5px;color:var(--sub)}
 </style>
 </head>
 <body>
 
 <header class="hero">
   <span class="badge">사용 안내서</span>
-  <h1>모두의창업 멘토링 플랫폼<br>이렇게 사용하세요</h1>
-  <p>멘티(창업팀)와 멘토를 1:1로 연결하고, 멘토링의 시작부터 수당 지급까지 한 곳에서 관리하는 서비스입니다.</p>
+  <h1>🚀 모두의창업 멘토링 플랫폼</h1>
+  <p>멘티(창업팀)와 멘토를 1:1로 연결하고, 멘토링의 시작부터 수당 지급까지 한 곳에서 관리합니다.<br>위의 탭을 눌러 역할별·기능별 사용법을 살펴보세요.</p>
 </header>
+
+<div class="tabbar-outer"><nav class="tabbar" id="tabbar">
+  <button data-tab="start" class="on">🏁 시작하기</button>
+  <button data-tab="roster">📋 명단 등록</button>
+  <button data-tab="ai">🤖 AI 추천</button>
+  <button data-tab="op">🧑‍💼 운영사</button>
+  <button data-tab="obs">👀 옵저버</button>
+  <button data-tab="client">🏛️ 발주처</button>
+  <button data-tab="mentor">🧑‍🏫 멘토</button>
+  <button data-tab="mentee">🚀 멘티</button>
+  <button data-tab="review">✅ 종결 검수</button>
+  <button data-tab="pay">💰 정산 지급</button>
+</nav></div>
 
 <div class="wrap">
 
-<!-- 1. 누가 쓰나요 -->
-<section>
-  <h2><span class="num">1</span>누가, 무엇을 하나요?</h2>
-  <p class="lead">이 플랫폼에는 네 종류의 사용자가 있습니다. 로그인하면 자기 역할에 맞는 화면만 보입니다.</p>
+<!-- ═══════════ 시작하기 ═══════════ -->
+<section class="tab on" id="tab-start">
+  <h2 class="tt"><span class="em">🏁</span>시작하기</h2>
+  <p class="lead">이 플랫폼에는 네 종류의 사용자가 있고, 로그인하면 자기 역할의 화면만 보입니다.</p>
+
   <div class="grid g4">
-    <div class="card role">
-      <div class="shape"><svg viewBox="0 0 52 52"><rect x="6" y="6" width="40" height="40" rx="8" fill="#103355"/><path d="M16 33l8-14 8 14z" fill="#2AD1BF"/></svg></div>
-      <b>발주처</b><span>진행현황을 실시간으로 확인하고, 정산을 최종 확인합니다</span>
-    </div>
-    <div class="card role">
-      <div class="shape"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="#2AD1BF"/><rect x="16" y="16" width="20" height="20" rx="4" fill="#103355"/></svg></div>
-      <b>운영사 담당자</b><span>행사 전체를 운영합니다 — 이 안내서의 주인공!</span>
-    </div>
-    <div class="card role">
-      <div class="shape"><svg viewBox="0 0 52 52"><path d="M26 5l21 36H5z" fill="#103355"/><circle cx="26" cy="31" r="8" fill="#2AD1BF"/></svg></div>
-      <b>멘토 (약 80명)</b><span>담당 멘티를 컨설팅하고 회차·보고서를 등록합니다</span>
-    </div>
-    <div class="card role">
-      <div class="shape"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="21" fill="#103355"/><path d="M18 27l6 6 11-13" stroke="#2AD1BF" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-      <b>멘티 (약 400명)</b><span>멘토링을 받고, 보고서를 확인·서명합니다</span>
-    </div>
+    <div class="card role"><span class="em">🏛️</span><b>발주처</b><span>진행현황 확인 · 정산 최종 확인</span></div>
+    <div class="card role"><span class="em">🧑‍💼</span><b>운영사</b><span>행사 전체 운영 — 이 안내서의 주인공</span></div>
+    <div class="card role"><span class="em">🧑‍🏫</span><b>멘토</b><span>컨설팅 수행 · 회차/보고서 등록</span></div>
+    <div class="card role"><span class="em">🚀</span><b>멘티</b><span>멘토링 수혜 · 보고서 확인 서명</span></div>
   </div>
-</section>
 
-<!-- 2. 전체 흐름 -->
-<section>
-  <h2><span class="num">2</span>전체 흐름 한눈에 보기</h2>
-  <p class="lead">멘토링 한 건은 아래 순서로 흘러갑니다. 색깔 배지는 그 일을 하는 사람입니다.</p>
-  <div class="flow">
-    <div class="step"><span class="no">1</span><b>명단 등록</b><span>멘토·멘티를 이름/연락처로 등록 (엑셀 가능)</span><span class="who op">운영사</span></div>
-    <div class="arrow">→</div>
-    <div class="step"><span class="no">2</span><b>안내 문자 발송</b><span>로그인 방법을 문자로 안내</span><span class="who op">운영사</span></div>
-    <div class="arrow">→</div>
-    <div class="step"><span class="no">3</span><b>로그인 시작</b><span>임시 비밀번호(휴대폰 번호)로 첫 로그인 → 비밀번호 변경</span><span class="who mt">멘토</span> <span class="who me">멘티</span></div>
-    <div class="arrow">→</div>
-    <div class="step"><span class="no">4</span><b>멘토 배정</b><span>AI 추천을 참고해 멘티마다 멘토 1명 확정</span><span class="who op">운영사</span></div>
+  <h3>🗺️ 전체 흐름 — 단계를 눌러 보세요</h3>
+  <div class="fsteps" data-flow>
+    <div class="fstep on" data-d="<b>운영사</b>가 멘토·멘티를 이름/이메일/연락처/소속만으로 먼저 등록합니다. 인원이 많으면 엑셀 파일로 한 번에! (자세한 방법은 [📋 명단 등록] 탭)"><span class="no">1</span><span class="fe">📋</span><b>명단 등록</b></div>
+    <div class="fstep" data-d="<b>운영사</b>가 명단에서 회원을 체크하고 [로그인 안내 문자]를 보냅니다. 접속 주소와 임시 비밀번호(본인 휴대폰 번호) 안내가 문자로 전달됩니다."><span class="no">2</span><span class="fe">📱</span><b>안내 문자</b></div>
+    <div class="fstep" data-d="<b>멘토·멘티</b>가 문자 속 주소로 접속해 임시 비밀번호로 로그인하고, 새 비밀번호로 바꿉니다. 이제 각자의 화면이 열립니다."><span class="no">3</span><span class="fe">🔑</span><b>첫 로그인</b></div>
+    <div class="fstep" data-d="<b>운영사</b>가 멘티마다 AI 추천을 참고해 멘토 1명을 클릭으로 배정합니다. 배정된 멘토는 그 멘티에 대해 '확정'이 됩니다. ([🤖 AI 추천] 탭)"><span class="no">4</span><span class="fe">🤝</span><b>멘토 배정</b></div>
+    <div class="fstep" data-d="<b>멘토</b>가 회차를 등록합니다 — ① 일정(계획/실행) 등록 → ② 멘토링 후 보고서 등록. 회차마다 반복합니다. ([🧑‍🏫 멘토] 탭)"><span class="no">5</span><span class="fe">📝</span><b>멘토링 진행</b></div>
+    <div class="fstep" data-d="<b>멘티</b>가 보고서 내용을 확인하고 서명합니다. 보고서가 등록된 회차만 서명할 수 있어요. ([🚀 멘티] 탭)"><span class="no">6</span><span class="fe">✍️</span><b>멘티 서명</b></div>
+    <div class="fstep" data-d="모든 회차가 끝나면 <b>멘토</b>가 관찰의견서와 함께 종결을 요청하고, <b>운영사</b>가 검수해 승인합니다. ([✅ 종결 검수] 탭)"><span class="no">7</span><span class="fe">✅</span><b>종결 검수</b></div>
+    <div class="fstep" data-d="검수 승인 순간 수당이 자동 계산·확정됩니다. <b>운영사</b>가 지급 품의로 묶어 제출하면 <b>발주처</b>가 확인하고 종결! ([💰 정산 지급] 탭)"><span class="no">8</span><span class="fe">💰</span><b>정산·종결</b></div>
   </div>
-  <div class="flow" style="margin-top:14px">
-    <div class="step"><span class="no">5</span><b>멘토링 진행</b><span>① 일정(계획/실행) 등록 → ② 보고서 등록 — 회차마다 반복</span><span class="who mt">멘토</span></div>
-    <div class="arrow">→</div>
-    <div class="step"><span class="no">6</span><b>멘티 확인 서명</b><span>보고서 내용을 확인하고 서명</span><span class="who me">멘티</span></div>
-    <div class="arrow">→</div>
-    <div class="step"><span class="no">7</span><b>종결 검수</b><span>모든 회차 완료 → 관찰의견서 → 검수 승인</span><span class="who op">운영사</span></div>
-    <div class="arrow">→</div>
-    <div class="step"><span class="no">8</span><b>정산·지급</b><span>수당 자동 계산 → 지급 품의 → 발주처 확인으로 종결</span><span class="who op">운영사</span> <span class="who cl">발주처</span></div>
-  </div>
-  <div class="tip">💡 <b>수당은 자동으로 계산됩니다.</b> 멘토가 회차를 등록하면 온라인/오프라인 단가로 시스템이 집계하므로, 지급청구서를 따로 쓸 필요가 없습니다. 단, <b>보고서까지 등록된 회차만</b> 수당으로 인정됩니다.</div>
-</section>
+  <div class="fdetail" data-flow-detail><b>운영사</b>가 멘토·멘티를 이름/이메일/연락처/소속만으로 먼저 등록합니다. 인원이 많으면 엑셀 파일로 한 번에! (자세한 방법은 [📋 명단 등록] 탭)</div>
+  <p class="hintline">👆 각 단계를 클릭하면 설명이 바뀝니다.</p>
 
-<!-- 3. 시작하기 -->
-<section>
-  <h2><span class="num">3</span>시작하기 — 접속 주소와 총괄담당자 등록</h2>
+  <h3>🔗 접속 주소</h3>
   <div class="grid g2">
     <div class="urlbox">
-      <small>플랫폼 접속 주소 (로그인)</small>
+      <small>플랫폼 접속 (로그인)</small>
       <a href="https://modu-dalgmes-projects.vercel.app/login">modu-dalgmes-projects.vercel.app</a>
-      <span style="font-size:13px;color:#9fc3d8">이미 계정이 있는 모든 사용자는 여기서 로그인합니다.</span>
+      <span style="font-size:12.5px;color:#9fc3d8">계정이 있는 모든 사용자는 여기서 로그인합니다.</span>
     </div>
     <div class="urlbox">
       <small>운영사 총괄담당자 등록 (행사당 1명 · 1회용)</small>
       <a href="https://modu-dalgmes-projects.vercel.app/register/operator">modu-dalgmes-projects.vercel.app<b>/register/operator</b></a>
-      <span style="font-size:13px;color:#9fc3d8">확인코드: <span class="code">letsedu0902</span></span>
+      <span style="font-size:12.5px;color:#9fc3d8">확인코드: <span class="code">letsedu0902</span></span>
     </div>
   </div>
 
-  <div class="card" style="margin-top:14px">
-    <b style="color:var(--navy)">총괄담당자 등록은 3단계면 끝납니다</b>
-    <div class="flow" style="margin-top:16px">
-      <div class="step"><span class="no">1</span><b>등록 페이지 열기</b><span>위의 /register/operator 주소로 접속</span></div>
-      <div class="arrow">→</div>
-      <div class="step"><span class="no">2</span><b>정보 입력</b><span>이름·직위·이메일(아이디)·휴대폰·비밀번호 + 확인코드</span></div>
-      <div class="arrow">→</div>
-      <div class="step"><span class="no">3</span><b>바로 로그인</b><span>방금 만든 아이디·비밀번호로 로그인 → 운영사 화면 시작</span></div>
+  <h3>🎬 총괄담당자 등록 — 3장짜리 슬라이드</h3>
+  <div class="slider" data-slider>
+    <div class="slide on"><span class="s-emoji">1️⃣</span><h4>등록 페이지 열기</h4><p>위의 <b>/register/operator</b> 주소로 접속합니다. 이 창구는 행사당 1명만 쓸 수 있는 1회용 문입니다.</p></div>
+    <div class="slide"><span class="s-emoji">2️⃣</span><h4>정보 입력</h4><p>이름 · 직위 · 이메일(로그인 아이디) · 휴대폰 · 비밀번호를 직접 정하고, 확인코드를 입력합니다.</p></div>
+    <div class="slide"><span class="s-emoji">3️⃣</span><h4>바로 로그인 → 코드 자동 닫힘</h4><p>등록이 끝나면 확인코드는 자동으로 소진됩니다. 방금 만든 아이디로 로그인하면 운영사 화면이 열립니다. 추가 담당자는 [회원 관리]에서 발급하세요.</p></div>
+    <div class="snav"><button data-prev>← 이전</button><div class="sdots"></div><button data-next>다음 →</button></div>
+  </div>
+  <div class="warn">⚠️ 확인코드는 <b>1회용</b>입니다. 총괄담당자 1명이 등록하면 자동으로 닫히므로 반드시 총괄담당자 본인이 사용하세요. 재오픈(새 코드)은 플랫폼 통합관리자가 합니다.</div>
+</section>
+
+<!-- ═══════════ 명단 등록 ═══════════ -->
+<section class="tab" id="tab-roster">
+  <h2 class="tt"><span class="em">📋</span>명단 등록</h2>
+  <p class="lead">운영사가 멘토·멘티를 <b>이름/이메일/연락처/소속/직위</b>만으로 먼저 등록해 두고, 안내 문자를 보내 로그인하게 하는 "명단 우선" 방식입니다. <span class="menu">회원 관리</span> 메뉴에서 합니다.</p>
+
+  <div class="minitabs" data-minitabs>
+    <button class="on" data-pane="ro-mentee">🚀 멘티 등록</button>
+    <button data-pane="ro-mentor">🧑‍🏫 멘토 등록</button>
+    <button data-pane="ro-sms">📱 안내 문자</button>
+    <button data-pane="ro-extra">🏷️ 편의 기능</button>
+  </div>
+
+  <div class="minipane on" id="ro-mentee">
+    <div class="grid g2">
+      <div class="card">
+        <b style="color:var(--navy)">💻 웹에서 한 명씩</b>
+        <p style="font-size:14px;color:var(--sub);margin-top:6px"><span class="menu">멘티 등록</span> 에서 기업(팀)명·대표자·연락처·사업그룹을 입력하면 <b>케이스 1건이 만들어지며 즉시 확정</b>됩니다. 멘티 계정도 자동 발급됩니다(임시 비밀번호 = 휴대폰 번호).</p>
+      </div>
+      <div class="card">
+        <b style="color:var(--navy)">📊 엑셀로 한 번에</b>
+        <p style="font-size:14px;color:var(--sub);margin-top:6px"><span class="menu">회원 관리 → 엑셀 일괄 등록</span> → 템플릿 다운로드 → 채워서 업로드 → <b>미리보기에서 오류 확인</b> → 확정. 이미 있는 계정(휴대폰/이메일 일치)은 새로 만들지 않고 이 행사에 연결만 합니다.</p>
+      </div>
     </div>
-    <div class="warn">⚠️ 확인코드는 <b>1회용</b>입니다. 총괄담당자 1명이 등록을 마치면 코드가 자동으로 소진되어 이 창구는 닫히므로, 반드시 총괄담당자 본인이 사용하세요. 추가 담당자는 총괄담당자가 로그인 후 <b>회원 관리</b>에서 발급하며, 코드 재발급(재오픈)은 플랫폼 통합관리자가 합니다.</div>
+    <div class="kv"><span class="k">👥</span><span><b>팀이라면?</b> 케이스 상세의 <span class="menu">팀 정보</span> 패널에서 아이템명·아이템 설명·팀원 명단(대표 표시 포함)을 등록합니다. 팀원도 멘토링에 참여자로 기록될 수 있어요.</span></div>
+    <div class="tip">💡 멘티는 <b>등록과 동시에 "확정"</b>입니다. 등록 즉시 멘토 배정 대상이 됩니다.</div>
+  </div>
+
+  <div class="minipane" id="ro-mentor">
+    <div class="grid g2">
+      <div class="card">
+        <b style="color:var(--navy)">💻 웹에서 한 명씩</b>
+        <p style="font-size:14px;color:var(--sub);margin-top:6px"><span class="menu">회원 관리 → 회원 계정 발급</span> 에서 역할 = 멘토로 발급합니다. 이메일·이름·휴대폰·소속·직위를 입력하면 끝.</p>
+      </div>
+      <div class="card">
+        <b style="color:var(--navy)">📊 엑셀로 한 번에</b>
+        <p style="font-size:14px;color:var(--sub);margin-top:6px">멘토 템플릿에는 전문분야·업종·지역·경력 칸이 있습니다. 이 정보가 <b>AI 추천의 재료</b>가 되니 되도록 채워 주세요.</p>
+      </div>
+    </div>
+    <div class="kv"><span class="k">🏊</span><span><b>멘토는 "Pool(대기)" 로 시작</b>합니다. 등록만으로는 미확정이고, 멘티에게 <b>배정되는 순간 그 멘티에 대해서만 "확정"</b>이 됩니다. 명단에서 Pool/확정 배지로 구분됩니다.</span></div>
+  </div>
+
+  <div class="minipane" id="ro-sms">
+    <div class="card">
+      <div class="fsteps" data-flow>
+        <div class="fstep on" data-d="명단에서 문자를 보낼 회원들을 <b>체크박스로 선택</b>합니다. 전체 선택도 가능합니다."><span class="no">1</span><span class="fe">☑️</span><b>회원 선택</b></div>
+        <div class="fstep" data-d="[로그인 안내 문자 발송] 버튼을 누릅니다. 기본 문구를 쓰거나 직접 쓸 수 있고, {name}은 회원 이름으로 자동 치환됩니다."><span class="no">2</span><span class="fe">📨</span><b>발송 버튼</b></div>
+        <div class="fstep" data-d="문자에는 접속 주소·아이디 안내와, 비밀번호를 아직 안 바꾼 회원에게는 <b>임시 비밀번호(본인 휴대폰 번호)</b> 안내가 담깁니다."><span class="no">3</span><span class="fe">📲</span><b>회원이 수신</b></div>
+        <div class="fstep" data-d="명단의 각 회원 행에 <b>'안내 발송 날짜' 또는 '안내 미발송'</b>이 표시되어 누락자를 바로 찾을 수 있습니다."><span class="no">4</span><span class="fe">👁️</span><b>발송 표시</b></div>
+      </div>
+      <div class="fdetail" data-flow-detail>명단에서 문자를 보낼 회원들을 <b>체크박스로 선택</b>합니다. 전체 선택도 가능합니다.</div>
+    </div>
+    <div class="warn">⚠️ 문자를 쓰려면 먼저 <span class="menu">운영 설정 → 문자 API</span> 에 행사용 문자 서비스 키와 발신번호를 등록하세요. "내 휴대폰으로 테스트"로 바로 점검할 수 있습니다.</div>
+  </div>
+
+  <div class="minipane" id="ro-extra">
+    <details open><summary>🏷️ 임의 컬럼 — 나만의 분류표 만들기</summary>
+      <p>멘티/멘토 탭에서 <b>임의 컬럼</b>(예: "1차 배정군", "우선관리")을 최대 8개까지 만들 수 있습니다. 각 회원 칸에 값을 입력하면 카테고리 마크처럼 쓸 수 있어요.</p></details>
+    <details><summary>✏️ 회원 정보 수정</summary>
+      <p>각 회원의 <b>[정보 수정]</b>을 누르면 이름·휴대폰·이메일(로그인 아이디)·소속·직위를 고칠 수 있습니다. 비밀번호 재설정(임시 비밀번호 재발급)·비활성화·소속 해제도 같은 곳에서.</p></details>
+    <details><summary>🔁 다른 행사 사람 데려오기</summary>
+      <p><span class="menu">기존 계정을 이 행사에 추가</span> 로 다른 행사의 계정을 이 행사에 소속시킵니다. 역할은 행사마다 따로 — 저쪽에선 멘토, 이쪽에선 멘티도 가능합니다. 계정은 하나!</p></details>
   </div>
 </section>
 
-<!-- 4. 운영사 업무 -->
-<section>
-  <h2><span class="num">4</span>운영사 담당자의 업무 6가지</h2>
-  <p class="lead">로그인하면 상단 메뉴에서 아래 화면들을 오가며 일합니다. 순서대로 따라 하면 됩니다.</p>
-  <div class="grid g2">
-    <div class="card"><b style="color:var(--navy)">① 행사 기본 설정</b> <span class="menu">운영 설정</span>
-      <p style="font-size:14px;color:var(--sub);margin-top:6px">기관명·사업그룹·컨설팅 단가(온라인/오프라인)·회차 수를 확인합니다. 문자 발송을 쓰려면 <span class="menu">운영 설정 → 문자 API</span> 에 문자 서비스 키를 등록하세요.</p></div>
-    <div class="card"><b style="color:var(--navy)">② 멘토·멘티 명단 등록</b> <span class="menu">회원 관리</span> <span class="menu">멘티 등록</span>
-      <p style="font-size:14px;color:var(--sub);margin-top:6px">이름·이메일·연락처·소속·직위만으로 먼저 등록합니다. 인원이 많으면 <span class="menu">엑셀 일괄 등록</span>! 멘티는 등록 즉시 확정, 멘토는 Pool(대기) 상태로 시작합니다.</p></div>
-    <div class="card"><b style="color:var(--navy)">③ 로그인 안내 문자</b> <span class="menu">회원 관리</span>
-      <p style="font-size:14px;color:var(--sub);margin-top:6px">명단에서 회원을 체크하고 <b>[로그인 안내 문자 발송]</b>을 누르면 접속 주소와 임시 비밀번호(본인 휴대폰 번호) 안내가 문자로 나갑니다. 발송 여부가 명단에 표시됩니다.</p></div>
-    <div class="card"><b style="color:var(--navy)">④ 멘토 배정</b> <span class="menu">케이스 상세</span>
-      <p style="font-size:14px;color:var(--sub);margin-top:6px">멘티(케이스)마다 AI 추천 카드를 참고해 멘토를 클릭으로 배정합니다. 배정되면 그 멘토는 그 멘티에 대해 "확정"이 됩니다. 중간 교체도 가능하고 회차는 이어집니다.</p></div>
-    <div class="card"><b style="color:var(--navy)">⑤ 진행 관리</b> <span class="menu">대시보드</span> <span class="menu">요청함</span> <span class="menu">조사</span>
-      <p style="font-size:14px;color:var(--sub);margin-top:6px">회차 진행·보고서·서명 현황을 대시보드에서 보고, 추가 회차·멘토 변경 요청은 요청함에서 승인/반려합니다. 만족도·선호도 조사도 개설해 실시간 분석할 수 있습니다.</p></div>
-    <div class="card"><b style="color:var(--navy)">⑥ 검수와 정산</b> <span class="menu">케이스 상세</span> <span class="menu">정산 관리</span>
-      <p style="font-size:14px;color:var(--sub);margin-top:6px">멘토가 종결을 요청하면 보고서·관찰의견서를 검수해 승인합니다. 승인 순간 수당이 확정 계산되고, 지급 품의로 묶어 제출 → 발주처가 확인하면 종결됩니다.</p></div>
+<!-- ═══════════ AI 추천 ═══════════ -->
+<section class="tab" id="tab-ai">
+  <h2 class="tt"><span class="em">🤖</span>AI 멘토 매칭 추천</h2>
+  <p class="lead">멘티에게 가장 잘 맞는 멘토를 AI가 추천합니다. <b>자동 배정은 없습니다</b> — 최종 결정은 언제나 운영사 담당자의 클릭입니다.</p>
+
+  <h3>⚙️ 어떻게 점수를 매기나요? — 눌러서 확인</h3>
+  <div class="fsteps" data-flow>
+    <div class="fstep on" data-d="<b>키워드 겹침:</b> 멘토의 전문분야와 멘티의 필요분야가 얼마나 겹치는지 봅니다. 예: 멘티가 '마케팅' 도움이 필요하고 멘토 전문이 '마케팅·브랜딩'이면 점수 UP."><span class="fe">🏷️</span><b>키워드<br>겹침</b></div>
+    <div class="fstep" data-d="<b>지역:</b> 오프라인 멘토링을 고려해 멘토 활동 지역과 멘티 지역이 맞으면 가점."><span class="fe">📍</span><b>지역</b></div>
+    <div class="fstep" data-d="<b>업종·유형:</b> 멘토가 경험한 업종과 멘티의 업종/창업단계가 맞는지 봅니다."><span class="fe">🏭</span><b>업종·유형</b></div>
+    <div class="fstep" data-d="<b>멘토 부하:</b> 이미 많은 멘티를 맡은 멘토는 점수를 낮춰, 일이 고르게 배분되도록 합니다."><span class="fe">⚖️</span><b>멘토 부하</b></div>
+    <div class="fstep" data-d="<b>AI 정성 근거:</b> 점수 계산 후 Claude AI가 '왜 이 멘토가 맞는지'를 문장으로 설명해 추천 카드에 함께 보여줍니다."><span class="fe">🧠</span><b>AI 근거</b></div>
   </div>
+  <div class="fdetail" data-flow-detail><b>키워드 겹침:</b> 멘토의 전문분야와 멘티의 필요분야가 얼마나 겹치는지 봅니다. 예: 멘티가 '마케팅' 도움이 필요하고 멘토 전문이 '마케팅·브랜딩'이면 점수 UP.</div>
+
+  <h3>🖱️ 사용 순서</h3>
+  <div class="slider" data-slider>
+    <div class="slide on"><span class="s-emoji">📇</span><h4>1. 프로필 채우기</h4><p>케이스 상세에서 <b>멘티 프로필</b>(업종·창업단계·지역·필요분야 키워드)을 입력합니다. 멘토는 본인이 <span class="menu">내 프로필</span> 에서 전문분야를 등록하고, 운영사가 엑셀 등록 때 채워둘 수도 있습니다.</p></div>
+    <div class="slide"><span class="s-emoji">✨</span><h4>2. 추천 생성</h4><p>케이스 상세의 <b>AI 추천 카드</b>에서 [추천 생성]을 누르면 몇 초 안에 상위 멘토 후보들이 점수·근거와 함께 나타납니다.</p></div>
+    <div class="slide"><span class="s-emoji">🔍</span><h4>3. 카드 비교</h4><p>각 후보의 점수 구성(키워드/지역/부하)과 AI 설명을 읽고 비교합니다. 추천이 마음에 안 들면 목록의 다른 멘토를 직접 골라도 됩니다.</p></div>
+    <div class="slide"><span class="s-emoji">🤝</span><h4>4. 클릭으로 배정</h4><p>[이 멘토로 배정]을 누르면 끝. 배정 이력과 어떤 추천을 채택했는지가 기록으로 남습니다. 중간에 멘토를 바꿔도 회차는 이어집니다.</p></div>
+    <div class="snav"><button data-prev>← 이전</button><div class="sdots"></div><button data-next>다음 →</button></div>
+  </div>
+
+  <div class="tip">💡 <b>추천 품질을 높이는 열쇠는 키워드입니다.</b> <span class="menu">운영 설정 → 키워드 사전</span> 에 행사에서 쓸 분야·업종·지역 키워드를 정리해 두면, 멘토와 멘티가 같은 단어로 프로필을 채우게 되어 매칭이 정확해집니다.</div>
 </section>
 
-<!-- 5. 추가 담당자/옵저버 -->
-<section>
-  <h2><span class="num">5</span>추가 담당자·옵저버 등록하기</h2>
-  <p class="lead">총괄담당자(PL)는 함께 일할 운영사 담당자와 열람 전용 옵저버 계정을 직접 만들고 관리합니다.</p>
+<!-- ═══════════ 운영사 ═══════════ -->
+<section class="tab" id="tab-op">
+  <h2 class="tt"><span class="em">🧑‍💼</span>운영사 담당자 대시보드 · 기능</h2>
+  <p class="lead">행사 운영의 사령탑입니다. 로그인하면 상단 메뉴로 모든 화면을 오갑니다.</p>
 
-  <div class="card">
-    <div class="flow">
-      <div class="step"><span class="no">1</span><b>회원 관리 열기</b><span>상단 메뉴 <span class="menu">회원 관리</span> → "회원 계정 발급"</span></div>
-      <div class="arrow">→</div>
-      <div class="step"><span class="no">2</span><b>역할·등급 선택</b><span>역할 = <b>운영사</b>, 등급을 PM/부PM/옵저버 중 선택 + 직위 입력</span></div>
-      <div class="arrow">→</div>
-      <div class="step"><span class="no">3</span><b>안내하기</b><span>임시 비밀번호(휴대폰 번호)를 전달하거나 안내 문자 발송</span></div>
+  <div class="screen">
+    <div class="sbar"><i></i> 운영사 화면 — 상단 메뉴 구조</div>
+    <div class="srow">
+      <span class="schip">📊 대시보드</span><span class="schip">📁 케이스</span><span class="schip">👥 회원 관리</span><span class="schip">🧑‍🏫 멘토 명단</span><span class="schip">📮 요청함</span><span class="schip">📈 조사</span><span class="schip">💰 정산</span><span class="schip">📑 리포트</span><span class="schip">⚙️ 운영 설정</span>
     </div>
-    <p style="font-size:13.5px;color:var(--sub);margin-top:10px">✏️ 수정·삭제도 같은 화면에서: 각 회원의 <b>[정보 수정]</b>으로 이름·연락처·직위·등급을 바꾸고, 비밀번호 재설정·비활성화·소속 해제도 할 수 있습니다.</p>
+    <div class="sbody">대시보드에는 상태별 케이스 수·회차 진행률·할 일 타일이 모여 있어 아침에 한 번 보면 오늘 할 일이 보입니다.</div>
   </div>
 
-  <table style="margin-top:14px">
-    <tr><th style="width:120px">등급</th><th>어떤 사람?</th><th>할 수 있는 일</th></tr>
-    <tr><td><b>PL (메인 담당)</b></td><td>총괄담당자</td><td class="ok">모든 기능 — 설정·회원·배정·검수·정산·문자 전부</td></tr>
-    <tr><td><b>PM</b></td><td>실무 담당자</td><td>대부분 가능 <span class="no2">/ 단가·정산 설정과 민감정보 관리는 불가</span></td></tr>
-    <tr><td><b>부PM</b></td><td>보조 담당자</td><td>일상 운영 가능 <span class="no2">/ 품의 제출·설정 변경은 불가</span></td></tr>
-    <tr><td><b>옵저버</b></td><td>열람만 하는 사람</td><td>화면 열람과 리포트만 <span class="no2">/ 등록·수정·발송 전부 불가</span></td></tr>
+  <h3>🧭 메뉴별로 하는 일 — 눌러서 펼쳐 보세요</h3>
+  <details open><summary>📁 케이스 — 멘티 한 명의 모든 것</summary>
+    <p>멘티(케이스)마다 상세 페이지가 있습니다: 진행 상태, 멘토 배정/AI 추천, 팀 정보, 회차 목록, 관찰의견서, 서류함, 검수·정산 패널까지 한 페이지에서 처리합니다.</p></details>
+  <details><summary>👥 회원 관리 — 명단·계정·안내 문자</summary>
+    <p>계정 발급, 엑셀 일괄 등록, 로그인 안내 문자, 정보 수정, 임의 컬럼. 자세한 것은 [📋 명단 등록] 탭 참고.</p></details>
+  <details><summary>🧑‍🏫 멘토 명단 — 멘토 운영 현황판</summary>
+    <p>멘토별 담당 수·회차 수·확정 지급액·만족도, Pool/확정 배지, 지급서류(이력서·통장·신분증) 수령 체크(비밀번호 재인증), 그룹별 원천징수 설정, 운영사 평가 메모.</p></details>
+  <details><summary>📮 요청함 — 승인이 필요한 것들</summary>
+    <p>멘토의 추가 회차 요청, 멘토 변경 요청, 중도 종료 요청이 모여듭니다. 승인/반려를 여기서 한 번에.</p></details>
+  <details><summary>📈 조사 — 설문 만들기와 실시간 분석</summary>
+    <p>만족도·사전선호도 등 여러 조사를 행사 전체/그룹/개별 대상으로 기간을 정해 개설합니다. 응답은 플랫폼 안에서도, 문자 링크로도 가능하고 미참여자에게 독려 문자를 한 번에 보낼 수 있습니다.</p></details>
+  <details><summary>💰 정산 · 📑 리포트</summary>
+    <p>정산은 [💰 정산 지급] 탭 참고. 리포트에는 통계 화면과 <b>종합결과리포트</b>(생성일 고정 스냅샷, PDF·엑셀·워드·PPT 내보내기)가 있습니다.</p></details>
+  <details><summary>⚙️ 운영 설정 — 행사의 규칙판</summary>
+    <p>행사 기본(기관명·앱 타이틀) / 사업그룹·필수서류 / 단가·한도 / 정산(원천징수) / 종결 게이트·서명 정책 / 보고서 양식 / 만족도 양식 / 키워드 사전 / 담당 권한 / 문자 API. 저장 즉시 행사 전체에 반영됩니다.</p></details>
+
+  <h3>🎖️ 담당자 등급 — 행사마다 따로</h3>
+  <table>
+    <tr><th style="width:110px">등급</th><th>누구?</th><th>권한</th></tr>
+    <tr><td><b>PL</b> 👑</td><td>총괄담당자</td><td><span class="pill p-ok">전부 가능</span> 설정·회원·배정·검수·정산·문자</td></tr>
+    <tr><td><b>PM</b></td><td>실무 담당</td><td>대부분 가능 <span class="pill p-no">단가·정산 설정, 민감정보 불가</span></td></tr>
+    <tr><td><b>부PM</b></td><td>보조 담당</td><td>일상 운영 가능 <span class="pill p-no">품의 제출, 설정 변경 불가</span></td></tr>
+    <tr><td><b>옵저버</b> 👀</td><td>열람 전용</td><td><span class="pill p-no">등록·수정·발송 전부 불가</span> — [👀 옵저버] 탭 참고</td></tr>
   </table>
-  <div class="tip">💡 등급은 <b>행사마다 따로</b> 정해집니다. 같은 사람이 이 행사에서는 PL, 다른 행사에서는 PM일 수 있어요. 등급별 세부 권한은 <span class="menu">운영 설정 → 담당 권한</span> 에서 행사에 맞게 조정할 수 있습니다.</div>
+  <div class="tip">💡 같은 사람이 A 행사에선 PL, B 행사에선 PM일 수 있습니다. 등급별 세부 권한은 <span class="menu">운영 설정 → 담당 권한</span> 에서 행사에 맞게 조정합니다.</div>
 </section>
 
-<!-- 6. 멘토/멘티 -->
-<section>
-  <h2><span class="num">6</span>멘토와 멘티는 이렇게 씁니다</h2>
+<!-- ═══════════ 옵저버 ═══════════ -->
+<section class="tab" id="tab-obs">
+  <h2 class="tt"><span class="em">👀</span>옵저버 대시보드 · 기능</h2>
+  <p class="lead">옵저버는 운영사 소속의 <b>열람 전용</b> 등급입니다. 외부 참관자, 상급자 모니터링 등에 쓰세요.</p>
+
   <div class="grid g2">
-    <div class="card">
-      <b style="color:var(--navy)">🧑‍🏫 멘토의 화면</b>
-      <p style="font-size:14px;color:var(--sub);margin-top:6px">
-        ① 문자로 받은 주소에서 로그인(임시 비밀번호 = 휴대폰 번호) → 비밀번호 변경<br>
-        ② 담당 멘티 카드에서 <b>회차 등록(1단계)</b> — 날짜·시간·방법·참가자를 클릭으로 선택 (미리 계획 등록도 가능)<br>
-        ③ 멘토링 후 <b>보고서 등록(2단계)</b> — 웹으로 쓰거나 파일 첨부<br>
-        ④ 모든 회차가 끝나면 관찰의견서 작성 → 종결 요청<br>
-        ⑤ 수당은 자동 집계 — <span class="menu">정산 내역</span> 에서 확인
-      </p>
+    <div class="card" style="border-top:5px solid #10b981">
+      <b style="color:var(--green)">✅ 볼 수 있는 것</b>
+      <div class="kv"><span class="k">📊</span><span>대시보드의 모든 현황 타일</span></div>
+      <div class="kv"><span class="k">📁</span><span>케이스 목록·상세 (회차, 보고서, 진행 상태)</span></div>
+      <div class="kv"><span class="k">👥</span><span>회원·멘토 명단 (열람)</span></div>
+      <div class="kv"><span class="k">📑</span><span>리포트·통계 + <b>종합결과리포트 생성·내보내기</b></span></div>
     </div>
+    <div class="card" style="border-top:5px solid #ef4444">
+      <b style="color:#b91c1c">🚫 할 수 없는 것</b>
+      <div class="kv"><span class="k">✋</span><span>등록·수정·삭제 (계정 발급, 케이스 등록, 배정…)</span></div>
+      <div class="kv"><span class="k">📵</span><span>문자 발송, 조사 개설</span></div>
+      <div class="kv"><span class="k">💰</span><span>검수 승인, 정산·품의 처리</span></div>
+      <div class="kv"><span class="k">⚙️</span><span>설정 변경, 민감정보 열람</span></div>
+    </div>
+  </div>
+
+  <div class="screen" style="margin-top:14px">
+    <div class="sbar"><i></i> 옵저버 로그인 화면</div>
+    <div class="srow" style="background:var(--amber-bg);color:var(--amber);font-weight:700">👁️ 옵저버(열람 전용) 계정입니다 — 조회와 리포트만 사용할 수 있습니다</div>
+    <div class="sbody">화면 상단에 항상 이 안내 배너가 떠 있고, 혹시 버튼을 눌러도 서버가 차단하므로 <b>실수로 데이터를 바꿀 걱정이 없습니다.</b></div>
+  </div>
+
+  <div class="tip">💡 옵저버 계정 만들기: 총괄담당자가 <span class="menu">회원 관리 → 회원 계정 발급</span> 에서 역할 = 운영사, 등급 = <b>옵저버</b> 로 발급하면 끝.</div>
+</section>
+
+<!-- ═══════════ 발주처 ═══════════ -->
+<section class="tab" id="tab-client">
+  <h2 class="tt"><span class="em">🏛️</span>발주처 대시보드 · 기능</h2>
+  <p class="lead">사업을 발주한 기관의 화면입니다. <b>실시간 진행현황 확인</b>과 <b>정산 최종 확인</b> 두 가지가 핵심입니다.</p>
+
+  <div class="minitabs" data-minitabs>
+    <button class="on" data-pane="cl-watch">📊 진행현황 보기</button>
+    <button data-pane="cl-pay">🧾 정산 확인</button>
+  </div>
+
+  <div class="minipane on" id="cl-watch">
+    <div class="grid g2">
+      <div class="card"><b style="color:var(--navy)">📊 대시보드</b><p style="font-size:14px;color:var(--sub);margin-top:6px">멘티 수·멘토 수·상태별 케이스·회차 진행률을 실시간으로 봅니다. 운영사에 전화로 물어볼 필요가 없습니다.</p></div>
+      <div class="card"><b style="color:var(--navy)">📁 케이스 상세</b><p style="font-size:14px;color:var(--sub);margin-top:6px">멘티별로 어떤 멘토가 몇 회차를 진행했는지, 보고서와 서명까지 원문으로 확인할 수 있습니다.</p></div>
+      <div class="card"><b style="color:var(--navy)">📑 리포트</b><p style="font-size:14px;color:var(--sub);margin-top:6px">그룹별·멘토별 통계 화면과 엑셀 내려받기.</p></div>
+      <div class="card"><b style="color:var(--navy)">🔒 읽기 중심</b><p style="font-size:14px;color:var(--sub);margin-top:6px">발주처 화면은 열람 중심이라 운영 데이터를 실수로 바꿀 일이 없습니다.</p></div>
+    </div>
+  </div>
+
+  <div class="minipane" id="cl-pay">
     <div class="card">
-      <b style="color:var(--navy)">🚀 멘티의 화면</b>
-      <p style="font-size:14px;color:var(--sub);margin-top:6px">
-        ① 문자로 받은 주소에서 로그인 → 비밀번호 변경<br>
-        ② 내 멘토링 진행현황과 회차 일정을 확인<br>
-        ③ 멘토가 보고서를 올리면 내용 확인 후 <b>서명</b><br>
-        ④ 필요한 서류 제출, 만족도 조사 참여<br>
-        ⑤ 멘토 변경이 필요하면 변경 요청 가능
-      </p>
+      <div class="fsteps" data-flow>
+        <div class="fstep on" data-d="운영사가 검수를 마친 케이스들의 수당을 <b>지급 품의</b>로 묶어 제출하면, 발주처 [정산] 메뉴에 나타납니다."><span class="no">1</span><span class="fe">📮</span><b>품의 도착</b></div>
+        <div class="fstep" data-d="품의 안의 멘토별·케이스별 금액, 원천징수 내역, 정산서 PDF를 열어 검토합니다."><span class="no">2</span><span class="fe">🔍</span><b>내역 검토</b></div>
+        <div class="fstep" data-d="[정산 확인]을 누르면 해당 케이스들이 <b>종결(closed)</b> 처리됩니다. 이것이 발주처의 최종 승인 도장입니다."><span class="no">3</span><span class="fe">✅</span><b>정산 확인</b></div>
+      </div>
+      <div class="fdetail" data-flow-detail>운영사가 검수를 마친 케이스들의 수당을 <b>지급 품의</b>로 묶어 제출하면, 발주처 [정산] 메뉴에 나타납니다.</div>
     </div>
   </div>
 </section>
 
-<!-- 7. FAQ -->
-<section>
-  <h2><span class="num">7</span>자주 묻는 질문</h2>
-  <details open>
-    <summary>비밀번호를 잊어버렸어요</summary>
-    <p>로그인 화면의 <b>비밀번호 재설정</b>을 이용하거나, 운영사 담당자에게 요청하면 <span class="menu">회원 관리</span> 에서 임시 비밀번호(휴대폰 번호)로 재발급해 줍니다. 첫 로그인 때 새 비밀번호로 바꾸게 됩니다.</p>
-  </details>
-  <details>
-    <summary>안내 문자가 발송되지 않아요</summary>
-    <p><span class="menu">운영 설정 → 문자 API</span> 에 행사용 문자 서비스(솔라피) 키와 발신번호가 등록되어 있는지 확인하세요. "내 휴대폰으로 테스트" 버튼으로 바로 점검할 수 있습니다.</p>
-  </details>
-  <details>
-    <summary>회차를 등록했는데 수당에 안 잡혀요</summary>
-    <p>회차는 <b>2단계(보고서 등록)까지 마쳐야</b> 수당으로 인정됩니다. 1단계(일정)만 등록된 "계획" 회차는 진행 후 [보고서 등록] 버튼으로 완료해 주세요.</p>
-  </details>
-  <details>
-    <summary>같은 사람이 다른 행사에도 참여할 수 있나요?</summary>
-    <p>네. 계정은 하나로 유지하면서, 행사마다 다른 역할(예: A 행사 멘토, B 행사 멘티)을 가질 수 있습니다. <span class="menu">회원 관리 → 기존 계정을 이 행사에 추가</span> 를 이용하세요.</p>
-  </details>
-  <details>
-    <summary>옵저버가 실수로 데이터를 바꿀 수 있나요?</summary>
-    <p>아니요. 옵저버는 화면 상단에 열람 전용 안내가 표시되고, 등록·수정·발송 버튼을 눌러도 서버에서 차단됩니다.</p>
-  </details>
+<!-- ═══════════ 멘토 ═══════════ -->
+<section class="tab" id="tab-mentor">
+  <h2 class="tt"><span class="em">🧑‍🏫</span>멘토 대시보드 · 기능</h2>
+  <p class="lead">담당 멘티를 컨설팅하고 기록하는 화면입니다. 핵심은 <b>"회차 등록은 2단계"</b> — 이것만 기억하면 됩니다.</p>
+
+  <div class="screen">
+    <div class="sbar"><i></i> 멘토 화면 — 상단 메뉴</div>
+    <div class="srow"><span class="schip">📊 대시보드</span><span class="schip">💰 정산 내역</span><span class="schip">📇 내 프로필</span><span class="schip">✍️ 내 서명</span><span class="schip">💬 문의</span><span class="schip">📖 이용안내</span></div>
+    <div class="sbody">대시보드에는 담당 멘티 카드들이 나란히 — 카드를 누르면 그 멘티의 회차·보고서·요청을 처리하는 상세 화면이 열립니다. 참여할 조사(설문)도 대시보드에 뜹니다.</div>
+  </div>
+
+  <h3>📝 회차 등록 2단계 — 슬라이드로 따라 하기</h3>
+  <div class="slider" data-slider>
+    <div class="slide on"><span class="s-emoji">🗓️</span><h4>1단계 ① 일정 잡기</h4><p>멘티 카드 → [회차 등록]. <b>날짜는 달력, 시간은 10분 단위 선택</b>(24시간제), 운영시간은 자동 계산됩니다. 미래 날짜로 미리 "계획" 등록도 가능해요.</p></div>
+    <div class="slide"><span class="s-emoji">🖱️</span><h4>1단계 ② 방법·참가자·장소</h4><p>온라인/오프라인 버튼, 참가자(멘티 본인·팀원)를 <b>칩 클릭으로 복수 선택</b>, 장소만 직접 입력. 하단 요약 카드에서 선택 내용을 한눈에 확인하고 등록!</p></div>
+    <div class="slide"><span class="s-emoji">📄</span><h4>2단계 — 보고서 등록</h4><p>멘토링을 진행한 뒤 그 회차의 [보고서 등록]을 눌러 <b>웹으로 작성</b>(자동으로 양식 PDF 생성)하거나 <b>파일을 첨부</b>합니다. 사진도 함께 올릴 수 있어요.</p></div>
+    <div class="slide"><span class="s-emoji">⚠️</span><h4>왜 2단계가 중요한가요?</h4><p><b>보고서까지 등록된 회차만 수당으로 인정</b>됩니다. 일정만 등록된 "계획" 회차는 정산에 포함되지 않고, 멘티 서명과 종결 요청도 보고서가 있어야 진행됩니다.</p></div>
+    <div class="snav"><button data-prev>← 이전</button><div class="sdots"></div><button data-next>다음 →</button></div>
+  </div>
+
+  <h3>🧰 그 밖의 기능</h3>
+  <details open><summary>🏁 종결 요청 — 마지막 회차가 끝났다면</summary>
+    <p>모든 회차의 보고서를 등록한 뒤, <b>관찰의견서</b>(멘티에 대한 종합 평가)를 작성하고 [종결 요청]을 누릅니다. 운영사가 검수해 승인하면 수당이 확정됩니다.</p></details>
+  <details><summary>➕ 추가 회차 · 🔄 중도 종료 요청</summary>
+    <p>회차가 더 필요하면 사유와 함께 추가 회차를 요청하고, 사정상 계속하기 어렵다면 중도 종료를 요청합니다. 모두 운영사 승인 후 진행됩니다.</p></details>
+  <details><summary>✍️ 내 서명 · 📇 내 프로필</summary>
+    <p><b>내 서명</b>을 등록해 두면 웹 작성 보고서 PDF에 서명이 자동으로 들어갑니다. <b>내 프로필</b>(전문분야·지역·경력)은 AI 추천의 재료이니 충실히!</p></details>
+  <details><summary>💰 정산 내역 — 지급청구서는 안 씁니다</summary>
+    <p>회차를 등록하면 수당이 자동 집계됩니다(온라인 8만/오프라인 10만 기준, 행사 설정에 따름). 확정·품의·지급 단계도 정산 내역에서 확인되고, 확정 시 문자로 알려드립니다.</p></details>
+</section>
+
+<!-- ═══════════ 멘티 ═══════════ -->
+<section class="tab" id="tab-mentee">
+  <h2 class="tt"><span class="em">🚀</span>멘티 대시보드 · 기능</h2>
+  <p class="lead">멘토링을 받는 창업팀의 화면입니다. 확인하고, 서명하고, 제출하는 세 가지가 전부입니다.</p>
+
+  <div class="grid g3">
+    <div class="card role"><span class="em">👁️</span><b>확인</b><span>내 멘토링 진행현황과 회차 일정</span></div>
+    <div class="card role"><span class="em">✍️</span><b>서명</b><span>멘토가 올린 보고서 확인 후 서명</span></div>
+    <div class="card role"><span class="em">📤</span><b>제출</b><span>필수서류 제출 · 조사 참여</span></div>
+  </div>
+
+  <h3>🖱️ 처음 로그인부터 서명까지</h3>
+  <div class="slider" data-slider>
+    <div class="slide on"><span class="s-emoji">📲</span><h4>1. 문자 받고 로그인</h4><p>안내 문자의 주소로 접속 → 아이디(이메일 또는 휴대폰 번호)와 <b>임시 비밀번호(본인 휴대폰 번호 숫자)</b>로 로그인 → 새 비밀번호로 변경.</p></div>
+    <div class="slide"><span class="s-emoji">🏠</span><h4>2. 대시보드 확인</h4><p>내 멘토가 누구인지, 몇 회차까지 진행됐는지, 지금 해야 할 일(서명 대기·서류·조사)이 카드로 표시됩니다.</p></div>
+    <div class="slide"><span class="s-emoji">✍️</span><h4>3. 보고서 확인·서명</h4><p><span class="menu">회차</span> 메뉴에서 멘토가 등록한 보고서를 읽고 [확인·서명]을 누른 뒤 화면에 서명합니다. 서명은 보고서 PDF에 함께 담깁니다. 보고서가 아직 없으면 "등록 대기"로 표시돼요.</p></div>
+    <div class="slide"><span class="s-emoji">📤</span><h4>4. 서류 제출 · 조사 참여</h4><p><span class="menu">서류</span> 에서 그룹별 필수서류를 올리고, 만족도 조사 등은 대시보드 카드나 문자 링크로 참여합니다.</p></div>
+    <div class="snav"><button data-prev>← 이전</button><div class="sdots"></div><button data-next>다음 →</button></div>
+  </div>
+
+  <details style="margin-top:14px"><summary>🔄 멘토가 나와 맞지 않는다면?</summary>
+    <p>대시보드의 <b>멘토 변경 요청</b>에 사유를 적어 보내면 운영사가 검토 후 새 멘토를 배정합니다. 이미 진행한 회차는 그대로 이어집니다.</p></details>
+  <details><summary>👥 팀원도 멘토링에 참여할 수 있나요?</summary>
+    <p>네. 운영사에 팀원 명단을 알려주면 등록되고, 멘토가 회차를 기록할 때 참가자로 선택합니다. 대표가 아닌 팀원의 참여도 기록에 남습니다.</p></details>
+</section>
+
+<!-- ═══════════ 종결 검수 ═══════════ -->
+<section class="tab" id="tab-review">
+  <h2 class="tt"><span class="em">✅</span>종결 검수</h2>
+  <p class="lead">멘토링이 끝난 케이스를 운영사가 확인하고 도장을 찍는 절차입니다. <b>검수 승인 = 수당 확정</b>이므로 이 단계가 품질의 관문입니다.</p>
+
+  <h3>🗺️ 검수 흐름 — 단계를 눌러 보세요</h3>
+  <div class="fsteps" data-flow>
+    <div class="fstep on" data-d="<b>멘토</b>: 모든 회차의 보고서(2단계)를 등록하고 관찰의견서를 작성한 뒤 [종결 요청]. 보고서가 빠진 회차가 있으면 요청 자체가 막힙니다."><span class="no">1</span><span class="fe">🙋</span><b>종결 요청<br><span class="pill p-mt">멘토</span></b></div>
+    <div class="fstep" data-d="<b>운영사</b>: 케이스 상세의 검수 패널에서 회차 보고서·관찰의견서·예상 정산액을 확인합니다. 예상액은 확정 계산과 같은 공식이라 어긋나지 않습니다."><span class="no">2</span><span class="fe">🔍</span><b>검수<br><span class="pill p-op">운영사</span></b></div>
+    <div class="fstep" data-d="내용이 부족하면 <b>[보완 요청]</b> — 멘토에게 사유가 전달되고 케이스는 보완 상태로 돌아갑니다. 멘토가 고쳐서 다시 종결 요청하면 재검수."><span class="no">3</span><span class="fe">↩️</span><b>보완 요청<br>(필요시)</b></div>
+    <div class="fstep" data-d="<b>[검수 승인]</b>을 누르는 순간: 수당이 확정 스냅샷으로 저장되고 케이스는 '지급 대기' 상태가 됩니다. 이후 회차를 고쳐도 확정액은 변하지 않습니다."><span class="no">4</span><span class="fe">✅</span><b>승인 = 확정<br><span class="pill p-op">운영사</span></b></div>
+    <div class="fstep" data-d="승인된 케이스는 [💰 정산 지급] 흐름(품의 → 발주처 확인)으로 넘어갑니다."><span class="no">5</span><span class="fe">➡️</span><b>정산으로</b></div>
+  </div>
+  <div class="fdetail" data-flow-detail><b>멘토</b>: 모든 회차의 보고서(2단계)를 등록하고 관찰의견서를 작성한 뒤 [종결 요청]. 보고서가 빠진 회차가 있으면 요청 자체가 막힙니다.</div>
+
+  <h3>🚧 종결 전에 자동으로 걸러지는 것들</h3>
+  <div class="grid g2">
+    <div class="card"><b style="color:var(--navy)">📄 보고서 없는 회차</b><p style="font-size:14px;color:var(--sub);margin-top:4px">계획만 등록된 회차가 하나라도 있으면 종결 요청이 차단됩니다 — "몇 회차 보고서가 없어요"라고 알려줍니다.</p></div>
+    <div class="card"><b style="color:var(--navy)">📝 관찰의견서</b><p style="font-size:14px;color:var(--sub);margin-top:4px">멘티당 1건, 담당 멘토가 작성해야 합니다. 없으면 종결 불가.</p></div>
+    <div class="card"><b style="color:var(--navy)">✍️ 멘티 서명 (선택 게이트)</b><p style="font-size:14px;color:var(--sub);margin-top:4px"><span class="menu">운영 설정 → 종결 게이트</span> 에서 켜면 "전 회차 멘티 서명 완료"를 종결 조건으로 만들 수 있습니다.</p></div>
+    <div class="card"><b style="color:var(--navy)">📎 필수서류 (선택 게이트)</b><p style="font-size:14px;color:var(--sub);margin-top:4px">그룹별 필수서류 제출 완료를 조건으로 걸 수도 있습니다. 두 게이트 모두 기본은 꺼짐.</p></div>
+  </div>
+
+  <details style="margin-top:14px"><summary>🔄 중간에 멘토·멘티가 그만두면? (부분 정산)</summary>
+    <p>멘토 중도 종료가 승인되면 <b>이미 이행한 회차만 부분 정산</b>되고, 케이스는 재배정 대기가 되어 새 멘토가 잔여 회차를 이어갑니다. 멘티 중도 포기도 이행분만 부분 정산됩니다.</p></details>
+</section>
+
+<!-- ═══════════ 정산 지급 ═══════════ -->
+<section class="tab" id="tab-pay">
+  <h2 class="tt"><span class="em">💰</span>정산 지급</h2>
+  <p class="lead">지급청구서를 쓰지 않습니다 — 시스템이 회차 기록으로 수당을 자동 계산하고, 운영사는 묶어서 품의만 올립니다.</p>
+
+  <div class="minitabs" data-minitabs>
+    <button class="on" data-pane="pay-calc">🧮 얼마가 계산되나</button>
+    <button data-pane="pay-flow">📮 지급까지의 흐름</button>
+    <button data-pane="pay-doc">📄 근거 서류</button>
+  </div>
+
+  <div class="minipane on" id="pay-calc">
+    <div class="card">
+      <b style="color:var(--navy)">🧮 계산 예시 — 오프라인 3회를 마친 멘토</b>
+      <table style="margin-top:10px">
+        <tr><th>항목</th><th>내용</th><th style="text-align:right">금액</th></tr>
+        <tr><td>회차 수당</td><td>오프라인 100,000원 × 3회</td><td style="text-align:right"><b>300,000원</b></td></tr>
+        <tr><td>원천징수 (기타소득)</td><td>실효 8.8% 공제</td><td style="text-align:right;color:#b91c1c">− 26,400원</td></tr>
+        <tr><td><b>실지급액</b></td><td>멘토 계좌로 지급 요청되는 금액</td><td style="text-align:right"><b style="color:var(--green)">273,600원</b></td></tr>
+      </table>
+      <p style="font-size:12.5px;color:var(--sub);margin-top:8px">* 단가·세율은 행사 설정값 기준(기본: 온라인 80,000 / 오프라인 100,000, 기타소득 8.8%). 단가가 중간에 바뀌어도 <b>회차 등록 당시의 단가</b>가 적용되어 과거 금액이 흔들리지 않습니다.</p>
+    </div>
+    <div class="grid g3" style="margin-top:12px">
+      <div class="card" style="text-align:center"><span style="font-size:26px">📄</span><p style="font-size:13px;color:var(--sub)"><b style="color:var(--navy)">보고서 등록 회차만</b><br>계획만 등록된 회차는 0원</p></div>
+      <div class="card" style="text-align:center"><span style="font-size:26px">🛑</span><p style="font-size:13px;color:var(--sub)"><b style="color:var(--navy)">1일 상한 자동 차단</b><br>같은 멘티 하루 최대 3회, 온 24만/오프 30만</p></div>
+      <div class="card" style="text-align:center"><span style="font-size:26px">🔒</span><p style="font-size:13px;color:var(--sub)"><b style="color:var(--navy)">확정 후 불변</b><br>검수 승인 시 금액 스냅샷 고정</p></div>
+    </div>
+  </div>
+
+  <div class="minipane" id="pay-flow">
+    <div class="card">
+      <div class="fsteps" data-flow>
+        <div class="fstep on" data-d="[✅ 종결 검수] 승인과 동시에 케이스×멘토 단위로 수당이 <b>확정 스냅샷</b>으로 저장되고, 케이스는 '지급 대기'가 됩니다."><span class="no">1</span><span class="fe">🧾</span><b>확정<br><span class="pill p-op">자동</span></b></div>
+        <div class="fstep" data-d="<b>운영사</b>가 <span style='white-space:nowrap'>[정산 관리]</span>에서 지급 대기 건들을 골라 <b>지급 품의</b>로 묶습니다. 지급 주기는 운영 재량 — 월 1회든 수시든."><span class="no">2</span><span class="fe">📦</span><b>품의 편성<br><span class="pill p-op">운영사</span></b></div>
+        <div class="fstep" data-d="품의를 <b>제출</b>하면 발주처 화면에 나타납니다. 멘토별 금액·원천징수·정산서가 함께 전달됩니다."><span class="no">3</span><span class="fe">📮</span><b>제출<br><span class="pill p-op">운영사</span></b></div>
+        <div class="fstep" data-d="<b>발주처</b>가 내역을 검토하고 [정산 확인]을 누르면 케이스가 <b>종결(closed)</b> 됩니다."><span class="no">4</span><span class="fe">🏛️</span><b>발주처 확인<br><span class="pill p-cl">발주처</span></b></div>
+        <div class="fstep" data-d="운영사가 실제 이체 후 지급완료 처리하면 끝. <b>멘토에게는 확정 시점에 문자·알림</b>으로 금액이 통보되어 있습니다."><span class="no">5</span><span class="fe">🎉</span><b>지급 완료</b></div>
+      </div>
+      <div class="fdetail" data-flow-detail>[✅ 종결 검수] 승인과 동시에 케이스×멘토 단위로 수당이 <b>확정 스냅샷</b>으로 저장되고, 케이스는 '지급 대기'가 됩니다.</div>
+    </div>
+  </div>
+
+  <div class="minipane" id="pay-doc">
+    <div class="grid g2">
+      <div class="card"><b style="color:var(--navy)">📄 정산서 PDF</b><p style="font-size:14px;color:var(--sub);margin-top:4px">확정 때 자동 생성 — 회차 내역·단가·원천징수·실지급액이 정리된 공식 근거 서류입니다.</p></div>
+      <div class="card"><b style="color:var(--navy)">📊 엑셀 내려받기</b><p style="font-size:14px;color:var(--sub);margin-top:4px">품의·정산 내역을 엑셀로 내려받아 회계 처리에 바로 쓸 수 있습니다.</p></div>
+      <div class="card"><b style="color:var(--navy)">🗂️ 지급서류 체크</b><p style="font-size:14px;color:var(--sub);margin-top:4px">이력서·통장사본·신분증사본 수령 여부를 멘토 명단에서 체크(비밀번호 재인증). 미수령 멘토는 품의 때 경고됩니다. 파일 자체는 보관하지 않습니다.</p></div>
+      <div class="card"><b style="color:var(--navy)">🧑‍🏫 멘토 쪽 화면</b><p style="font-size:14px;color:var(--sub);margin-top:4px">멘토는 [정산 내역]에서 예상액→확정액→품의→지급 상태를 실시간으로 봅니다. 문의 전화가 줄어듭니다.</p></div>
+    </div>
+  </div>
 </section>
 
 <footer>
   모두의창업 멘토링 플랫폼 사용 안내 · 문의는 소속 행사의 운영사 담당자에게 해 주세요.<br>
-  확인코드 변경과 행사 개설은 플랫폼 통합관리자가 관리합니다.
+  확인코드 재발급과 행사 개설은 플랫폼 통합관리자가 관리합니다.
 </footer>
 
 </div>
+
+<script>
+(function(){
+  /* 탭 */
+  var bar=document.getElementById('tabbar');
+  var btns=bar.querySelectorAll('button');
+  function show(name){
+    btns.forEach(function(b){b.classList.toggle('on',b.dataset.tab===name);});
+    document.querySelectorAll('section.tab').forEach(function(s){s.classList.toggle('on',s.id==='tab-'+name);});
+    if(history.replaceState) history.replaceState(null,'','#'+name);
+    window.scrollTo({top:0});
+  }
+  bar.addEventListener('click',function(e){
+    var b=e.target.closest('button'); if(!b) return; show(b.dataset.tab);
+  });
+  var h=(location.hash||'').replace('#','');
+  if(h && document.getElementById('tab-'+h)) show(h);
+
+  /* 클릭형 흐름 (fsteps) */
+  document.querySelectorAll('[data-flow]').forEach(function(flow){
+    var detail=flow.parentElement.querySelector('[data-flow-detail]')||flow.nextElementSibling;
+    flow.addEventListener('click',function(e){
+      var st=e.target.closest('.fstep'); if(!st) return;
+      flow.querySelectorAll('.fstep').forEach(function(x){x.classList.remove('on');});
+      st.classList.add('on');
+      if(detail) detail.innerHTML=st.dataset.d||'';
+    });
+  });
+
+  /* 미니탭 */
+  document.querySelectorAll('[data-minitabs]').forEach(function(mt){
+    mt.addEventListener('click',function(e){
+      var b=e.target.closest('button'); if(!b) return;
+      mt.querySelectorAll('button').forEach(function(x){x.classList.toggle('on',x===b);});
+      var sec=mt.closest('section');
+      mt.querySelectorAll('button').forEach(function(x){
+        var p=sec.querySelector('#'+x.dataset.pane);
+        if(p) p.classList.toggle('on',x===b);
+      });
+    });
+  });
+
+  /* 슬라이더 */
+  document.querySelectorAll('[data-slider]').forEach(function(sl){
+    var slides=sl.querySelectorAll('.slide'), i=0;
+    var dots=sl.querySelector('.sdots');
+    slides.forEach(function(_,k){var d=document.createElement('i'); if(k===0)d.className='on'; dots.appendChild(d);});
+    function go(n){
+      i=(n+slides.length)%slides.length;
+      slides.forEach(function(s,k){s.classList.toggle('on',k===i);});
+      dots.querySelectorAll('i').forEach(function(d,k){d.classList.toggle('on',k===i);});
+    }
+    sl.querySelector('[data-prev]').addEventListener('click',function(){go(i-1);});
+    sl.querySelector('[data-next]').addEventListener('click',function(){go(i+1);});
+  });
+})();
+</script>
 </body>
 </html>
