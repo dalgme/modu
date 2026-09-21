@@ -9,11 +9,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 
-/** 엑셀 일괄 등록: 템플릿 → 업로드(검증 미리보기) → 확정 → 임시 비밀번호 표 */
-export function BulkImportPanel({ groups }: { groups: { code: string; name: string }[] }) {
+const KIND_LABELS: Record<ImportKind, string> = {
+  mentee: '멘티 등록',
+  mentor: '멘토 등록',
+  nextlab: '운영사 담당자 등록',
+  institution: '발주처 담당자 등록',
+};
+
+/** 엑셀 일괄 등록: 템플릿 → 업로드(검증 미리보기) → 확정 → 임시 비밀번호 표.
+ *  fixedKind 를 주면 그 종류 전용(종류 토글 숨김) — 회원 명단 [회원 등록] 미니탭에서 사용. */
+export function BulkImportPanel({ groups, fixedKind }: { groups: { code: string; name: string }[]; fixedKind?: ImportKind }) {
   const { toast } = useToast();
   const [pending, start] = useTransition();
-  const [kind, setKind] = useState<ImportKind>('mentee');
+  const [kind, setKind] = useState<ImportKind>(fixedKind ?? 'mentee');
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -57,29 +65,35 @@ export function BulkImportPanel({ groups }: { groups: { code: string; name: stri
     <div className="flex flex-col gap-5">
       <section className="flex flex-col gap-3 rounded-xl border bg-background p-4">
         <div className="flex flex-wrap items-center gap-2">
-          {(['mentee', 'mentor'] as const).map((k) => (
-            <button
-              key={k}
-              type="button"
-              onClick={() => {
-                setKind(k);
-                setPreview(null);
-                setResult(null);
-              }}
-              className={`rounded-lg border px-3 py-1.5 text-sm ${kind === k ? 'border-primary bg-primary/10 font-semibold' : ''}`}
-            >
-              {k === 'mentee' ? '멘티 등록' : '멘토 등록'}
-            </button>
-          ))}
+          {fixedKind ? (
+            <span className="rounded-lg border border-primary bg-primary/10 px-3 py-1.5 text-sm font-semibold">{KIND_LABELS[fixedKind]} — 엑셀 일괄</span>
+          ) : (
+            (['mentee', 'mentor'] as const).map((k) => (
+              <button
+                key={k}
+                type="button"
+                onClick={() => {
+                  setKind(k);
+                  setPreview(null);
+                  setResult(null);
+                }}
+                className={`rounded-lg border px-3 py-1.5 text-sm ${kind === k ? 'border-primary bg-primary/10 font-semibold' : ''}`}
+              >
+                {KIND_LABELS[k]}
+              </button>
+            ))
+          )}
           <Button asChild variant="outline" size="sm" className="ml-auto gap-1">
             <a href={`/api/nextlab/import-template?kind=${kind}`}>
               <Download className="h-4 w-4" /> 템플릿 다운로드
             </a>
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">
-          그룹코드: {groups.length === 0 ? '(활성 그룹 없음)' : groups.map((g) => `${g.code}=${g.name}`).join(' · ')}
-        </p>
+        {(kind === 'mentee' || kind === 'mentor') && (
+          <p className="text-xs text-muted-foreground">
+            그룹코드: {groups.length === 0 ? '(활성 그룹 없음)' : groups.map((g) => `${g.code}=${g.name}`).join(' · ')}
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           <Input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="max-w-sm" disabled={pending} />
           <Button onClick={doPreview} disabled={pending} className="gap-1">

@@ -11,10 +11,29 @@ import { createCase } from '@/lib/workflow/cases';
  * 멘토/멘티 엑셀 일괄 등록 (운영사) — 2026-09-07 요건.
  * 시트 1행은 헤더. 한글 헤더를 키로 매핑한다. 미리보기(검증) → 확정(생성) 2단계.
  */
-export type ImportKind = 'mentor' | 'mentee';
+export type ImportKind = 'mentor' | 'mentee' | 'nextlab' | 'institution';
 
 export const MENTOR_COLUMNS = ['이름', '이메일', '휴대폰', '소속', '직위', '소속그룹코드', '전문분야', '업종', '지역', '경력', '소개'] as const;
 export const MENTEE_COLUMNS = ['멘티이름', '기업(팀)명', '휴대폰', '이메일', '사업그룹코드', '사업자등록번호', '주소', '업종', '아이템', '창업단계', '지역', '필요분야', '소개'] as const;
+/** 운영사·발주처 담당자 공용 컬럼 (등급은 운영사만 해석) */
+export const STAFF_COLUMNS = ['이름', '이메일', '휴대폰', '소속', '직위', '등급(운영사)', '담당역할'] as const;
+
+export const IMPORT_KIND_LABELS: Record<ImportKind, string> = {
+  mentee: '멘티',
+  mentor: '멘토',
+  nextlab: '운영사 담당자',
+  institution: '발주처 담당자',
+};
+
+export function isImportKind(v: unknown): v is ImportKind {
+  return v === 'mentor' || v === 'mentee' || v === 'nextlab' || v === 'institution';
+}
+
+function columnsOf(kind: ImportKind): readonly string[] {
+  if (kind === 'mentor') return MENTOR_COLUMNS;
+  if (kind === 'mentee') return MENTEE_COLUMNS;
+  return STAFF_COLUMNS;
+}
 
 export interface ImportRow {
   line: number;
@@ -42,7 +61,7 @@ export function parseSheet(buffer: Buffer, kind: ImportKind): Record<string, str
   const ws = wb.Sheets[wb.SheetNames[0]!];
   if (!ws) return [];
   const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: '' });
-  const columns = kind === 'mentor' ? MENTOR_COLUMNS : MENTEE_COLUMNS;
+  const columns = columnsOf(kind);
   return rows.map((r) => {
     const out: Record<string, string> = {};
     for (const col of columns) out[col] = cell(r[col]);
@@ -52,11 +71,13 @@ export function parseSheet(buffer: Buffer, kind: ImportKind): Record<string, str
 
 /** 템플릿 xlsx 생성 (헤더 + 예시 1행) */
 export function buildTemplate(kind: ImportKind, groupCodes: string[]): Buffer {
-  const columns = kind === 'mentor' ? MENTOR_COLUMNS : MENTEE_COLUMNS;
+  const columns = columnsOf(kind);
   const example =
     kind === 'mentor'
       ? ['홍길동', 'mentor@example.com', '010-1234-5678', '○○컨설팅', '대표', groupCodes[0] ?? '', '마케팅·브랜딩; 재무·투자유치', '식품', '세종', '○○ 대표 10년', '온·오프라인 모두 가능']
-      : ['김멘티', '팀 이름', '010-9876-5432', 'mentee@example.com', groupCodes[0] ?? '', '', '세종시 …', 'IT', '앱 서비스', '예비창업', '세종', '사업계획서; 마케팅·브랜딩', '한 줄 소개'];
+      : kind === 'mentee'
+        ? ['김멘티', '팀 이름', '010-9876-5432', 'mentee@example.com', groupCodes[0] ?? '', '', '세종시 …', 'IT', '앱 서비스', '예비창업', '세종', '사업계획서; 마케팅·브랜딩', '한 줄 소개']
+        : ['박담당', 'staff@example.com', '010-5555-1234', kind === 'nextlab' ? '운영사' : '발주기관', '주임', kind === 'nextlab' ? 'pm' : '', '정산 담당'];
   const ws = XLSX.utils.aoa_to_sheet([[...columns], example]);
   const guide = XLSX.utils.aoa_to_sheet([
     ['안내'],
@@ -65,9 +86,10 @@ export function buildTemplate(kind: ImportKind, groupCodes: string[]): Buffer {
     [`· 그룹코드: ${groupCodes.join(', ') || '(설정 페이지에서 그룹을 먼저 만드세요)'}`],
     ['· 여러 값은 세미콜론(;)으로 구분합니다. 예) 마케팅; 재무'],
     ['· 이미 있는 계정(휴대폰/이메일 일치)은 새로 만들지 않고 이 행사에 초대만 합니다.'],
+    ...(kind === 'nextlab' ? [['· 등급: pl(메인 담당) / pm / sub_pm(부PM) / observer(옵저버). 비우면 pl.']] : []),
   ]);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, kind === 'mentor' ? '멘토' : '멘티');
+  XLSX.utils.book_append_sheet(wb, ws, IMPORT_KIND_LABELS[kind]);
   XLSX.utils.book_append_sheet(wb, guide, '안내');
   return Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as ArrayBuffer);
 }
@@ -93,10 +115,10 @@ export async function previewImport(programId: string, kind: ImportKind, rows: R
   rows.forEach((values, i) => {
     const errors: string[] = [];
     const line = i + 2;
-    const name = kind === 'mentor' ? values['이름'] : values['멘티이름'];
+    const name = kind === 'mentee' ? values['멘티이름'] : values['이름'];
     const phoneDigits = (toStoredPhone(values['휴대폰'] ?? '') ?? values['휴대폰'] ?? '').replace(/\D/g, '');
     const email = (values['이메일'] ?? '').toLowerCase();
-    const groupCode = kind === 'mentor' ? values['소속그룹코드'] : values['사업그룹코드'];
+    const groupCode = kind === 'mentor' ? values['소속그룹코드'] : kind === 'mentee' ? values['사업그룹코드'] : '';
     if (!name) errors.push('이름 누락');
     if (phoneDigits.length < 10 || phoneDigits.length > 11) errors.push('휴대폰 형식(10~11자리)');
     if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.push('이메일 형식');
@@ -167,6 +189,23 @@ export async function commitImport(programId: string, kind: ImportKind, rows: Im
           },
           { onConflict: 'program_id,user_id' },
         );
+      } else if (kind === 'nextlab' || kind === 'institution') {
+        let userId = row.existingUserId;
+        const phone = toStoredPhone(v['휴대폰'] ?? '') ?? v['휴대폰']!;
+        const email = v['이메일'] || `s-${phone.replace(/\D/g, '')}@staff.local`;
+        if (!userId) {
+          const acc = await createStaffOrMentorAccount({ email, name: v['이름']!, phone, role: kind, organization: v['소속'] || undefined, position: v['직위'] || undefined, actorId });
+          userId = acc.userId;
+          result.created += 1;
+          result.credentials.push({ line: row.line, name: v['이름']!, email: acc.email, tempPassword: acc.tempPassword });
+        } else {
+          result.linked += 1;
+        }
+        const gradeRaw = (v['등급(운영사)'] ?? '').trim().toLowerCase();
+        const grade = kind === 'nextlab' && ['pl', 'pm', 'sub_pm', 'observer'].includes(gradeRaw) ? gradeRaw : kind === 'nextlab' ? 'pl' : null;
+        await admin
+          .from('program_members')
+          .upsert({ program_id: programId, user_id: userId, role: kind, grade, duty: v['담당역할'] || null, is_active: true, left_at: null }, { onConflict: 'program_id,user_id' });
       } else {
         const groupId = groupByCode.get(v['사업그룹코드']!);
         if (!groupId) throw new Error('그룹코드 없음');

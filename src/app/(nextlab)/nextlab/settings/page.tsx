@@ -18,6 +18,10 @@ import { getMentorFormSettings, templateSignedUrl } from '@/lib/mentor-forms/dat
 import { listSupportTypes } from '@/lib/programs/data';
 import { featureEnabled } from '@/lib/platform/features';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { listCases } from '@/lib/data/cases';
+import { loadProgramAuditRows } from '@/lib/audit/rows';
+import { SuccessionPanel } from '@/components/nextlab/succession-panel';
+import { AuditTable } from '@/components/audit/audit-table';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,11 +36,13 @@ const TABS = [
   { key: 'mentor-forms', label: '위촉 서식' },
   { key: 'tags', label: '키워드 사전' },
   { key: 'permissions', label: '담당 권한' },
+  { key: 'succession', label: '승계 개설' },
+  { key: 'audit', label: '감사 로그' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
-/** 운영 설정 (docs/MODU-DESIGN.md §16) — 탭별 서버 렌더 */
-export default async function Page({ searchParams }: { searchParams: { tab?: string } }) {
+/** 운영 설정 (docs/MODU-DESIGN.md §16) — 탭별 서버 렌더. 승계 개설·감사 로그도 미니탭 (P20) */
+export default async function Page({ searchParams }: { searchParams: { tab?: string; source?: string } }) {
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
   // 플랫폼 기능 플래그 (P15) — 비활성 기능의 탭은 노출하지 않는다
@@ -113,6 +119,34 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   }
   if (tab === 'tags') body = <TagsManager tags={await listTags(ctx.programId)} />;
   if (tab === 'permissions') body = <StaffPermissionsForm override={ctx.program.staff_permissions} canEdit={!ctx.grade || ctx.grade === 'pl'} />;
+  if (tab === 'succession') {
+    const groups = await listSupportTypes(ctx.programId);
+    const source = groups.find((g) => g.id === searchParams.source)?.id ?? groups[0]?.id ?? '';
+    const cases = source ? await listCases({ programId: ctx.programId, supportTypeId: source }) : [];
+    body = (
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">이전 단계 그룹의 멘티를 다음 그룹으로 승계합니다. 새 케이스를 만들고 이전 케이스를 연결(predecessor)하며, 이전 그룹의 회차·서류·정산은 그대로 보존됩니다.</p>
+        {groups.length === 0 ? (
+          <p className="text-sm text-muted-foreground">사업그룹이 없습니다.</p>
+        ) : (
+          <SuccessionPanel
+            groups={groups.map((g) => ({ id: g.id, name: g.name, code: g.code, status: g.status, predecessor_support_type_id: g.predecessor_support_type_id }))}
+            sourceGroupId={source}
+            cases={cases}
+          />
+        )}
+      </div>
+    );
+  }
+  if (tab === 'audit') {
+    const rows = await loadProgramAuditRows(ctx.programId);
+    body = (
+      <div className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">{ctx.program.name} 의 관리자 액션 이력 (INSERT-only · 위변조 방지). 최근 200건. [소스] 를 누르면 원본 로그를 봅니다.</p>
+        <AuditTable rows={rows} />
+      </div>
+    );
+  }
 
   return (
     <main className="flex flex-col gap-5">

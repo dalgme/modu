@@ -94,7 +94,8 @@ function CreateSubmit() {
   );
 }
 
-function CreateMemberForm() {
+/** 회원 계정 발급 폼 — fixedRole 을 주면 그 역할 전용(역할 선택 숨김, 해당 역할 컬럼만) */
+export function CreateMemberForm({ fixedRole }: { fixedRole?: UserRole }) {
   const [state, action] = useFormState<MemberActionState, FormData>(createMemberAction, undefined);
   const formRef = useRef<HTMLFormElement>(null);
 
@@ -103,14 +104,21 @@ function CreateMemberForm() {
     if (state?.ok) formRef.current?.reset();
   }, [state]);
 
+  const showGrade = !fixedRole || fixedRole === 'nextlab';
+  const staffOnly = fixedRole === 'nextlab' || fixedRole === 'institution';
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-lg">회원 계정 발급</CardTitle>
+        <CardTitle className="text-lg">{fixedRole ? `${ROLE_LABELS[fixedRole]} 개별 등록` : '회원 계정 발급'}</CardTitle>
         <CardDescription>
-          발주처 담당자 · 운영사 · 멘토 계정을 발급합니다. 멘티는 케이스 등록 후 초대됩니다. 멘토는 발급 시 <b>Pool(배정 대기)</b> 상태이며, 멘티에게 배정되면 그 멘티에 대해 확정됩니다.
+          {fixedRole === 'mentor'
+            ? <>멘토는 등록 시 <b>Pool(배정 대기)</b> 상태이며, 멘티에게 배정되면 그 멘티에 대해 확정됩니다.</>
+            : fixedRole
+              ? <>{ROLE_LABELS[fixedRole]} 담당자 계정을 발급합니다.</>
+              : <>발주처 담당자 · 운영사 · 멘토 계정을 발급합니다. 멘티는 케이스 등록 후 초대됩니다.</>}
           <br />
-          <span className="text-primary">임시 비밀번호는 입력한 휴대폰 번호(숫자)로 발급되며, 첫 로그인 시 변경해야 합니다. 등록 후 아래 명단에서 [로그인 안내 문자]를 보낼 수 있습니다.</span>
+          <span className="text-primary">임시 비밀번호는 입력한 휴대폰 번호(숫자)로 발급되며, 첫 로그인 시 변경해야 합니다. 등록 후 명단에서 [로그인 안내 문자]를 보낼 수 있습니다.</span>
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -134,38 +142,44 @@ function CreateMemberForm() {
                 placeholder="010-0000-0000"
               />
             </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="m-role">역할</Label>
-              <select
-                id="m-role"
-                name="role"
-                required
-                defaultValue="mentor"
-                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-              >
-                {ISSUABLE_ROLES.map((r) => (
-                  <option key={r} value={r}>
-                    {ROLE_LABELS[r]}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {fixedRole ? (
+              <input type="hidden" name="role" value={fixedRole} />
+            ) : (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="m-role">역할</Label>
+                <select
+                  id="m-role"
+                  name="role"
+                  required
+                  defaultValue="mentor"
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  {ISSUABLE_ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {ROLE_LABELS[r]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex flex-col gap-2">
               <Label htmlFor="m-organization">소속 <span className="text-xs font-normal text-muted-foreground">(회사·기관·부서)</span></Label>
               <Input id="m-organization" name="organization" autoComplete="off" placeholder="예: ○○컨설팅" />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="m-position">직위 <span className="text-xs font-normal text-muted-foreground">(발주처·운영사 필수)</span></Label>
-              <Input id="m-position" name="position" autoComplete="off" placeholder="예: 팀장, 주임" />
+              <Label htmlFor="m-position">직위 <span className="text-xs font-normal text-muted-foreground">{staffOnly ? '(필수)' : '(발주처·운영사 필수)'}</span></Label>
+              <Input id="m-position" name="position" autoComplete="off" placeholder="예: 팀장, 주임" required={staffOnly} />
             </div>
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="m-grade">운영사 등급 <span className="text-xs font-normal text-muted-foreground">(운영사 역할일 때)</span></Label>
-              <select id="m-grade" name="grade" defaultValue="pl" className="h-10 rounded-md border border-input bg-background px-3 text-sm">
-                {STAFF_GRADES.map((g) => (
-                  <option key={g} value={g}>{GRADE_LABELS[g]}</option>
-                ))}
-              </select>
-            </div>
+            {showGrade && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="m-grade">운영사 등급 <span className="text-xs font-normal text-muted-foreground">(운영사 역할일 때)</span></Label>
+                <select id="m-grade" name="grade" defaultValue="pl" className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+                  {STAFF_GRADES.map((g) => (
+                    <option key={g} value={g}>{GRADE_LABELS[g]}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex flex-col gap-2">
               <Label htmlFor="m-duty">이 행사에서의 담당역할</Label>
               <Input id="m-duty" name="duty" autoComplete="off" placeholder="예: 정산 담당, A·B그룹 담당" />
@@ -193,7 +207,7 @@ function CreateMemberForm() {
   );
 }
 
-function AddExistingMemberForm() {
+export function AddExistingMemberForm() {
   const [state, action] = useFormState<MemberActionState, FormData>(addExistingMemberAction, undefined);
   const formRef = useRef<HTMLFormElement>(null);
   useEffect(() => {
@@ -488,29 +502,44 @@ function LoginGuideBar({ selected, onDone }: { selected: MemberItem[]; onDone: (
   );
 }
 
-type MemberTab = 'all' | 'staff' | 'mentor' | 'mentee';
+export type MemberMode = 'staff' | 'mentor' | 'mentee';
 
-const MEMBER_TABS: { key: MemberTab; label: string; match: (r: UserRole) => boolean }[] = [
-  { key: 'all', label: '전체', match: () => true },
-  { key: 'staff', label: '관리', match: (r) => r === 'institution' || r === 'nextlab' },
-  { key: 'mentor', label: '멘토', match: (r) => r === 'mentor' },
-  { key: 'mentee', label: '멘티', match: (r) => r === 'mentee' },
-];
+const MODE_MATCH: Record<MemberMode, (r: UserRole) => boolean> = {
+  staff: (r) => r === 'institution' || r === 'nextlab',
+  mentor: (r) => r === 'mentor',
+  mentee: (r) => r === 'mentee',
+};
+
+/** 멘티 진행현황 요약 (케이스 단위 — 승계로 여러 건일 수 있음) */
+export interface MenteeProgressItem {
+  caseId: string;
+  groupName: string | null;
+  statusLabel: string;
+  withdrawn: boolean;
+  roundsDone: number;
+  requiredRounds: number;
+  mentorName: string | null;
+}
 
 export function MembersManager({
   members,
   rosterColumns,
   rosterValues,
+  mode,
+  progress,
 }: {
   members: MemberItem[];
   rosterColumns: RosterColumnItem[];
   rosterValues: Record<string, string>;
+  /** 미니탭 모드 — 명단 하나만 렌더한다 (회원 명단 탭에서 미니탭별로 사용) */
+  mode: MemberMode;
+  /** 멘티 모드: 회원 id → 진행현황 (수정 즉시 서버 재렌더로 반영) */
+  progress?: Record<string, MenteeProgressItem[]>;
 }) {
-  const [tab, setTab] = useState<MemberTab>('all');
+  const tab = mode;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
-  const activeTab = MEMBER_TABS.find((t) => t.key === tab) ?? MEMBER_TABS[0]!;
-  const filtered = members.filter((m) => activeTab.match(m.role));
+  const filtered = members.filter((m) => MODE_MATCH[mode](m.role));
   const tabColumns = useMemo(
     () => (tab === 'mentor' || tab === 'mentee' ? rosterColumns.filter((c) => c.target === tab) : []),
     [tab, rosterColumns],
@@ -535,37 +564,12 @@ export function MembersManager({
     });
   };
 
-  const colSpan = 6 + tabColumns.length + 1;
+  const showProgress = mode === 'mentee' && !!progress;
+  const colSpan = 6 + (showProgress ? 1 : 0) + tabColumns.length + 1;
 
   return (
     <div className="flex flex-col gap-6">
-      <CreateMemberForm />
-      <AddExistingMemberForm />
-
       <div className="flex flex-col gap-3">
-        <div className="flex flex-wrap gap-1 border-b">
-          {MEMBER_TABS.map((t) => {
-            const count = members.filter((m) => t.match(m.role)).length;
-            const isActive = t.key === tab;
-            return (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => { setTab(t.key); setEditing(null); }}
-                className={cn(
-                  'border-b-2 px-3 py-2 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'border-primary text-primary'
-                    : 'border-transparent text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {t.label}{' '}
-                <span className="tabular-nums text-xs text-muted-foreground">({count})</span>
-              </button>
-            );
-          })}
-        </div>
-
         {(tab === 'mentor' || tab === 'mentee') && (
           <RosterColumnManager target={tab} columns={tabColumns} />
         )}
@@ -586,6 +590,7 @@ export function MembersManager({
                 <TableHead>소속</TableHead>
                 <TableHead>역할</TableHead>
                 <TableHead>상태</TableHead>
+                {showProgress && <TableHead>진행현황</TableHead>}
                 {tabColumns.map((c) => (
                   <TableHead key={c.id} className="whitespace-nowrap text-xs">{c.name}</TableHead>
                 ))}
@@ -658,6 +663,27 @@ export function MembersManager({
                           </span>
                         </div>
                       </TableCell>
+                      {showProgress && (
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            {!m.is_active && (
+                              <Badge variant="destructive" className="w-fit text-[10px]" title="비활성 회원 — 진행현황에 비활성화로 표시됩니다.">비활성화</Badge>
+                            )}
+                            {(progress?.[m.id] ?? []).length === 0 ? (
+                              <span className="text-[11px] text-muted-foreground">케이스 없음</span>
+                            ) : (
+                              (progress?.[m.id] ?? []).map((p) => (
+                                <Link key={p.caseId} href={`/nextlab/cases/${p.caseId}`} className="text-[11px] leading-tight hover:underline">
+                                  <span className="text-muted-foreground">{p.groupName ?? '-'}</span>{' '}
+                                  <span className={cn('font-medium', p.withdrawn && 'text-destructive')}>{p.withdrawn ? '중도 종료' : p.statusLabel}</span>{' '}
+                                  <span className="tabular-nums">{p.roundsDone}/{p.requiredRounds}회</span>
+                                  {p.mentorName && <span className="text-muted-foreground"> · {p.mentorName}</span>}
+                                </Link>
+                              ))
+                            )}
+                          </div>
+                        </TableCell>
+                      )}
                       {tabColumns.map((c) => (
                         <TableCell key={c.id}>
                           <RosterValueCell columnId={c.id} userId={m.id} value={rosterValues[`${c.id}:${m.id}`] ?? ''} />

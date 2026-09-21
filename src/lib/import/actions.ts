@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { realRoleOrNull } from '@/lib/auth/guards';
 import { denyUnless } from '@/lib/auth/capabilities';
 import { contextOrNull } from '@/lib/programs/context';
-import { commitImport, parseSheet, previewImport, type ImportKind, type ImportPreview, type ImportResult, type ImportRow } from '@/lib/import/bulk-import';
+import { commitImport, isImportKind, parseSheet, previewImport, type ImportKind, type ImportPreview, type ImportResult, type ImportRow } from '@/lib/import/bulk-import';
 
 type PreviewResult = { ok: true; preview: ImportPreview } | { ok: false; error: string };
 type CommitResult = { ok: true; result: ImportResult } | { ok: false; error: string };
@@ -24,7 +24,8 @@ async function operatorContext(): Promise<{ id: string; programId: string } | { 
 export async function previewImportAction(formData: FormData): Promise<PreviewResult> {
   const op = await operatorContext();
   if ('error' in op) return { ok: false, error: op.error };
-  const kind = formData.get('kind') === 'mentor' ? 'mentor' : ('mentee' as ImportKind);
+  const kindRaw = formData.get('kind');
+  const kind: ImportKind = isImportKind(kindRaw) ? kindRaw : 'mentee';
   const file = formData.get('file');
   if (!(file instanceof File)) return { ok: false, error: '파일을 선택하세요.' };
   if (file.size > 5 * 1024 * 1024) return { ok: false, error: '파일이 너무 큽니다. (최대 5MB)' };
@@ -50,6 +51,7 @@ export async function commitImportAction(kind: ImportKind, rows: ImportRow[]): P
   const revalidated = await previewImport(op.programId, kind, rows.map((r) => r.values));
   const result = await commitImport(op.programId, kind, revalidated.rows, op.id);
   revalidatePath('/nextlab/members');
+  revalidatePath('/nextlab/roster');
   revalidatePath('/nextlab/dashboard');
   return { ok: true, result };
 }

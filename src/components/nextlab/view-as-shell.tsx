@@ -43,7 +43,7 @@ export async function ViewAsShell({ target, activeTab }: { target: Tables<'users
             <ViewAsStartButton targetUserId={target.id} targetName={target.name} className="gap-1.5" />
           )}
           <Button asChild variant="outline" size="sm">
-            <Link href="/nextlab/members">회원관리로 돌아가기</Link>
+            <Link href="/nextlab/roster">회원 명단으로 돌아가기</Link>
           </Button>
         </div>
       </div>

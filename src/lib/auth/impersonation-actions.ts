@@ -106,5 +106,5 @@ export async function stopViewAsAction(): Promise<void> {
       metadata: { target_name: imp.target.name },
     });
   }
-  redirect(real?.is_platform_admin ? '/platform/users' : '/nextlab/members');
+  redirect(real?.is_platform_admin ? '/platform/users' : '/nextlab/roster');
 }

@@ -31,7 +31,7 @@ export function CaseTable({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>멘티(기업·팀)</TableHead>
+            <TableHead>멘티 (이름/소속)</TableHead>
             {showGroup && <TableHead>그룹</TableHead>}
             {showMentor && <TableHead>담당 멘토</TableHead>}
             <TableHead className="text-center">회차</TableHead>
@@ -44,10 +44,11 @@ export function CaseTable({
           {items.map((c) => (
             <TableRow key={c.id}>
               <TableCell>
+                {/* 멘티 표시 형식 = "이름/소속" (P20 결정) */}
                 <Link href={`${basePath}/${c.id}`} className="font-medium hover:underline">
-                  {c.business_name}
+                  {c.owner_name}
+                  <span className="font-normal text-muted-foreground">/{c.business_name}</span>
                 </Link>
-                <span className="ml-1.5 text-xs text-muted-foreground">{c.owner_name}</span>
               </TableCell>
               {showGroup && <TableCell className="text-sm">{c.supportTypeName ?? '-'}</TableCell>}
               {showMentor && <TableCell className="text-sm">{c.mentorName ?? <span className="text-muted-foreground">미배정</span>}</TableCell>}
