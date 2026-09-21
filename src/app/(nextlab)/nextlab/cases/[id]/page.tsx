@@ -28,6 +28,7 @@ import { CaseDetailBackNav } from '@/components/cases/case-detail-back-nav';
 import { MentorAssignPanel } from '@/components/cases/mentor-assign-panel';
 import { MenteeInvitePanel } from '@/components/cases/mentee-invite-panel';
 import { CaseDocumentsPanel } from '@/components/cases/case-documents-panel';
+import { CaseDeletePanel } from '@/components/cases/case-delete-panel';
 import { RoundsList } from '@/components/mentor/rounds-list';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/utils/format';
@@ -159,6 +160,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         <SurveyResultCard survey={survey} />
         <RequiredDocsPanel caseId={item.id} slots={slots} viewerRole="nextlab" canUpload />
         <CaseDocumentsPanel caseId={item.id} docs={docs} viewerRole="nextlab" canUpload />
+        <CaseDeletePanel caseId={item.id} ownerName={item.owner_name} businessName={item.business_name} />
       </CaseDetailShell>
     </main>
   );
