@@ -271,6 +271,16 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
     entity_id: log.id,
     metadata: { case_id: log.case_id, round_no: log.round_no, report_kind: reportKind, photos: input.photoPaths.length },
   });
+
+  // 목표 회차(그룹 required_rounds) 보고서 등록 완료 → 멘티 만족도 조사 자동 개시 (P20)
+  const [{ count: reported }, { data: g }] = await Promise.all([
+    admin.from('mentoring_logs').select('id', { count: 'exact', head: true }).eq('case_id', log.case_id).not('report_registered_at', 'is', null),
+    admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle(),
+  ]);
+  if (g && (reported ?? 0) >= g.required_rounds) {
+    await admin.from('cases').update({ survey_opened_at: new Date().toISOString() }).eq('id', log.case_id).is('survey_opened_at', null);
+  }
+
   return { ok: true, caseId: log.case_id };
 }
 
@@ -314,6 +324,150 @@ export async function updateRound(input: {
     entity_type: 'mentoring_logs',
     entity_id: log.id,
     metadata: { photos_added: input.photoPaths.length },
+  });
+  return { ok: true, caseId: log.case_id };
+}
+
+/**
+ * 계획(미보고) 회차의 일정 수정 (P20) — 일자·시각·유형·장소.
+ * 보고서(2단계) 등록 전 회차만. 일자·유형이 바뀌면 단가 스냅샷을 다시 확정하고,
+ * 등록과 같은 검증(일일 상한·멘토 1일 건수·시간 겹침)을 자기 자신 제외로 다시 수행한다.
+ */
+export async function updatePlannedRound(input: {
+  logId: string;
+  mentorId: string;
+  mode: ConsultingMode;
+  startedAt: string;
+  endedAt: string;
+  place?: string;
+}): Promise<WorkflowResult> {
+  const admin = createAdminClient();
+  const { data: log } = await admin
+    .from('mentoring_logs')
+    .select('id, case_id, round_no, settlement_id, report_registered_at, cases!inner(status, program_id, support_type_id)')
+    .eq('id', input.logId)
+    .maybeSingle();
+  if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
+  if (log.settlement_id) return { ok: false, error: '정산에 포함된 회차는 수정할 수 없습니다.' };
+  if (log.report_registered_at) return { ok: false, error: '보고서가 등록된 회차는 일정을 바꿀 수 없습니다. (내용 수정은 [회차 수정])' };
+  const c = log.cases as unknown as { status: string; program_id: string; support_type_id: string };
+  const denied = assertTransition('submit_round', c.status as never);
+  if (denied) return { ok: false, error: denied };
+
+  const started = new Date(input.startedAt);
+  const ended = new Date(input.endedAt);
+  if (Number.isNaN(started.getTime()) || Number.isNaN(ended.getTime())) return { ok: false, error: '일시를 확인하세요.' };
+  if (ended <= started) return { ok: false, error: '종료 시각은 시작 시각보다 늦어야 합니다.' };
+  if (started.getTime() > Date.now() + PLAN_MAX_FUTURE_MS) return { ok: false, error: '60일 이후의 일정으로는 변경할 수 없습니다.' };
+  if (kstDate(started) !== kstDate(ended)) return { ok: false, error: '한 회차는 같은 날 안에서 끝나야 합니다.' };
+  const day = kstDate(started);
+
+  const [rate, limits] = await Promise.all([
+    resolveRate(c.program_id, c.support_type_id, input.mode, day),
+    resolveLimits(c.program_id, c.support_type_id, day),
+  ]);
+  if (!rate) return { ok: false, error: '이 유형의 단가가 설정되지 않았습니다. 운영사 설정을 확인하세요.' };
+  if (!limits) return { ok: false, error: '운영 한도가 설정되지 않았습니다. 운영사 설정을 확인하세요.' };
+
+  const dayStart = new Date(`${day}T00:00:00+09:00`).toISOString();
+  const dayEnd = new Date(`${day}T23:59:59.999+09:00`).toISOString();
+  const { data: sameDay } = await admin
+    .from('mentoring_logs')
+    .select('id, mode, amount_snapshot')
+    .eq('case_id', log.case_id)
+    .gte('started_at', dayStart)
+    .lte('started_at', dayEnd)
+    .neq('id', log.id);
+  const sameDayRows = sameDay ?? [];
+  if (sameDayRows.length + 1 > limits.caseDailyRoundLimit) {
+    return { ok: false, error: `같은 멘티에게는 하루 최대 ${limits.caseDailyRoundLimit}회까지만 등록할 수 있습니다.` };
+  }
+  const sameModeAmount = sameDayRows.filter((r) => r.mode === input.mode).reduce((s, r) => s + Number(r.amount_snapshot), 0);
+  if (sameModeAmount + rate.unitPrice > rate.dailyCapAmount) {
+    return { ok: false, error: `같은 날 ${input.mode === 'online' ? '온라인' : '오프라인'} 일일 상한(${rate.dailyCapAmount.toLocaleString('ko-KR')}원)을 넘습니다.` };
+  }
+  const { data: mentorDay } = await admin
+    .from('mentoring_logs')
+    .select('id, case_id, started_at, ended_at')
+    .eq('mentor_id', input.mentorId)
+    .gte('started_at', dayStart)
+    .lte('started_at', dayEnd)
+    .neq('id', log.id);
+  const otherCases = new Set((mentorDay ?? []).map((r) => r.case_id).filter((id) => id !== log.case_id));
+  if (otherCases.size + 1 > limits.mentorDailyCaseLimit) {
+    return { ok: false, error: `멘토는 하루 최대 ${limits.mentorDailyCaseLimit}명(건)의 멘티만 컨설팅할 수 있습니다.` };
+  }
+  const overlap = (mentorDay ?? []).find((r) => new Date(r.started_at) < ended && new Date(r.ended_at) > started);
+  if (overlap) return { ok: false, error: '같은 시간대에 이미 등록된 회차가 있습니다. 시간을 확인하세요.' };
+
+  const { error } = await admin
+    .from('mentoring_logs')
+    .update({
+      mode: input.mode,
+      started_at: started.toISOString(),
+      ended_at: ended.toISOString(),
+      place: input.place?.trim() || null,
+      unit_price_snapshot: rate.unitPrice,
+      amount_snapshot: rate.unitPrice,
+      rate_id: rate.rateId,
+    })
+    .eq('id', log.id);
+  if (error) return { ok: false, error: error.message };
+  await admin.from('audit_logs').insert({
+    actor_id: input.mentorId,
+    program_id: c.program_id,
+    action: 'round.plan_update',
+    entity_type: 'mentoring_logs',
+    entity_id: log.id,
+    metadata: { case_id: log.case_id, round_no: log.round_no, mode: input.mode, day },
+  });
+  return { ok: true, caseId: log.case_id };
+}
+
+/**
+ * 계획(미보고) 회차 삭제 (P20) — 마지막이 아니어도, 그 뒤 회차가 전부 미보고·미정산이면
+ * 삭제하고 뒤 회차 번호를 당긴다(is_extra 재계산).
+ */
+export async function deletePlannedRound(logId: string, mentorId: string): Promise<WorkflowResult> {
+  const admin = createAdminClient();
+  const { data: log } = await admin
+    .from('mentoring_logs')
+    .select('id, case_id, round_no, settlement_id, report_registered_at, cases!inner(status, program_id, support_type_id)')
+    .eq('id', logId)
+    .maybeSingle();
+  if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
+  if (log.settlement_id) return { ok: false, error: '정산에 포함된 회차는 삭제할 수 없습니다.' };
+  if (log.report_registered_at) return { ok: false, error: '보고서가 등록된 회차는 여기서 삭제할 수 없습니다.' };
+  const c = log.cases as unknown as { status: string; program_id: string; support_type_id: string };
+  const denied = assertTransition('submit_round', c.status as never);
+  if (denied) return { ok: false, error: denied };
+
+  const { data: after } = await admin
+    .from('mentoring_logs')
+    .select('id, round_no, report_registered_at, settlement_id')
+    .eq('case_id', log.case_id)
+    .gt('round_no', log.round_no)
+    .order('round_no');
+  if ((after ?? []).some((r) => r.report_registered_at || r.settlement_id)) {
+    return { ok: false, error: '이 회차 뒤에 보고서가 등록된 회차가 있어 삭제할 수 없습니다.' };
+  }
+
+  const { error } = await admin.from('mentoring_logs').delete().eq('id', log.id);
+  if (error) return { ok: false, error: error.message };
+  // 뒤 회차 번호 당기기 + is_extra 재계산
+  const { data: group } = await admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle();
+  const required = group?.required_rounds ?? 0;
+  for (const r of after ?? []) {
+    const newNo = r.round_no - 1;
+    await admin.from('mentoring_logs').update({ round_no: newNo, is_extra: newNo > required }).eq('id', r.id);
+  }
+  await admin.from('audit_logs').insert({
+    actor_id: mentorId,
+    program_id: c.program_id,
+    action: 'round.plan_delete',
+    entity_type: 'mentoring_logs',
+    entity_id: logId,
+    metadata: { case_id: log.case_id, round_no: log.round_no, renumbered: (after ?? []).length },
   });
   return { ok: true, caseId: log.case_id };
 }

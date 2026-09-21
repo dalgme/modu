@@ -1,8 +1,12 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useFormState, useFormStatus } from 'react-dom';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+
+import { openCaseSurveyAction } from '@/lib/surveys/satisfaction-actions';
+import { useToast } from '@/hooks/use-toast';
 
 import {
   createMemberAction,
@@ -519,6 +523,39 @@ export interface MenteeProgressItem {
   roundsDone: number;
   requiredRounds: number;
   mentorName: string | null;
+  /** 만족도 조사 — none: 미개시 / open: 개시(응답 대기) / done: 응답 완료 */
+  surveyStatus: 'none' | 'open' | 'done';
+}
+
+/** [만족도 생성] / 진행중 / 완료 표시 (P20) */
+function SurveyControl({ item }: { item: MenteeProgressItem }) {
+  const [pending, startTransition] = useTransition();
+  const { toast } = useToast();
+  const router = useRouter();
+  if (item.surveyStatus === 'done') {
+    return <Badge className="w-fit bg-status-approved/15 text-[10px] text-status-approved">만족도 완료</Badge>;
+  }
+  if (item.surveyStatus === 'open') {
+    return <Badge variant="outline" className="w-fit text-[10px] text-sky-700" title="멘티에게 만족도 조사가 노출 중입니다. 개시 1주일 미응답 시 자동 리마인드 문자가 발송됩니다.">만족도 진행중</Badge>;
+  }
+  if (item.withdrawn) return null;
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() => {
+        if (!confirm('이 멘티에게 만족도 조사를 지금 열까요? 멘티 화면에 바로 노출됩니다.')) return;
+        startTransition(async () => {
+          const r = await openCaseSurveyAction(item.caseId);
+          toast(r.ok ? { title: '만족도 조사를 열었습니다.' } : { title: r.error, variant: 'destructive' });
+          if (r.ok) router.refresh();
+        });
+      }}
+      className="w-fit rounded border border-primary/50 px-1.5 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
+    >
+      {pending ? '여는 중…' : '만족도 생성'}
+    </button>
+  );
 }
 
 export function MembersManager({
@@ -673,12 +710,15 @@ export function MembersManager({
                               <span className="text-[11px] text-muted-foreground">케이스 없음</span>
                             ) : (
                               (progress?.[m.id] ?? []).map((p) => (
-                                <Link key={p.caseId} href={`/nextlab/cases/${p.caseId}`} className="text-[11px] leading-tight hover:underline">
-                                  <span className="text-muted-foreground">{p.groupName ?? '-'}</span>{' '}
-                                  <span className={cn('font-medium', p.withdrawn && 'text-destructive')}>{p.withdrawn ? '중도 종료' : p.statusLabel}</span>{' '}
-                                  <span className="tabular-nums">{p.roundsDone}/{p.requiredRounds}회</span>
-                                  {p.mentorName && <span className="text-muted-foreground"> · {p.mentorName}</span>}
-                                </Link>
+                                <div key={p.caseId} className="flex flex-wrap items-center gap-1.5">
+                                  <Link href={`/nextlab/cases/${p.caseId}`} className="text-[11px] leading-tight hover:underline">
+                                    <span className="text-muted-foreground">{p.groupName ?? '-'}</span>{' '}
+                                    <span className={cn('font-medium', p.withdrawn && 'text-destructive')}>{p.withdrawn ? '중도 종료' : p.statusLabel}</span>{' '}
+                                    <span className="tabular-nums">{p.roundsDone}/{p.requiredRounds}회</span>
+                                    {p.mentorName && <span className="text-muted-foreground"> · {p.mentorName}</span>}
+                                  </Link>
+                                  <SurveyControl item={p} />
+                                </div>
                               ))
                             )}
                           </div>

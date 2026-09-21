@@ -4,7 +4,7 @@ import { requireMentee } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { getMenteeCase } from '@/lib/data/cases';
 import { getCaseSurvey, choiceOptions, scaleOptions } from '@/lib/data/survey';
-import { SURVEY_OPEN_STATUSES } from '@/lib/workflow/mentee';
+import { surveyOpenFor } from '@/lib/workflow/mentee';
 import { SurveyForm } from '@/components/mentee/survey-form';
 import { formatDateTime } from '@/lib/utils/format';
 
@@ -16,7 +16,7 @@ export default async function Page() {
   const ctx = await requireContext(profile);
   const c = await getMenteeCase(profile.id, { programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined });
   const survey = c ? await getCaseSurvey(c.id) : null;
-  const open = !!c && (SURVEY_OPEN_STATUSES as readonly string[]).includes(c.status);
+  const open = !!c && surveyOpenFor(c);
 
   return (
     <main className="flex flex-col gap-5">
@@ -32,7 +32,7 @@ export default async function Page() {
         </div>
       )}
       {c && survey && !survey.response && !open && (
-        <p className="rounded-xl border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">만족도 조사는 멘토가 종결을 요청한 뒤에 열립니다. (현재 회차 {c.roundsDone}/{c.requiredRounds})</p>
+        <p className="rounded-xl border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">만족도 조사는 목표 회차의 멘토링이 모두 끝나면 자동으로 열립니다. (현재 회차 {c.roundsDone}/{c.requiredRounds})</p>
       )}
       {c && survey && !survey.response && open && (
         <SurveyForm

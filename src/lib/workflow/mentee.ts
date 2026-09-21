@@ -68,14 +68,20 @@ export async function signRound(
   return { ok: true, caseId };
 }
 
-/** 만족도 조사 노출 조건: 종결 요청 이후 (docs §7). T9 게이트 아님. */
+/** 만족도 조사 노출 조건: 종결 요청 이후 (docs §7). T9 게이트 아님.
+ *  P20: 목표 회차 보고서 완료·운영사 [만족도 생성] = cases.survey_opened_at 도 개시 조건. */
 export const SURVEY_OPEN_STATUSES = ['closure_requested', 'revision_requested', 'settlement_pending', 'settlement_batched', 'closed'] as const;
+
+/** 케이스에 만족도 조사가 열려 있는지 (상태 게이트 또는 survey_opened_at) */
+export function surveyOpenFor(c: { status: string; survey_opened_at?: string | null }): boolean {
+  return (SURVEY_OPEN_STATUSES as readonly string[]).includes(c.status) || !!c.survey_opened_at;
+}
 
 export async function submitSurvey(caseId: string, menteeId: string, answers: Record<string, unknown>): Promise<WorkflowResult> {
   const admin = createAdminClient();
-  const { data: c } = await admin.from('cases').select('id, program_id, mentee_id, status').eq('id', caseId).maybeSingle();
+  const { data: c } = await admin.from('cases').select('id, program_id, mentee_id, status, survey_opened_at').eq('id', caseId).maybeSingle();
   if (!c || c.mentee_id !== menteeId) return { ok: false, error: '본인 케이스만 응답할 수 있습니다.' };
-  if (!(SURVEY_OPEN_STATUSES as readonly string[]).includes(c.status)) return { ok: false, error: '만족도 조사는 컨설팅 종결 요청 이후에 참여할 수 있습니다.' };
+  if (!surveyOpenFor(c)) return { ok: false, error: '만족도 조사는 목표 회차 완료 또는 종결 요청 이후에 참여할 수 있습니다.' };
   const survey = await getCaseSurvey(caseId);
   if (!survey) return { ok: false, error: '이 행사에 활성화된 만족도 양식이 없습니다.' };
   if (survey.response) return { ok: false, error: '이미 응답하셨습니다.' };

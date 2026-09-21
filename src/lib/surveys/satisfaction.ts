@@ -91,3 +91,70 @@ export async function remindSatisfaction(programId: string, supportTypeId: strin
   await admin.from('audit_logs').insert({ actor_id: actorId, program_id: programId, action: 'survey.satisfaction_reminded', entity_type: 'programs', entity_id: programId, metadata: { sent, failed, skipped } });
   return { ok: true, sent, failed, skipped };
 }
+
+const REMIND_AFTER_MS = 7 * 24 * 3600 * 1000;
+
+/**
+ * 만족도 자동 리마인드 (P20, Cron 일 1회) — 개시(survey_opened_at) 1주일 경과·미응답·미리마인드 케이스에
+ * 독려 문자 1회 발송 후 survey_reminded_at 기록. 문자 실패는 본 작업을 막지 않는다(케이스별 격리).
+ */
+export async function sendAutoSurveyReminders(): Promise<{ scanned: number; sent: number; failed: number; skipped: number }> {
+  const admin = createAdminClient();
+  const cutoff = new Date(Date.now() - REMIND_AFTER_MS).toISOString();
+  const { data: cases } = await admin
+    .from('cases')
+    .select('id, program_id, owner_name, phone, status, survey_opened_at')
+    .not('survey_opened_at', 'is', null)
+    .lte('survey_opened_at', cutoff)
+    .is('survey_reminded_at', null)
+    .neq('status', 'withdrawn')
+    .limit(200);
+  const list = cases ?? [];
+  let sent = 0;
+  let failed = 0;
+  let skipped = 0;
+  if (list.length === 0) return { scanned: 0, sent, failed, skipped };
+
+  const caseIds = list.map((c) => c.id);
+  const { data: responses } = await admin.from('survey_responses').select('case_id').in('case_id', caseIds);
+  const responded = new Set((responses ?? []).map((r) => r.case_id));
+  const programIds = Array.from(new Set(list.map((c) => c.program_id)));
+  const { data: programs } = await admin.from('programs').select('id, name, sms_footer').in('id', programIds);
+  const programById = new Map((programs ?? []).map((p) => [p.id, p]));
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
+
+  for (const c of list) {
+    if (responded.has(c.id)) {
+      // 이미 응답 — 리마인드 불필요로 마감
+      await admin.from('cases').update({ survey_reminded_at: new Date().toISOString() }).eq('id', c.id).is('survey_reminded_at', null);
+      continue;
+    }
+    const digits = (c.phone ?? '').replace(/\D/g, '');
+    if (digits.length < 10) {
+      skipped += 1;
+      await admin.from('cases').update({ survey_reminded_at: new Date().toISOString() }).eq('id', c.id).is('survey_reminded_at', null);
+      continue;
+    }
+    const p = programById.get(c.program_id);
+    const text = `[${p?.name ?? ''}] ${c.owner_name}님, 멘토링 만족도 조사가 아직 완료되지 않았습니다. 참여 부탁드립니다.\n${base}/mentee/survey (로그인 후 응답)${p?.sms_footer ? `\n${p.sms_footer}` : ''}`;
+    try {
+      const creds = await resolveSmsCredentials(c.program_id, 'send');
+      const r = await sendSolapiSms(digits, text, creds ? { creds } : {});
+      if (r.ok) sent += 1;
+      else failed += 1;
+    } catch {
+      failed += 1;
+    }
+    // 성공·실패와 무관하게 1회만 시도 (반복 발송 방지)
+    await admin.from('cases').update({ survey_reminded_at: new Date().toISOString() }).eq('id', c.id).is('survey_reminded_at', null);
+    await admin.from('audit_logs').insert({
+      actor_id: null,
+      program_id: c.program_id,
+      action: 'survey.auto_reminded',
+      entity_type: 'cases',
+      entity_id: c.id,
+      metadata: { via: 'cron' },
+    });
+  }
+  return { scanned: list.length, sent, failed, skipped };
+}

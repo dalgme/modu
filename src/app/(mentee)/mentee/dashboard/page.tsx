@@ -5,7 +5,7 @@ import { listRounds } from '@/lib/data/rounds';
 import { getCaseSurvey } from '@/lib/data/survey';
 import { listMentorChangeRequests } from '@/lib/data/mentee';
 import { listRequiredDocSlots } from '@/lib/workflow/case-documents';
-import { SURVEY_OPEN_STATUSES } from '@/lib/workflow/mentee';
+import { surveyOpenFor } from '@/lib/workflow/mentee';
 import { canTransition } from '@/lib/workflow/transitions';
 import { resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import { MenteeDashboardBody } from '@/components/mentee/mentee-dashboard-body';
@@ -51,7 +51,7 @@ export default async function Page() {
           primary
             ? {
                 unsignedRounds: policy?.menteeConfirmSignature ? rounds.filter((r) => !r.mentee_signed_at).length : 0,
-                surveyOpen: !!survey && !survey.response && (SURVEY_OPEN_STATUSES as readonly string[]).includes(primary.status),
+                surveyOpen: !!survey && !survey.response && surveyOpenFor(primary),
                 surveyDone: !!survey?.response,
                 missingDocs: slots.filter((s) => s.required && s.forRole === 'mentee' && s.files.length === 0).map((s) => s.name),
                 canRequestChange: primary.mentorId !== null && canTransition('reassign_mentor', primary.status),

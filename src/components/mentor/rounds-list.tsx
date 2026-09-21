@@ -5,12 +5,93 @@ import { useRouter } from 'next/navigation';
 import { Lock, Trash2, FileText, PenLine } from 'lucide-react';
 
 import type { RoundItem } from '@/lib/data/rounds';
-import { deleteRoundAction, collectRoundSignatureAction } from '@/lib/workflow/mentor-actions';
+import { deleteRoundAction, collectRoundSignatureAction, updatePlannedRoundAction, deletePlannedRoundAction } from '@/lib/workflow/mentor-actions';
 import { RoundReportForm } from '@/components/mentor/round-report-form';
 import { SignaturePad } from '@/components/common/signature-pad';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { formatDateTime } from '@/lib/utils/format';
+
+function toLocalParts(iso: string): { date: string; time: string } {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return {
+    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+  };
+}
+
+/** 계획(미보고) 회차 일정 수정 (P20) — 일자·시각(10분 단위)·유형·장소 */
+function PlannedRoundEditor({ caseId, round, onClose }: { caseId: string; round: RoundItem; onClose: () => void }) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [pending, start] = useTransition();
+  const s = toLocalParts(round.started_at);
+  const e = toLocalParts(round.ended_at);
+  const [date, setDate] = useState(s.date);
+  const [startTime, setStartTime] = useState(s.time);
+  const [endTime, setEndTime] = useState(e.time);
+  const [mode, setMode] = useState<'online' | 'offline'>(round.mode === 'offline' ? 'offline' : 'online');
+  const [place, setPlace] = useState(round.place ?? '');
+
+  const submit = () => {
+    if (!date || !startTime || !endTime) {
+      toast({ title: '일자와 시각을 입력하세요.', variant: 'destructive' });
+      return;
+    }
+    start(async () => {
+      const r = await updatePlannedRoundAction({
+        caseId,
+        logId: round.id,
+        mode,
+        startedAt: new Date(`${date}T${startTime}:00+09:00`).toISOString(),
+        endedAt: new Date(`${date}T${endTime}:00+09:00`).toISOString(),
+        place,
+      });
+      toast(r.ok ? { title: '일정을 수정했습니다.' } : { title: r.error, variant: 'destructive' });
+      if (r.ok) {
+        onClose();
+        router.refresh();
+      }
+    });
+  };
+
+  return (
+    <div className="mt-2 flex flex-col gap-2 rounded-lg border border-sky-300 bg-sky-50/50 p-3 text-sm dark:border-sky-800 dark:bg-sky-950/20">
+      <p className="font-semibold">{round.round_no}회차 일정 수정</p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-xs">
+          일자
+          <input type="date" value={date} onChange={(ev) => setDate(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs">
+          시작
+          <input type="time" step={600} value={startTime} onChange={(ev) => setStartTime(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs">
+          종료
+          <input type="time" step={600} value={endTime} onChange={(ev) => setEndTime(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
+        </label>
+        <label className="flex flex-col gap-1 text-xs">
+          방법
+          <select value={mode} onChange={(ev) => setMode(ev.target.value as 'online' | 'offline')} className="h-9 rounded-md border bg-background px-2">
+            <option value="online">온라인</option>
+            <option value="offline">오프라인</option>
+          </select>
+        </label>
+        <label className="flex flex-1 flex-col gap-1 text-xs">
+          장소
+          <input value={place} onChange={(ev) => setPlace(ev.target.value)} placeholder="장소" className="h-9 min-w-[140px] rounded-md border bg-background px-2" />
+        </label>
+      </div>
+      <p className="text-[11px] text-muted-foreground">일자·방법을 바꾸면 그 날짜 기준 단가로 다시 확정되고, 일일 상한·시간 겹침 검증을 다시 통과해야 합니다.</p>
+      <div className="flex justify-end gap-2">
+        <Button size="sm" variant="outline" onClick={onClose} disabled={pending}>취소</Button>
+        <Button size="sm" onClick={submit} disabled={pending}>{pending ? '저장 중…' : '일정 저장'}</Button>
+      </div>
+    </div>
+  );
+}
 
 /** 현장 서명 수집 (P20) — 멘토 스마트폰 화면을 멘티에게 건네 터치 서명을 받는다 */
 function CollectSignature({ caseId, logId, roundNo }: { caseId: string; logId: string; roundNo: number }) {
@@ -67,6 +148,7 @@ export function RoundsList({ caseId, rounds, editable }: { caseId: string; round
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
+  const [editingPlan, setEditingPlan] = useState<string | null>(null);
   if (rounds.length === 0) return <p className="text-sm text-muted-foreground">등록된 회차가 없습니다.</p>;
   const last = rounds[rounds.length - 1]!;
   return (
@@ -98,23 +180,33 @@ export function RoundsList({ caseId, rounds, editable }: { caseId: string; round
               ))}
               {r.locked && <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><Lock className="h-3 w-3" /> 정산 포함</span>}
             </div>
-            {editable && r.id === last.id && !r.locked && (
-              <Button
-                size="sm"
-                variant="ghost"
-                disabled={pending}
-                onClick={() => {
-                  if (!confirm(`${r.round_no}회차를 삭제할까요? 사진·보고서 파일도 함께 삭제됩니다.`)) return;
-                  start(async () => {
-                    const res = await deleteRoundAction(caseId, r.id);
-                    toast(res.ok ? { title: '삭제했습니다.' } : { title: res.error, variant: 'destructive' });
-                    if (res.ok) router.refresh();
-                  });
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            )}
+            <div className="flex items-center gap-1">
+              {/* 계획(미보고) 회차: 개별 일정 수정·삭제 (P20) */}
+              {editable && !r.report_registered_at && !r.locked && (
+                <Button size="sm" variant="outline" disabled={pending} onClick={() => setEditingPlan((v) => (v === r.id ? null : r.id))}>
+                  일정 수정
+                </Button>
+              )}
+              {editable && !r.locked && (r.id === last.id || !r.report_registered_at) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={pending}
+                  onClick={() => {
+                    if (!confirm(`${r.round_no}회차를 삭제할까요?${r.report_registered_at ? ' 사진·보고서 파일도 함께 삭제됩니다.' : ''}`)) return;
+                    start(async () => {
+                      const res = r.report_registered_at
+                        ? await deleteRoundAction(caseId, r.id)
+                        : await deletePlannedRoundAction(caseId, r.id);
+                      toast(res.ok ? { title: '삭제했습니다.' } : { title: res.error, variant: 'destructive' });
+                      if (res.ok) router.refresh();
+                    });
+                  }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
           </div>
           {participants.length > 0 && (
             <p className="mt-2 text-xs text-muted-foreground">
@@ -140,6 +232,9 @@ export function RoundsList({ caseId, rounds, editable }: { caseId: string; round
                 ) : null,
               )}
             </div>
+          )}
+          {editable && editingPlan === r.id && !r.report_registered_at && !r.locked && (
+            <PlannedRoundEditor caseId={caseId} round={r} onClose={() => setEditingPlan(null)} />
           )}
           {editable && !r.report_registered_at && !r.locked && !planned && (
             <div className="mt-2">

@@ -12,6 +12,10 @@
     {
       "path": "/api/cron/mentor-weekly-reminder",
       "schedule": "30 3 * * 1"
+    },
+    {
+      "path": "/api/cron/survey-reminders",
+      "schedule": "0 1 * * *"
     }
   ]
 }

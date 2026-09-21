@@ -5,7 +5,8 @@ import { revalidatePath } from 'next/cache';
 import { mentorOrNull, mentorOfCaseOrNull, MENTOR_ONLY_ERROR, NOT_ASSIGNED_ERROR } from '@/lib/auth/guards';
 import { getImpersonation } from '@/lib/auth/impersonation';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { submitRound, updateRound, deleteRound, registerRoundReport, type RoundInput, type RoundReportInput, type RoundResult } from '@/lib/workflow/rounds';
+import { submitRound, updateRound, deleteRound, updatePlannedRound, deletePlannedRound, registerRoundReport, type RoundInput, type RoundReportInput, type RoundResult } from '@/lib/workflow/rounds';
+import type { ConsultingMode } from '@/lib/settlement/rates';
 import {
   normalizeObservation,
   requestClosure,
@@ -68,6 +69,24 @@ export async function updateRoundAction(input: { caseId: string; logId: string; 
   if (!profile) return { ok: false, error: NOT_ASSIGNED_ERROR };
   const result = await updateRound({ ...input, mentorId: profile.id });
   if (result.ok) revalidate(input.caseId);
+  return result;
+}
+
+/** 멘토: 계획(미보고) 회차 일정 수정 — 일자·시각·유형·장소 (P20) */
+export async function updatePlannedRoundAction(input: { caseId: string; logId: string; mode: ConsultingMode; startedAt: string; endedAt: string; place?: string }): Promise<WorkflowResult> {
+  const profile = await mentorOfCaseOrNull(input.caseId);
+  if (!profile) return { ok: false, error: NOT_ASSIGNED_ERROR };
+  const result = await updatePlannedRound({ ...input, mentorId: profile.id });
+  if (result.ok) revalidate(input.caseId);
+  return result;
+}
+
+/** 멘토: 계획(미보고) 회차 삭제 — 마지막이 아니어도 가능, 뒤 번호를 당긴다 (P20) */
+export async function deletePlannedRoundAction(caseId: string, logId: string): Promise<WorkflowResult> {
+  const profile = await mentorOfCaseOrNull(caseId);
+  if (!profile) return { ok: false, error: NOT_ASSIGNED_ERROR };
+  const result = await deletePlannedRound(logId, profile.id);
+  if (result.ok) revalidate(caseId);
   return result;
 }
 

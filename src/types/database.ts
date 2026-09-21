@@ -304,6 +304,8 @@ export type Database = {
           predecessor_case_id: string | null;
           program_id: string;
           status: Database['public']['Enums']['case_status'];
+          survey_opened_at: string | null;
+          survey_reminded_at: string | null;
           support_type_id: string;
           updated_at: string;
           withdrawn_at: string | null;
@@ -329,6 +331,8 @@ export type Database = {
           predecessor_case_id?: string | null;
           program_id: string;
           status?: Database['public']['Enums']['case_status'];
+          survey_opened_at?: string | null;
+          survey_reminded_at?: string | null;
           support_type_id: string;
           updated_at?: string;
           withdrawn_at?: string | null;
@@ -354,6 +358,8 @@ export type Database = {
           predecessor_case_id?: string | null;
           program_id?: string;
           status?: Database['public']['Enums']['case_status'];
+          survey_opened_at?: string | null;
+          survey_reminded_at?: string | null;
           support_type_id?: string;
           updated_at?: string;
           withdrawn_at?: string | null;

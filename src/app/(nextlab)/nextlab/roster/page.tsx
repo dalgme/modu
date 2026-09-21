@@ -79,6 +79,11 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
 
   if (tab === 'mentee') {
     const cases = await listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined });
+    const { createAdminClient } = await import('@/lib/supabase/admin');
+    const { data: responses } = cases.length
+      ? await createAdminClient().from('survey_responses').select('case_id').in('case_id', cases.map((c) => c.id))
+      : { data: [] as { case_id: string }[] };
+    const responded = new Set((responses ?? []).map((r) => r.case_id));
     const progress: Record<string, MenteeProgressItem[]> = {};
     for (const c of cases) {
       if (!c.mentee_id) continue;
@@ -90,6 +95,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         roundsDone: c.roundsDone,
         requiredRounds: c.requiredRounds,
         mentorName: c.mentorName,
+        surveyStatus: responded.has(c.id) ? 'done' : c.survey_opened_at ? 'open' : 'none',
       });
     }
     body = (
