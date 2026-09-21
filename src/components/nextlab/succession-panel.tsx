@@ -43,7 +43,7 @@ export function SuccessionPanel({ groups, sourceGroupId, cases }: { groups: { id
       <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-background p-4 text-sm">
         <div className="flex flex-col gap-1">
           <span className="text-xs text-muted-foreground">원천 그룹</span>
-          <select value={sourceGroupId} onChange={(e) => router.push(`/nextlab/succession?source=${e.target.value}`)} className="h-9 rounded-md border bg-background px-2 text-sm">
+          <select value={sourceGroupId} onChange={(e) => router.push(`/nextlab/settings?tab=succession&source=${e.target.value}`)} className="h-9 rounded-md border bg-background px-2 text-sm">
             {groups.map((g) => (
               <option key={g.id} value={g.id}>{g.code} · {g.name}</option>
             ))}

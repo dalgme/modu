@@ -6,6 +6,8 @@ import { requireContext } from '@/lib/programs/context';
 import { fmt } from '@/lib/programs/branding';
 import { listCases } from '@/lib/data/cases';
 import { countOpenInquiries } from '@/lib/data/inquiries';
+import { listBoardPosts } from '@/lib/data/board';
+import { listProgramMessages } from '@/lib/messages/data';
 import { listOperatorRequests } from '@/lib/data/operator-requests';
 import { countPendingInbox } from '@/lib/data/requests';
 import { computeProgramMetrics } from '@/lib/reports/metrics';
@@ -18,14 +20,20 @@ import { OperatorRequestsPanel, OperatorRequestsHeading } from '@/components/nex
 export default async function Page() {
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
-  const [cases, openInquiries, operatorRequests, pendingInbox, metrics] = await Promise.all([
+  const [cases, openInquiries, operatorRequests, pendingInbox, metrics, boardPosts, programMessages] = await Promise.all([
     listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined }),
     countOpenInquiries(),
     listOperatorRequests(),
     countPendingInbox(ctx.programId, ctx.supportTypeId ?? undefined),
     computeProgramMetrics(ctx.programId, ctx.supportTypeId ?? null),
+    listBoardPosts(),
+    listProgramMessages(ctx.programId),
   ]);
   const unreadRequests = operatorRequests.filter((r) => !r.read_at).length;
+  // 게시판 알람 — 답변 없는 게시글 + 수신자 미확인 메시지 (새 글 등록 시 대시보드 알림, P20)
+  const unansweredPosts = boardPosts.filter((p) => p.replies.length === 0).length;
+  const unreadMessages = programMessages.filter((m) => !m.read).length;
+  const boardAlerts = openInquiries + unansweredPosts + unreadMessages;
   const b = ctx.branding;
 
   return (
@@ -48,9 +56,16 @@ export default async function Page() {
       <MetricsTiles m={metrics} base="/nextlab" reportsHref="/nextlab/reports" />
 
       {pendingInbox > 0 && (
-        <Link href="/nextlab/requests" className="flex items-center justify-between gap-3 rounded-lg border border-amber-300 bg-amber-50/50 px-4 py-3 text-sm font-semibold text-amber-900 hover:bg-amber-50">
+        <Link href="/nextlab/board?tab=requests" className="flex items-center justify-between gap-3 rounded-lg border border-amber-400 bg-amber-50/60 px-4 py-3 text-sm font-semibold text-amber-900 hover:bg-amber-50">
           <span>처리 대기 요청 {pendingInbox}건 (추가 회차 · 멘토 변경 · 중도 종료)</span>
-          <span className="underline-offset-4">요청함으로 이동 →</span>
+          <span className="underline-offset-4">게시판 요청함으로 이동 →</span>
+        </Link>
+      )}
+
+      {boardAlerts > 0 && (
+        <Link href="/nextlab/board" className="flex items-center justify-between gap-3 rounded-lg border border-sky-400 bg-sky-50/60 px-4 py-3 text-sm font-semibold text-sky-900 hover:bg-sky-50">
+          <span>🔔 게시판 새 글·미확인 {boardAlerts}건 (문의 {openInquiries} · 게시글 {unansweredPosts} · 메시지 {unreadMessages})</span>
+          <span className="underline-offset-4">게시판으로 이동 →</span>
         </Link>
       )}
 
@@ -61,7 +76,7 @@ export default async function Page() {
 
       {openInquiries > 0 && (
         <Link
-          href="/nextlab/inquiries"
+          href="/nextlab/board?tab=inquiries"
           className="flex items-center justify-between gap-3 rounded-lg border border-status-progress/40 bg-status-progress/10 px-4 py-3 transition-colors hover:bg-status-progress/15"
         >
           <span className="flex items-center gap-2 text-sm font-semibold text-status-progress">

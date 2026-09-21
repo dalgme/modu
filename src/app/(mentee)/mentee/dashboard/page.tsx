@@ -11,6 +11,8 @@ import { resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import { MenteeDashboardBody } from '@/components/mentee/mentee-dashboard-body';
 import { listMyOpenSurveys } from '@/lib/surveys/campaigns';
 import { OpenSurveysCard } from '@/components/surveys/open-surveys-card';
+import { countUnreadMessages } from '@/lib/messages/data';
+import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,8 +32,16 @@ export default async function Page() {
   const pendingChange = changeRequests.find((r) => r.status === 'pending') ?? null;
   const lastDecision = changeRequests.find((r) => r.status !== 'pending') ?? null;
 
+  const unreadMessages = await countUnreadMessages(profile.id, ctx.programId);
+
   return (
     <main className="flex flex-col gap-5">
+      {unreadMessages > 0 && (
+        <Link href="/mentee/inquiries?tab=messages" className="flex items-center justify-between gap-3 rounded-lg border border-sky-400 bg-sky-50/60 px-4 py-3 text-sm font-semibold text-sky-900 hover:bg-sky-50">
+          <span>🔔 담당 멘토가 보낸 새 메시지 {unreadMessages}건</span>
+          <span className="underline-offset-4">메시지 확인 →</span>
+        </Link>
+      )}
       {openSurveys.length > 0 && <div className="mb-4"><OpenSurveysCard surveys={openSurveys} /></div>}
       <MenteeDashboardBody
         name={profile.name}

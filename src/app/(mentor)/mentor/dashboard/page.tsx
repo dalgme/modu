@@ -5,6 +5,7 @@ import { MentorDashboardBody } from '@/components/mentor/mentor-dashboard-body';
 import { listMyOpenSurveys } from '@/lib/surveys/campaigns';
 import { OpenSurveysCard } from '@/components/surveys/open-surveys-card';
 import { getMentorFormsForMentor } from '@/lib/mentor-forms/data';
+import { countUnreadMessages } from '@/lib/messages/data';
 import Link from 'next/link';
 
 export default async function Page() {
@@ -13,8 +14,15 @@ export default async function Page() {
   const cases = await listMentorCases(profile.id, { programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined });
   const openSurveys = await listMyOpenSurveys(profile.id, ctx.programId);
   const pendingForms = (await getMentorFormsForMentor(ctx.programId, profile.id)).filter((f) => !f.submittedAt);
+  const unreadMessages = await countUnreadMessages(profile.id, ctx.programId);
   return (
     <main className="flex flex-col gap-6">
+      {unreadMessages > 0 && (
+        <Link href="/mentor/qna?tab=messages" className="flex items-center justify-between gap-3 rounded-lg border border-sky-400 bg-sky-50/60 px-4 py-3 text-sm font-semibold text-sky-900 hover:bg-sky-50">
+          <span>🔔 멘티가 보낸 새 메시지 {unreadMessages}건</span>
+          <span className="underline-offset-4">메시지 확인 →</span>
+        </Link>
+      )}
       {pendingForms.length > 0 && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
           <p>

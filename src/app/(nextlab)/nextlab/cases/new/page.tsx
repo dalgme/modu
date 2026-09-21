@@ -16,7 +16,7 @@ export default async function Page() {
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
           <h1 className="text-2xl font-semibold">멘티 등록</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{ctx.program.name} — 케이스를 만들고 멘티 계정을 발급합니다. 여러 명은 <Link href="/nextlab/members/import" className="underline">엑셀 일괄 등록</Link>을 이용하세요.</p>
+          <p className="mt-1 text-sm text-muted-foreground">{ctx.program.name} — 케이스를 만들고 멘티 계정을 발급합니다. 여러 명은 <Link href="/nextlab/roster?tab=register" className="underline">회원 등록의 엑셀 일괄 등록</Link>을 이용하세요.</p>
         </div>
         <Link href="/nextlab/dashboard" className="text-sm text-muted-foreground hover:underline">대시보드</Link>
       </div>

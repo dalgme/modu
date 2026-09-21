@@ -9,14 +9,11 @@ const TABS = [
   { href: '/nextlab/dashboard', label: '대시보드' },
   { href: '/nextlab/reports', label: '리포트' },
   { href: '/nextlab/roster', label: '회원 명단' },
-  { href: '/nextlab/requests', label: '요청함' },
-  { href: '/nextlab/inquiries', label: '멘티 문의' },
-  { href: '/nextlab/qna', label: '멘토·운영 게시판' },
+  { href: '/nextlab/board', label: '게시판' },
   { href: '/nextlab/settlements', label: '정산·품의' },
   { href: '/nextlab/surveys', label: '조사' },
   { href: '/nextlab/settings', label: '운영 설정' },
   { href: '/admin/settings/sms', label: '문자발송' },
-  { href: '/admin/settings/faq', label: '멘토 FAQ' },
 ];
 
 /** 운영사 총괄관리자 상단 탭 내비게이션 */
