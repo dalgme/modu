@@ -496,3 +496,31 @@ export async function updateStaffPermissionsAction(input: unknown): Promise<Resu
   revalidatePath('/', 'layout');
   return { ok: true };
 }
+
+const budgetsSchema = z.object({
+  programBudget: z.number().min(0).nullable(),
+  groups: z.array(z.object({ id: z.string().uuid(), budget: z.number().min(0).nullable() })).max(20),
+});
+
+/** 멘토링 예산 저장 (P22) — 행사 전체 + 그룹별. 금액 관련이므로 settings.money 권한. */
+export async function saveBudgetsAction(input: unknown): Promise<Result> {
+  const op = await operator('settings.money');
+  if ('error' in op) return { ok: false, error: op.error };
+  const parsed = budgetsSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: '입력값을 확인하세요.' };
+  const admin = createAdminClient();
+
+  const { data: before } = await admin.from('programs').select('mentoring_budget').eq('id', op.programId).maybeSingle();
+  const { error: pErr } = await admin.from('programs').update({ mentoring_budget: parsed.data.programBudget }).eq('id', op.programId);
+  if (pErr) return { ok: false, error: pErr.message };
+  for (const g of parsed.data.groups) {
+    const { error } = await admin.from('support_types').update({ mentoring_budget: g.budget }).eq('id', g.id).eq('program_id', op.programId);
+    if (error) return { ok: false, error: error.message };
+  }
+  await audit(op.id, op.programId, 'mentoring_budget', before?.mentoring_budget ?? null, { program: parsed.data.programBudget, groups: parsed.data.groups.length });
+  revalidateAll();
+  revalidatePath('/nextlab/reports');
+  revalidatePath('/institution/reports');
+  revalidatePath('/institution/settlements');
+  return { ok: true };
+}

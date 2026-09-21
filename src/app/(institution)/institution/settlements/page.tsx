@@ -6,6 +6,8 @@ import { fmt } from '@/lib/programs/branding';
 import { listBatches, listSettlements, BATCH_STATUS_LABELS } from '@/lib/data/settlements';
 import { SettlementsTable } from '@/components/settlement/settlements-table';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { computeBudgetOverview } from '@/lib/reports/budget';
+import { BudgetCard } from '@/components/reports/budget-card';
 import { CASE_STATUS_META, type CaseStatus } from '@/types/case-status';
 import { formatDate, formatKRW } from '@/lib/utils/format';
 
@@ -115,8 +117,10 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     const forecastTotal = forecastRows.reduce((s, r) => s + r.amount, 0);
     const pendingNet = pending.reduce((s, r) => s + Number(r.net), 0);
 
+    const budget = await computeBudgetOverview(ctx.programId, ctx.supportTypeId ?? null);
     body = (
       <div className="flex flex-col gap-5">
+        <BudgetCard overview={budget} />
         <div className="grid gap-2 sm:grid-cols-3">
           <div className="rounded-xl border-2 bg-background p-3">
             <p className="text-xs text-muted-foreground">확정 · 품의 대기 (검수 승인)</p>

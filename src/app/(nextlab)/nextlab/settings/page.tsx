@@ -22,6 +22,7 @@ import { listCases } from '@/lib/data/cases';
 import { loadProgramAuditRows } from '@/lib/audit/rows';
 import { SuccessionPanel } from '@/components/nextlab/succession-panel';
 import { AuditTable } from '@/components/audit/audit-table';
+import { BudgetForm } from '@/components/settings/budget-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +31,7 @@ const TABS = [
   { key: 'groups', label: '사업그룹·필수서류' },
   { key: 'rates', label: '단가·한도' },
   { key: 'withholding', label: '정산(원천징수)' },
+  { key: 'budget', label: '예산' },
   { key: 'gates', label: '종결 게이트·서명 정책' },
   { key: 'reports', label: '보고서 양식' },
   { key: 'survey', label: '만족도 양식' },
@@ -66,6 +68,17 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     body = <RatesLimits rates={rates} limits={limits} groups={groups.map((g) => ({ id: g.id, name: g.name }))} today={today} />;
   }
   if (tab === 'withholding') body = <WithholdingForm program={program} />;
+  if (tab === 'budget') {
+    const groups = await listSupportTypes(ctx.programId);
+    body = (
+      <BudgetForm
+        value={{
+          programBudget: program.mentoring_budget === null ? null : Number(program.mentoring_budget),
+          groups: groups.map((g) => ({ id: g.id, name: g.name, budget: g.mentoring_budget === null ? null : Number(g.mentoring_budget) })),
+        }}
+      />
+    );
+  }
   if (tab === 'gates') {
     const tpl = await resolveRoundReportTemplate(ctx.programId, null);
     body = <GatesForm program={program} programTemplateHasMentorSign={tpl.hasMentorSign} />;

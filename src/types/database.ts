@@ -2018,6 +2018,7 @@ export type Database = {
       };
       programs: {
         Row: {
+          mentoring_budget: number | null;
           app_title: string | null;
           client_logo_path: string | null;
           client_name: string;
@@ -2048,6 +2049,7 @@ export type Database = {
           withholding_params: Json;
         };
         Insert: {
+          mentoring_budget?: number | null;
           app_title?: string | null;
           client_logo_path?: string | null;
           client_name: string;
@@ -2078,6 +2080,7 @@ export type Database = {
           withholding_params?: Json;
         };
         Update: {
+          mentoring_budget?: number | null;
           app_title?: string | null;
           client_logo_path?: string | null;
           client_name?: string;
@@ -2845,6 +2848,7 @@ export type Database = {
       };
       support_types: {
         Row: {
+          mentoring_budget: number | null;
           code: string;
           created_at: string;
           description: string | null;
@@ -2863,6 +2867,7 @@ export type Database = {
           withholding_method: string | null;
         };
         Insert: {
+          mentoring_budget?: number | null;
           code: string;
           created_at?: string;
           description?: string | null;
@@ -2881,6 +2886,7 @@ export type Database = {
           withholding_method?: string | null;
         };
         Update: {
+          mentoring_budget?: number | null;
           code?: string;
           created_at?: string;
           description?: string | null;

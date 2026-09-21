@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { Download } from 'lucide-react';
 
 import type { ProgramMetrics } from '@/lib/reports/metrics';
+import type { BudgetOverview } from '@/lib/reports/budget';
+import { BudgetCard } from '@/components/reports/budget-card';
 import type { CaseListItem } from '@/lib/data/cases';
 import type { SettlementItem } from '@/lib/data/settlements';
 import { CASE_STATUSES, CASE_STATUS_META } from '@/types/case-status';
@@ -35,6 +37,7 @@ export function ReportsBody({
   exportHref,
   groupFilter,
   casesView = 'mentee',
+  budget,
 }: {
   m: ProgramMetrics;
   tab: ReportTab;
@@ -45,6 +48,8 @@ export function ReportsBody({
   exportHref: string;
   groupFilter?: { current: string | null; options: { id: string; name: string }[] };
   casesView?: 'mentee' | 'mentor';
+  /** 예산 집행 게이지 (개요 탭, P22) */
+  budget?: BudgetOverview;
 }) {
   const reportsHref = `${base}/reports`;
   const groupQs = groupFilter?.current ? `&group=${groupFilter.current}` : '';
@@ -81,7 +86,12 @@ export function ReportsBody({
         </a>
       </div>
 
-      {tab === 'overview' && <MetricsTiles m={m} base={base} reportsHref={reportsHref} />}
+      {tab === 'overview' && (
+        <div className="flex flex-col gap-4">
+          {budget && <BudgetCard overview={budget} settingsHint={base === '/nextlab'} />}
+          <MetricsTiles m={m} base={base} reportsHref={reportsHref} />
+        </div>
+      )}
 
       {tab === 'cases' && (
         <div className="grid gap-4 lg:grid-cols-[170px_1fr]">
