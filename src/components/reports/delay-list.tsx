@@ -5,8 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { BellRing } from 'lucide-react';
 
-import type { DelayedCase, DelayKind } from '@/lib/reports/delays';
-import { DELAY_LABELS } from '@/lib/reports/delays';
+import type { DelayedCase, DelayKind } from '@/lib/reports/delays-shared';
+import { DELAY_LABELS } from '@/lib/reports/delays-shared';
 import { sendDelayNudgeAction } from '@/lib/reports/delay-actions';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';

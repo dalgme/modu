@@ -33,7 +33,11 @@ export async function sendDelayNudgeAction(caseIds: string[]): Promise<NudgeResu
 
   const admin = createAdminClient();
   const byMentor = new Map<string, typeof delayed>();
-  for (const d of delayed) (byMentor.get(d.mentorId!) ?? byMentor.set(d.mentorId!, []).get(d.mentorId!)!).push(d);
+  for (const d of delayed) {
+    const list = byMentor.get(d.mentorId!) ?? [];
+    list.push(d);
+    byMentor.set(d.mentorId!, list);
+  }
   const { data: mentors } = await admin.from('users').select('id, name, phone').in('id', Array.from(byMentor.keys()));
   const mentorById = new Map((mentors ?? []).map((m) => [m.id, m]));
   const creds = await resolveSmsCredentials(ctx.programId, 'send');
@@ -42,7 +46,7 @@ export async function sendDelayNudgeAction(caseIds: string[]): Promise<NudgeResu
   let sent = 0;
   let failed = 0;
   let skipped = 0;
-  for (const [mentorId, items] of byMentor) {
+  for (const [mentorId, items] of Array.from(byMentor.entries())) {
     const m = mentorById.get(mentorId);
     const digits = (m?.phone ?? '').replace(/\D/g, '');
     if (!m || digits.length < 10) {

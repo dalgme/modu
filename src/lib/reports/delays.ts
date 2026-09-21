@@ -11,37 +11,9 @@ import { createAdminClient } from '@/lib/supabase/admin';
  *  - stalled     마지막 활동 후 장기 무진행(잔여 회차 있음) → 멘토 독려
  *  - revision    보완 요청 후 재제출 지연 → 멘토 독려
  */
-export const DELAY_DAYS = {
-  unassigned: 7,
-  reassign: 7,
-  no_round: 14,
-  stalled: 21,
-  revision: 7,
-} as const;
+import { DELAY_DAYS, type DelayedCase } from '@/lib/reports/delays-shared';
 
-export type DelayKind = keyof typeof DELAY_DAYS;
-
-export const DELAY_LABELS: Record<DelayKind, string> = {
-  unassigned: `배정 지연 (등록 후 ${DELAY_DAYS.unassigned}일↑)`,
-  reassign: `재배정 지연 (대기 ${DELAY_DAYS.reassign}일↑)`,
-  no_round: `첫 회차 없음 (배정 후 ${DELAY_DAYS.no_round}일↑)`,
-  stalled: `장기 무진행 (마지막 활동 후 ${DELAY_DAYS.stalled}일↑)`,
-  revision: `보완 지연 (요청 후 ${DELAY_DAYS.revision}일↑)`,
-};
-
-export interface DelayedCase {
-  caseId: string;
-  kind: DelayKind;
-  days: number;
-  ownerName: string;
-  businessName: string;
-  groupName: string | null;
-  status: string;
-  mentorId: string | null;
-  mentorName: string | null;
-  roundsDone: number;
-  requiredRounds: number;
-}
+export { DELAY_DAYS, DELAY_LABELS, type DelayKind, type DelayedCase } from '@/lib/reports/delays-shared';
 
 const daysSince = (iso: string | null): number =>
   iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 86400000) : 0;
