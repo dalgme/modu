@@ -4,6 +4,7 @@ import { listSupportTypes } from '@/lib/programs/data';
 import { loadReportData } from '@/lib/reports/page-data';
 import { computeBudgetOverview } from '@/lib/reports/budget';
 import { listDelayedCases } from '@/lib/reports/delays';
+import { computeMonthlyTrend } from '@/lib/reports/trend';
 import { REPORT_TABS, ReportsBody, type ReportTab } from '@/components/reports/reports-body';
 
 export const dynamic = 'force-dynamic';
@@ -18,6 +19,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   const { m, cases, settlements } = await loadReportData(ctx.programId, groupId);
   const budget = tab === 'overview' ? await computeBudgetOverview(ctx.programId, groupId) : undefined;
   const delays = tab === 'backlog' ? await listDelayedCases(ctx.programId, groupId) : undefined;
+  const trend = tab === 'trend' ? await computeMonthlyTrend(ctx.programId, groupId) : undefined;
   return (
     <main className="flex flex-col gap-5">
       <div>
@@ -36,6 +38,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         casesView={searchParams.view === 'mentor' ? 'mentor' : 'mentee'}
         budget={budget}
         delays={delays}
+        trend={trend}
       />
     </main>
   );

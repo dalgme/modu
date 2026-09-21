@@ -6,6 +6,8 @@ import type { BudgetOverview } from '@/lib/reports/budget';
 import { BudgetCard } from '@/components/reports/budget-card';
 import type { DelayedCase } from '@/lib/reports/delays';
 import { DelayList } from '@/components/reports/delay-list';
+import type { TrendMonth } from '@/lib/reports/trend';
+import { TrendCharts } from '@/components/reports/trend-charts';
 import type { CaseListItem } from '@/lib/data/cases';
 import type { SettlementItem } from '@/lib/data/settlements';
 import { CASE_STATUSES, CASE_STATUS_META } from '@/types/case-status';
@@ -18,6 +20,7 @@ import { formatKRW } from '@/lib/utils/format';
 
 export const REPORT_TABS = [
   { key: 'overview', label: '개요' },
+  { key: 'trend', label: '월별 추이' },
   { key: 'cases', label: '진행현황' },
   { key: 'mentors', label: '멘토 실적' },
   { key: 'groups', label: '그룹 실적' },
@@ -41,6 +44,7 @@ export function ReportsBody({
   casesView = 'mentee',
   budget,
   delays,
+  trend,
 }: {
   m: ProgramMetrics;
   tab: ReportTab;
@@ -55,6 +59,8 @@ export function ReportsBody({
   budget?: BudgetOverview;
   /** 지연 케이스 목록 (잔여 과업 탭, P22) */
   delays?: DelayedCase[];
+  /** 월별 추이 (월별 추이 탭, P22) */
+  trend?: TrendMonth[];
 }) {
   const reportsHref = `${base}/reports`;
   const groupQs = groupFilter?.current ? `&group=${groupFilter.current}` : '';
@@ -97,6 +103,8 @@ export function ReportsBody({
           <MetricsTiles m={m} base={base} reportsHref={reportsHref} />
         </div>
       )}
+
+      {tab === 'trend' && trend && <TrendCharts months={trend} />}
 
       {tab === 'cases' && (
         <div className="grid gap-4 lg:grid-cols-[170px_1fr]">
