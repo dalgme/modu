@@ -139,9 +139,16 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             }))}
           />
         )}
-        <div>
-          <h2 className="text-lg font-semibold">멘토별 진행현황 · 지급서류</h2>
-          <p className="text-xs text-muted-foreground">담당 멘티 · 이행 회차 · 확정 실지급 · 지급서류(이력서·통장사본·신분증사본) · 그룹별 원천징수 · 운영사 평가. 지급서류 체크는 비밀번호 재인증이 필요합니다.</p>
+        <div className="flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-semibold">멘토별 진행현황 · 지급서류</h2>
+            <p className="text-xs text-muted-foreground">담당 멘티 · 이행 회차 · 확정 실지급 · 지급서류(이력서·통장사본·신분증사본) · 그룹별 원천징수 · 운영사 평가. 지급서류 체크는 비밀번호 재인증이 필요합니다.</p>
+          </div>
+          <Button asChild variant="outline" size="sm" className="gap-1">
+            <a href="/api/staff/mentor-docs-zip" title="멘토별 폴더로 정리된 ZIP — 지급서류(이력서·통장·신분증)와 위촉 서식 제출 파일">
+              <Download className="h-4 w-4" /> 멘토 서류 일괄 다운로드 (ZIP)
+            </a>
+          </Button>
         </div>
         <MentorsRoster mentors={mentors} groups={groups.map((g) => ({ id: g.id, name: g.name }))} />
         <div>

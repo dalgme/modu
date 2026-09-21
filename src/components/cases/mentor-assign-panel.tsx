@@ -39,6 +39,8 @@ interface MentorAssignPanelProps {
   currentMentorId?: string | null;
   /** 이미 배정된 케이스에서 다른 멘토로 재배정 가능한지 (진행중 상태) */
   reassignable?: boolean;
+  /** 배정 회수 가능(회차 등록 전 mentor_assigned) — 회차 시작 후 해제는 중도 종료 패널 */
+  recallable?: boolean;
   /** 대시보드로 이동 버튼 링크 (기본 운영사 대시보드) */
   dashboardHref?: string;
 }
@@ -50,6 +52,7 @@ export function MentorAssignPanel({
   currentMentorName,
   currentMentorId,
   reassignable = false,
+  recallable = false,
   dashboardHref = '/nextlab/dashboard',
 }: MentorAssignPanelProps) {
   const router = useRouter();
@@ -152,7 +155,10 @@ export function MentorAssignPanel({
           </div>
         ) : reassignable ? (
           <p className="text-xs text-muted-foreground">
-            멘토 사정으로 담당자 변경이 필요하면 다른 멘토로 재배정할 수 있습니다.
+            [멘토 재배정] = 지금 바로 다른 멘토로 교체 — 이미 진행한 회차는 그대로 두고 <b>잔여 회차를 새 멘토가 이어서</b> 진행합니다.
+            {recallable
+              ? ' [배정 회수] = 배정을 해제하고 멘티 등록 단계로 되돌립니다(회차 시작 전에만).'
+              : ' 새 멘토를 정하지 않고 배정만 해제하려면 아래 [중도 종료] 패널에서 강제 종료하세요 — 이행 회차는 부분 정산되고, 재배정 대기 상태에서 나중에 새 멘토를 배정하면 잔여 회차가 승계됩니다.'}
           </p>
         ) : (
           <p className="text-xs text-muted-foreground">
@@ -171,14 +177,14 @@ export function MentorAssignPanel({
               멘토 재배정
             </Button>
           )}
-          {reassignable && (
+          {recallable && (
             <Button
               onClick={onRecall}
               disabled={recalling}
               className="gap-1.5 bg-rose-600 text-white hover:bg-rose-700"
             >
               <Undo2 className="h-4 w-4" />
-              {recalling ? '회수 중…' : '배정 회수'}
+              {recalling ? '회수 중…' : '배정 회수 (해제)'}
             </Button>
           )}
           <Button asChild className="gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90">

@@ -84,6 +84,7 @@ export default async function Page({ params }: { params: { id: string } }) {
           currentMentorName={item.mentorName}
           currentMentorId={item.mentorId}
           reassignable={item.mentorId !== null && canTransition('reassign_mentor', item.status)}
+          recallable={item.mentorId !== null && canTransition('recall_mentor', item.status)}
         />
 
         {(canTransition('assign_mentor', item.status) || canTransition('reassign_mentor', item.status)) && (

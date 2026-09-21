@@ -10,11 +10,20 @@ export default async function Page() {
 
   return (
     <main className="flex flex-col gap-5">
-      <div>
-        <h1 className="text-2xl font-semibold">멘토 현황</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          멘토별 연락처와 현재까지 배정받은 멘티기업 수를 확인합니다. (총 {mentors.length}명)
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">멘토 현황</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            멘토별 연락처와 현재까지 배정받은 멘티기업 수를 확인합니다. (총 {mentors.length}명)
+          </p>
+        </div>
+        <a
+          href="/api/staff/mentor-docs-zip"
+          title="멘토별 폴더로 정리된 ZIP — 지급서류(이력서·통장·신분증)와 위촉 서식 제출 파일"
+          className="inline-flex items-center gap-1 rounded-lg border bg-background px-3 py-2 text-sm font-semibold hover:bg-accent"
+        >
+          멘토 서류 일괄 다운로드 (ZIP)
+        </a>
       </div>
 
       {mentors.length === 0 ? (
