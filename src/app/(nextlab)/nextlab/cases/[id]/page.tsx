@@ -159,6 +159,14 @@ export default async function Page({ params }: { params: { id: string } }) {
         </Card>
 
         <SurveyResultCard survey={survey} />
+        <a
+          href={`/api/staff/case-docs-zip?case=${item.id}`}
+          className="flex items-center justify-between rounded-lg border bg-background px-4 py-2.5 text-sm font-semibold hover:bg-accent"
+          title="회차 보고서·사진·관찰의견서·정산서·필수서류를 종류별 폴더로 정리한 ZIP"
+        >
+          <span>📦 이 케이스 서류 일괄 다운로드 (ZIP) — 정산 증빙 제출용</span>
+          <span>↓</span>
+        </a>
         <RequiredDocsPanel caseId={item.id} slots={slots} viewerRole="nextlab" canUpload />
         <CaseDocumentsPanel caseId={item.id} docs={docs} viewerRole="nextlab" canUpload />
         <CaseDeletePanel caseId={item.id} ownerName={item.owner_name} businessName={item.business_name} />
