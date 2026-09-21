@@ -23,15 +23,50 @@ export const REPORT_TABS = [
 ] as const;
 export type ReportTab = (typeof REPORT_TABS)[number]['key'];
 
-/** 리포트 본문 (docs §19-2) — 운영사·발주처 공용 */
-export function ReportsBody({ m, tab, base, cases, settlements, branding, exportHref }: { m: ProgramMetrics; tab: ReportTab; base: '/nextlab' | '/institution'; cases: CaseListItem[]; settlements: SettlementItem[]; branding: Branding; exportHref: string }) {
+/** 리포트 본문 (docs §19-2) — 운영사·발주처 공용.
+ *  groupFilter = 라운드(사업그룹)별 구분 탭 (P20), casesView = 진행현황 탭의 멘티/멘토 세로 메뉴. */
+export function ReportsBody({
+  m,
+  tab,
+  base,
+  cases,
+  settlements,
+  branding,
+  exportHref,
+  groupFilter,
+  casesView = 'mentee',
+}: {
+  m: ProgramMetrics;
+  tab: ReportTab;
+  base: '/nextlab' | '/institution';
+  cases: CaseListItem[];
+  settlements: SettlementItem[];
+  branding: Branding;
+  exportHref: string;
+  groupFilter?: { current: string | null; options: { id: string; name: string }[] };
+  casesView?: 'mentee' | 'mentor';
+}) {
   const reportsHref = `${base}/reports`;
+  const groupQs = groupFilter?.current ? `&group=${groupFilter.current}` : '';
   return (
     <div className="flex flex-col gap-5">
+      {groupFilter && groupFilter.options.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 rounded-xl border-2 bg-background px-3 py-2">
+          <span className="text-xs font-semibold text-muted-foreground">라운드(그룹)별:</span>
+          <Link href={`${reportsHref}?tab=${tab}`} className={`rounded-full px-3 py-1 text-xs font-semibold ${!groupFilter.current ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}>
+            전체
+          </Link>
+          {groupFilter.options.map((g) => (
+            <Link key={g.id} href={`${reportsHref}?tab=${tab}&group=${g.id}`} className={`rounded-full px-3 py-1 text-xs font-semibold ${groupFilter.current === g.id ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}>
+              {g.name}
+            </Link>
+          ))}
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <nav className="flex flex-wrap gap-1.5">
           {REPORT_TABS.map((t) => (
-            <Link key={t.key} href={`${reportsHref}?tab=${t.key}`} className={`rounded-full px-3 py-1 text-xs font-semibold ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}>
+            <Link key={t.key} href={`${reportsHref}?tab=${t.key}${groupQs}`} className={`rounded-full px-3 py-1 text-xs font-semibold ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}>
               {t.label}
             </Link>
           ))}
@@ -49,63 +84,59 @@ export function ReportsBody({ m, tab, base, cases, settlements, branding, export
       {tab === 'overview' && <MetricsTiles m={m} base={base} reportsHref={reportsHref} />}
 
       {tab === 'cases' && (
-        <div className="flex flex-col gap-4">
-          <div className="overflow-x-auto rounded-xl border bg-background">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b bg-muted/40 text-left text-muted-foreground">
-                  <th className="px-2 py-2">그룹</th>
-                  {CASE_STATUSES.map((s) => (
-                    <th key={s} className="px-2 py-2 text-right">{CASE_STATUS_META[s].short}</th>
-                  ))}
-                  <th className="px-2 py-2 text-right">합계</th>
-                  <th className="px-2 py-2 text-right">회차</th>
-                </tr>
-              </thead>
-              <tbody>
-                {m.groups.map((g) => (
-                  <tr key={g.id} className="border-b last:border-0">
-                    <td className="px-2 py-1 font-medium">{g.name}</td>
-                    {CASE_STATUSES.map((s) => (
-                      <td key={s} className="px-2 py-1 text-right tabular-nums">{g.byStatus[s] || ''}</td>
+        <div className="grid gap-4 lg:grid-cols-[170px_1fr]">
+          {/* 좌측 세로 메뉴 — 멘티 진행현황 / 멘토 진행현황 (P20) */}
+          <nav className="flex h-fit flex-row gap-1 overflow-x-auto rounded-xl border bg-background p-2 lg:flex-col">
+            <Link
+              href={`${reportsHref}?tab=cases${groupQs}`}
+              className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold ${casesView === 'mentee' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
+            >
+              멘티 진행현황
+            </Link>
+            <Link
+              href={`${reportsHref}?tab=cases&view=mentor${groupQs}`}
+              className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold ${casesView === 'mentor' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
+            >
+              멘토 진행현황
+            </Link>
+          </nav>
+          {casesView === 'mentee' ? (
+            <div className="flex flex-col gap-4">
+              <div className="overflow-x-auto rounded-xl border bg-background">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b bg-muted/40 text-left text-muted-foreground">
+                      <th className="px-2 py-2">그룹</th>
+                      {CASE_STATUSES.map((s) => (
+                        <th key={s} className="px-2 py-2 text-right">{CASE_STATUS_META[s].short}</th>
+                      ))}
+                      <th className="px-2 py-2 text-right">합계</th>
+                      <th className="px-2 py-2 text-right">회차</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {m.groups.map((g) => (
+                      <tr key={g.id} className="border-b last:border-0">
+                        <td className="px-2 py-1 font-medium">{g.name}</td>
+                        {CASE_STATUSES.map((s) => (
+                          <td key={s} className="px-2 py-1 text-right tabular-nums">{g.byStatus[s] || ''}</td>
+                        ))}
+                        <td className="px-2 py-1 text-right font-semibold tabular-nums">{g.cases}</td>
+                        <td className="px-2 py-1 text-right tabular-nums">{g.roundsDone}/{g.roundsPlanned}</td>
+                      </tr>
                     ))}
-                    <td className="px-2 py-1 text-right font-semibold tabular-nums">{g.cases}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{g.roundsDone}/{g.roundsPlanned}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <CaseTable items={cases} basePath={`${base}/cases`} branding={branding} showGroup />
+                  </tbody>
+                </table>
+              </div>
+              <CaseTable items={cases} basePath={`${base}/cases`} branding={branding} showGroup />
+            </div>
+          ) : (
+            <MentorsTable m={m} base={base} />
+          )}
         </div>
       )}
 
-      {tab === 'mentors' && (
-        <div className="overflow-x-auto rounded-xl border bg-background">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-                <th className="px-3 py-2">멘토</th><th className="px-3 py-2 text-right">담당(활성)</th><th className="px-3 py-2 text-right">이행</th><th className="px-3 py-2 text-right">완료</th><th className="px-3 py-2 text-right">온/오프</th><th className="px-3 py-2 text-right">종결</th><th className="px-3 py-2 text-right">확정 실지급</th><th className="px-3 py-2 text-right">만족도</th><th className="px-3 py-2 text-right">운영사 평가</th>
-              </tr>
-            </thead>
-            <tbody>
-              {m.mentors.map((x) => (
-                <tr key={x.id} className="border-b last:border-0">
-                  <td className="px-3 py-2 font-medium">{x.name}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{x.cases} ({x.activeCases})</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{x.roundsDone}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{x.roundsCompleted}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{x.online}/{x.offline}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{x.closed}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{formatKRW(x.settledNet)}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{x.surveyAvg ?? '-'}</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{base === '/nextlab' ? (x.reviewAvg ?? '-') : '·'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+      {tab === 'mentors' && <MentorsTable m={m} base={base} />}
 
       {tab === 'groups' && (
         <div className="overflow-x-auto rounded-xl border bg-background">
@@ -171,6 +202,36 @@ export function ReportsBody({ m, tab, base, cases, settlements, branding, export
           <CaseTable items={cases.filter((c) => !['closed', 'withdrawn'].includes(c.status) && c.roundsDone < c.requiredRounds)} basePath={`${base}/cases`} branding={branding} showGroup emptyText="잔여 회차가 있는 케이스가 없습니다." />
         </div>
       )}
+    </div>
+  );
+}
+
+/** 멘토별 진행현황 표 — [멘토 실적] 탭과 진행현황 탭의 [멘토 진행현황] 공용 */
+function MentorsTable({ m, base }: { m: ProgramMetrics; base: '/nextlab' | '/institution' }) {
+  return (
+    <div className="overflow-x-auto rounded-xl border bg-background">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+            <th className="px-3 py-2">멘토</th><th className="px-3 py-2 text-right">담당(활성)</th><th className="px-3 py-2 text-right">이행</th><th className="px-3 py-2 text-right">완료</th><th className="px-3 py-2 text-right">온/오프</th><th className="px-3 py-2 text-right">종결</th><th className="px-3 py-2 text-right">확정 실지급</th><th className="px-3 py-2 text-right">만족도</th><th className="px-3 py-2 text-right">운영사 평가</th>
+          </tr>
+        </thead>
+        <tbody>
+          {m.mentors.map((x) => (
+            <tr key={x.id} className="border-b last:border-0">
+              <td className="px-3 py-2 font-medium">{x.name}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{x.cases} ({x.activeCases})</td>
+              <td className="px-3 py-2 text-right tabular-nums">{x.roundsDone}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{x.roundsCompleted}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{x.online}/{x.offline}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{x.closed}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{formatKRW(x.settledNet)}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{x.surveyAvg ?? '-'}</td>
+              <td className="px-3 py-2 text-right tabular-nums">{base === '/nextlab' ? (x.reviewAvg ?? '-') : '·'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
