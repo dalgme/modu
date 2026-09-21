@@ -14,7 +14,6 @@ import { computeProgramMetrics } from '@/lib/reports/metrics';
 import { MetricsTiles } from '@/components/reports/metrics-tiles';
 import { CaseActionQueue } from '@/components/cases/case-action-queue';
 import { CaseStats } from '@/components/cases/case-stats';
-import { CaseTable } from '@/components/cases/case-table';
 import { OperatorRequestsPanel, OperatorRequestsHeading } from '@/components/nextlab/operator-requests-panel';
 
 export default async function Page() {
@@ -45,8 +44,8 @@ export default async function Page() {
             {ctx.group ? ctx.group.name : '행사 전체'} · 멘토 배정 · 종결 검수 · 정산.
           </p>
         </div>
+        {/* 멘티 등록·삭제는 회원 명단(회원 등록·정보 수정)으로 이전 (P20) */}
         <div className="flex gap-2">
-          <Link href="/nextlab/cases/new" className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90">+ 멘티 등록</Link>
           <Link href="/nextlab/reports" className="rounded-lg border bg-background px-3 py-2 text-sm font-semibold hover:bg-accent">리포트</Link>
         </div>
       </div>
@@ -106,10 +105,14 @@ export default async function Page() {
         branding={b}
       />
 
-      <div className="flex flex-col gap-3">
-        <h2 className="text-lg font-semibold">케이스 진행현황</h2>
-        <CaseTable items={cases} basePath="/nextlab/cases" branding={b} showGroup={!ctx.group} />
-      </div>
+      {/* 케이스 진행현황 표는 리포트 [진행현황] 탭(멘티/멘토 진행현황)으로 이전 (P20) */}
+      <Link
+        href="/nextlab/reports?tab=cases"
+        className="flex items-center justify-between rounded-lg border-2 bg-background px-4 py-3 text-sm font-semibold hover:bg-accent"
+      >
+        <span>케이스 진행현황 전체 보기 — 리포트 › 진행현황 (멘티/멘토 진행현황)</span>
+        <span>→</span>
+      </Link>
     </main>
   );
 }

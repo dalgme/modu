@@ -23,13 +23,14 @@
     --secondary: 222 30% 96%;
     --secondary-foreground: 223 45% 18%;
     --muted: 220 16% 95%;
-    --muted-foreground: 220 12% 42%;
+    /* P20 가독성: 보조 텍스트·테두리 대비 강화 (기존 42%/90%/88%) */
+    --muted-foreground: 220 14% 34%;
     --accent: 9 84% 96%;
     --accent-foreground: 9 55% 34%;
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 16% 90%;
-    --input: 220 16% 88%;
+    --border: 220 14% 76%;
+    --input: 220 14% 72%;
     --ring: 9 84% 61%;
     --radius: 0.65rem;
 
@@ -62,13 +63,14 @@
     --secondary: 223 33% 18%;
     --secondary-foreground: 210 30% 96%;
     --muted: 223 30% 17%;
-    --muted-foreground: 220 14% 64%;
+    /* P20 가독성: 보조 텍스트·테두리 대비 강화 (기존 64%/20%/22%) */
+    --muted-foreground: 220 16% 74%;
     --accent: 223 33% 20%;
     --accent-foreground: 9 84% 72%;
     --destructive: 0 63% 48%;
     --destructive-foreground: 0 0% 100%;
-    --border: 223 30% 20%;
-    --input: 223 30% 22%;
+    --border: 223 26% 32%;
+    --input: 223 26% 36%;
     --ring: 9 86% 65%;
 
     --midnight: 223 44% 12%;
