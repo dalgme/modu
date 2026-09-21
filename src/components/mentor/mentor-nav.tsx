@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 
 const TABS = [
   { href: '/mentor/dashboard', label: '대시보드' },
+  { href: '/mentor/schedule', label: '스케줄' },
   { href: '/mentor/settlements', label: '정산 내역' },
   { href: '/mentor/forms', label: '위촉 서류', feature: 'forms' },
   { href: '/mentor/profile', label: '내 프로필' },

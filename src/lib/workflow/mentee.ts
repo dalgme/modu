@@ -11,8 +11,15 @@ import { renderRoundReport, resolveRoundReportPolicy } from '@/lib/documents/rou
 import type { WorkflowResult } from '@/lib/workflow/cases';
 import type { Json } from '@/types/database';
 
-/** 멘티 회차 서명 — signatures(log_id) + mentoring_logs.mentee_signed_at. 1회차 1서명(유니크 인덱스). */
-export async function signRound(caseId: string, logId: string, mentee: { id: string; name: string }, dataUrl: string): Promise<WorkflowResult> {
+/** 멘티 회차 서명 — signatures(log_id) + mentoring_logs.mentee_signed_at. 1회차 1서명(유니크 인덱스).
+ *  opts.collectedBy = 멘토 현장 수집(멘토 단말 터치 서명, P20) — 감사 실행자를 멘토로 남긴다. */
+export async function signRound(
+  caseId: string,
+  logId: string,
+  mentee: { id: string; name: string },
+  dataUrl: string,
+  opts?: { collectedBy?: { id: string } },
+): Promise<WorkflowResult> {
   const parsed = dataUrlToBuffer(dataUrl);
   if (!parsed || !parsed.mimeType.startsWith('image/')) return { ok: false, error: '서명 이미지가 올바르지 않습니다.' };
   if (parsed.buffer.byteLength > 2 * 1024 * 1024) return { ok: false, error: '서명 이미지가 너무 큽니다(2MB 이하).' };
@@ -43,8 +50,21 @@ export async function signRound(caseId: string, logId: string, mentee: { id: str
   const now = new Date().toISOString();
   await admin.from('mentoring_logs').update({ mentee_signed_at: now }).eq('id', logId).is('mentee_signed_at', null);
   await renderRoundReport(logId); // 멘티 서명을 보고서 PDF 에 반영 (웹 작성 회차)
-  await queueNotification(admin, { caseId, programId: c.program_id, recipientId: log.mentor_id, triggerEvent: 'round_signed', payload: { round_no: log.round_no } });
-  await admin.from('audit_logs').insert({ actor_id: mentee.id, program_id: c.program_id, action: 'round.mentee_signed', entity_type: 'mentoring_logs', entity_id: logId, metadata: { case_id: caseId, round_no: log.round_no } });
+  if (!opts?.collectedBy) {
+    await queueNotification(admin, { caseId, programId: c.program_id, recipientId: log.mentor_id, triggerEvent: 'round_signed', payload: { round_no: log.round_no } });
+  }
+  await admin.from('audit_logs').insert({
+    actor_id: opts?.collectedBy?.id ?? mentee.id,
+    program_id: c.program_id,
+    action: 'round.mentee_signed',
+    entity_type: 'mentoring_logs',
+    entity_id: logId,
+    metadata: {
+      case_id: caseId,
+      round_no: log.round_no,
+      ...(opts?.collectedBy ? { collected_on_device: true, on_behalf_of: mentee.id } : {}),
+    },
+  });
   return { ok: true, caseId };
 }
 

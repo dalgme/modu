@@ -18,7 +18,10 @@ export function RoundReportForm({ caseId, logId, roundNo }: { caseId: string; lo
   const { toast } = useToast();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
-  const [kind, setKind] = useState<'web' | 'file'>('web');
+  // 기본은 파일 업로드 (P20 결정 — 웹 작성은 보조 수단)
+  const [kind, setKind] = useState<'web' | 'file'>('file');
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const [topic, setTopic] = useState('');
   const [content, setContent] = useState('');
   const [result, setResult] = useState('');
@@ -75,11 +78,11 @@ export function RoundReportForm({ caseId, logId, roundNo }: { caseId: string; lo
     <div className="mt-2 flex flex-col gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
       <p className="text-sm font-semibold">{roundNo}회차 — 2단계 · 실서류(보고서) 등록</p>
       <div className="flex gap-2 text-sm">
+        <button type="button" onClick={() => setKind('file')} className={`rounded-lg border px-3 py-1.5 ${kind === 'file' ? 'border-primary bg-background font-semibold' : ''}`}>
+          보고서 파일 업로드 <span className="text-[10px] text-primary">(기본)</span>
+        </button>
         <button type="button" onClick={() => setKind('web')} className={`rounded-lg border px-3 py-1.5 ${kind === 'web' ? 'border-primary bg-background font-semibold' : ''}`}>
           보고서 웹 작성
-        </button>
-        <button type="button" onClick={() => setKind('file')} className={`rounded-lg border px-3 py-1.5 ${kind === 'file' ? 'border-primary bg-background font-semibold' : ''}`}>
-          보고서 파일 업로드
         </button>
       </div>
       <div className="flex flex-col gap-1">
@@ -94,7 +97,44 @@ export function RoundReportForm({ caseId, logId, roundNo }: { caseId: string; lo
       ) : (
         <div className="flex flex-col gap-1">
           <Label>보고서 파일 *</Label>
-          <Input ref={reportRef} type="file" accept=".pdf,.hwp,.hwpx,.doc,.docx,.png,.jpg,.jpeg" />
+          {/* 첨부 버튼 + 파일 드래그 공용 드롭존 (P20 — 파일 등록 우선) */}
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              const f = e.dataTransfer.files?.[0];
+              if (!f || !reportRef.current) return;
+              const dt = new DataTransfer();
+              dt.items.add(f);
+              reportRef.current.files = dt.files;
+              setFileName(f.name);
+            }}
+            onClick={() => reportRef.current?.click()}
+            className={`flex cursor-pointer flex-col items-center gap-1 rounded-lg border-2 border-dashed px-4 py-6 text-center text-sm transition-colors ${dragOver ? 'border-primary bg-primary/10' : 'border-input bg-background hover:border-primary/50'}`}
+          >
+            <FileUp className="h-6 w-6 text-primary" />
+            {fileName ? (
+              <span className="font-medium text-primary">{fileName}</span>
+            ) : (
+              <>
+                <span className="font-medium">여기를 눌러 파일을 선택하거나, 파일을 끌어다 놓으세요</span>
+                <span className="text-xs text-muted-foreground">PDF · HWP · Word · 이미지</span>
+              </>
+            )}
+            <Input
+              ref={reportRef}
+              type="file"
+              accept=".pdf,.hwp,.hwpx,.doc,.docx,.png,.jpg,.jpeg"
+              className="hidden"
+              onClick={(e) => e.stopPropagation()}
+              onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
+            />
+          </div>
         </div>
       )}
       <div className="flex flex-col gap-1">

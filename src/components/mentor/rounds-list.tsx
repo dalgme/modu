@@ -1,15 +1,58 @@
 'use client';
 
-import { useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Lock, Trash2, FileText, PenLine } from 'lucide-react';
 
 import type { RoundItem } from '@/lib/data/rounds';
-import { deleteRoundAction } from '@/lib/workflow/mentor-actions';
+import { deleteRoundAction, collectRoundSignatureAction } from '@/lib/workflow/mentor-actions';
 import { RoundReportForm } from '@/components/mentor/round-report-form';
+import { SignaturePad } from '@/components/common/signature-pad';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { formatDateTime } from '@/lib/utils/format';
+
+/** 현장 서명 수집 (P20) — 멘토 스마트폰 화면을 멘티에게 건네 터치 서명을 받는다 */
+function CollectSignature({ caseId, logId, roundNo }: { caseId: string; logId: string; roundNo: number }) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [pending, start] = useTransition();
+  const [open, setOpen] = useState(false);
+  const [dataUrl, setDataUrl] = useState<string | null>(null);
+  if (!open) {
+    return (
+      <Button size="sm" variant="outline" className="gap-1" onClick={() => setOpen(true)}>
+        <PenLine className="h-4 w-4" /> 현장 서명 받기
+      </Button>
+    );
+  }
+  return (
+    <div className="mt-2 flex w-full flex-col gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
+      <p className="text-sm font-semibold">{roundNo}회차 — 멘티 확인 서명 (현장 수집)</p>
+      <p className="text-xs text-muted-foreground">휴대폰 화면을 멘티에게 건네 화면 터치로 직접 서명을 받으세요. 저장하면 멘티 서명으로 등록됩니다.</p>
+      <SignaturePad label="멘티 서명" onChange={setDataUrl} />
+      <div className="flex justify-end gap-2">
+        <Button size="sm" variant="outline" disabled={pending} onClick={() => setOpen(false)}>취소</Button>
+        <Button
+          size="sm"
+          disabled={pending || !dataUrl}
+          onClick={() =>
+            start(async () => {
+              const r = await collectRoundSignatureAction(caseId, logId, dataUrl!);
+              toast(r.ok ? { title: '멘티 서명을 등록했습니다.' } : { title: r.error, variant: 'destructive' });
+              if (r.ok) {
+                setOpen(false);
+                router.refresh();
+              }
+            })
+          }
+        >
+          {pending ? '등록 중…' : '서명 등록'}
+        </Button>
+      </div>
+    </div>
+  );
+}
 
 function durationLabel(startedAt: string, endedAt: string): string {
   const minutes = Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 60000);
@@ -101,6 +144,11 @@ export function RoundsList({ caseId, rounds, editable }: { caseId: string; round
           {editable && !r.report_registered_at && !r.locked && !planned && (
             <div className="mt-2">
               <RoundReportForm caseId={caseId} logId={r.id} roundNo={r.round_no} />
+            </div>
+          )}
+          {editable && r.report_registered_at && !r.mentee_signed_at && !r.locked && (
+            <div className="mt-2">
+              <CollectSignature caseId={caseId} logId={r.id} roundNo={r.round_no} />
             </div>
           )}
           {editable && !r.report_registered_at && planned && (

@@ -33,6 +33,8 @@ export default async function Page() {
                     <th className="px-4 py-2.5 font-medium">이메일</th>
                     <th className="px-4 py-2.5 font-medium">연락처</th>
                     <th className="px-4 py-2.5 text-right font-medium">배정 멘티 수</th>
+                    <th className="px-4 py-2.5 text-right font-medium" title="이력서·통장사본·신분증사본 3종">지급서류 제출</th>
+                    <th className="px-4 py-2.5 text-right font-medium">수령 확인</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -47,6 +49,12 @@ export default async function Page() {
                         <span className="inline-flex min-w-8 items-center justify-center rounded-full bg-primary/10 px-2 py-0.5 font-semibold tabular-nums text-primary">
                           {m.menteeCount}
                         </span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">
+                        <span className={m.docsSubmitted === 3 ? 'font-semibold text-emerald-700' : 'text-muted-foreground'}>{m.docsSubmitted}/3</span>
+                      </td>
+                      <td className="px-4 py-2.5 text-right tabular-nums">
+                        <span className={m.docsReceived === 3 ? 'font-semibold text-emerald-700' : 'text-muted-foreground'}>{m.docsReceived}/3</span>
                       </td>
                     </tr>
                   ))}

@@ -60,8 +60,15 @@ export function MentorDashboardBody({
         ) : (
           <ul className="grid gap-3 sm:grid-cols-2">
             {cases.map((c) => (
-              <li key={c.id}>
+              <li key={c.id} className="flex flex-col gap-1.5">
                 <CaseCard item={c} href={`${basePath}/${c.id}`} branding={branding} />
+                {/* 현장 서명 수집 진입 — 케이스 상세의 회차 목록에서 [현장 서명 받기] (P20) */}
+                <Link
+                  href={`${basePath}/${c.id}`}
+                  className="self-end text-xs font-semibold text-primary underline-offset-2 hover:underline"
+                >
+                  서명 등록(멘티 현장 서명) →
+                </Link>
               </li>
             ))}
           </ul>

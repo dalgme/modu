@@ -11,6 +11,10 @@ export interface MentorLoad {
   phone: string | null;
   /** 현재까지 배정받은 멘티(케이스) 수 — 중복 케이스 제외 */
   menteeCount: number;
+  /** 지급서류(이력서·통장·신분증) 제출(멘토 업로드) 수 0~3 */
+  docsSubmitted: number;
+  /** 지급서류 수령 확인(운영사 체크) 수 0~3 */
+  docsReceived: number;
 }
 
 /**
@@ -23,9 +27,10 @@ export async function listMentorsWithLoad(programId: string): Promise<MentorLoad
   const { data: members } = await admin.from('program_members').select('user_id').eq('program_id', programId).eq('role', 'mentor').eq('is_active', true);
   const ids = (members ?? []).map((m) => m.user_id);
   if (ids.length === 0) return [];
-  const [{ data: mentors }, { data: assigns }] = await Promise.all([
+  const [{ data: mentors }, { data: assigns }, { data: docs }] = await Promise.all([
     admin.from('users').select('id, name, email, phone').in('id', ids).eq('is_active', true).order('name'),
     admin.from('mentor_assignments').select('mentor_id, case_id, cases!inner(program_id)').in('mentor_id', ids).eq('is_active', true),
+    admin.from('mentor_payment_docs').select('user_id, resume_uploaded_at, bankbook_uploaded_at, id_card_uploaded_at, resume_received_at, bankbook_received_at, id_card_received_at').eq('program_id', programId).in('user_id', ids),
   ]);
 
   // 멘토별 이 행사 케이스의 활성 배정(중복 제외) 집계
@@ -36,13 +41,19 @@ export async function listMentorsWithLoad(programId: string): Promise<MentorLoad
     casesByMentor.get(a.mentor_id)!.add(a.case_id);
   }
 
-  return (mentors ?? []).map((m) => ({
-    id: m.id,
-    name: m.name,
-    email: m.email,
-    phone: m.phone,
-    menteeCount: casesByMentor.get(m.id)?.size ?? 0,
-  }));
+  const docsByUser = new Map((docs ?? []).map((d) => [d.user_id, d]));
+  return (mentors ?? []).map((m) => {
+    const d = docsByUser.get(m.id);
+    return {
+      id: m.id,
+      name: m.name,
+      email: m.email,
+      phone: m.phone,
+      menteeCount: casesByMentor.get(m.id)?.size ?? 0,
+      docsSubmitted: d ? [d.resume_uploaded_at, d.bankbook_uploaded_at, d.id_card_uploaded_at].filter(Boolean).length : 0,
+      docsReceived: d ? [d.resume_received_at, d.bankbook_received_at, d.id_card_received_at].filter(Boolean).length : 0,
+    };
+  });
 }
 
 export type MemberRow = Pick<

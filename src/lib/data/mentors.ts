@@ -3,6 +3,12 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { Tables } from '@/types/database';
 
+export interface PaymentDocUpload {
+  name: string;
+  at: string | null;
+  url: string | null;
+}
+
 export interface MentorRosterItem {
   id: string;
   name: string;
@@ -16,7 +22,14 @@ export interface MentorRosterItem {
   settledNet: number;
   surveyAvg: number | null;
   signatureRegistered: boolean;
-  paymentDocs: { resume: string | null; bankbook: string | null; idCard: string | null; note: string | null };
+  paymentDocs: {
+    resume: string | null;
+    bankbook: string | null;
+    idCard: string | null;
+    note: string | null;
+    /** 멘토 본인이 업로드한 파일 (제출) — 수령 체크와 별개 상태 */
+    uploads: { resume: PaymentDocUpload | null; bankbook: PaymentDocUpload | null; idCard: PaymentDocUpload | null };
+  };
   /** 그룹 명부 (그룹별 원천징수 override) */
   groups: { supportTypeId: string; supportTypeName: string; withholdingMethod: string | null; isActive: boolean; duty: string | null }[];
   reviews: (Tables<'mentor_group_reviews'> & { authorName: string; supportTypeName: string })[];
@@ -54,6 +67,21 @@ export async function listProgramMentors(programId: string, supportTypeId?: stri
   const caseIds = (assigns ?? []).filter((a) => inScope(a.case_id)).map((a) => a.case_id);
   const { data: responses } = caseIds.length ? await admin.from('survey_responses').select('case_id, score').in('case_id', caseIds) : { data: [] as { case_id: string; score: number | null }[] };
   const scoreByCase = new Map((responses ?? []).map((r) => [r.case_id, r.score]));
+  // 멘토가 업로드한 지급서류 파일 → 서명 URL (다운로드용, 10분)
+  const uploadsByUser = new Map<string, { resume: PaymentDocUpload | null; bankbook: PaymentDocUpload | null; idCard: PaymentDocUpload | null }>();
+  const signed = async (path: string | null, name: string | null, at: string | null): Promise<PaymentDocUpload | null> => {
+    if (!path) return null;
+    const { data } = await admin.storage.from('documents').createSignedUrl(path, 600, { download: name ?? undefined });
+    return { name: name ?? '파일', at, url: data?.signedUrl ?? null };
+  };
+  for (const d of docs ?? []) {
+    uploadsByUser.set(d.user_id, {
+      resume: await signed(d.resume_path, d.resume_file_name, d.resume_uploaded_at),
+      bankbook: await signed(d.bankbook_path, d.bankbook_file_name, d.bankbook_uploaded_at),
+      idCard: await signed(d.id_card_path, d.id_card_file_name, d.id_card_uploaded_at),
+    });
+  }
+
   const authorIds = Array.from(new Set((reviews ?? []).map((r) => r.author_id)));
   const { data: authors } = authorIds.length ? await admin.from('users').select('id, name').in('id', authorIds) : { data: [] as { id: string; name: string }[] };
   const authorName = new Map((authors ?? []).map((a) => [a.id, a.name]));
@@ -78,7 +106,13 @@ export async function listProgramMentors(programId: string, supportTypeId?: stri
         settledNet: (settlements ?? []).filter((s) => s.mentor_id === m.id && inScope(s.case_id)).reduce((a, s) => a + Number(s.net), 0),
         surveyAvg: scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100 : null,
         signatureRegistered: (sigs ?? []).some((s) => s.user_id === m.id),
-        paymentDocs: { resume: d?.resume_received_at ?? null, bankbook: d?.bankbook_received_at ?? null, idCard: d?.id_card_received_at ?? null, note: d?.note ?? null },
+        paymentDocs: {
+          resume: d?.resume_received_at ?? null,
+          bankbook: d?.bankbook_received_at ?? null,
+          idCard: d?.id_card_received_at ?? null,
+          note: d?.note ?? null,
+          uploads: uploadsByUser.get(m.id) ?? { resume: null, bankbook: null, idCard: null },
+        },
         groups: myGroups.map((r) => ({ supportTypeId: r.support_type_id, supportTypeName: groupName.get(r.support_type_id) ?? '-', withholdingMethod: r.withholding_method, isActive: r.is_active, duty: r.duty })),
         reviews: myReviews,
         reviewAvg: ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10 : null,

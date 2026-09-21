@@ -134,11 +134,25 @@ export function MentorsRoster({ mentors, groups }: { mentors: MentorRosterItem[]
                 <td className="px-3 py-2 text-right tabular-nums">{m.surveyAvg ?? '-'}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{m.reviewAvg ?? '-'}</td>
                 <td className="px-3 py-2">{m.signatureRegistered ? <PenLine className="h-4 w-4 text-emerald-600" /> : <span className="text-xs text-muted-foreground">미등록</span>}</td>
-                {(['resume', 'bankbook', 'idCard'] as DocKey[]).map((k) => (
-                  <td key={k} className="px-3 py-2" title={m.paymentDocs[k] ? formatDate(m.paymentDocs[k]) : '미수령'}>
-                    {m.paymentDocs[k] ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <XCircle className="h-4 w-4 text-muted-foreground/60" />}
-                  </td>
-                ))}
+                {(['resume', 'bankbook', 'idCard'] as DocKey[]).map((k) => {
+                  const up = m.paymentDocs.uploads[k];
+                  return (
+                    <td key={k} className="px-3 py-2" title={m.paymentDocs[k] ? `수령 확인 ${formatDate(m.paymentDocs[k]!)}` : '수령 확인 전'}>
+                      <div className="flex flex-col items-start gap-0.5">
+                        {m.paymentDocs[k] ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <XCircle className="h-4 w-4 text-muted-foreground/60" />}
+                        {up ? (
+                          up.url ? (
+                            <a href={up.url} className="text-[10px] font-medium text-primary underline" title={`${up.name}${up.at ? ` · 제출 ${formatDate(up.at)}` : ''}`}>제출파일</a>
+                          ) : (
+                            <span className="text-[10px] text-emerald-700">제출됨</span>
+                          )
+                        ) : (
+                          <span className="text-[10px] text-muted-foreground">미제출</span>
+                        )}
+                      </div>
+                    </td>
+                  );
+                })}
                 <td className="px-3 py-2">
                   <div className="flex flex-col gap-1">
                     {m.groups.map((g) => (
