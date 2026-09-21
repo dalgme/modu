@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { AlertTriangle, Ban, UserX } from 'lucide-react';
 
 import { decideMentorWithdrawalAction, forceEndMentorAction, withdrawCaseAction } from '@/lib/settlement/actions';
@@ -39,6 +39,18 @@ export function CaseEndPanel({
   const [pending, start] = useTransition();
   const [note, setNote] = useState('');
   const [mode, setMode] = useState<'none' | 'force' | 'withdraw'>('none');
+  const [highlight, setHighlight] = useState(false);
+
+  // 배정 관리 ③ 카드(멘토 배정 패널)에서 진입 — 강제 종료 폼을 열고 잠시 강조한다 (P22)
+  useEffect(() => {
+    const open = () => {
+      if (canForceEnd) setMode('force');
+      setHighlight(true);
+      window.setTimeout(() => setHighlight(false), 2500);
+    };
+    window.addEventListener('modu:open-force-end', open);
+    return () => window.removeEventListener('modu:open-force-end', open);
+  }, [canForceEnd]);
 
   const decide = (id: string, decision: 'approved' | 'rejected') => {
     if (decision === 'rejected' && !note.trim()) {
@@ -73,7 +85,10 @@ export function CaseEndPanel({
   if (!canDecideWithdrawal && !canForceEnd && !canWithdrawCase) return null;
 
   return (
-    <Card className={pendingWithdrawals.length > 0 ? 'border-amber-300' : undefined}>
+    <Card
+      id="case-end-panel"
+      className={`${pendingWithdrawals.length > 0 ? 'border-amber-300 ' : ''}${highlight ? 'ring-2 ring-primary ring-offset-2 transition-shadow' : ''}` || undefined}
+    >
       <CardHeader>
         <CardTitle className="text-base">중도 종료 처리</CardTitle>
         <p className="text-xs text-muted-foreground">이행 회차는 종료 시점에 부분 정산(케이스 × 멘토)으로 확정됩니다. 회차가 없으면 정산 행을 만들지 않습니다.</p>
