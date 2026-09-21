@@ -145,7 +145,7 @@ registered → mentor_assigned → in_progress ⇄ reassignment_pending
 
 | 원칙 | 구현 |
 |---|---|
-| 신원 분리 | 스태프 특권·감사 실행자 = `getRealSessionProfile()`, 업무 명의 = `getSessionProfile()` (대행 view-as 시 다름) |
+| 신원 분리 | 스태프 특권·감사 실행자 = `getRealSessionProfile()`, 업무 명의 = `getSessionProfile()` (대행 view-as 시 다름). 대행 대상: 운영사 → 멘토·멘티, 플랫폼 관리자 → 4역할 전부(타 플랫폼 관리자 제외) |
 | 범위 강제 | RLS 에 의존하지 않고 코드에서 배정·행사 소속 직접 확인 |
 | 가드 | `requireNextlab` `requireInstitution` `requireMentor` `requireMentee` `requireStaff` `requirePlatformAdmin` `mentorOfCaseOrNull` + `requireContext` |
 | 행사별 역할 | 세션 프로필의 `role` 은 컨텍스트 쿠키의 행사에서의 `program_members.role` 로 치환된다(`auth/program-role.ts`). 명단·배정 후보·알림 수신자·매칭 후보는 멤버십 역할로 필터. 한 계정이 행사마다 다른 역할 가능 |

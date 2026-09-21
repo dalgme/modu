@@ -20,7 +20,8 @@ export async function enterProgram(
   supportTypeId: string | null,
   explicitAll: boolean,
 ): Promise<EnterResult> {
-  const isAdmin = real.is_platform_admin;
+  // 관리자 대행 중(real ≠ effective)에는 대상 명의로 진입해야 하므로 관리자 특례를 끈다 (P19)
+  const isAdmin = real.is_platform_admin && real.id === effective.id;
   const program = await getProgram(programId);
   if (!program) return { ok: false, redirectTo: '/hub?denied=1' };
   if (!(await isProgramMember(effective.id, programId, isAdmin))) return { ok: false, redirectTo: '/hub?denied=1' };
@@ -43,7 +44,8 @@ export async function enterProgram(
 
 /** 로그인 직후 자동 진입 대상 (활성 행사 1개) — 없으면 null */
 export async function autoEnterTarget(real: Profile, effective: Profile): Promise<string | null> {
-  const programs = await listMyPrograms(effective.id, real.is_platform_admin, effective.role);
+  const isAdmin = real.is_platform_admin && real.id === effective.id;
+  const programs = await listMyPrograms(effective.id, isAdmin, effective.role);
   const active = programs.filter((p) => p.program.status === 'active' && p.memberActive);
   if (active.length !== 1) return null;
   return active[0]!.program.id;

@@ -141,11 +141,23 @@ export const MENTOR_ONLY_ERROR =
 /**
  * **실제 신원** 기준 역할 가드 (스태프 콘솔 전용).
  * 대행 중에도 운영사·발주처가 자기 콘솔에서 쫓겨나지 않도록, 신원 치환의 영향을 받지 않는다.
+ *
+ * 예외 (P19): **플랫폼 관리자가 대행 중**이면 대상 명의로 판정한다 — 관리자는 행사 소속이
+ * 없어 실명으로는 어떤 스태프 콘솔에도 들어갈 수 없고, "그 계정의 화면을 그대로 본다"가
+ * 대행의 목적이기 때문. 대행 시작/종료는 관리자 실명으로 감사기록에 남는다.
  */
 async function requireRealRole(allowed: UserRole[]): Promise<Profile> {
   const real = await getRealSessionProfile();
   if (!real || !real.is_active) redirect('/login');
   if (real.must_change_password) redirect('/change-password');
+  if (real.is_platform_admin) {
+    const imp = await getImpersonation();
+    if (imp) {
+      const target = await withProgramRole(imp.target);
+      if (!allowed.includes(target.role)) redirect(roleHome(target.role));
+      return target;
+    }
+  }
   if (!allowed.includes(real.role)) redirect(roleHome(real.role));
   return real;
 }
@@ -162,7 +174,9 @@ export const requireMentor = () => requireRole(['mentor']);
 export async function requireMentee(): Promise<Profile> {
   const profile = await requireRole(['mentee']);
   if (!profile.privacy_agreed_at) {
-    redirect('/mentee/consent');
+    // 대행 열람 중에는 동의 게이트를 건너뛴다 — 동의는 멘티 본인만 할 수 있다(agreePrivacy 에서 차단).
+    const imp = await getImpersonation();
+    if (!imp) redirect('/mentee/consent');
   }
   return profile;
 }

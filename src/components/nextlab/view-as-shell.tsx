@@ -3,7 +3,7 @@ import Link from 'next/link';
 import type { Tables } from '@/types/database';
 import { ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
 import { ViewAsStartButton } from '@/components/nextlab/view-as-start-button';
-import { getImpersonation, ALLOWED_TARGET_ROLES } from '@/lib/auth/impersonation';
+import { getImpersonation, OPERATOR_TARGET_ROLES } from '@/lib/auth/impersonation';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -25,7 +25,8 @@ export async function ViewAsShell({ target, activeTab }: { target: Tables<'users
   const tabs = VIEW_AS_TABS[target.role];
   const imp = await getImpersonation();
   const actingAsThisUser = imp?.target.id === target.id;
-  const canAct = ALLOWED_TARGET_ROLES.includes(target.role);
+  // 이 셸은 운영사 콘솔(/nextlab/view) 전용 — 운영사가 대행 가능한 역할(멘토·멘티)만 대행 버튼 노출
+  const canAct = OPERATOR_TARGET_ROLES.includes(target.role);
 
   return (
     <>

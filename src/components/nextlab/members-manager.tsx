@@ -665,9 +665,9 @@ export function MembersManager({
                       ))}
                       <TableCell>
                         <div className="flex flex-wrap items-start justify-end gap-2">
-                          {/* 멘토는 '화면 보기' 가 곧 대행 시작 — 들어가서 바로 업무를 처리할 수 있어야 한다.
+                          {/* 멘토·멘티는 '화면 보기' 가 곧 대행 시작 — 들어가서 바로 업무를 처리할 수 있어야 한다.
                               (열람만 하려면 대행 배너의 [대행 종료] 를 누르면 된다) */}
-                          {m.role === 'mentor' && m.is_active ? (
+                          {(m.role === 'mentor' || m.role === 'mentee') && m.is_active ? (
                             <ViewAsStartButton
                               targetUserId={m.id}
                               targetName={m.name}

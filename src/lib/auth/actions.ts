@@ -186,6 +186,12 @@ export async function agreePrivacy(): Promise<void> {
     redirect('/login');
   }
 
+  // 동의는 멘티 본인만 — 대행 중 제출하면 auth.uid()=실행자라 실행자 행이 오염된다 (P19)
+  const { getImpersonation } = await import('@/lib/auth/impersonation');
+  if (await getImpersonation()) {
+    redirect('/hub');
+  }
+
   const admin = createAdminClient();
   const now = new Date().toISOString();
   await admin.from('users').update({ privacy_agreed_at: now, activated_at: now }).eq('id', user.id);

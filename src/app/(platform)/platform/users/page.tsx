@@ -4,6 +4,7 @@ import { requirePlatformAdmin } from '@/lib/auth/guards';
 import { searchPlatformUsers } from '@/lib/platform/data';
 import { ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
 import { PlatformUserActions } from '@/components/platform/user-actions';
+import { ViewAsStartButton } from '@/components/nextlab/view-as-start-button';
 import { formatDate } from '@/lib/utils/format';
 
 export const dynamic = 'force-dynamic';
@@ -99,7 +100,13 @@ export default async function Page({ searchParams }: { searchParams: { q?: strin
                   {u.is_platform_admin ? (
                     <p className="text-xs text-muted-foreground">통합관리 전용 계정 — 행사 소속 없음</p>
                   ) : (
-                    <PlatformUserActions userId={u.id} isActive={u.is_active} isSelf={u.id === me.id} isPlatformAdmin={u.is_platform_admin} memberOf={u.programs.map((p) => ({ id: p.id, role: p.role }))} programs={programs} defaultRole={u.role} />
+                    <div className="flex flex-col items-start gap-2">
+                      {/* 대행 진입 — 그 계정 명의로 화면을 그대로 본다. 종료는 상단 배너의 [대행 종료]. */}
+                      {u.is_active && (
+                        <ViewAsStartButton targetUserId={u.id} targetName={u.name} size="sm" variant="outline" label="화면 보기(대행)" />
+                      )}
+                      <PlatformUserActions userId={u.id} isActive={u.is_active} isSelf={u.id === me.id} isPlatformAdmin={u.is_platform_admin} memberOf={u.programs.map((p) => ({ id: p.id, role: p.role }))} programs={programs} defaultRole={u.role} />
+                    </div>
                   )}
                 </td>
               </tr>

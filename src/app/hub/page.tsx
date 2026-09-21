@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 
 import { getRealSessionProfile, getSessionProfile } from '@/lib/auth/guards';
+import { getImpersonation } from '@/lib/auth/impersonation';
 import { listMyGroups, listMyPrograms, getProgram } from '@/lib/programs/data';
 import { autoEnterTarget } from '@/lib/programs/enter';
 import { PLATFORM_BRANDING } from '@/lib/programs/branding';
@@ -24,17 +25,20 @@ export default async function HubPage({
   if (real.must_change_password) redirect('/change-password');
   const profile = (await getSessionProfile()) ?? real;
 
-  // 플랫폼 관리자는 통합관리 전용 계정 — 행사 소속·진입 없이 항상 콘솔로 간다
-  if (real.is_platform_admin) redirect('/platform');
+  // 플랫폼 관리자는 통합관리 전용 계정 — 행사 소속·진입 없이 항상 콘솔로 간다.
+  // 단, 대행 중에는 대상 명의로 허브를 지나 대상의 행사로 진입한다 (P19).
+  const imp = await getImpersonation();
+  const isAdmin = real.is_platform_admin && !imp;
+  if (isAdmin) redirect('/platform');
   if (!searchParams.pick && !searchParams.program && !searchParams.denied && !searchParams.error) {
     const target = await autoEnterTarget(real, profile);
     if (target) redirect(`/hub/enter?program=${target}`);
   }
 
-  const programs = await listMyPrograms(profile.id, real.is_platform_admin, profile.role);
+  const programs = await listMyPrograms(profile.id, isAdmin, profile.role);
   const selected = searchParams.program ? await getProgram(searchParams.program) : null;
   const groups = selected
-    ? await listMyGroups(selected.id, { id: profile.id, role: profile.role, isPlatformAdmin: real.is_platform_admin })
+    ? await listMyGroups(selected.id, { id: profile.id, role: profile.role, isPlatformAdmin: isAdmin })
     : [];
 
   return (
@@ -55,14 +59,14 @@ export default async function HubPage({
           <HubGroupList
             program={selected}
             groups={groups}
-            isStaff={profile.role === 'institution' || profile.role === 'nextlab' || real.is_platform_admin}
+            isStaff={profile.role === 'institution' || profile.role === 'nextlab' || isAdmin}
             tab={searchParams.tab === 'ended' ? 'ended' : 'active'}
           />
         ) : (
           <HubProgramList
             programs={programs}
             tab={searchParams.tab === 'ended' ? 'ended' : 'active'}
-            isPlatformAdmin={real.is_platform_admin}
+            isPlatformAdmin={isAdmin}
             role={profile.role}
           />
         )}

@@ -13,16 +13,30 @@ type Profile = Tables<'users'>;
 
 export const VIEW_AS_COOKIE = 'opmap_view_as';
 
-/** 1차 범위: 멘토만 대행한다. (멘티는 /mentee/consent 동의 게이트 때문에 제외) */
-export const ALLOWED_TARGET_ROLES: UserRole[] = ['mentor'];
+/**
+ * 대행 가능 대상 (P19 확장, 2026-09-21):
+ *  - 운영사 담당자 → 멘토·멘티 (동의 게이트는 대행 중 열람 통과, 동의 제출은 차단)
+ *  - 플랫폼 관리자 → 발주처·운영사·멘토·멘티 (다른 플랫폼 관리자는 불가)
+ */
+export const OPERATOR_TARGET_ROLES: UserRole[] = ['mentor', 'mentee'];
+export const PLATFORM_TARGET_ROLES: UserRole[] = ['institution', 'nextlab', 'mentor', 'mentee'];
+
+/** 실행자 프로필에 따른 대행 가능 대상 역할 */
+export function allowedTargetRoles(real: { role: UserRole; is_platform_admin: boolean }): UserRole[] {
+  if (real.is_platform_admin) return PLATFORM_TARGET_ROLES;
+  if (real.role === 'nextlab') return OPERATOR_TARGET_ROLES;
+  return [];
+}
 
 /** 근무 단위 TTL — 작성 중 만료로 입력이 날아가지 않도록 8시간. 종료는 '대행 종료' 버튼. */
 export const VIEW_AS_TTL_SEC = 8 * 60 * 60;
 
 export interface ImpersonationContext {
-  /** 실제 로그인 사용자(운영사) id */
+  /** 실제 로그인 사용자(운영사 또는 플랫폼 관리자) id */
   actorId: string;
-  /** 대행 대상(멘토) 프로필 */
+  /** 실행자가 플랫폼 관리자인지 (배너 문구·종료 후 복귀 위치용) */
+  actorIsPlatformAdmin: boolean;
+  /** 대행 대상 프로필 */
   target: Profile;
   /** 만료 시각(ISO) */
   expiresAt: string;
@@ -118,8 +132,8 @@ function parseCookie(raw: string): Payload | null {
  * 아래 사슬을 전부 통과해야 반환하고, 하나라도 실패하면 null → 시스템이 평소와 동일하게 동작한다(fail-closed).
  *  1) 서명 키 존재 + 쿠키 HMAC 일치 + 미만료
  *  2) payload.a === 현재 로그인 auth uid  ← 쿠키 탈취·타 계정 재사용 차단
- *  3) 실제 프로필 role === 'nextlab' && is_active
- *  4) 대상 프로필 is_active && role === payload.r && role ∈ ALLOWED_TARGET_ROLES
+ *  3) 실제 프로필 is_active && (플랫폼 관리자 ‖ role === 'nextlab')
+ *  4) 대상 프로필 is_active && 비(非)플랫폼관리자 && role === payload.r && role ∈ 실행자별 허용 역할
  */
 export const getImpersonation = cache(async (): Promise<ImpersonationContext | null> => {
   const raw = cookies().get(VIEW_AS_COOKIE)?.value;
@@ -138,20 +152,24 @@ export const getImpersonation = cache(async (): Promise<ImpersonationContext | n
   const admin = createAdminClient();
   const { data: real } = await admin
     .from('users')
-    .select('id, role, is_active')
+    .select('id, role, is_active, is_platform_admin')
     .eq('id', payload.a)
     .maybeSingle();
-  // (3) 실행자는 활성 운영사이어야 한다
-  if (!real || !real.is_active || real.role !== 'nextlab') return null;
+  // (3) 실행자는 활성 플랫폼 관리자 또는 활성 운영사이어야 한다
+  if (!real || !real.is_active) return null;
+  const allowed = allowedTargetRoles(real);
+  if (allowed.length === 0) return null;
 
   const { data: target } = await admin.from('users').select('*').eq('id', payload.t).maybeSingle();
-  // (4) 대상은 활성 + 발급 당시 역할 그대로 + 허용 역할
+  // (4) 대상은 활성 + 비플랫폼관리자 + 발급 당시 역할 그대로 + 실행자별 허용 역할
   if (!target || !target.is_active) return null;
+  if (target.is_platform_admin) return null;
   if (target.role !== payload.r) return null;
-  if (!ALLOWED_TARGET_ROLES.includes(target.role)) return null;
+  if (!allowed.includes(target.role)) return null;
 
   return {
     actorId: payload.a,
+    actorIsPlatformAdmin: real.is_platform_admin,
     target,
     expiresAt: new Date(payload.exp * 1000).toISOString(),
   };
