@@ -11,6 +11,7 @@ import { listProgramMessages } from '@/lib/messages/data';
 import { listOperatorRequests } from '@/lib/data/operator-requests';
 import { countPendingInbox } from '@/lib/data/requests';
 import { computeProgramMetrics } from '@/lib/reports/metrics';
+import { listDelayedCases } from '@/lib/reports/delays';
 import { MetricsTiles } from '@/components/reports/metrics-tiles';
 import { CaseActionQueue } from '@/components/cases/case-action-queue';
 import { CaseStats } from '@/components/cases/case-stats';
@@ -29,6 +30,7 @@ export default async function Page() {
     listProgramMessages(ctx.programId),
   ]);
   const unreadRequests = operatorRequests.filter((r) => !r.read_at).length;
+  const delays = await listDelayedCases(ctx.programId, ctx.supportTypeId ?? null);
   // 게시판 알람 — 답변 없는 게시글 + 수신자 미확인 메시지 (새 글 등록 시 대시보드 알림, P20)
   const unansweredPosts = boardPosts.filter((p) => p.replies.length === 0).length;
   const unreadMessages = programMessages.filter((m) => !m.read).length;
@@ -58,6 +60,13 @@ export default async function Page() {
         <Link href="/nextlab/board?tab=requests" className="flex items-center justify-between gap-3 rounded-lg border border-amber-400 bg-amber-50/60 px-4 py-3 text-sm font-semibold text-amber-900 hover:bg-amber-50">
           <span>처리 대기 요청 {pendingInbox}건 (추가 회차 · 멘토 변경 · 중도 종료)</span>
           <span className="underline-offset-4">게시판 요청함으로 이동 →</span>
+        </Link>
+      )}
+
+      {delays.length > 0 && (
+        <Link href="/nextlab/reports?tab=backlog" className="flex items-center justify-between gap-3 rounded-lg border-2 border-destructive/50 bg-destructive/5 px-4 py-3 text-sm font-semibold text-destructive hover:bg-destructive/10">
+          <span>🚨 지연 케이스 {delays.length}건 (배정 지연 · 첫 회차 없음 · 장기 무진행 등) — 독려 문자를 보낼 수 있습니다</span>
+          <span className="underline-offset-4">지연 목록 보기 →</span>
         </Link>
       )}
 

@@ -4,6 +4,8 @@ import { Download } from 'lucide-react';
 import type { ProgramMetrics } from '@/lib/reports/metrics';
 import type { BudgetOverview } from '@/lib/reports/budget';
 import { BudgetCard } from '@/components/reports/budget-card';
+import type { DelayedCase } from '@/lib/reports/delays';
+import { DelayList } from '@/components/reports/delay-list';
 import type { CaseListItem } from '@/lib/data/cases';
 import type { SettlementItem } from '@/lib/data/settlements';
 import { CASE_STATUSES, CASE_STATUS_META } from '@/types/case-status';
@@ -38,6 +40,7 @@ export function ReportsBody({
   groupFilter,
   casesView = 'mentee',
   budget,
+  delays,
 }: {
   m: ProgramMetrics;
   tab: ReportTab;
@@ -50,6 +53,8 @@ export function ReportsBody({
   casesView?: 'mentee' | 'mentor';
   /** 예산 집행 게이지 (개요 탭, P22) */
   budget?: BudgetOverview;
+  /** 지연 케이스 목록 (잔여 과업 탭, P22) */
+  delays?: DelayedCase[];
 }) {
   const reportsHref = `${base}/reports`;
   const groupQs = groupFilter?.current ? `&group=${groupFilter.current}` : '';
@@ -207,9 +212,18 @@ export function ReportsBody({
       )}
 
       {tab === 'backlog' && (
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4">
           <MetricsTiles m={m} base={base} reportsHref={reportsHref} />
-          <CaseTable items={cases.filter((c) => !['closed', 'withdrawn'].includes(c.status) && c.roundsDone < c.requiredRounds)} basePath={`${base}/cases`} branding={branding} showGroup emptyText="잔여 회차가 있는 케이스가 없습니다." />
+          {delays && (
+            <div className="flex flex-col gap-2">
+              <h3 className="text-base font-bold">🚨 지연 케이스 {delays.length}건</h3>
+              <DelayList items={delays} caseHrefBase={`${base}/cases`} canNudge={base === '/nextlab'} />
+            </div>
+          )}
+          <div className="flex flex-col gap-2">
+            <h3 className="text-base font-bold">잔여 회차 케이스</h3>
+            <CaseTable items={cases.filter((c) => !['closed', 'withdrawn'].includes(c.status) && c.roundsDone < c.requiredRounds)} basePath={`${base}/cases`} branding={branding} showGroup emptyText="잔여 회차가 있는 케이스가 없습니다." />
+          </div>
         </div>
       )}
     </div>
