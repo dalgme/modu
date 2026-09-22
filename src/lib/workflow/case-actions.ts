@@ -74,7 +74,9 @@ export async function registerCaseAction(input: unknown): Promise<CreateCaseResu
       },
       { onConflict: 'case_id' },
     );
-    if (profileError) return { ok: false, error: `케이스는 등록됐지만 프로필 저장에 실패했습니다: ${profileError.message}` };
+    // 프로필 저장 실패로 등록 자체를 실패 처리하면 재제출 시 케이스가 중복 생성된다 —
+    // 케이스는 이미 만들어졌으므로 성공으로 두고, 프로필은 케이스 상세에서 보완 입력한다.
+    if (profileError) console.error('mentee profile upsert failed (case created):', profileError.message);
     // P24 자동 매칭 — 실패해도 등록을 막지 않는다
     try {
       await autoMatchMentee(result.caseId, profile.id);

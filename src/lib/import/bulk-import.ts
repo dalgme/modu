@@ -124,6 +124,12 @@ export async function previewImport(programId: string, kind: ImportKind, rows: R
   ]);
   const userByPhone = new Map((byPhone ?? []).map((u) => [(u.phone ?? '').replace(/\D/g, ''), u]));
   const userByEmail = new Map((byEmail ?? []).map((u) => [(u.email ?? '').toLowerCase(), u]));
+  // 역할 충돌은 "이 행사 안의 역할" 기준 (설계 B — users.role 로 사람을 거르지 말 것)
+  const matchedIds = Array.from(new Set([...(byPhone ?? []), ...(byEmail ?? [])].map((u) => u.id)));
+  const { data: memberships } = matchedIds.length
+    ? await admin.from('program_members').select('user_id, role').eq('program_id', programId).in('user_id', matchedIds)
+    : { data: [] as { user_id: string; role: string }[] };
+  const programRoleByUser = new Map((memberships ?? []).map((m) => [m.user_id, m.role]));
 
   rows.forEach((values, i) => {
     const errors: string[] = [];
@@ -141,8 +147,9 @@ export async function previewImport(programId: string, kind: ImportKind, rows: R
     let existingUserId: string | undefined;
     const existing = userByPhone.get(phoneDigits) ?? (email ? userByEmail.get(email) : undefined);
     if (existing) {
-      if (existing.role !== kind) errors.push(`이미 ${existing.role} 역할로 등록된 계정`);
-      else existingUserId = existing.id;
+      const programRole = programRoleByUser.get(existing.id);
+      if (programRole && programRole !== kind) errors.push(`이 행사에서 이미 ${IMPORT_KIND_LABELS[programRole as ImportKind] ?? programRole} 역할로 등록된 계정`);
+      else existingUserId = existing.id; // 이 행사 소속이 아니면 기존 계정을 이 역할로 초대(설계 B)
     }
     out.push({ line, values, errors, existingUserId });
   });
@@ -176,8 +183,11 @@ export async function commitImport(programId: string, kind: ImportKind, rows: Im
           result.credentials.push({ line: row.line, name: v['이름']!, email: acc.email, tempPassword: acc.tempPassword });
         } else {
           result.linked += 1;
-          // 기존 계정도 명단 값(소속·직위)은 파일 기준으로 갱신
-          await admin.from('users').update({ organization: v['소속'] || null, position: v['직위'] || null }).eq('id', userId);
+          // 기존 계정은 파일에 값이 있을 때만 갱신 — 빈 칸으로 기존 소속·직위를 지우지 않는다
+          const patch: { organization?: string; position?: string } = {};
+          if (v['소속']) patch.organization = v['소속'];
+          if (v['직위']) patch.position = v['직위'];
+          if (Object.keys(patch).length > 0) await admin.from('users').update(patch).eq('id', userId);
         }
         await admin.from('program_members').upsert({ program_id: programId, user_id: userId, role: 'mentor', is_active: true }, { onConflict: 'program_id,user_id' });
         if (groupId) {

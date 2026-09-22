@@ -63,6 +63,7 @@ export async function commitImportAction(kind: ImportKind, rows: ImportRow[], gr
   const op = await operatorContext();
   if ('error' in op) return { ok: false, error: op.error };
   if (!Array.isArray(rows) || rows.length === 0) return { ok: false, error: '등록할 행이 없습니다.' };
+  if (rows.length > 500) return { ok: false, error: '한 번에 최대 500행까지 등록할 수 있습니다.' };
   const group = await resolveGroup(op.programId, kind, groupId ?? null);
   if ('error' in group) return { ok: false, error: group.error };
   // 클라이언트가 보낸 검증 결과를 믿지 않는다 — 서버에서 재검증

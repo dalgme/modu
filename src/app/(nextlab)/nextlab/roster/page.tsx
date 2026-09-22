@@ -229,9 +229,10 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
               </div>
             </div>
           ) : (
-            <CreateMemberForm fixedRole={reg} />
+            // key={reg}: 미니탭 전환 시 이전 역할의 입력값·미리보기가 남지 않게 완전히 새로 마운트
+            <CreateMemberForm key={reg} fixedRole={reg} />
           )}
-          <BulkImportPanel groups={groupOpts} fixedKind={reg} />
+          <BulkImportPanel key={reg} groups={groupOpts} fixedKind={reg} />
           <AddExistingMemberForm />
         </div>
       </div>

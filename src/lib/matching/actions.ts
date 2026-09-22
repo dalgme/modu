@@ -62,9 +62,14 @@ export async function saveMenteeProfileAction(caseId: string, input: unknown): P
   const admin = createAdminClient();
   const { error } = await admin.from('mentee_profiles').upsert({ case_id: caseId, program_id: op.programId, ...parsed.data }, { onConflict: 'case_id' });
   if (error) return { ok: false, error: error.message };
-  if (parsed.data.nickname) {
-    const { error: caseError } = await admin.from('cases').update({ business_name: parsed.data.nickname }).eq('id', caseId);
-    if (caseError) return { ok: false, error: `닉네임을 케이스 표기에 반영하지 못했습니다: ${caseError.message}` };
+  {
+    // 닉네임 = "이름/소속" 표기의 소속 자리. 비우면 이름으로 되돌린다("비우면 이름" 규칙 — 옛 닉네임이 남지 않게).
+    const { data: c } = await admin.from('cases').select('owner_name').eq('id', caseId).maybeSingle();
+    const businessName = parsed.data.nickname ?? c?.owner_name ?? null;
+    if (businessName) {
+      const { error: caseError } = await admin.from('cases').update({ business_name: businessName }).eq('id', caseId);
+      if (caseError) return { ok: false, error: `닉네임을 케이스 표기에 반영하지 못했습니다: ${caseError.message}` };
+    }
   }
   revalidatePath(`/nextlab/cases/${caseId}`);
   return { ok: true };

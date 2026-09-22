@@ -45,14 +45,13 @@ interface ProgramMentor {
 /** 행사 멘토 + 이 행사 케이스 기준 활성 배정 수 */
 async function loadProgramMentors(programId: string): Promise<ProgramMentor[]> {
   const admin = createAdminClient();
-  const [{ data: members }, { data: assigns }, { data: cases }] = await Promise.all([
+  const [{ data: members }, { data: assigns }] = await Promise.all([
     admin.from('program_members').select('user_id, is_active, users!inner(id, name, is_active)').eq('program_id', programId).eq('role', 'mentor').eq('is_active', true),
-    admin.from('mentor_assignments').select('mentor_id, case_id').eq('is_active', true),
-    admin.from('cases').select('id').eq('program_id', programId),
+    // 반드시 행사 범위로 조인 필터 — 전역 조회는 1000행 캡에 잘려 부하가 과소 집계된다
+    admin.from('mentor_assignments').select('mentor_id, cases!inner(program_id)').eq('is_active', true).eq('cases.program_id', programId),
   ]);
-  const inProgram = new Set((cases ?? []).map((c) => c.id));
   const load = new Map<string, number>();
-  for (const a of assigns ?? []) if (inProgram.has(a.case_id)) load.set(a.mentor_id, (load.get(a.mentor_id) ?? 0) + 1);
+  for (const a of assigns ?? []) load.set(a.mentor_id, (load.get(a.mentor_id) ?? 0) + 1);
   const users = (members ?? [])
     .map((m) => m.users as unknown as { id: string; name: string; is_active: boolean })
     .filter((u) => u.is_active);
@@ -79,8 +78,28 @@ export async function rebuildAutoRecommendations(caseId: string, actorId: string
   if (c.status !== 'registered' && c.status !== 'reassignment_pending') return 0;
 
   const { data: prof } = await admin.from('mentee_profiles').select('needs, preferred_mentor').eq('case_id', caseId).maybeSingle();
-  const needs = (prof?.needs ?? []).slice(0, 6);
   const mentors = preloadedMentors ?? (await loadProgramMentors(c.program_id));
+  const rows = buildRecommendationRows(c.program_id, caseId, prof?.needs ?? [], prof?.preferred_mentor ?? null, mentors, actorId);
+  if (rows.length === 0) return 0;
+
+  const { error } = await admin.from('match_recommendations').insert(rows);
+  if (error) {
+    console.error('auto recommendation insert failed:', error.message);
+    return 0;
+  }
+  return rows.length;
+}
+
+/** 희망분야 1~6순위 순차 대조로 미배정 멘토 최대 3명을 골라 추천 행을 만든다 (단일·배치 공용) */
+function buildRecommendationRows(
+  programId: string,
+  caseId: string,
+  needsRaw: string[],
+  preferredMentor: string | null,
+  mentors: ProgramMentor[],
+  actorId: string | null,
+) {
+  const needs = needsRaw.slice(0, 6);
   const unassigned = mentors.filter((m) => m.activeCases === 0);
 
   const picks: { mentorId: string; need: string | null; needRank: number | null; matched: string | null }[] = [];
@@ -103,10 +122,9 @@ export async function rebuildAutoRecommendations(caseId: string, actorId: string
     picked.add(m.id);
     picks.push({ mentorId: m.id, need: null, needRank: null, matched: null });
   }
-  if (picks.length === 0) return 0;
 
-  const rows = picks.map((p, idx) => ({
-    program_id: c.program_id,
+  return picks.map((p, idx) => ({
+    program_id: programId,
     case_id: caseId,
     mentor_id: p.mentorId,
     rank: idx + 1,
@@ -116,7 +134,7 @@ export async function rebuildAutoRecommendations(caseId: string, actorId: string
       need: p.need,
       need_rank: p.needRank,
       matched_expertise: p.matched,
-      preferred_mentor: prof?.preferred_mentor ?? null,
+      preferred_mentor: preferredMentor,
     },
     rationale: p.need
       ? `희망분야 ${p.needRank}순위 '${p.need}' ↔ 멘토 분야 '${p.matched}' 일치 · 미배정 멘토`
@@ -125,12 +143,6 @@ export async function rebuildAutoRecommendations(caseId: string, actorId: string
     prompt_version: AUTO_MATCH_VERSION,
     generated_by: actorId,
   }));
-  const { error } = await admin.from('match_recommendations').insert(rows);
-  if (error) {
-    console.error('auto recommendation insert failed:', error.message);
-    return 0;
-  }
-  return rows.length;
 }
 
 export interface AutoMatchOutcome {
@@ -157,7 +169,7 @@ export async function autoMatchMentee(caseId: string, actorId: string): Promise<
     if (nameMatches.length === 1 && nameMatches[0]!.activeCases === 0) {
       const r = await assignMentor(caseId, nameMatches[0]!.id, actorId);
       if (r.ok) {
-        await admin.from('audit_logs').insert({
+        const { error: auditError } = await admin.from('audit_logs').insert({
           actor_id: actorId,
           program_id: c.program_id,
           action: 'match.auto_assign',
@@ -165,6 +177,7 @@ export async function autoMatchMentee(caseId: string, actorId: string): Promise<
           entity_id: caseId,
           metadata: { mentor_id: nameMatches[0]!.id, mentor_name: preferred, reason: '재배치 희망 멘토 · 미배정' },
         });
+        if (auditError) console.error('auto assign audit insert failed:', auditError.message);
         await afterAssignmentConfirmed(c.program_id, nameMatches[0]!.id, actorId);
         return { assigned: true, mentorName: preferred, recommended: 0 };
       }
@@ -199,7 +212,7 @@ export async function autoMatchNewMentor(programId: string, mentorId: string, ac
       const r = await assignMentor(target.id, mentorId, actorId);
       if (r.ok) {
         assigned = true;
-        await admin.from('audit_logs').insert({
+        const { error: auditError } = await admin.from('audit_logs').insert({
           actor_id: actorId,
           program_id: programId,
           action: 'match.auto_assign',
@@ -207,6 +220,7 @@ export async function autoMatchNewMentor(programId: string, mentorId: string, ac
           entity_id: target.id,
           metadata: { mentor_id: mentorId, mentor_name: me.name, reason: '멘토 등록 시 재배치 희망 대기 멘티 자동 확정' },
         });
+        if (auditError) console.error('auto assign audit insert failed:', auditError.message);
         await afterAssignmentConfirmed(programId, mentorId, actorId);
       }
     }
@@ -266,7 +280,7 @@ export async function runProgramAutoMatch(programId: string, actorId: string): P
     if (!r.ok) continue;
     mentor.activeCases += 1; // 메모리 갱신 — 같은 실행 안에서 같은 멘토가 두 번 확정되지 않게
     assigned += 1;
-    await admin.from('audit_logs').insert({
+    const { error: auditError } = await admin.from('audit_logs').insert({
       actor_id: actorId,
       program_id: programId,
       action: 'match.auto_assign',
@@ -274,16 +288,31 @@ export async function runProgramAutoMatch(programId: string, actorId: string): P
       entity_id: row.id,
       metadata: { mentor_id: mentor.id, mentor_name: preferred, reason: '일괄 등록 배치 — 재배치 희망 멘토 · 미배정' },
     });
+    if (auditError) console.error('auto assign audit insert failed:', auditError.message);
   }
 
-  // 남은 미배정 케이스 추천 일괄 재계산 (멘토 명부 재사용) + 전원 배정 시 문자 1회
+  // 남은 미배정 케이스 추천 일괄 재계산 — 케이스별 개별 조회 대신 프로필 일괄 로드 + 삭제·삽입 각 1회
   const { data: open } = await admin
     .from('cases')
     .select('id')
     .eq('program_id', programId)
     .in('status', ['registered', 'reassignment_pending']);
-  for (const c of open ?? []) {
-    await rebuildAutoRecommendations(c.id, actorId, mentors);
+  const openIds = (open ?? []).map((c) => c.id);
+  if (openIds.length > 0) {
+    const [{ data: profiles }, { error: deleteError }] = await Promise.all([
+      admin.from('mentee_profiles').select('case_id, needs, preferred_mentor').in('case_id', openIds),
+      admin.from('match_recommendations').delete().eq('prompt_version', AUTO_MATCH_VERSION).is('adopted_at', null).in('case_id', openIds),
+    ]);
+    if (deleteError) console.error('auto recommendation cleanup failed:', deleteError.message);
+    const profileByCase = new Map((profiles ?? []).map((p) => [p.case_id, p]));
+    const rows = openIds.flatMap((caseId) => {
+      const p = profileByCase.get(caseId);
+      return buildRecommendationRows(programId, caseId, p?.needs ?? [], p?.preferred_mentor ?? null, mentors, actorId);
+    });
+    if (rows.length > 0) {
+      const { error: insertError } = await admin.from('match_recommendations').insert(rows);
+      if (insertError) console.error('auto recommendation insert failed:', insertError.message);
+    }
   }
   await notifyMentorsIfAllMatched(programId);
   return { assigned };
@@ -359,7 +388,7 @@ export async function notifyMentorsIfAllMatched(programId: string): Promise<{ se
       base ? `${base}/login` : '',
       `아이디: 이메일(${u.email ?? '-'}) 또는 휴대폰 번호`,
     ].filter(Boolean);
-    if (u.must_change_password) lines.push('임시 비밀번호: 본인 휴대폰 번호(숫자만). 첫 로그인 시 비밀번호를 새로 설정해야 합니다.');
+    if (u.must_change_password) lines.push('첫 로그인 시 비밀번호를 새로 설정해야 합니다. 임시 비밀번호는 등록 시 안내된 값(기본: 본인 휴대폰 번호 숫자)입니다.');
     if (program.sms_footer) lines.push(program.sms_footer);
     try {
       const r = await sendSolapiSms(digits, lines.join('\n'), creds ? { creds } : {});
@@ -381,15 +410,16 @@ export async function notifyMentorsIfAllMatched(programId: string): Promise<{ se
  */
 export async function markAssignmentsConfirmed(mentorId: string, programId: string): Promise<void> {
   const admin = createAdminClient();
-  const { data: cases } = await admin.from('cases').select('id').eq('program_id', programId);
-  const ids = (cases ?? []).map((c) => c.id);
-  if (ids.length === 0) return;
-  const { error } = await admin
+  // 대시보드 렌더마다 불리므로 가볍게: 이 멘토의 미확인 활성 배정만 행사 조인으로 조회
+  const { data: pending } = await admin
     .from('mentor_assignments')
-    .update({ confirmed_at: new Date().toISOString() })
+    .select('id, cases!inner(program_id)')
     .eq('mentor_id', mentorId)
     .eq('is_active', true)
     .is('confirmed_at', null)
-    .in('case_id', ids);
+    .eq('cases.program_id', programId);
+  const ids = (pending ?? []).map((a) => a.id);
+  if (ids.length === 0) return;
+  const { error } = await admin.from('mentor_assignments').update({ confirmed_at: new Date().toISOString() }).in('id', ids);
   if (error) console.error('assignment confirm mark failed:', error.message);
 }
