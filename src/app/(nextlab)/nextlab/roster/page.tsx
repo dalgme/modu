@@ -20,6 +20,8 @@ import { MenteeMatchList, MentorMatchList } from '@/components/nextlab/matching-
 import { Button } from '@/components/ui/button';
 
 export const dynamic = 'force-dynamic';
+// 엑셀 일괄 등록(서버 액션이 이 라우트로 POST 된다) — 계정 발급이 행당 수백 ms 라 대량 업로드는 기본 제한을 넘긴다
+export const maxDuration = 60;
 
 const TABS = [
   { key: 'mentee', label: '멘티 명단' },

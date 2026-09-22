@@ -68,7 +68,7 @@ async function loadProgramMentors(programId: string): Promise<ProgramMentor[]> {
  * 희망분야 순차 적용으로 "미배정 멘토" 최대 3명 추천을 다시 계산해 저장.
  * 기존 자동 추천(미채택)은 지우고 새로 만든다. 분야가 하나도 안 맞으면 미배정 멘토로 잔여 슬롯을 채운다(사유 표기).
  */
-export async function rebuildAutoRecommendations(caseId: string, actorId: string | null): Promise<number> {
+export async function rebuildAutoRecommendations(caseId: string, actorId: string | null, preloadedMentors?: ProgramMentor[]): Promise<number> {
   const admin = createAdminClient();
   const { data: c } = await admin.from('cases').select('id, program_id, status').eq('id', caseId).maybeSingle();
   if (!c) return 0;
@@ -80,7 +80,7 @@ export async function rebuildAutoRecommendations(caseId: string, actorId: string
 
   const { data: prof } = await admin.from('mentee_profiles').select('needs, preferred_mentor').eq('case_id', caseId).maybeSingle();
   const needs = (prof?.needs ?? []).slice(0, 6);
-  const mentors = await loadProgramMentors(c.program_id);
+  const mentors = preloadedMentors ?? (await loadProgramMentors(c.program_id));
   const unassigned = mentors.filter((m) => m.activeCases === 0);
 
   const picks: { mentorId: string; need: string | null; needRank: number | null; matched: string | null }[] = [];
@@ -218,7 +218,7 @@ export async function autoMatchNewMentor(programId: string, mentorId: string, ac
   return { assigned, recommended: 0 };
 }
 
-/** 미배정(등록·재배정 대기) 케이스 전체의 자동 추천을 다시 계산 */
+/** 미배정(등록·재배정 대기) 케이스 전체의 자동 추천을 다시 계산 — 멘토 명부는 1회만 로드 */
 export async function rebalanceAllOpenRecommendations(programId: string, actorId: string | null): Promise<void> {
   const admin = createAdminClient();
   const { data: open } = await admin
@@ -226,9 +226,67 @@ export async function rebalanceAllOpenRecommendations(programId: string, actorId
     .select('id')
     .eq('program_id', programId)
     .in('status', ['registered', 'reassignment_pending']);
-  for (const c of open ?? []) {
-    await rebuildAutoRecommendations(c.id, actorId);
+  if (!open || open.length === 0) return;
+  const mentors = await loadProgramMentors(programId);
+  for (const c of open) {
+    await rebuildAutoRecommendations(c.id, actorId, mentors);
   }
+}
+
+/**
+ * 엑셀 일괄 등록 후 1회 실행하는 배치 자동 매칭 (P24 성능 개선 2026-09-22).
+ * 행마다 전체 재계산을 돌리면 O(행수 × 미배정 케이스수) 쿼리가 되어 일괄 등록이 분 단위로 느려진다.
+ * 여기서는 멘토 명부·부하를 1회만 로드해 메모리에서 갱신하며:
+ *  1) 재배치 희망 멘토가 미배정이면 등록 순서대로 자동 확정
+ *  2) 남은 미배정 케이스의 추천을 일괄 재계산
+ *  3) 전원 배정 시 안내 문자 1회
+ */
+export async function runProgramAutoMatch(programId: string, actorId: string): Promise<{ assigned: number }> {
+  const admin = createAdminClient();
+  const mentors = await loadProgramMentors(programId);
+  const nameCount = new Map<string, number>();
+  for (const m of mentors) nameCount.set(m.name.trim(), (nameCount.get(m.name.trim()) ?? 0) + 1);
+
+  const { data: waiting } = await admin
+    .from('cases')
+    .select('id, created_at, mentee_profiles!inner(preferred_mentor)')
+    .eq('program_id', programId)
+    .eq('status', 'registered')
+    .order('created_at');
+
+  let assigned = 0;
+  for (const row of waiting ?? []) {
+    const prof = row.mentee_profiles as unknown as { preferred_mentor: string | null } | { preferred_mentor: string | null }[] | null;
+    const preferred = (Array.isArray(prof) ? prof[0]?.preferred_mentor : prof?.preferred_mentor)?.trim() ?? '';
+    if (!preferred) continue;
+    if (nameCount.get(preferred) !== 1) continue; // 동명이인·미등록은 자동 확정하지 않는다
+    const mentor = mentors.find((m) => m.name.trim() === preferred);
+    if (!mentor || mentor.activeCases > 0) continue;
+    const r = await assignMentor(row.id, mentor.id, actorId);
+    if (!r.ok) continue;
+    mentor.activeCases += 1; // 메모리 갱신 — 같은 실행 안에서 같은 멘토가 두 번 확정되지 않게
+    assigned += 1;
+    await admin.from('audit_logs').insert({
+      actor_id: actorId,
+      program_id: programId,
+      action: 'match.auto_assign',
+      entity_type: 'cases',
+      entity_id: row.id,
+      metadata: { mentor_id: mentor.id, mentor_name: preferred, reason: '일괄 등록 배치 — 재배치 희망 멘토 · 미배정' },
+    });
+  }
+
+  // 남은 미배정 케이스 추천 일괄 재계산 (멘토 명부 재사용) + 전원 배정 시 문자 1회
+  const { data: open } = await admin
+    .from('cases')
+    .select('id')
+    .eq('program_id', programId)
+    .in('status', ['registered', 'reassignment_pending']);
+  for (const c of open ?? []) {
+    await rebuildAutoRecommendations(c.id, actorId, mentors);
+  }
+  await notifyMentorsIfAllMatched(programId);
+  return { assigned };
 }
 
 /**
