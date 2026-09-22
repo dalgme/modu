@@ -91,7 +91,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         {(canTransition('assign_mentor', item.status) || canTransition('reassign_mentor', item.status)) && (
           <MatchRecommendations caseId={item.id} initial={recs} assignable={canTransition('assign_mentor', item.status)} reassignable={item.mentorId !== null && canTransition('reassign_mentor', item.status)} currentMentorId={item.mentorId} modelConfigured={!!process.env.ANTHROPIC_API_KEY} />
         )}
-        <MenteeProfileForm caseId={item.id} value={mp ? { industry: mp.industry, stage: mp.stage, region: mp.region, preferred_mode: mp.preferred_mode, needs: mp.needs, keywords: mp.keywords, summary: mp.summary } : null} tags={tagOptions} />
+        <MenteeProfileForm caseId={item.id} value={mp ? { industry: mp.industry, stage: mp.stage, region: mp.region, preferred_mode: mp.preferred_mode, needs: mp.needs, keywords: mp.keywords, summary: mp.summary, nickname: mp.nickname, external_no: mp.external_no, mentee_type: mp.mentee_type, preferred_mentor: mp.preferred_mentor, note: mp.note } : null} tags={tagOptions} />
 
         <TeamPanel
           caseId={item.id}

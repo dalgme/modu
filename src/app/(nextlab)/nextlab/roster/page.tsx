@@ -172,7 +172,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
 
   if (tab === 'register') {
     const groups = await listSupportTypes(ctx.programId);
-    const groupOpts = groups.filter((g) => g.status === 'active').map((g) => ({ code: g.code, name: g.name }));
+    const groupOpts = groups.filter((g) => g.status === 'active').map((g) => ({ id: g.id, code: g.code, name: g.name }));
     body = (
       <div className="grid gap-5 lg:grid-cols-[180px_1fr]">
         {/* 좌측 세로 메뉴 — 자격별 등록 */}
@@ -191,7 +191,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
           {reg === 'mentee' ? (
             <div className="flex flex-col gap-3 rounded-xl border bg-background p-4">
               <p className="text-sm">
-                멘티 개별 등록은 <b>멘티 등록 폼</b>(케이스 생성)에서 합니다 — 기업(팀)명·사업그룹·팀 정보 등 멘티 전용 컬럼을 입력하고, 계정이 자동 발급·연결됩니다.
+                멘티 개별 등록은 <b>멘티 등록 폼</b>(케이스 생성)에서 합니다 — 이름·닉네임·고유번호·권역·유형·아이디어·희망분야·재배치 희망 등 멘티 컬럼을 입력하고, 계정이 자동 발급·연결됩니다.
               </p>
               <div>
                 <Button asChild>

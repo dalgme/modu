@@ -838,6 +838,11 @@ export type Database = {
           keywords: string[];
           item_description: string | null;
           needs: string[];
+          nickname: string | null;
+          external_no: string | null;
+          mentee_type: string | null;
+          preferred_mentor: string | null;
+          note: string | null;
           preferred_mode: Database['public']['Enums']['consulting_mode'] | null;
           program_id: string;
           region: string | null;
@@ -852,6 +857,11 @@ export type Database = {
           keywords?: string[];
           item_description?: string | null;
           needs?: string[];
+          nickname?: string | null;
+          external_no?: string | null;
+          mentee_type?: string | null;
+          preferred_mentor?: string | null;
+          note?: string | null;
           preferred_mode?: Database['public']['Enums']['consulting_mode'] | null;
           program_id: string;
           region?: string | null;
@@ -866,6 +876,11 @@ export type Database = {
           keywords?: string[];
           item_description?: string | null;
           needs?: string[];
+          nickname?: string | null;
+          external_no?: string | null;
+          mentee_type?: string | null;
+          preferred_mentor?: string | null;
+          note?: string | null;
           preferred_mode?: Database['public']['Enums']['consulting_mode'] | null;
           program_id?: string;
           region?: string | null;
@@ -1300,7 +1315,9 @@ export type Database = {
           id: string;
           industries: string[];
           keywords: string[];
+          mentor_institution: string | null;
           modes: Database['public']['Enums']['consulting_mode'][];
+          note: string | null;
           program_id: string;
           regions: string[];
           stages: string[];
@@ -1316,7 +1333,9 @@ export type Database = {
           id?: string;
           industries?: string[];
           keywords?: string[];
+          mentor_institution?: string | null;
           modes?: Database['public']['Enums']['consulting_mode'][];
+          note?: string | null;
           program_id: string;
           regions?: string[];
           stages?: string[];
@@ -1332,7 +1351,9 @@ export type Database = {
           id?: string;
           industries?: string[];
           keywords?: string[];
+          mentor_institution?: string | null;
           modes?: Database['public']['Enums']['consulting_mode'][];
+          note?: string | null;
           program_id?: string;
           regions?: string[];
           stages?: string[];

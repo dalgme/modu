@@ -66,16 +66,17 @@ export function CaseRegisterForm({ groups, defaultGroupId }: { groups: { id: str
           ))}
         </select>
       </div>
-      <F name="business_name" label="기업(팀)명 *" required />
-      <F name="owner_name" label="멘티 이름(대표자) *" required />
+      <F name="owner_name" label="이름 *" required />
+      <F name="nickname" label="닉네임 (팀명·활동명)" hint="화면의 &ldquo;이름/소속&rdquo; 표기에 사용 — 비우면 이름" />
+      <F name="external_no" label="고유번호" hint="공고·명부 상 식별번호" />
       <F name="phone" label="휴대폰 *" required placeholder="010-0000-0000" hint="로그인 아이디·임시 비밀번호에 사용" />
       <F name="email" label="이메일" type="email" hint="비우면 자동 생성" />
-      <F name="business_reg_no" label="사업자등록번호" hint="예비창업자는 비워도 됩니다" />
-      <F name="address" label="주소" />
-      <F name="business_type" label="업종" />
-      <F name="item" label="아이템" />
-      <F name="opened_at" label="개업일" type="date" />
-      <F name="employee_count" label="종업원 수" type="number" />
+      <F name="region" label="권역" />
+      <F name="mentee_type" label="유형" hint="예) 예비창업 / 기창업" />
+      <F name="item" label="아이디어" />
+      <F name="needs" label="희망분야" hint="콤마(,)로 구분, 최대 6개" />
+      <F name="preferred_mentor" label="재배치 희망여부 (멘토 이름)" hint="재배치(배정)를 희망하는 멘토 이름 — 비우면 희망 없음" />
+      <F name="note" label="비고" />
       <div className="sm:col-span-2 flex justify-end">
         <Button type="submit" disabled={pending || groups.length === 0}>
           {pending ? '등록 중…' : '멘티 등록 · 계정 발급'}

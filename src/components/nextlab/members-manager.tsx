@@ -188,6 +188,27 @@ export function CreateMemberForm({ fixedRole }: { fixedRole?: UserRole }) {
               <Label htmlFor="m-duty">이 행사에서의 담당역할</Label>
               <Input id="m-duty" name="duty" autoComplete="off" placeholder="예: 정산 담당, A·B그룹 담당" />
             </div>
+            {fixedRole === 'mentor' && (
+              <>
+                {/* P23 멘토 컬럼: 분야·소속멘토기관·권역·비고 (멘토 프로필에 저장) */}
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="m-expertise">분야 <span className="text-xs font-normal text-muted-foreground">(콤마 구분, 최대 10개)</span></Label>
+                  <Input id="m-expertise" name="expertise" autoComplete="off" placeholder="예: 마케팅, 재무, 투자유치" />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="m-institution">소속멘토기관</Label>
+                  <Input id="m-institution" name="mentor_institution" autoComplete="off" />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="m-region">권역</Label>
+                  <Input id="m-region" name="region" autoComplete="off" placeholder="예: 세종" />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="m-note">비고</Label>
+                  <Input id="m-note" name="note" autoComplete="off" />
+                </div>
+              </>
+            )}
           </div>
 
           {state?.ok === false && (

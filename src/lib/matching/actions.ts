@@ -35,32 +35,44 @@ export async function recommendMentorsAction(caseId: string): Promise<{ ok: true
 }
 
 const list = z.array(z.string().trim().min(1).max(40)).max(30).default([]);
+const optText = (max: number) => z.string().trim().max(max).optional().transform((v) => v || null);
 const menteeProfileSchema = z.object({
   industry: z.string().trim().optional().transform((v) => v || null),
   stage: z.string().trim().optional().transform((v) => v || null),
   region: z.string().trim().optional().transform((v) => v || null),
   preferred_mode: z.enum(['online', 'offline', '']).optional().transform((v) => v || null),
-  needs: list,
+  needs: z.array(z.string().trim().min(1).max(40)).max(6, '희망분야는 최대 6개입니다.').default([]),
   keywords: list,
   summary: z.string().trim().max(2000).optional().transform((v) => v || null),
+  nickname: optText(60),
+  external_no: optText(40),
+  mentee_type: optText(40),
+  preferred_mentor: optText(60),
+  note: optText(1000),
 });
 
-/** 운영사: 멘티 프로필(매칭 키워드) 저장 */
+/** 운영사: 멘티 정보·매칭 프로필 저장 — 닉네임은 cases.business_name("이름/소속" 표기)과 동기 */
 export async function saveMenteeProfileAction(caseId: string, input: unknown): Promise<Result> {
   const op = await operatorCase(caseId);
   if ('error' in op) return { ok: false, error: op.error };
   const parsed = menteeProfileSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? '입력값을 확인하세요.' };
-  const { error } = await createAdminClient().from('mentee_profiles').upsert({ case_id: caseId, program_id: op.programId, ...parsed.data }, { onConflict: 'case_id' });
+  const admin = createAdminClient();
+  const { error } = await admin.from('mentee_profiles').upsert({ case_id: caseId, program_id: op.programId, ...parsed.data }, { onConflict: 'case_id' });
   if (error) return { ok: false, error: error.message };
+  if (parsed.data.nickname) {
+    const { error: caseError } = await admin.from('cases').update({ business_name: parsed.data.nickname }).eq('id', caseId);
+    if (caseError) return { ok: false, error: `닉네임을 케이스 표기에 반영하지 못했습니다: ${caseError.message}` };
+  }
   revalidatePath(`/nextlab/cases/${caseId}`);
   return { ok: true };
 }
 
 const mentorProfileSchema = z.object({
   industries: list,
-  expertise: list,
+  expertise: z.array(z.string().trim().min(1).max(40)).max(10, '분야는 최대 10개입니다.').default([]),
   regions: list,
+  mentor_institution: z.string().trim().max(100).optional().transform((v) => v || null),
   stages: list,
   modes: z.array(z.enum(['online', 'offline'])).min(1, '가능한 유형을 1개 이상 선택하세요.'),
   capacity: z.coerce.number().int().min(0).max(100).default(5),

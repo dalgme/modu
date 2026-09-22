@@ -33,7 +33,7 @@ export default async function Page() {
       <MentorProfileForm
         programId={ctx.programId}
         mentorId={profile.id}
-        value={p ? { industries: p.industries, expertise: p.expertise, regions: p.regions, stages: p.stages, modes: p.modes, capacity: p.capacity, career: p.career, bio: p.bio, keywords: p.keywords } : null}
+        value={p ? { industries: p.industries, expertise: p.expertise, regions: p.regions, stages: p.stages, modes: p.modes, capacity: p.capacity, career: p.career, bio: p.bio, keywords: p.keywords, mentor_institution: p.mentor_institution } : null}
         tags={options}
       />
     </main>

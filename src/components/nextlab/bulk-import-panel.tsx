@@ -17,20 +17,25 @@ const KIND_LABELS: Record<ImportKind, string> = {
 };
 
 /** 엑셀 일괄 등록: 템플릿 → 업로드(검증 미리보기) → 확정 → 임시 비밀번호 표.
- *  fixedKind 를 주면 그 종류 전용(종류 토글 숨김) — 회원 명단 [회원 등록] 미니탭에서 사용. */
-export function BulkImportPanel({ groups, fixedKind }: { groups: { code: string; name: string }[]; fixedKind?: ImportKind }) {
+ *  fixedKind 를 주면 그 종류 전용(종류 토글 숨김) — 회원 명단 [회원 등록] 미니탭에서 사용.
+ *  사업그룹은 컬럼이 아니라 여기서 선택한다(P23) — 멘티 필수, 멘토 선택. */
+export function BulkImportPanel({ groups, fixedKind }: { groups: { id: string; code: string; name: string }[]; fixedKind?: ImportKind }) {
   const { toast } = useToast();
   const [pending, start] = useTransition();
   const [kind, setKind] = useState<ImportKind>(fixedKind ?? 'mentee');
+  const [groupId, setGroupId] = useState('');
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const needsGroup = kind === 'mentee' || kind === 'mentor';
 
   const doPreview = () => {
     const f = fileRef.current?.files?.[0];
     if (!f) return toast({ title: '엑셀 파일을 선택하세요.', variant: 'destructive' });
+    if (kind === 'mentee' && !groupId) return toast({ title: '등록할 사업그룹을 먼저 선택하세요.', variant: 'destructive' });
     const fd = new FormData();
     fd.set('kind', kind);
+    fd.set('group', groupId);
     fd.set('file', f);
     start(async () => {
       const r = await previewImportAction(fd);
@@ -47,7 +52,7 @@ export function BulkImportPanel({ groups, fixedKind }: { groups: { code: string;
     if (!preview) return;
     if (!confirm(`유효한 ${preview.validCount}행을 등록할까요? 오류 ${preview.errorCount}행은 건너뜁니다.`)) return;
     start(async () => {
-      const r = await commitImportAction(preview.kind, preview.rows);
+      const r = await commitImportAction(preview.kind, preview.rows, groupId || null);
       if (!r.ok) {
           toast({ title: r.error, variant: 'destructive' });
           return;
@@ -89,10 +94,24 @@ export function BulkImportPanel({ groups, fixedKind }: { groups: { code: string;
             </a>
           </Button>
         </div>
-        {(kind === 'mentee' || kind === 'mentor') && (
-          <p className="text-xs text-muted-foreground">
-            그룹코드: {groups.length === 0 ? '(활성 그룹 없음)' : groups.map((g) => `${g.code}=${g.name}`).join(' · ')}
-          </p>
+        {needsGroup && (
+          <div className="flex flex-wrap items-center gap-2 text-sm">
+            <span className="font-semibold">사업그룹 {kind === 'mentee' ? <b className="text-destructive">*</b> : <span className="text-xs font-normal text-muted-foreground">(선택 — 그룹 명부에도 올릴 때)</span>}</span>
+            <select
+              value={groupId}
+              onChange={(e) => setGroupId(e.target.value)}
+              className="h-9 rounded-md border bg-background px-2 text-sm"
+              disabled={pending}
+            >
+              <option value="">{kind === 'mentee' ? '그룹 선택 (필수)' : '그룹 미지정 (행사 공통 Pool)'}</option>
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.code} · {g.name}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-muted-foreground">파일의 모든 행이 이 그룹으로 등록됩니다.</span>
+          </div>
         )}
         <div className="flex flex-wrap items-center gap-2">
           <Input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="max-w-sm" disabled={pending} />

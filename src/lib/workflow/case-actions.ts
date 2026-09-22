@@ -43,18 +43,39 @@ async function recordAdoption(caseId: string, mentorId: string, actorId: string,
   await createAdminClient().from('audit_logs').insert({ actor_id: actorId, program_id: programId, action: 'match.adoption', entity_type: 'cases', entity_id: caseId, metadata: { mentor_id: mentorId, recommended_rank: rank } });
 }
 
-/** 운영사: 멘티(케이스) 등록 (T1) */
+/** 운영사: 멘티(케이스) 등록 (T1) — P23 컬럼 재정의: 닉네임·고유번호·권역·유형·희망분야·재배치 희망·비고를 프로필에 함께 저장 */
 export async function registerCaseAction(input: unknown): Promise<CreateCaseResult> {
   const profile = await realRoleOrNull(['nextlab']);
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
   { const denied = denyUnless(ctx, 'case.manage'); if (denied) return { ok: false, error: denied }; }
-  const parsed = caseFormSchema.safeParse(input);
+  const raw = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const str = (k: string) => (typeof raw[k] === 'string' ? (raw[k] as string).trim() : '');
+  // 닉네임(팀명·활동명)이 "이름/소속" 표기의 소속 자리 — 기업(팀)명 컬럼 폐지, 비우면 이름
+  const parsed = caseFormSchema.safeParse({ ...raw, business_name: str('business_name') || str('nickname') || str('owner_name') });
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? '입력값을 확인하세요.' };
 
   const result = await createCase({ ...parsed.data, programId: ctx.programId, createdBy: profile.id });
-  if (result.ok) revalidatePath('/nextlab/dashboard');
+  if (result.ok) {
+    const needs = str('needs').split(/[;,]/).map((s) => s.trim()).filter(Boolean).slice(0, 6);
+    const { error: profileError } = await createAdminClient().from('mentee_profiles').upsert(
+      {
+        case_id: result.caseId,
+        program_id: ctx.programId,
+        nickname: str('nickname') || null,
+        external_no: str('external_no') || null,
+        region: str('region') || null,
+        mentee_type: str('mentee_type') || null,
+        needs,
+        preferred_mentor: str('preferred_mentor') || null,
+        note: str('note') || null,
+      },
+      { onConflict: 'case_id' },
+    );
+    if (profileError) return { ok: false, error: `케이스는 등록됐지만 프로필 저장에 실패했습니다: ${profileError.message}` };
+    revalidatePath('/nextlab/dashboard');
+  }
   return result;
 }
 

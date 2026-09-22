@@ -3,6 +3,7 @@ import * as XLSX from 'xlsx';
 
 import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { listProgramMembers } from '@/lib/data/members';
 import { listProgramMentors } from '@/lib/data/mentors';
 import { listCases } from '@/lib/data/cases';
@@ -28,7 +29,12 @@ export async function GET(request: Request): Promise<Response> {
   let sheetName = '멘티 명단';
 
   if (kind === 'mentee') {
+    // P23 컬럼 재정의: 이름·닉네임·고유번호·휴대폰·이메일·권역·유형·아이디어·희망분야·재배치 희망·비고 + 진행현황
     const cases = await listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined });
+    const { data: profiles } = cases.length
+      ? await createAdminClient().from('mentee_profiles').select('case_id, nickname, external_no, region, mentee_type, needs, preferred_mentor, note').in('case_id', cases.map((c) => c.id))
+      : { data: [] as { case_id: string; nickname: string | null; external_no: string | null; region: string | null; mentee_type: string | null; needs: string[]; preferred_mentor: string | null; note: string | null }[] };
+    const profileByCase = new Map((profiles ?? []).map((p) => [p.case_id, p]));
     const byMentee = new Map<string, typeof cases>();
     for (const c of cases) {
       if (!c.mentee_id) continue;
@@ -41,35 +47,64 @@ export async function GET(request: Request): Promise<Response> {
         const cs = byMentee.get(m.id) ?? [];
         const base = {
           이름: m.name,
-          '소속(기업·팀)': m.organization ?? '',
           휴대폰: m.phone ?? '',
           이메일: m.email ?? '',
           계정상태: active(m.is_active),
         };
-        if (cs.length === 0) return [{ ...base, 그룹: '', 진행상태: '', 회차: '', 담당멘토: '' }];
-        return cs.map((c) => ({
-          ...base,
-          그룹: c.supportTypeName ?? '',
-          진행상태: c.status === 'withdrawn' ? '중도 종료(비활성화)' : CASE_STATUS_META[c.status].short,
-          회차: `${c.roundsDone}/${c.requiredRounds}`,
-          담당멘토: c.mentorName ?? '',
-        }));
+        if (cs.length === 0) {
+          return [{ 이름: base.이름, 닉네임: '', 고유번호: '', 휴대폰: base.휴대폰, 이메일: base.이메일, 권역: '', 유형: '', 아이디어: '', 희망분야: '', '재배치 희망여부(멘토 이름)': '', 비고: '', 그룹: '', 진행상태: '', 회차: '', 담당멘토: '', 계정상태: base.계정상태 }];
+        }
+        return cs.map((c) => {
+          const p = profileByCase.get(c.id);
+          return {
+            이름: base.이름,
+            닉네임: p?.nickname ?? c.business_name ?? '',
+            고유번호: p?.external_no ?? '',
+            휴대폰: base.휴대폰,
+            이메일: base.이메일,
+            권역: p?.region ?? '',
+            유형: p?.mentee_type ?? '',
+            아이디어: c.item ?? '',
+            희망분야: (p?.needs ?? []).join(', '),
+            '재배치 희망여부(멘토 이름)': p?.preferred_mentor ?? '',
+            비고: p?.note ?? '',
+            그룹: c.supportTypeName ?? '',
+            진행상태: c.status === 'withdrawn' ? '중도 종료(비활성화)' : CASE_STATUS_META[c.status].short,
+            회차: `${c.roundsDone}/${c.requiredRounds}`,
+            담당멘토: c.mentorName ?? '',
+            계정상태: base.계정상태,
+          };
+        });
       });
   } else if (kind === 'mentor') {
+    // P23 컬럼 재정의: 이름·소속·휴대폰·이메일·분야·직위·소속멘토기관·권역·비고 + 진행·지급서류
     const mentors = await listProgramMentors(ctx.programId, ctx.supportTypeId ?? null);
+    const { data: profiles } = mentors.length
+      ? await createAdminClient().from('mentor_profiles').select('user_id, expertise, regions, mentor_institution, note').eq('program_id', ctx.programId).in('user_id', mentors.map((m) => m.id))
+      : { data: [] as { user_id: string; expertise: string[]; regions: string[]; mentor_institution: string | null; note: string | null }[] };
+    const profileByUser = new Map((profiles ?? []).map((p) => [p.user_id, p]));
+    const positionByUser = new Map(members.map((m) => [m.id, m.position]));
     sheetName = '멘토 명단';
-    rows = mentors.map((m) => ({
-      이름: m.name,
-      소속: m.organization ?? '',
-      휴대폰: m.phone ?? '',
-      이메일: m.email ?? '',
-      '담당 멘티': m.activeCases,
-      '배정 상태': m.activeCases > 0 ? '확정' : 'Pool 대기',
-      '이행 회차': m.totalRounds,
-      이력서: m.paymentDocs.resume ? '수령' : '미수령',
-      통장사본: m.paymentDocs.bankbook ? '수령' : '미수령',
-      신분증사본: m.paymentDocs.idCard ? '수령' : '미수령',
-    }));
+    rows = mentors.map((m) => {
+      const p = profileByUser.get(m.id);
+      return {
+        이름: m.name,
+        소속: m.organization ?? '',
+        휴대폰: m.phone ?? '',
+        이메일: m.email ?? '',
+        분야: (p?.expertise ?? []).join(', '),
+        직위: positionByUser.get(m.id) ?? '',
+        소속멘토기관: p?.mentor_institution ?? '',
+        권역: (p?.regions ?? []).join(', '),
+        비고: p?.note ?? '',
+        '담당 멘티': m.activeCases,
+        '배정 상태': m.activeCases > 0 ? '확정' : 'Pool 대기',
+        '이행 회차': m.totalRounds,
+        이력서: m.paymentDocs.resume ? '수령' : '미수령',
+        통장사본: m.paymentDocs.bankbook ? '수령' : '미수령',
+        신분증사본: m.paymentDocs.idCard ? '수령' : '미수령',
+      };
+    });
   } else {
     sheetName = '관리자 명단';
     rows = members

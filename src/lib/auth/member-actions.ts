@@ -81,6 +81,24 @@ export async function createMemberAction(
     await createAdminClient()
       .from('program_members')
       .upsert({ program_id: programId, user_id: result.userId, role: parsed.data.role, grade, duty, is_active: true, left_at: null }, { onConflict: 'program_id,user_id' });
+    if (parsed.data.role === 'mentor') {
+      // P23 멘토 컬럼: 분야(최대 10)·소속멘토기관·권역·비고 → 멘토 프로필
+      const str = (k: string) => String(formData.get(k) ?? '').trim();
+      const expertise = str('expertise').split(/[;,]/).map((s) => s.trim()).filter(Boolean).slice(0, 10);
+      const region = str('region');
+      const { error: profileError } = await createAdminClient().from('mentor_profiles').upsert(
+        {
+          program_id: programId,
+          user_id: result.userId,
+          expertise,
+          regions: region ? [region] : [],
+          mentor_institution: str('mentor_institution') || null,
+          note: str('note') || null,
+        },
+        { onConflict: 'program_id,user_id' },
+      );
+      if (profileError) return { ok: false, error: `계정은 발급됐지만 멘토 프로필 저장에 실패했습니다: ${profileError.message}` };
+    }
     revalidatePath('/nextlab/members');
     return {
       ok: true,

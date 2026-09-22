@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server';
 
 import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
-import { listSupportTypes } from '@/lib/programs/data';
 import { buildTemplate, isImportKind, IMPORT_KIND_LABELS } from '@/lib/import/bulk-import';
 
 export const dynamic = 'force-dynamic';
@@ -15,8 +14,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!ctx) return NextResponse.json({ error: 'no_context' }, { status: 400 });
   const kindRaw = new URL(request.url).searchParams.get('kind');
   const kind = isImportKind(kindRaw) ? kindRaw : 'mentee';
-  const groups = await listSupportTypes(ctx.programId);
-  const buf = buildTemplate(kind, groups.filter((g) => g.status === 'active').map((g) => g.code));
+  const buf = buildTemplate(kind);
   const filename = encodeURIComponent(`${ctx.program.name}_${IMPORT_KIND_LABELS[kind]}_일괄등록_템플릿.xlsx`);
   return new Response(new Uint8Array(buf), {
     headers: {

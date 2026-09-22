@@ -8,15 +8,22 @@ import { toStoredPhone } from '@/lib/auth/identifier';
 import { createCase } from '@/lib/workflow/cases';
 
 /**
- * 멘토/멘티 엑셀 일괄 등록 (운영사) — 2026-09-07 요건.
+ * 멘토/멘티 엑셀 일괄 등록 (운영사) — 컬럼 재정의 2026-09-22 (P23).
  * 시트 1행은 헤더. 한글 헤더를 키로 매핑한다. 미리보기(검증) → 확정(생성) 2단계.
+ * 사업그룹은 컬럼이 아니라 업로드 화면에서 선택한다(멘티 필수, 멘토 선택).
  */
 export type ImportKind = 'mentor' | 'mentee' | 'nextlab' | 'institution';
 
-export const MENTOR_COLUMNS = ['이름', '이메일', '휴대폰', '소속', '직위', '소속그룹코드', '전문분야', '업종', '지역', '경력', '소개'] as const;
-export const MENTEE_COLUMNS = ['멘티이름', '기업(팀)명', '휴대폰', '이메일', '사업그룹코드', '사업자등록번호', '주소', '업종', '아이템', '창업단계', '지역', '필요분야', '소개'] as const;
+/** 멘토: 분야는 콤마(,)로 구분해 최대 10개 */
+export const MENTOR_COLUMNS = ['이름', '소속', '휴대폰', '이메일', '분야', '직위', '소속멘토기관', '권역', '비고'] as const;
+/** 멘티: 희망분야는 콤마(,)로 구분해 최대 6개, 재배치 희망은 희망 멘토 이름 */
+export const MENTEE_COLUMNS = ['이름', '닉네임', '고유번호', '휴대폰', '이메일', '권역', '유형', '아이디어', '희망분야', '재배치 희망여부(멘토 이름)', '비고'] as const;
 /** 운영사·발주처 담당자 공용 컬럼 (등급은 운영사만 해석) */
 export const STAFF_COLUMNS = ['이름', '이메일', '휴대폰', '소속', '직위', '등급(운영사)', '담당역할'] as const;
+
+/** 복수 값 개수 상한 — 멘토 분야 10 / 멘티 희망분야 6 (사용자 확정 2026-09-22) */
+export const MAX_MENTOR_FIELDS = 10;
+export const MAX_MENTEE_NEEDS = 6;
 
 export const IMPORT_KIND_LABELS: Record<ImportKind, string> = {
   mentee: '멘티',
@@ -70,22 +77,29 @@ export function parseSheet(buffer: Buffer, kind: ImportKind): Record<string, str
 }
 
 /** 템플릿 xlsx 생성 (헤더 + 예시 1행) */
-export function buildTemplate(kind: ImportKind, groupCodes: string[]): Buffer {
+export function buildTemplate(kind: ImportKind): Buffer {
   const columns = columnsOf(kind);
   const example =
     kind === 'mentor'
-      ? ['홍길동', 'mentor@example.com', '010-1234-5678', '○○컨설팅', '대표', groupCodes[0] ?? '', '마케팅·브랜딩; 재무·투자유치', '식품', '세종', '○○ 대표 10년', '온·오프라인 모두 가능']
+      ? ['홍길동', '○○컨설팅', '010-1234-5678', 'mentor@example.com', '마케팅, 재무, 투자유치', '대표', '○○멘토단', '세종', '비고 메모']
       : kind === 'mentee'
-        ? ['김멘티', '팀 이름', '010-9876-5432', 'mentee@example.com', groupCodes[0] ?? '', '', '세종시 …', 'IT', '앱 서비스', '예비창업', '세종', '사업계획서; 마케팅·브랜딩', '한 줄 소개']
+        ? ['김멘티', '팀모두', 'M-001', '010-9876-5432', 'mentee@example.com', '세종', '예비창업', '앱 서비스', '사업계획서, 마케팅', '', '비고 메모']
         : ['박담당', 'staff@example.com', '010-5555-1234', kind === 'nextlab' ? '운영사' : '발주기관', '주임', kind === 'nextlab' ? 'pm' : '', '정산 담당'];
   const ws = XLSX.utils.aoa_to_sheet([[...columns], example]);
   const guide = XLSX.utils.aoa_to_sheet([
     ['안내'],
     ['· 1행 헤더는 수정하지 마세요. 2행 예시는 지우고 입력하세요.'],
     ['· 휴대폰은 필수(로그인 아이디·임시 비밀번호). 이메일이 없으면 자동 생성됩니다.'],
-    [`· 그룹코드: ${groupCodes.join(', ') || '(설정 페이지에서 그룹을 먼저 만드세요)'}`],
-    ['· 여러 값은 세미콜론(;)으로 구분합니다. 예) 마케팅; 재무'],
+    ['· 사업그룹은 파일이 아니라 업로드 화면에서 선택합니다. (멘티는 필수)'],
     ['· 이미 있는 계정(휴대폰/이메일 일치)은 새로 만들지 않고 이 행사에 초대만 합니다.'],
+    ...(kind === 'mentor' ? [[`· 분야: 콤마(,)로 구분, 최대 ${MAX_MENTOR_FIELDS}개. 예) 마케팅, 재무, 투자유치`]] : []),
+    ...(kind === 'mentee'
+      ? [
+          [`· 희망분야: 콤마(,)로 구분, 최대 ${MAX_MENTEE_NEEDS}개.`],
+          ['· 닉네임은 팀명·활동명입니다. 화면의 "이름/소속" 표기에 사용됩니다(비우면 이름).'],
+          ['· 재배치 희망여부: 재배치(배정)를 희망하는 멘토 이름을 적습니다. 비우면 희망 없음.'],
+        ]
+      : []),
     ...(kind === 'nextlab' ? [['· 등급: pl(메인 담당) / pm / sub_pm(부PM) / observer(옵저버). 비우면 pl.']] : []),
   ]);
   const wb = XLSX.utils.book_new();
@@ -96,15 +110,13 @@ export function buildTemplate(kind: ImportKind, groupCodes: string[]): Buffer {
 
 const splitList = (v: string) => v.split(/[;,]/).map((s) => s.trim()).filter(Boolean);
 
-/** 검증 — DB 는 조회만. 그룹코드 존재·필수값·중복·기존 계정 매칭 */
+/** 검증 — DB 는 조회만. 필수값·형식·복수값 상한·중복·기존 계정 매칭 (그룹은 액션에서 검증) */
 export async function previewImport(programId: string, kind: ImportKind, rows: Record<string, string>[]): Promise<ImportPreview> {
   const admin = createAdminClient();
-  const { data: groups } = await admin.from('support_types').select('id, code, status').eq('program_id', programId);
-  const groupByCode = new Map((groups ?? []).map((g) => [g.code, g]));
   const seenPhones = new Set<string>();
   const out: ImportRow[] = [];
   const phones = rows.map((r) => (toStoredPhone(r['휴대폰'] ?? '') ?? '').replace(/\D/g, '')).filter(Boolean);
-  const emails = rows.map((r) => (kind === 'mentor' ? r['이메일'] : r['이메일'])?.toLowerCase()).filter(Boolean) as string[];
+  const emails = rows.map((r) => r['이메일']?.toLowerCase()).filter(Boolean) as string[];
   const [{ data: byPhone }, { data: byEmail }] = await Promise.all([
     phones.length ? admin.from('users').select('id, phone, role').in('phone', phones.map((p) => toStoredPhone(p) ?? p)) : Promise.resolve({ data: [] as { id: string; phone: string | null; role: string }[] }),
     emails.length ? admin.from('users').select('id, email, role').in('email', emails) : Promise.resolve({ data: [] as { id: string; email: string | null; role: string }[] }),
@@ -115,20 +127,14 @@ export async function previewImport(programId: string, kind: ImportKind, rows: R
   rows.forEach((values, i) => {
     const errors: string[] = [];
     const line = i + 2;
-    const name = kind === 'mentee' ? values['멘티이름'] : values['이름'];
+    const name = values['이름'];
     const phoneDigits = (toStoredPhone(values['휴대폰'] ?? '') ?? values['휴대폰'] ?? '').replace(/\D/g, '');
     const email = (values['이메일'] ?? '').toLowerCase();
-    const groupCode = kind === 'mentor' ? values['소속그룹코드'] : kind === 'mentee' ? values['사업그룹코드'] : '';
     if (!name) errors.push('이름 누락');
     if (phoneDigits.length < 10 || phoneDigits.length > 11) errors.push('휴대폰 형식(10~11자리)');
     if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) errors.push('이메일 형식');
-    if (kind === 'mentee' && !values['기업(팀)명']) errors.push('기업(팀)명 누락');
-    if (kind === 'mentee' && !groupCode) errors.push('사업그룹코드 누락');
-    if (groupCode) {
-      const g = groupByCode.get(groupCode);
-      if (!g) errors.push(`그룹코드 '${groupCode}' 없음`);
-      else if (g.status !== 'active') errors.push(`그룹 '${groupCode}' 종료됨`);
-    }
+    if (kind === 'mentor' && splitList(values['분야'] ?? '').length > MAX_MENTOR_FIELDS) errors.push(`분야는 최대 ${MAX_MENTOR_FIELDS}개`);
+    if (kind === 'mentee' && splitList(values['희망분야'] ?? '').length > MAX_MENTEE_NEEDS) errors.push(`희망분야는 최대 ${MAX_MENTEE_NEEDS}개`);
     if (phoneDigits && seenPhones.has(phoneDigits)) errors.push('파일 안 휴대폰 중복');
     seenPhones.add(phoneDigits);
     let existingUserId: string | undefined;
@@ -149,11 +155,9 @@ export interface ImportResult {
   credentials: { line: number; name: string; email: string; tempPassword: string }[];
 }
 
-/** 확정 — 유효 행만 생성. 기존 계정은 멤버십·명부만 추가. */
-export async function commitImport(programId: string, kind: ImportKind, rows: ImportRow[], actorId: string): Promise<ImportResult> {
+/** 확정 — 유효 행만 생성. 기존 계정은 멤버십·명부만 추가. groupId 는 액션이 검증해 넘긴다(멘티 필수, 멘토 선택). */
+export async function commitImport(programId: string, kind: ImportKind, rows: ImportRow[], actorId: string, groupId?: string | null): Promise<ImportResult> {
   const admin = createAdminClient();
-  const { data: groups } = await admin.from('support_types').select('id, code').eq('program_id', programId);
-  const groupByCode = new Map((groups ?? []).map((g) => [g.code, g.id]));
   const result: ImportResult = { created: 0, linked: 0, failed: [], credentials: [] };
 
   for (const row of rows) {
@@ -171,9 +175,10 @@ export async function commitImport(programId: string, kind: ImportKind, rows: Im
           result.credentials.push({ line: row.line, name: v['이름']!, email: acc.email, tempPassword: acc.tempPassword });
         } else {
           result.linked += 1;
+          // 기존 계정도 명단 값(소속·직위)은 파일 기준으로 갱신
+          await admin.from('users').update({ organization: v['소속'] || null, position: v['직위'] || null }).eq('id', userId);
         }
         await admin.from('program_members').upsert({ program_id: programId, user_id: userId, role: 'mentor', is_active: true }, { onConflict: 'program_id,user_id' });
-        const groupId = v['소속그룹코드'] ? groupByCode.get(v['소속그룹코드']) : undefined;
         if (groupId) {
           await admin.from('support_type_members').upsert({ support_type_id: groupId, user_id: userId, member_role: 'mentor', is_active: true, left_at: null }, { onConflict: 'support_type_id,user_id' });
         }
@@ -181,11 +186,10 @@ export async function commitImport(programId: string, kind: ImportKind, rows: Im
           {
             program_id: programId,
             user_id: userId,
-            expertise: splitList(v['전문분야'] ?? ''),
-            industries: splitList(v['업종'] ?? ''),
-            regions: splitList(v['지역'] ?? ''),
-            career: v['경력'] || null,
-            bio: v['소개'] || null,
+            expertise: splitList(v['분야'] ?? '').slice(0, MAX_MENTOR_FIELDS),
+            regions: splitList(v['권역'] ?? ''),
+            mentor_institution: v['소속멘토기관'] || null,
+            note: v['비고'] || null,
           },
           { onConflict: 'program_id,user_id' },
         );
@@ -207,20 +211,20 @@ export async function commitImport(programId: string, kind: ImportKind, rows: Im
           .from('program_members')
           .upsert({ program_id: programId, user_id: userId, role: kind, grade, duty: v['담당역할'] || null, is_active: true, left_at: null }, { onConflict: 'program_id,user_id' });
       } else {
-        const groupId = groupByCode.get(v['사업그룹코드']!);
-        if (!groupId) throw new Error('그룹코드 없음');
+        if (!groupId) throw new Error('사업그룹을 선택하세요');
         const created = await createCase({
           programId,
           createdBy: actorId,
           support_type_id: groupId,
-          business_name: v['기업(팀)명']!,
-          owner_name: v['멘티이름']!,
+          // 닉네임(팀명·활동명)이 "이름/소속" 표기의 소속 자리 — 비우면 이름으로 채운다
+          business_name: v['닉네임'] || v['이름']!,
+          owner_name: v['이름']!,
           phone: v['휴대폰']!,
           email: v['이메일'] || undefined,
-          business_reg_no: v['사업자등록번호'] || undefined,
-          address: v['주소'] || undefined,
-          business_type: v['업종'] || undefined,
-          item: v['아이템'] || undefined,
+          item: v['아이디어'] || undefined,
+          business_reg_no: undefined,
+          address: undefined,
+          business_type: undefined,
           opened_at: undefined,
           employee_count: undefined,
           menteeId: row.existingUserId ?? null,
@@ -228,7 +232,7 @@ export async function commitImport(programId: string, kind: ImportKind, rows: Im
         if (!created.ok) throw new Error(created.error);
         if (created.menteeCredential) {
           result.created += 1;
-          result.credentials.push({ line: row.line, name: v['멘티이름']!, email: created.menteeCredential.email, tempPassword: created.menteeCredential.tempPassword });
+          result.credentials.push({ line: row.line, name: v['이름']!, email: created.menteeCredential.email, tempPassword: created.menteeCredential.tempPassword });
         } else {
           result.linked += 1;
         }
@@ -236,11 +240,13 @@ export async function commitImport(programId: string, kind: ImportKind, rows: Im
           {
             case_id: created.caseId,
             program_id: programId,
-            industry: v['업종'] || null,
-            stage: v['창업단계'] || null,
-            region: v['지역'] || null,
-            needs: splitList(v['필요분야'] ?? ''),
-            summary: v['소개'] || null,
+            nickname: v['닉네임'] || null,
+            external_no: v['고유번호'] || null,
+            region: v['권역'] || null,
+            mentee_type: v['유형'] || null,
+            needs: splitList(v['희망분야'] ?? '').slice(0, MAX_MENTEE_NEEDS),
+            preferred_mentor: v['재배치 희망여부(멘토 이름)'] || null,
+            note: v['비고'] || null,
           },
           { onConflict: 'case_id' },
         );
@@ -256,7 +262,7 @@ export async function commitImport(programId: string, kind: ImportKind, rows: Im
     action: `import.${kind}`,
     entity_type: 'programs',
     entity_id: programId,
-    metadata: { created: result.created, linked: result.linked, failed: result.failed.length },
+    metadata: { created: result.created, linked: result.linked, failed: result.failed.length, group_id: groupId ?? null },
   });
   return result;
 }
