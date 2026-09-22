@@ -82,6 +82,7 @@ export async function registerCaseAction(input: unknown): Promise<CreateCaseResu
       console.error('auto match on register failed:', err instanceof Error ? err.message : err);
     }
     revalidatePath('/nextlab/dashboard');
+    revalidatePath('/nextlab/roster');
   }
   return result;
 }

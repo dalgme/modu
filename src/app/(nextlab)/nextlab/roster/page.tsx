@@ -81,6 +81,15 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     must_change_password: m.must_change_password,
   }));
 
+  // 탭별 등록 인원 수 (행사 안 역할 기준) — 등록 직후 revalidate 로 즉시 갱신된다
+  const countOf = (role: string) => members.filter((m) => m.role === role).length;
+  const tabCounts: Partial<Record<TabKey, number>> = {
+    mentee: countOf('mentee'),
+    mentor: countOf('mentor'),
+    institution: countOf('institution'),
+    nextlab: countOf('nextlab'),
+  };
+
   let body: React.ReactNode = null;
 
   if (tab === 'mentee') {
@@ -196,9 +205,12 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             <Link
               key={r.key}
               href={`/nextlab/roster?tab=register&reg=${r.key}`}
-              className={`whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold ${reg === r.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
+              className={`flex items-center justify-between gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold ${reg === r.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
             >
-              {r.label} 등록
+              <span>{r.label} 등록</span>
+              <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${reg === r.key ? 'bg-primary-foreground/20' : 'bg-muted'}`}>
+                {countOf(r.key)}
+              </span>
             </Link>
           ))}
         </nav>
@@ -246,9 +258,14 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
           <Link
             key={t.key}
             href={`/nextlab/roster?tab=${t.key}`}
-            className={`rounded-full px-3.5 py-1.5 text-sm font-semibold ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}
           >
             {t.label}
+            {tabCounts[t.key] !== undefined && (
+              <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${tab === t.key ? 'bg-primary-foreground/20' : 'bg-background text-foreground'}`}>
+                {tabCounts[t.key]}
+              </span>
+            )}
           </Link>
         ))}
       </nav>

@@ -107,6 +107,7 @@ export async function createMemberAction(
       }
     }
     revalidatePath('/nextlab/members');
+    revalidatePath('/nextlab/roster');
     return {
       ok: true,
       message: '계정이 발급되었습니다. 아래 임시 비밀번호를 회원에게 전달하세요.',

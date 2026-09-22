@@ -22,7 +22,10 @@ const KIND_LABELS: Record<ImportKind, string> = {
 export function BulkImportPanel({ groups, fixedKind }: { groups: { id: string; code: string; name: string }[]; fixedKind?: ImportKind }) {
   const { toast } = useToast();
   const [pending, start] = useTransition();
-  const [kind, setKind] = useState<ImportKind>(fixedKind ?? 'mentee');
+  // fixedKind 가 있으면 항상 그 값을 쓴다 — useState 초기값만 믿으면 미니탭(멘티→멘토) 전환 시
+  // 컴포넌트가 재사용되어 이전 종류가 남는다(멘토 탭에서 멘티 템플릿이 받아지던 버그).
+  const [kindState, setKind] = useState<ImportKind>(fixedKind ?? 'mentee');
+  const kind = fixedKind ?? kindState;
   const [groupId, setGroupId] = useState('');
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
