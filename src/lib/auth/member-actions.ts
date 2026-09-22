@@ -98,6 +98,13 @@ export async function createMemberAction(
         { onConflict: 'program_id,user_id' },
       );
       if (profileError) return { ok: false, error: `계정은 발급됐지만 멘토 프로필 저장에 실패했습니다: ${profileError.message}` };
+      // P24: 이 멘토를 재배치 희망으로 지정한 대기 멘티가 있으면 자동 확정
+      try {
+        const { autoMatchNewMentor } = await import('@/lib/matching/auto-match');
+        await autoMatchNewMentor(programId, result.userId, actor.id);
+      } catch (err) {
+        console.error('auto match on mentor create failed:', err instanceof Error ? err.message : err);
+      }
     }
     revalidatePath('/nextlab/members');
     return {

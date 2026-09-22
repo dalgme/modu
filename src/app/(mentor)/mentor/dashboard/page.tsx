@@ -1,5 +1,7 @@
 import { requireMentor } from '@/lib/auth/guards';
+import { getImpersonation } from '@/lib/auth/impersonation';
 import { requireContext } from '@/lib/programs/context';
+import { markAssignmentsConfirmed } from '@/lib/matching/auto-match';
 import { listMentorCases } from '@/lib/data/cases';
 import { MentorDashboardBody } from '@/components/mentor/mentor-dashboard-body';
 import { listMyOpenSurveys } from '@/lib/surveys/campaigns';
@@ -11,6 +13,8 @@ import Link from 'next/link';
 export default async function Page() {
   const profile = await requireMentor();
   const ctx = await requireContext(profile);
+  // P24: 멘토 본인이 로그인해 대시보드(배정 멘티)를 열람하면 매칭 리스트에 '확인' 표시. 대행 중에는 기록하지 않는다.
+  if (!(await getImpersonation())) await markAssignmentsConfirmed(profile.id, ctx.programId);
   const cases = await listMentorCases(profile.id, { programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined });
   const openSurveys = await listMyOpenSurveys(profile.id, ctx.programId);
   const pendingForms = (await getMentorFormsForMentor(ctx.programId, profile.id)).filter((f) => !f.submittedAt);

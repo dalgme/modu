@@ -21,7 +21,9 @@ export async function GET(request: Request): Promise<Response> {
   if (!ctx) return NextResponse.json({ error: 'no_context' }, { status: 400 });
 
   const tab = new URL(request.url).searchParams.get('tab');
-  const kind = tab === 'mentor' || tab === 'staff' ? tab : 'mentee';
+  const kind = tab === 'mentor' || tab === 'staff' || tab === 'institution' || tab === 'nextlab' ? tab : 'mentee';
+  /** 관리자 시트 역할 필터 — staff(구 링크)는 발주처+운영사 전체 */
+  const staffRoles: ('nextlab' | 'institution')[] = kind === 'institution' ? ['institution'] : kind === 'nextlab' ? ['nextlab'] : ['nextlab', 'institution'];
   const members = await listProgramMembers(ctx.programId);
   const active = (b: boolean) => (b ? '활성' : '비활성');
 
@@ -106,9 +108,9 @@ export async function GET(request: Request): Promise<Response> {
       };
     });
   } else {
-    sheetName = '관리자 명단';
+    sheetName = kind === 'institution' ? '발주처 명단' : kind === 'nextlab' ? '운영사 명단' : '관리자 명단';
     rows = members
-      .filter((m) => m.role === 'nextlab' || m.role === 'institution')
+      .filter((m) => staffRoles.includes(m.role as 'nextlab' | 'institution'))
       .map((m) => ({
         구분: ROLE_LABELS[m.role],
         이름: m.name,

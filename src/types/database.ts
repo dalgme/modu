@@ -910,6 +910,7 @@ export type Database = {
           assigned_at: string;
           assigned_by: string | null;
           case_id: string;
+          confirmed_at: string | null;
           created_at: string;
           end_kind: string | null;
           end_reason: string | null;
@@ -918,6 +919,7 @@ export type Database = {
           id: string;
           is_active: boolean;
           mentor_id: string;
+          notice_sent_at: string | null;
           reason_visibility: string;
           updated_at: string;
         };
@@ -925,6 +927,7 @@ export type Database = {
           assigned_at?: string;
           assigned_by?: string | null;
           case_id: string;
+          confirmed_at?: string | null;
           created_at?: string;
           end_kind?: string | null;
           end_reason?: string | null;
@@ -933,6 +936,7 @@ export type Database = {
           id?: string;
           is_active?: boolean;
           mentor_id: string;
+          notice_sent_at?: string | null;
           reason_visibility?: string;
           updated_at?: string;
         };
@@ -940,6 +944,7 @@ export type Database = {
           assigned_at?: string;
           assigned_by?: string | null;
           case_id?: string;
+          confirmed_at?: string | null;
           created_at?: string;
           end_kind?: string | null;
           end_reason?: string | null;
@@ -948,6 +953,7 @@ export type Database = {
           id?: string;
           is_active?: boolean;
           mentor_id?: string;
+          notice_sent_at?: string | null;
           reason_visibility?: string;
           updated_at?: string;
         };

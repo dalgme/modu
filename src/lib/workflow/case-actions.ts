@@ -10,6 +10,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { assignMentorSchema, caseFormSchema } from '@/lib/validations/case';
 import { succeedCases, type SuccessionResult } from '@/lib/workflow/succession';
 import { markRecommendationAdopted } from '@/lib/matching/recommend';
+import { afterAssignmentConfirmed, autoMatchMentee } from '@/lib/matching/auto-match';
 import {
   assignMentor,
   createCase,
@@ -74,6 +75,12 @@ export async function registerCaseAction(input: unknown): Promise<CreateCaseResu
       { onConflict: 'case_id' },
     );
     if (profileError) return { ok: false, error: `케이스는 등록됐지만 프로필 저장에 실패했습니다: ${profileError.message}` };
+    // P24 자동 매칭 — 실패해도 등록을 막지 않는다
+    try {
+      await autoMatchMentee(result.caseId, profile.id);
+    } catch (err) {
+      console.error('auto match on register failed:', err instanceof Error ? err.message : err);
+    }
     revalidatePath('/nextlab/dashboard');
   }
   return result;
@@ -93,6 +100,7 @@ export async function assignMentorAction(caseId: string, mentorId: string): Prom
   const result = await assignMentor(parsed.data.caseId, parsed.data.mentorId, profile.id);
   if (result.ok) {
     await recordAdoption(parsed.data.caseId, parsed.data.mentorId, profile.id, ctx.programId);
+    await afterAssignmentConfirmed(ctx.programId, parsed.data.mentorId, profile.id);
     revalidateCase(caseId);
   }
   return result;
@@ -112,6 +120,7 @@ export async function reassignMentorAction(caseId: string, newMentorId: string, 
   const result = await reassignMentor(parsed.data.caseId, parsed.data.mentorId, profile.id, reason);
   if (result.ok) {
     await recordAdoption(parsed.data.caseId, parsed.data.mentorId, profile.id, ctx.programId);
+    await afterAssignmentConfirmed(ctx.programId, parsed.data.mentorId, profile.id);
     revalidateCase(caseId);
   }
   return result;

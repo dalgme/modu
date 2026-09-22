@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createStaffOrMentorAccount } from '@/lib/auth/admin-accounts';
 import { toStoredPhone } from '@/lib/auth/identifier';
 import { createCase } from '@/lib/workflow/cases';
+import { autoMatchMentee, autoMatchNewMentor } from '@/lib/matching/auto-match';
 
 /**
  * 멘토/멘티 엑셀 일괄 등록 (운영사) — 컬럼 재정의 2026-09-22 (P23).
@@ -193,6 +194,12 @@ export async function commitImport(programId: string, kind: ImportKind, rows: Im
           },
           { onConflict: 'program_id,user_id' },
         );
+        // P24: 이 멘토를 재배치 희망으로 지정한 대기 멘티가 있으면 자동 확정, 아니면 추천 재계산
+        try {
+          await autoMatchNewMentor(programId, userId, actorId);
+        } catch (err) {
+          console.error('auto match on mentor import failed:', err instanceof Error ? err.message : err);
+        }
       } else if (kind === 'nextlab' || kind === 'institution') {
         let userId = row.existingUserId;
         const phone = toStoredPhone(v['휴대폰'] ?? '') ?? v['휴대폰']!;
@@ -250,6 +257,12 @@ export async function commitImport(programId: string, kind: ImportKind, rows: Im
           },
           { onConflict: 'case_id' },
         );
+        // P24: 재배치 희망 멘토 자동 확정 또는 미배정 멘토 추천 생성
+        try {
+          await autoMatchMentee(created.caseId, actorId);
+        } catch (err) {
+          console.error('auto match on mentee import failed:', err instanceof Error ? err.message : err);
+        }
       }
     } catch (err) {
       result.failed.push({ line: row.line, error: err instanceof Error ? err.message : '알 수 없는 오류' });

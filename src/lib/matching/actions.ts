@@ -8,7 +8,9 @@ import { denyUnless } from '@/lib/auth/capabilities';
 import { getImpersonation } from '@/lib/auth/impersonation';
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { generateRecommendations, type RecommendationItem } from '@/lib/matching/recommend';
+import { generateRecommendations, markRecommendationAdopted, type RecommendationItem } from '@/lib/matching/recommend';
+import { afterAssignmentConfirmed } from '@/lib/matching/auto-match';
+import { assignMentor } from '@/lib/workflow/cases';
 
 type Result = { ok: true } | { ok: false; error: string };
 const OPERATOR_ONLY = '운영사 담당자만 실행할 수 있습니다.';
@@ -101,5 +103,27 @@ export async function saveMentorProfileAction(programId: string, mentorId: strin
   if (error) return { ok: false, error: error.message };
   revalidatePath('/mentor/profile');
   revalidatePath('/nextlab/mentors');
+  return { ok: true };
+}
+
+/** 운영사: 매칭 리스트에서 추천 멘토 [매칭 확정] (P24) — 배정 + 추천 채택 기록 + 타 멘티 추천 재계산 + 전원 배정 문자 */
+export async function confirmMatchAction(caseId: string, mentorId: string): Promise<Result> {
+  const op = await operatorCase(caseId);
+  if ('error' in op) return { ok: false, error: op.error };
+  const r = await assignMentor(caseId, mentorId, op.id);
+  if (!r.ok) return r;
+  const rank = await markRecommendationAdopted(caseId, mentorId);
+  const { error: auditError } = await createAdminClient().from('audit_logs').insert({
+    actor_id: op.id,
+    program_id: op.programId,
+    action: 'match.adoption',
+    entity_type: 'cases',
+    entity_id: caseId,
+    metadata: { mentor_id: mentorId, recommended_rank: rank, source: 'match_list' },
+  });
+  if (auditError) console.error('match adoption audit failed:', auditError.message);
+  await afterAssignmentConfirmed(op.programId, mentorId, op.id);
+  revalidatePath('/nextlab/roster');
+  revalidatePath(`/nextlab/cases/${caseId}`);
   return { ok: true };
 }

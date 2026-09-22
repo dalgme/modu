@@ -16,6 +16,7 @@ import { MembersManager, CreateMemberForm, AddExistingMemberForm, type MenteePro
 import { MentorsRoster } from '@/components/nextlab/mentors-roster';
 import { MentorFormsStatus } from '@/components/nextlab/mentor-forms-status';
 import { BulkImportPanel } from '@/components/nextlab/bulk-import-panel';
+import { MenteeMatchList, MentorMatchList } from '@/components/nextlab/matching-lists';
 import { Button } from '@/components/ui/button';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +24,10 @@ export const dynamic = 'force-dynamic';
 const TABS = [
   { key: 'mentee', label: '멘티 명단' },
   { key: 'mentor', label: '멘토 명단' },
-  { key: 'staff', label: '관리자 명단' },
+  { key: 'mentee-match', label: '멘티 매칭 리스트' },
+  { key: 'mentor-match', label: '멘토 매칭 리스트' },
+  { key: 'institution', label: '발주처' },
+  { key: 'nextlab', label: '운영사' },
   { key: 'register', label: '회원 등록' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
@@ -50,7 +54,9 @@ function ActiveHelp() {
 export default async function Page({ searchParams }: { searchParams: { tab?: string; reg?: string } }) {
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
-  const tab = (TABS.find((t) => t.key === searchParams.tab)?.key ?? 'mentee') as TabKey;
+  // 구 '관리자 명단' 링크는 발주처 탭으로
+  const tabParam = searchParams.tab === 'staff' ? 'institution' : searchParams.tab;
+  const tab = (TABS.find((t) => t.key === tabParam)?.key ?? 'mentee') as TabKey;
   const reg = (REG_ROLES.find((r) => r.key === searchParams.reg)?.key ?? 'mentee') as RegKey;
 
   const [members, roster] = await Promise.all([
@@ -160,14 +166,23 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     );
   }
 
-  if (tab === 'staff') {
+  if (tab === 'institution' || tab === 'nextlab') {
+    const roleLabel = tab === 'institution' ? '발주처' : '운영사';
     body = (
       <>
         <ActiveHelp />
-        <p className="text-sm text-muted-foreground">운영사 담당자와 발주처 담당자를 관리합니다. 등급(PL/PM/부PM/옵저버)·직위·담당역할은 [정보 수정]에서 바꿉니다.</p>
-        <MembersManager members={memberItems} rosterColumns={[]} rosterValues={{}} mode="staff" />
+        <p className="text-sm text-muted-foreground">
+          {roleLabel} 담당자를 관리합니다. {tab === 'nextlab' ? '등급(PL/PM/부PM/옵저버)·직위·담당역할은 [정보 수정]에서 바꿉니다.' : '직위·담당역할은 [정보 수정]에서 바꿉니다.'}
+        </p>
+        <MembersManager members={memberItems.filter((m) => m.role === tab)} rosterColumns={[]} rosterValues={{}} mode="staff" />
       </>
     );
+  }
+
+  if (tab === 'mentor-match' || tab === 'mentee-match') {
+    const { loadMatchingLists } = await import('@/lib/data/matching-lists');
+    const lists = await loadMatchingLists(ctx.programId, ctx.supportTypeId ?? null);
+    body = tab === 'mentor-match' ? <MentorMatchList rows={lists.mentorRows} /> : <MenteeMatchList rows={lists.menteeRows} />;
   }
 
   if (tab === 'register') {
@@ -218,7 +233,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             <b>{ctx.program.name}</b>{ctx.group ? ` · ${ctx.group.name}` : ''} — 역할은 이 행사 안에서의 역할입니다. 회원 정보를 수정하면 명단·진행현황·문서에 즉시 반영됩니다.
           </p>
         </div>
-        {tab !== 'register' && (
+        {(tab === 'mentee' || tab === 'mentor' || tab === 'institution' || tab === 'nextlab') && (
           <Button asChild variant="outline" className="gap-1">
             <a href={`/api/nextlab/roster-export?tab=${tab}`}>
               <Download className="h-4 w-4" /> 엑셀 다운로드
