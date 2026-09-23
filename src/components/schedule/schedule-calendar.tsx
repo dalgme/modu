@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ScheduleEvent } from '@/lib/data/schedule';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { menteeLabel } from '@/lib/utils/labels';
 
 type View = 'month' | 'week' | 'day';
 
@@ -78,7 +79,7 @@ export function ScheduleCalendar({ events, caseHrefBase }: { events: ScheduleEve
     const st = statusOf(e);
     const inner = (
       <span className={cn('block truncate rounded border px-1.5 py-0.5 text-[11px] leading-snug', STATUS_STYLE[st], full && 'flex flex-wrap items-center gap-1 px-2 py-1.5 text-xs')}>
-        <b>{hm(e.startedAt)}</b> {e.ownerName}/{e.businessName} · {e.mode === 'online' ? '온라인' : '오프라인'}
+        <b>{hm(e.startedAt)}</b> {menteeLabel(e.ownerName, e.businessName)} · {e.mode === 'online' ? '온라인' : '오프라인'}
         {full && (
           <>
             <span>~{hm(e.endedAt)}</span>

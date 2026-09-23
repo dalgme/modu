@@ -33,6 +33,8 @@ import { Badge } from '@/components/ui/badge';
 import { ViewAsStartButton } from '@/components/nextlab/view-as-start-button';
 import { MentorName } from '@/components/common/mentor-name';
 import { RoundDots } from '@/components/common/round-dots';
+import { MentorGroupControls, type MentorGroupInfo } from '@/components/nextlab/mentor-group-controls';
+import { RankBadge } from '@/components/nextlab/matching-lists';
 import { Search } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -68,6 +70,10 @@ export interface MemberItem {
   guideSentAt: string | null;
   /** 비고 (발주처·운영사·멘토) */
   note: string | null;
+  /** 멘티: 순위 (여러 케이스면 가장 앞선 순위, P27-01) */
+  rank?: number | null;
+  /** 멘토: 그룹 지정·원천징수 (정보 수정 패널, P27-14) */
+  mentorGroups?: MentorGroupInfo[];
 }
 
 export interface RosterColumnItem {
@@ -343,6 +349,9 @@ function MemberDetailsForm({ member }: { member: MemberItem }) {
         {state?.ok === false && <span className="text-xs text-destructive">{state.error}</span>}
         {state?.ok && <span className="text-xs text-status-approved">{state.message}</span>}
       </div>
+      {member.role === 'mentor' && member.mentorGroups && member.mentorGroups.length > 0 && (
+        <MentorGroupControls userId={member.id} mentorName={member.name} groups={member.mentorGroups} />
+      )}
     </form>
   );
 }
@@ -569,6 +578,8 @@ export interface MenteeProgressItem {
   mentorActiveCount: number;
   /** 만족도 조사 — none: 미개시 / open: 개시(응답 대기) / done: 응답 완료 */
   surveyStatus: 'none' | 'open' | 'done';
+  /** 진행 단계 순서값 (CASE_STATUSES 인덱스) — 진행현황 정렬용 (P27-02) */
+  statusIndex: number;
 }
 
 /** [만족도 생성] / 진행중 / 완료 표시 (P20) */
@@ -621,6 +632,8 @@ export function MembersManager({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
   const [query, setQuery] = useState('');
+  // 멘티 명단 정렬 — 순위 / 이름(가나다) / 진행현황 (P27-02)
+  const [sortKey, setSortKey] = useState<'rank' | 'name' | 'progress'>(mode === 'mentee' ? 'rank' : 'name');
   // 멘토 명단 표의 [정보 수정] 버튼이 이 컴포넌트의 편집 패널을 연다 (P25-15)
   useEffect(() => {
     const open = (e: Event) => {
@@ -635,7 +648,13 @@ export function MembersManager({
   const filtered = members
     .filter((m) => MODE_MATCH[mode](m.role))
     .filter((m) => !query.trim() || m.name.includes(query.trim()) || (m.phone ?? '').includes(query.trim()))
-    .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+    .sort((a, b) => {
+      const byName = a.name.localeCompare(b.name, 'ko');
+      if (mode !== 'mentee' || sortKey === 'name') return byName;
+      if (sortKey === 'rank') return (a.rank ?? 1e9) - (b.rank ?? 1e9) || byName;
+      const idx = (m: MemberItem) => Math.min(...((progress?.[m.id] ?? []).map((p) => p.statusIndex)), 1e9);
+      return idx(a) - idx(b) || byName;
+    });
   const tabColumns = useMemo(
     () => (tab === 'mentor' || tab === 'mentee' ? rosterColumns.filter((c) => c.target === tab) : []),
     [tab, rosterColumns],
@@ -661,7 +680,8 @@ export function MembersManager({
   };
 
   const showProgress = mode === 'mentee' && !!progress;
-  const colSpan = 6 + (showProgress ? 2 : 0) + tabColumns.length + 1;
+  const showRank = mode === 'mentee';
+  const colSpan = 6 + (showRank ? 1 : 0) + (showProgress ? 2 : 0) + tabColumns.length + 1;
 
   return (
     <div className="flex flex-col gap-6">
@@ -679,7 +699,17 @@ export function MembersManager({
             <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="이름·휴대폰 검색" className="h-9 w-52 pl-8" />
           </div>
-          <span className="text-xs text-muted-foreground">{filtered.length}명 · 가나다순</span>
+          <span className="text-xs text-muted-foreground">{filtered.length}명</span>
+          {mode === 'mentee' ? (
+            <div className="ml-auto flex items-center gap-1 text-xs">
+              <span className="text-muted-foreground">정렬</span>
+              {([['rank', '멘티 순위'], ['name', '이름(가나다)'], ['progress', '진행현황']] as const).map(([k, label]) => (
+                <button key={k} type="button" onClick={() => setSortKey(k)} className={cn('rounded-full border px-2.5 py-1 font-semibold', sortKey === k ? 'border-primary bg-primary text-primary-foreground' : 'bg-background hover:bg-accent')}>{label}</button>
+              ))}
+            </div>
+          ) : (
+            <span className="text-xs text-muted-foreground">· 가나다순</span>
+          )}
         </div>
 
         <div className="overflow-x-auto rounded-lg border bg-card">
@@ -689,8 +719,9 @@ export function MembersManager({
                 <TableHead className="w-8">
                   <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="전체 선택" />
                 </TableHead>
+                {showRank && <TableHead className="whitespace-nowrap">순위</TableHead>}
                 <TableHead>이름</TableHead>
-                <TableHead>이메일</TableHead>
+                <TableHead className="whitespace-nowrap">이메일/핸드폰</TableHead>
                 <TableHead>소속</TableHead>
                 <TableHead>역할</TableHead>
                 <TableHead>상태</TableHead>
@@ -721,11 +752,14 @@ export function MembersManager({
                           aria-label={`${m.name} 선택`}
                         />
                       </TableCell>
-                      <TableCell className="font-medium">
+                      {showRank && <TableCell><RankBadge rank={m.rank ?? null} /></TableCell>}
+                      <TableCell className="whitespace-nowrap font-medium">
                         {m.role === 'mentor' ? <MentorName id={m.id} name={m.name} count={m.assignedCount} /> : m.name}
-                        {m.phone && <div className="text-xs font-normal text-muted-foreground">{m.phone}</div>}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{m.email ?? '-'}</TableCell>
+                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
+                        <div>{m.email ?? '-'}</div>
+                        <div>{m.phone ?? '-'}</div>
+                      </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {[m.organization, m.position].filter(Boolean).join(' · ') || '-'}
                       </TableCell>
@@ -735,13 +769,6 @@ export function MembersManager({
                             {ROLE_LABELS[m.role]}
                             {m.role === 'nextlab' && <span className="ml-1 font-normal text-muted-foreground">· {GRADE_LABELS[(m.grade as StaffGrade | null) ?? 'pl']}</span>}
                           </Badge>
-                          {m.role === 'mentor' && (
-                            m.assignedCount > 0 ? (
-                              <Badge className="bg-status-approved/15 text-status-approved" title="배정된 멘티에 대해 확정된 멘토입니다.">확정 · 멘티 {m.assignedCount}</Badge>
-                            ) : (
-                              <Badge variant="outline" title="아직 멘티가 배정되지 않은 Pool(대기) 멘토입니다. 배정되면 그 멘티에 대해 확정됩니다.">Pool 대기</Badge>
-                            )
-                          )}
                           {m.role === 'nextlab' && m.duty && <span className="text-[11px] text-muted-foreground">{m.duty}</span>}
                           {m.note && <span className="text-[11px] text-muted-foreground" title="비고">비고: {m.note}</span>}
                           {m.primaryRole !== m.role && (

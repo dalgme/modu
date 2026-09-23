@@ -3,25 +3,27 @@
 import { useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, Circle, RefreshCw, Search, Undo2, UserCheck } from 'lucide-react';
+import { CheckCircle2, Circle, FileCheck2, Mail, MessageSquare, Phone, RefreshCw, Search, Undo2, UserCheck, UserSearch } from 'lucide-react';
 
 import { ExcelButton } from '@/components/common/excel-button';
-
-import type { MenteeMatchRow, MentorMatchRow } from '@/lib/data/matching-lists';
-import { confirmMatchAction } from '@/lib/matching/actions';
+import { MATCH_METHOD_LABELS, type MenteeMatchRow, type MentorMatchRow, type PaymentDocSetState } from '@/lib/data/matching-lists';
+import { confirmMatchAction, manualMatchAction } from '@/lib/matching/actions';
+import { addMentorGroupReviewAction, deleteMentorGroupReviewAction, setPaymentDocSetStateAction } from '@/lib/mentors/actions';
 import { reassignMentorAction, recallMentorAction } from '@/lib/workflow/case-actions';
 import { matchedPairs } from '@/lib/matching/eligibility';
 import { MentorName } from '@/components/common/mentor-name';
 import { RoundDots } from '@/components/common/round-dots';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { mentorLabel } from '@/lib/utils/labels';
-import { formatDate } from '@/lib/utils/format';
+import { formatDate, formatKRW } from '@/lib/utils/format';
+import { cn } from '@/lib/utils';
 
-/** P24·P25 매칭 리스트 — 멘토 기준 / 멘티 기준. 확인 여부 = 멘토가 로그인해 배정을 열람한 시각. */
+/** P24·P25·P27 매칭 리스트 — 멘토 기준 / 멘티 기준. 확인 여부 = 멘토가 로그인해 배정을 열람한 시각. */
 
 function ConfirmMark({ at }: { at: string | null }) {
   return at ? (
@@ -51,14 +53,16 @@ function Chips({ items, tone = 'muted', max }: { items: string[]; tone?: 'muted'
   );
 }
 
-function ListToolbar({ query, onQuery, exportHref, summary }: { query: string; onQuery: (v: string) => void; exportHref: string; summary: React.ReactNode }) {
+/** 상단 툴바 — 스카이블루 배경 (P27-04) */
+function ListToolbar({ query, onQuery, exportHref, summary, extra }: { query: string; onQuery: (v: string) => void; exportHref: string; summary: React.ReactNode; extra?: React.ReactNode }) {
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-xl border bg-background px-4 py-2.5">
-      <div className="text-sm font-semibold">{summary}</div>
-      <div className="ml-auto flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-3 rounded-xl border border-sky-300 bg-sky-100 px-4 py-2.5 dark:border-sky-800 dark:bg-sky-950/40">
+      <div className="text-sm font-semibold text-sky-950 dark:text-sky-100">{summary}</div>
+      <div className="ml-auto flex flex-wrap items-center gap-2">
+        {extra}
         <div className="relative">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(e) => onQuery(e.target.value)} placeholder="이름 검색" className="h-9 w-44 pl-8" />
+          <Input value={query} onChange={(e) => onQuery(e.target.value)} placeholder="이름 검색" className="h-9 w-44 bg-background pl-8" />
         </div>
         <ExcelButton href={exportHref} label="엑셀 다운로드" />
       </div>
@@ -66,9 +70,146 @@ function ListToolbar({ query, onQuery, exportHref, summary }: { query: string; o
   );
 }
 
+/** 멘티 순위 배지 (P27-01) */
+export function RankBadge({ rank }: { rank: number | null }) {
+  if (rank === null) return <span className="text-muted-foreground">-</span>;
+  return <span className="inline-flex h-6 min-w-[1.75rem] items-center justify-center rounded-md bg-midnight px-1.5 text-xs font-bold tabular-nums text-midnight-foreground">{rank}</span>;
+}
+
+/* ──────────────────────────── 지급서류 셋트 -/X/O (P27-16) ──────────────────────────── */
+
+const DOC_STATE_DESC: Record<PaymentDocSetState, string> = {
+  '-': '이 멘토의 지급서류 셋트는 여기서 체크·관리하지 않음',
+  X: '이 멘토의 지급서류 셋트를 관리하기로 함 — 아직 수령하지 않음',
+  O: '지급서류 셋트를 이메일 등으로 따로 수령함',
+};
+
+export function PaymentDocSetButton({ mentorId, mentorName, state, readOnly = false, size = 'sm' }: { mentorId: string; mentorName: string; state: PaymentDocSetState; readOnly?: boolean; size?: 'sm' | 'xs' }) {
+  const { toast } = useToast();
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [open, setOpen] = useState(false);
+  const cls = state === 'O' ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : state === 'X' ? 'border-rose-400 bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'border-border bg-background text-muted-foreground';
+  const apply = (next: PaymentDocSetState) => {
+    start(async () => {
+      const r = await setPaymentDocSetStateAction({ userId: mentorId, state: next });
+      toast(r.ok ? { title: `${mentorName} 지급서류 → ${next}` } : { title: r.error, variant: 'destructive' });
+      if (r.ok) {
+        setOpen(false);
+        router.refresh();
+      }
+    });
+  };
+  return (
+    <>
+      <button
+        type="button"
+        disabled={readOnly || pending}
+        onClick={() => setOpen(true)}
+        title={`지급서류 ${state} = ${DOC_STATE_DESC[state]}${readOnly ? '' : ' — 누르면 변경 팝업'}`}
+        className={cn('inline-flex items-center justify-center rounded-md border font-bold', size === 'xs' ? 'h-6 min-w-[2rem] px-1.5 text-[11px]' : 'h-7 min-w-[2.5rem] px-2 text-xs', cls, readOnly && 'cursor-default')}
+      >
+        {state}
+      </button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>지급서류 셋트 상태 변경 — {mentorName}</DialogTitle>
+            <DialogDescription>이력서·통장사본·신분증사본 3종을 한 번에 같은 상태로 둡니다. 현재: <b>{state}</b> ({DOC_STATE_DESC[state]})</DialogDescription>
+          </DialogHeader>
+          <ul className="flex flex-col gap-1 rounded-lg border bg-muted/30 p-3 text-xs">
+            <li><b>-</b> : {DOC_STATE_DESC['-']}</li>
+            <li><b className="text-rose-700">X</b> : {DOC_STATE_DESC.X}</li>
+            <li><b className="text-emerald-700">O</b> : {DOC_STATE_DESC.O}</li>
+          </ul>
+          <DialogFooter className="flex-wrap gap-2 sm:justify-start">
+            <Button variant="outline" className="border-rose-400 text-rose-700 hover:bg-rose-50" disabled={pending || state === 'X'} onClick={() => apply('X')}>X 로 변경</Button>
+            <Button variant="outline" className="border-emerald-500 text-emerald-700 hover:bg-emerald-50" disabled={pending || state === 'O'} onClick={() => apply('O')}>O 로 변경</Button>
+            <Button variant="outline" disabled={pending || state === '-'} onClick={() => apply('-')}>- 로 변경</Button>
+            <Button variant="ghost" onClick={() => setOpen(false)} disabled={pending}>취소</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/* ──────────────────────────── 운영사 평가 (P27-19) ──────────────────────────── */
+
+export function MentorReviewButton({ mentor, groups }: { mentor: MentorMatchRow; groups: { id: string; name: string }[] }) {
+  const { toast } = useToast();
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const [open, setOpen] = useState(false);
+  const [groupId, setGroupId] = useState(groups[0]?.id ?? '');
+  const [rating, setRating] = useState<string>('');
+  const [memo, setMemo] = useState('');
+  const submit = () => {
+    if (!groupId) return;
+    start(async () => {
+      const r = await addMentorGroupReviewAction({ supportTypeId: groupId, mentorId: mentor.mentorId, rating: rating ? Number(rating) : null, memo });
+      toast(r.ok ? { title: '운영사 평가를 기록했습니다.' } : { title: r.error, variant: 'destructive' });
+      if (r.ok) {
+        setMemo('');
+        setRating('');
+        router.refresh();
+      }
+    });
+  };
+  return (
+    <>
+      <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-[11px]" onClick={() => setOpen(true)} title="그룹별 운영사 평가·메모 (멘토 본인 비공개, 멘토 정보에 누적)">
+        <MessageSquare className="h-3.5 w-3.5" /> 운영사 평가{mentor.reviewAvg !== null ? ` ${mentor.reviewAvg}` : ''}{mentor.reviews.length > 0 ? ` (${mentor.reviews.length})` : ''}
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>운영사 평가 — {mentor.mentorName}</DialogTitle>
+            <DialogDescription>그룹(라운드) 단위로 평점·메모를 남깁니다. 멘토 본인에게는 보이지 않으며, 멘토 정보 팝업·리포트에 누적 반영됩니다.</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 text-sm">
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="flex flex-col gap-1 text-xs">
+                <span className="text-muted-foreground">그룹</span>
+                <select value={groupId} onChange={(e) => setGroupId(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm">
+                  {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs">
+                <span className="text-muted-foreground">평점</span>
+                <select value={rating} onChange={(e) => setRating(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm">
+                  <option value="">없음</option>
+                  {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n}점</option>)}
+                </select>
+              </label>
+              <Button size="sm" onClick={submit} disabled={pending || !groupId || (!rating && !memo.trim())}>{pending ? '저장 중…' : '기록'}</Button>
+            </div>
+            <Textarea value={memo} onChange={(e) => setMemo(e.target.value)} rows={2} placeholder="메모 (선택)" />
+            <div>
+              <p className="mb-1 text-xs font-semibold text-muted-foreground">누적 기록 {mentor.reviews.length}건{mentor.reviewAvg !== null ? ` · 평균 ${mentor.reviewAvg}점` : ''}</p>
+              {mentor.reviews.length === 0 ? (
+                <p className="text-xs text-muted-foreground">아직 기록이 없습니다.</p>
+              ) : (
+                <ul className="flex max-h-56 flex-col gap-1 overflow-y-auto text-xs">
+                  {mentor.reviews.map((r) => (
+                    <li key={r.id} className="flex flex-wrap items-center justify-between gap-2 rounded border bg-background px-2 py-1">
+                      <span>[{r.groupName}] {r.rating ? `${r.rating}점 · ` : ''}{r.memo ?? ''} <span className="text-muted-foreground">— {r.authorName} {formatDate(r.createdAt)}</span></span>
+                      <button type="button" className="text-muted-foreground hover:text-destructive" disabled={pending} onClick={() => start(async () => { const x = await deleteMentorGroupReviewAction(r.id); if (!x.ok) toast({ title: x.error, variant: 'destructive' }); else router.refresh(); })}>숨김</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 /* ──────────────────────────── 멘토 매칭 리스트 ──────────────────────────── */
 
-export function MentorMatchList({ rows, caseHrefBase = '/nextlab/cases' }: { rows: MentorMatchRow[]; caseHrefBase?: string }) {
+export function MentorMatchList({ rows, groups, caseHrefBase = '/nextlab/cases' }: { rows: MentorMatchRow[]; groups: { id: string; name: string }[]; caseHrefBase?: string }) {
   const { toast } = useToast();
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -117,6 +258,7 @@ export function MentorMatchList({ rows, caseHrefBase = '/nextlab/cases' }: { row
       />
       <p className="text-xs text-muted-foreground">
         확인 여부 = 멘토가 플랫폼에 로그인해 배정된 멘티를 열람한 시각. [회수]는 회차 시작 전, [재배정]은 진행 중에도 가능(잔여 회차 승계). 멘토 이름을 누르면 정보 팝업이 열립니다.
+        지급서류 = 셋트 상태(<b>-</b> 관리 안 함 / <b>X</b> 관리하지만 미수령 / <b>O</b> 이메일 등으로 수령), 누르면 변경 팝업.
       </p>
       {filtered.length === 0 && <p className="text-sm text-muted-foreground">해당하는 멘토가 없습니다.</p>}
       {filtered.map((m) => (
@@ -127,7 +269,16 @@ export function MentorMatchList({ rows, caseHrefBase = '/nextlab/cases' }: { row
             <span className="text-xs text-muted-foreground">분야:</span>
             <Chips items={m.expertise} max={10} />
             {m.designatedGroupNames.length > 0 && <span className="text-[11px] text-violet-700">지정: {m.designatedGroupNames.join(', ')}</span>}
-            <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-semibold ${m.mentees.length > 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
+            <MentorReviewButton mentor={m} groups={groups} />
+            {m.mentees.length === 0 && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">지급서류 <PaymentDocSetButton mentorId={m.mentorId} mentorName={m.mentorName} state={m.paymentDocState} size="xs" /></span>
+            )}
+            {/* 멘토 연락처 — 담당 멘티 배지 왼쪽 (P27-06) */}
+            <span className="ml-auto inline-flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">
+              {m.phone && <span className="inline-flex items-center gap-1 whitespace-nowrap"><Phone className="h-3 w-3" />{m.phone}</span>}
+              {m.email && <span className="inline-flex items-center gap-1 whitespace-nowrap"><Mail className="h-3 w-3" />{m.email}</span>}
+            </span>
+            <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${m.mentees.length > 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
               {m.mentees.length > 0 ? `담당 멘티 ${m.mentees.length}` : '미배정 (Pool)'}
             </span>
           </div>
@@ -136,27 +287,37 @@ export function MentorMatchList({ rows, caseHrefBase = '/nextlab/cases' }: { row
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
+                    <th className="px-2 py-1">순위</th>
                     <th className="px-2 py-1">멘티</th>
                     <th className="px-2 py-1">라운드</th>
+                    <th className="px-2 py-1">방식</th>
                     <th className="px-2 py-1">매칭 일자</th>
                     <th className="px-2 py-1">확인 여부</th>
                     <th className="px-2 py-1">컨설팅 진행현황</th>
+                    <th className="px-2 py-1 text-center" title="- 관리 안 함 / X 관리하지만 미수령 / O 수령">지급서류</th>
                     <th className="px-2 py-1">배정 관리</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {m.mentees.map((c) => (
+                  {m.mentees.map((c, idx) => (
                     <tr key={c.caseId} className="border-b last:border-0">
+                      <td className="px-2 py-1.5"><RankBadge rank={c.rank} /></td>
                       <td className="px-2 py-1.5">
                         <Link href={`${caseHrefBase}/${c.caseId}`} className="font-medium text-primary hover:underline">{c.label}</Link>
                       </td>
                       <td className="px-2 py-1.5 whitespace-nowrap">{c.groupName ?? '-'}</td>
+                      <td className="px-2 py-1.5 whitespace-nowrap">{c.matchMethod ? MATCH_METHOD_LABELS[c.matchMethod] : '-'}</td>
                       <td className="px-2 py-1.5 whitespace-nowrap">{c.assignedAt ? formatDate(c.assignedAt) : '-'}</td>
                       <td className="px-2 py-1.5"><ConfirmMark at={c.confirmedAt} /></td>
                       <td className="px-2 py-1.5 whitespace-nowrap">
                         <span className="mr-1.5">{c.statusLabel}</span>
                         <RoundDots done={c.roundsDone} required={c.requiredRounds} />
                       </td>
+                      {idx === 0 && (
+                        <td className="px-2 py-1.5 text-center align-middle" rowSpan={m.mentees.length}>
+                          <PaymentDocSetButton mentorId={m.mentorId} mentorName={m.mentorName} state={m.paymentDocState} />
+                        </td>
+                      )}
                       <td className="px-2 py-1.5 whitespace-nowrap">
                         <div className="flex gap-1">
                           <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-[11px]" disabled={!c.canRecall || pending} title={c.canRecall ? '배정을 해제하고 등록 단계로' : '회차가 시작되어 회수할 수 없습니다 — 재배정 또는 케이스 상세의 강제 중도 종료를 사용'} onClick={() => recall(c.caseId, c.label)}>
@@ -200,14 +361,91 @@ export function MentorMatchList({ rows, caseHrefBase = '/nextlab/cases' }: { row
   );
 }
 
+/* ──────────────────────────── 리포트: 멘토 진행현황 (P27-17) ──────────────────────────── */
+
+/** 그룹별(담당 인원) / 담당 멘티명 / 회차 / 확정 실지급 / 만족도 / 운영사 평가 — 발주처·운영사 공용 열람 표 */
+export function MentorProgressTable({ rows, caseHrefBase = '/nextlab/cases', showReview = true }: { rows: MentorMatchRow[]; caseHrefBase?: string; showReview?: boolean }) {
+  const [query, setQuery] = useState('');
+  const filtered = useMemo(() => {
+    const q = query.trim();
+    return q ? rows.filter((m) => m.mentorName.includes(q)) : rows;
+  }, [rows, query]);
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-3 rounded-xl border border-sky-300 bg-sky-100 px-4 py-2.5 text-sm dark:border-sky-800 dark:bg-sky-950/40">
+        <span className="font-semibold text-sky-950 dark:text-sky-100">멘토 {rows.length}명 · 담당 멘티 {rows.reduce((a, m) => a + m.mentees.length, 0)}명</span>
+        <div className="relative ml-auto">
+          <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="멘토 이름 검색" className="h-9 w-44 bg-background pl-8" />
+        </div>
+      </div>
+      <div className="overflow-x-auto rounded-xl border bg-background">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b bg-muted/40 text-left text-muted-foreground">
+              <th className="px-3 py-2">멘토</th>
+              <th className="px-3 py-2">그룹별 (담당 멘티 인원)</th>
+              <th className="px-3 py-2">담당 멘티명</th>
+              <th className="px-3 py-2 text-right">회차</th>
+              <th className="px-3 py-2 text-right">확정 실지급</th>
+              <th className="px-3 py-2 text-right">만족도</th>
+              {showReview && <th className="px-3 py-2 text-right">운영사 평가</th>}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 && <tr><td colSpan={showReview ? 7 : 6} className="px-3 py-6 text-center text-muted-foreground">멘토가 없습니다.</td></tr>}
+            {filtered.map((m) => {
+              const byGroup = new Map<string, number>();
+              for (const c of m.mentees) if (!c.withdrawn) byGroup.set(c.groupName ?? '-', (byGroup.get(c.groupName ?? '-') ?? 0) + 1);
+              return (
+                <tr key={m.mentorId} className="border-b align-top last:border-0">
+                  <td className="px-3 py-2 whitespace-nowrap"><MentorName id={m.mentorId} name={m.mentorName} count={m.mentees.filter((c) => !c.withdrawn).length} caseHrefBase={caseHrefBase} /></td>
+                  <td className="px-3 py-2">
+                    {byGroup.size === 0 ? <span className="text-muted-foreground">미배정 (Pool)</span> : (
+                      <div className="flex flex-wrap gap-1">
+                        {Array.from(byGroup.entries()).map(([g, n]) => <span key={g} className="rounded bg-violet-100 px-1.5 py-0.5 text-[11px] font-semibold text-violet-800 dark:bg-violet-950 dark:text-violet-200">{g} ({n})</span>)}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex flex-col gap-0.5">
+                      {m.mentees.map((c) => (
+                        <span key={c.caseId} className="inline-flex flex-wrap items-center gap-1.5">
+                          <Link href={`${caseHrefBase}/${c.caseId}`} className={cn('text-primary hover:underline', c.withdrawn && 'line-through opacity-60')}>{c.label}</Link>
+                          <RoundDots done={c.roundsDone} required={c.requiredRounds} />
+                        </span>
+                      ))}
+                      {m.mentees.length === 0 && <span className="text-muted-foreground">-</span>}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums">{m.roundsDone}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{formatKRW(m.settledNet)}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{m.surveyAvg ?? '-'}</td>
+                  {showReview && <td className="px-3 py-2 text-right tabular-nums">{m.reviewAvg ?? '-'}{m.reviews.length ? <span className="ml-1 text-muted-foreground">({m.reviews.length})</span> : ''}</td>}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 /* ──────────────────────────── 멘티 매칭 리스트 ──────────────────────────── */
 
-export function MenteeMatchList({ rows, caseHrefBase = '/nextlab/cases' }: { rows: MenteeMatchRow[]; caseHrefBase?: string }) {
+const PINK_BTN = 'h-6 rounded-md bg-brand-pink px-2.5 text-[11px] font-bold text-white shadow-sm hover:bg-brand-pink/90';
+
+export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases', toolbarExtra }: { rows: MenteeMatchRow[]; mentors: MentorMatchRow[]; caseHrefBase?: string; toolbarExtra?: React.ReactNode }) {
   const { toast } = useToast();
   const router = useRouter();
   const [pending, start] = useTransition();
   const [query, setQuery] = useState('');
   const [pairsFor, setPairsFor] = useState<MenteeMatchRow | null>(null);
+  // 수동 검색 (P27-09)
+  const [manualFor, setManualFor] = useState<MenteeMatchRow | null>(null);
+  const [manualQuery, setManualQuery] = useState('');
+  const [manualPick, setManualPick] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim();
@@ -223,6 +461,31 @@ export function MenteeMatchList({ rows, caseHrefBase = '/nextlab/cases' }: { row
       if (r.ok) router.refresh();
     });
   };
+  const manualCandidates = useMemo(() => {
+    if (!manualFor) return [];
+    const q = manualQuery.trim();
+    return mentors
+      .map((m) => ({
+        m,
+        inGroup: m.mentees.filter((c) => c.groupId === manualFor.groupId && !c.withdrawn).length,
+        eligible: m.designatedGroupNames.length === 0 || (manualFor.groupName ? m.designatedGroupNames.includes(manualFor.groupName) : true),
+      }))
+      .filter((x) => !q || x.m.mentorName.includes(q) || x.m.expertise.some((e) => e.includes(q)))
+      .sort((a, b) => Number(b.eligible) - Number(a.eligible) || a.inGroup - b.inGroup || a.m.mentorName.localeCompare(b.m.mentorName, 'ko'));
+  }, [mentors, manualFor, manualQuery]);
+  const doManual = () => {
+    if (!manualFor || !manualPick) return;
+    const target = mentors.find((m) => m.mentorId === manualPick);
+    start(async () => {
+      const r = await manualMatchAction(manualFor.caseId, manualPick);
+      toast(r.ok ? { title: `${target?.mentorName ?? ''} 멘토로 매칭(수동)했습니다.` } : { title: r.error, variant: 'destructive' });
+      if (r.ok) {
+        setManualFor(null);
+        setManualPick(null);
+        router.refresh();
+      }
+    });
+  };
 
   return (
     <div className="flex flex-col gap-3">
@@ -230,6 +493,7 @@ export function MenteeMatchList({ rows, caseHrefBase = '/nextlab/cases' }: { row
         query={query}
         onQuery={setQuery}
         exportHref="/api/nextlab/roster-export?tab=mentee-match"
+        extra={toolbarExtra}
         summary={
           <>
             전체 멘티 인원 : <b>{rows.length}명</b> <span className="mx-1 text-muted-foreground">/</span> 멘토 배정된 인원 : <b>{assigned}명</b>
@@ -237,16 +501,18 @@ export function MenteeMatchList({ rows, caseHrefBase = '/nextlab/cases' }: { row
         }
       />
       <p className="text-xs text-muted-foreground">
-        재배치 희망 멘토가 후보 자격(그룹 지정·라운드 정원)이면 등록 시 자동 확정됩니다. 아니면 희망분야 1~6순위 순서로 후보 멘토 최대 3명이 추천되며 [매칭 확정]을 누르면 배정됩니다.
-        추천 옆 <b>(n)</b>은 그 멘토의 현재 확정 멘티 수입니다. 확정된 멘토는 다른 멘티의 추천에서 자동 재계산됩니다.
+        재배치 희망 멘토가 후보 자격(그룹 지정·라운드 정원)이면 등록 시 자동 확정됩니다. 아니면 희망분야 <b>1순위 → 2순위 → …</b> 순서로 후보 멘토 최대 3명이 추천되며(높은 순위 일치 우선) [매칭 확정]을 누르면 배정됩니다.
+        추천 3명이 모두 맞지 않으면 [수동 검색]으로 멘토를 직접 골라 매칭하세요. 방식 = 자동(멘티 희망) / 추천 / 수동. 추천 옆 <b>(n)</b>은 그 멘토의 현재 확정 멘티 수입니다.
       </p>
       <div className="overflow-x-auto rounded-xl border bg-background">
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b text-left text-muted-foreground">
+              <th className="px-3 py-2">순위</th>
               <th className="px-3 py-2">멘티 · 희망분야</th>
               <th className="px-3 py-2">라운드</th>
               <th className="px-3 py-2">배정 멘토 / 추천</th>
+              <th className="px-3 py-2">방식</th>
               <th className="px-3 py-2">매칭 일자</th>
               <th className="px-3 py-2">확인(멘토)</th>
               <th className="px-3 py-2">만족도</th>
@@ -255,72 +521,123 @@ export function MenteeMatchList({ rows, caseHrefBase = '/nextlab/cases' }: { row
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={7} className="px-3 py-6 text-center text-muted-foreground">해당하는 멘티가 없습니다.</td></tr>
+              <tr><td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">해당하는 멘티가 없습니다.</td></tr>
             )}
-            {filtered.map((r) => (
-              <tr key={r.caseId} className={`border-b align-top last:border-0 ${r.withdrawn ? 'opacity-60' : ''}`}>
-                <td className="px-3 py-2">
-                  <Link href={`${caseHrefBase}/${r.caseId}`} className="font-medium text-primary hover:underline">{r.label}</Link>
-                  <div className="mt-1"><Chips items={r.needs} tone="amber" max={6} /></div>
-                  {r.preferredMentor && <p className="mt-0.5 text-[11px] text-muted-foreground">재배치 희망: {r.preferredMentor}</p>}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap">{r.groupName ?? '-'}</td>
-                <td className="px-3 py-2">
-                  {r.mentorId && r.mentorName ? (
-                    <span className="inline-flex items-center gap-1">
-                      <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
-                      <MentorName id={r.mentorId} name={r.mentorName} count={r.mentorActive} caseHrefBase={caseHrefBase} />
-                    </span>
-                  ) : r.recommendations.length > 0 ? (
-                    <div className="flex flex-col gap-1.5">
-                      {r.recommendations.map((rec) => (
-                        <div key={rec.mentorId} className="flex flex-wrap items-center gap-1.5">
-                          <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">추천 {rec.rank}</span>
-                          <MentorName id={rec.mentorId} name={rec.mentorName} count={rec.mentorActive} caseHrefBase={caseHrefBase} />
-                          <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[11px] font-semibold text-sky-900 dark:bg-sky-950 dark:text-sky-200" title="추천 점수">{Math.round(rec.score)}점</span>
-                          <span className="max-w-[18rem] truncate text-[11px] text-muted-foreground" title={rec.rationale ?? undefined}>{rec.rationale ?? ''}</span>
-                          {r.canConfirm && (
-                            <Button size="sm" variant="outline" className="h-6 px-2 text-[11px]" disabled={pending} onClick={() => confirm(r.caseId, rec.mentorId, rec.mentorName, r.menteeName)}>
-                              매칭 확정
-                            </Button>
-                          )}
-                          <Chips items={rec.expertise} max={10} />
+            {filtered.map((r) => {
+              const unassigned = !r.mentorId;
+              return (
+                <tr key={r.caseId} className={`border-b align-top last:border-0 ${r.withdrawn ? 'opacity-60' : ''}`}>
+                  <td className="px-3 py-2"><RankBadge rank={r.rank} /></td>
+                  <td className="px-3 py-2">
+                    <Link href={`${caseHrefBase}/${r.caseId}`} className="font-medium text-primary hover:underline">{r.label}</Link>
+                    <div className="mt-1"><Chips items={r.needs} tone="amber" max={6} /></div>
+                    {r.preferredMentor && <p className="mt-0.5 text-[11px] text-muted-foreground">재배치 희망: {r.preferredMentor}</p>}
+                  </td>
+                  <td className="px-3 py-2 whitespace-nowrap">{r.groupName ?? '-'}</td>
+                  {unassigned ? (
+                    /* 미매칭: 배정 멘토/방식/매칭 일자/확인/만족도 5칸을 합쳐 추천 영역으로 사용 (P27-10) */
+                    <td className="px-3 py-2" colSpan={5}>
+                      {r.recommendations.length > 0 ? (
+                        <table className="w-full text-[11px]">
+                          <thead>
+                            <tr className="text-left text-muted-foreground">
+                              <th className="py-0.5 pr-2 font-normal">추천</th>
+                              <th className="py-0.5 pr-2 font-normal">멘토명 (이 그룹 매칭 인원)</th>
+                              <th className="py-0.5 pr-2 font-normal">적합 점수</th>
+                              <th className="py-0.5 pr-2 font-normal">추천 이유 · 분야</th>
+                              <th className="py-0.5 font-normal" />
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {r.recommendations.map((rec) => (
+                              <tr key={rec.mentorId} className="border-t border-dashed">
+                                <td className="py-1 pr-2 align-top"><span className="rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">추천 {rec.rank}</span></td>
+                                <td className="py-1 pr-2 align-top whitespace-nowrap"><MentorName id={rec.mentorId} name={rec.mentorName} count={rec.mentorActive} caseHrefBase={caseHrefBase} /></td>
+                                <td className="py-1 pr-2 align-top whitespace-nowrap"><span className="rounded bg-sky-100 px-1.5 py-0.5 font-semibold text-sky-900 dark:bg-sky-950 dark:text-sky-200">{Math.round(rec.score)}점</span></td>
+                                <td className="py-1 pr-2 align-top">
+                                  <div className="text-muted-foreground">{rec.rationale ?? ''}</div>
+                                  <div className="mt-0.5"><Chips items={rec.expertise} max={10} /></div>
+                                </td>
+                                <td className="py-1 align-top text-right whitespace-nowrap">
+                                  {r.canConfirm && (
+                                    <Button size="sm" variant="outline" className="h-6 px-2 text-[11px]" disabled={pending} onClick={() => confirm(r.caseId, rec.mentorId, rec.mentorName, r.menteeName)}>
+                                      매칭 확정
+                                    </Button>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      ) : (
+                        <span className="text-muted-foreground">미배정 · 추천 없음</span>
+                      )}
+                      {r.canConfirm && (
+                        <div className="mt-1.5">
+                          <Button size="sm" variant="secondary" className="h-6 gap-1 px-2 text-[11px]" disabled={pending} onClick={() => { setManualFor(r); setManualPick(null); setManualQuery(''); }} title="추천 3명이 모두 맞지 않을 때 — 멘토 리스트에서 직접 골라 매칭">
+                            <UserSearch className="h-3 w-3" /> 수동 검색
+                          </Button>
                         </div>
-                      ))}
-                    </div>
+                      )}
+                    </td>
                   ) : (
-                    <span className="text-muted-foreground">미배정 · 추천 없음</span>
+                    <>
+                      <td className="px-3 py-2">
+                        <span className="inline-flex items-center gap-1">
+                          <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
+                          <MentorName id={r.mentorId} name={r.mentorName ?? '-'} count={r.mentorActive} caseHrefBase={caseHrefBase} />
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">
+                        {r.matchMethod ? (
+                          <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-semibold', r.matchMethod === 'auto_preferred' ? 'bg-brand-coral/15 text-brand-coral' : r.matchMethod === 'recommended' ? 'bg-amber-100 text-amber-800' : 'bg-muted text-foreground')}>
+                            {MATCH_METHOD_LABELS[r.matchMethod]}
+                          </span>
+                        ) : '-'}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">{r.assignedAt ? formatDate(r.assignedAt) : '-'}</td>
+                      <td className="px-3 py-2"><ConfirmMark at={r.confirmedAt} /></td>
+                      <td className="px-3 py-2 whitespace-nowrap">{r.surveyDone ? '작성 완료' : '-'}</td>
+                    </>
                   )}
-                </td>
-                <td className="px-3 py-2 whitespace-nowrap">{r.assignedAt ? formatDate(r.assignedAt) : '-'}</td>
-                <td className="px-3 py-2">{r.mentorName ? <ConfirmMark at={r.confirmedAt} /> : '-'}</td>
-                <td className="px-3 py-2 whitespace-nowrap">{r.surveyDone ? '작성 완료' : '-'}</td>
-                <td className="px-3 py-2 whitespace-nowrap">
-                  <div className="flex flex-col items-start gap-1">
-                    <span>{r.statusLabel}</span>
-                    {r.mentorId && (
-                      <Button size="sm" variant="secondary" className="h-6 px-2 text-[11px]" onClick={() => setPairsFor(r)} title="희망분야 ↔ 멘토 분야 연결 보기">
-                        배정
-                      </Button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <div className="flex flex-col items-start gap-1">
+                      {/* 배정 멘토가 있으면 핫핑크 [배정] 버튼만 (P27-05). 배정 이후 단계면 단계명을 함께 표시 */}
+                      {r.mentorId ? (
+                        <>
+                          {r.status !== 'mentor_assigned' && <span className={cn(r.withdrawn && 'text-destructive')}>{r.statusLabel}</span>}
+                          <button type="button" className={PINK_BTN} onClick={() => setPairsFor(r)} title="배정 근거 — 희망분야 ↔ 멘토 분야 연결 · 매칭 방식">배정</button>
+                        </>
+                      ) : (
+                        <span>{r.statusLabel}</span>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
+      {/* 배정 근거 팝업 (P27-12: 재배치 희망 자동 매칭이면 코랄 배지) */}
       <Dialog open={!!pairsFor} onOpenChange={(o) => { if (!o) setPairsFor(null); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>배정 근거 — 희망분야 ↔ 멘토 분야</DialogTitle>
             <DialogDescription>
               {pairsFor?.label} ↔ {pairsFor?.mentorName ? mentorLabel(pairsFor.mentorName, pairsFor.mentorActive) : '-'}
+              {pairsFor?.matchMethod ? ` · 방식: ${MATCH_METHOD_LABELS[pairsFor.matchMethod]}` : ''}
             </DialogDescription>
           </DialogHeader>
           {pairsFor && (
             <div className="flex flex-col gap-3 text-sm">
+              {pairsFor.matchMethod === 'auto_preferred' && (
+                <div className="flex flex-col items-center gap-1 rounded-xl bg-brand-coral px-4 py-3 text-center text-white shadow">
+                  <span className="text-lg font-extrabold tracking-tight">재배정 희망 자동 매칭</span>
+                  <span className="text-xs opacity-90">멘티가 재배치 희망 멘토로 &lsquo;{pairsFor.preferredMentor ?? pairsFor.mentorName}&rsquo;을(를) 지정해 등록 시 자동 확정되었습니다.</span>
+                </div>
+              )}
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
@@ -344,6 +661,61 @@ export function MenteeMatchList({ rows, caseHrefBase = '/nextlab/cases' }: { row
               </div>
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      {/* 수동 검색 팝업 (P27-09) */}
+      <Dialog open={!!manualFor} onOpenChange={(o) => { if (!o) setManualFor(null); }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>수동 검색 — {manualFor?.label} 멘티에게 멘토 매칭</DialogTitle>
+            <DialogDescription>
+              {manualFor?.groupName ?? '-'} 라운드 · 멘토 한 명을 선택해 [매칭(배정) 하기]. 이 그룹의 매칭 인원이 적은 멘토가 위로 옵니다. 그룹 지정이 다른 멘토와 정원 초과는 서버에서 거부됩니다.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={manualQuery} onChange={(e) => setManualQuery(e.target.value)} placeholder="멘토명 · 분야 검색" className="h-9 pl-8" autoFocus />
+          </div>
+          {manualFor && (
+            <div className="mb-1 flex flex-wrap items-center gap-1 text-[11px]">
+              <span className="text-muted-foreground">멘티 희망분야:</span>
+              <Chips items={manualFor.needs} tone="amber" max={6} />
+            </div>
+          )}
+          <div className="max-h-[50vh] overflow-y-auto rounded-lg border">
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-muted/60">
+                <tr className="text-left text-muted-foreground">
+                  <th className="w-8 px-2 py-1.5" />
+                  <th className="px-2 py-1.5">멘토명</th>
+                  <th className="px-2 py-1.5 text-right whitespace-nowrap">이 그룹 매칭 멘티</th>
+                  <th className="px-2 py-1.5">분야</th>
+                </tr>
+              </thead>
+              <tbody>
+                {manualCandidates.length === 0 && <tr><td colSpan={4} className="px-2 py-4 text-center text-muted-foreground">해당하는 멘토가 없습니다.</td></tr>}
+                {manualCandidates.map(({ m, inGroup, eligible }) => (
+                  <tr key={m.mentorId} className={cn('cursor-pointer border-t hover:bg-accent/40', manualPick === m.mentorId && 'bg-brand-pink/10', !eligible && 'opacity-50')} onClick={() => eligible && setManualPick(m.mentorId)}>
+                    <td className="px-2 py-1.5 text-center"><input type="radio" name="manual-mentor" checked={manualPick === m.mentorId} disabled={!eligible} onChange={() => setManualPick(m.mentorId)} aria-label={m.mentorName} /></td>
+                    <td className="px-2 py-1.5 whitespace-nowrap">
+                      <span className="font-medium">{m.mentorName}</span>
+                      {m.organization && <span className="ml-1 text-muted-foreground">{m.organization}</span>}
+                      {!eligible && <span className="ml-1 text-[10px] text-violet-700">그룹 지정 외 ({m.designatedGroupNames.join('/')})</span>}
+                    </td>
+                    <td className="px-2 py-1.5 text-right tabular-nums">{inGroup}</td>
+                    <td className="px-2 py-1.5"><Chips items={m.expertise} max={10} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setManualFor(null)} disabled={pending}>취소</Button>
+            <Button className="bg-brand-pink text-white hover:bg-brand-pink/90" onClick={doManual} disabled={pending || !manualPick}>
+              <FileCheck2 className="mr-1 h-4 w-4" />{pending ? '매칭 중…' : '매칭(배정) 하기'}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

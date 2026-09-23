@@ -1,40 +1,59 @@
 import Link from 'next/link';
-import { MessageCircleQuestion } from 'lucide-react';
 
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { fmt } from '@/lib/programs/branding';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { listCases } from '@/lib/data/cases';
 import { countOpenInquiries } from '@/lib/data/inquiries';
 import { listBoardPosts } from '@/lib/data/board';
 import { listProgramMessages } from '@/lib/messages/data';
 import { listOperatorRequests } from '@/lib/data/operator-requests';
-import { countPendingInbox } from '@/lib/data/requests';
+import { listInbox } from '@/lib/data/requests';
 import { computeProgramMetrics } from '@/lib/reports/metrics';
+import { computeBudgetOverview } from '@/lib/reports/budget';
+import { computeMonthlyTrend } from '@/lib/reports/trend';
 import { listDelayedCases } from '@/lib/reports/delays';
-import { MetricsTiles } from '@/components/reports/metrics-tiles';
-import { CaseActionQueue } from '@/components/cases/case-action-queue';
-import { CaseStats } from '@/components/cases/case-stats';
+import { CASE_STATUS_META } from '@/types/case-status';
+import { menteeLabel } from '@/lib/utils/labels';
+import { DashboardV2, type DashboardQueueCase } from '@/components/nextlab/dashboard-v2';
 import { OperatorRequestsPanel, OperatorRequestsHeading } from '@/components/nextlab/operator-requests-panel';
 
+export const dynamic = 'force-dynamic';
+
+/** 운영사 대시보드 (P27-21 재구조화) — 지금 확인 · 핵심 지표 · 차트 · 예산 · 바로가기 · 발주처 요청 */
 export default async function Page() {
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
-  const [cases, openInquiries, operatorRequests, pendingInbox, metrics, boardPosts, programMessages] = await Promise.all([
-    listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined }),
+  const groupId = ctx.supportTypeId ?? null;
+  const [cases, openInquiries, operatorRequests, inbox, metrics, boardPosts, programMessages, budget, trend, delays] = await Promise.all([
+    listCases({ programId: ctx.programId, supportTypeId: groupId ?? undefined }),
     countOpenInquiries(),
     listOperatorRequests(),
-    countPendingInbox(ctx.programId, ctx.supportTypeId ?? undefined),
-    computeProgramMetrics(ctx.programId, ctx.supportTypeId ?? null),
+    listInbox(ctx.programId, groupId ?? undefined, true),
+    computeProgramMetrics(ctx.programId, groupId),
     listBoardPosts(),
     listProgramMessages(ctx.programId),
+    computeBudgetOverview(ctx.programId, groupId),
+    computeMonthlyTrend(ctx.programId, groupId),
+    listDelayedCases(ctx.programId, groupId),
   ]);
+  // 멘토가 아직 확인하지 않은 배정 (범위 내 케이스)
+  const caseIds = cases.map((c) => c.id);
+  const { count: unconfirmed } = caseIds.length
+    ? await createAdminClient().from('mentor_assignments').select('id', { count: 'exact', head: true }).eq('is_active', true).is('confirmed_at', null).in('case_id', caseIds)
+    : { count: 0 };
+  const toQueue = (c: (typeof cases)[number]): DashboardQueueCase => ({
+    caseId: c.id,
+    label: menteeLabel(c.owner_name, c.business_name),
+    groupName: c.supportTypeName,
+    statusLabel: CASE_STATUS_META[c.status].short,
+    mentorName: c.mentorName,
+    roundsDone: c.roundsDone,
+    requiredRounds: c.requiredRounds,
+    createdAt: c.created_at,
+  });
   const unreadRequests = operatorRequests.filter((r) => !r.read_at).length;
-  const delays = await listDelayedCases(ctx.programId, ctx.supportTypeId ?? null);
-  // 게시판 알람 — 답변 없는 게시글 + 수신자 미확인 메시지 (새 글 등록 시 대시보드 알림, P20)
-  const unansweredPosts = boardPosts.filter((p) => p.replies.length === 0).length;
-  const unreadMessages = programMessages.filter((m) => !m.read).length;
-  const boardAlerts = openInquiries + unansweredPosts + unreadMessages;
   const b = ctx.branding;
 
   return (
@@ -43,85 +62,33 @@ export default async function Page() {
         <div>
           <h1 className="text-2xl font-semibold">{fmt('{operator} 대시보드', b)}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {ctx.group ? ctx.group.name : '행사 전체'} · 멘토 배정 · 종결 검수 · 정산.
+            <b>{ctx.program.name}</b> · {ctx.group ? ctx.group.name : '행사 전체'} — 배정 · 회차 · 검수 · 정산의 현재 상태와 오늘 처리할 일.
           </p>
         </div>
-        {/* 멘티 등록·삭제는 회원 명단(회원 등록·정보 수정)으로 이전 (P20) */}
         <div className="flex gap-2">
+          <Link href="/nextlab/roster" className="rounded-lg border bg-background px-3 py-2 text-sm font-semibold hover:bg-accent">회원 명단</Link>
           <Link href="/nextlab/reports" className="rounded-lg border bg-background px-3 py-2 text-sm font-semibold hover:bg-accent">리포트</Link>
         </div>
       </div>
 
-      <CaseStats items={cases} />
-
-      <MetricsTiles m={metrics} base="/nextlab" reportsHref="/nextlab/reports" />
-
-      {pendingInbox > 0 && (
-        <Link href="/nextlab/board?tab=requests" className="flex items-center justify-between gap-3 rounded-lg border border-amber-400 bg-amber-50/60 px-4 py-3 text-sm font-semibold text-amber-900 hover:bg-amber-50">
-          <span>처리 대기 요청 {pendingInbox}건 (추가 회차 · 멘토 변경 · 중도 종료)</span>
-          <span className="underline-offset-4">게시판 요청함으로 이동 →</span>
-        </Link>
-      )}
-
-      {delays.length > 0 && (
-        <Link href="/nextlab/reports?tab=overview" className="flex items-center justify-between gap-3 rounded-lg border-2 border-destructive/50 bg-destructive/5 px-4 py-3 text-sm font-semibold text-destructive hover:bg-destructive/10">
-          <span>🚨 지연 케이스 {delays.length}건 (배정 지연 · 첫 회차 없음 · 장기 무진행 등) — 독려 문자를 보낼 수 있습니다</span>
-          <span className="underline-offset-4">지연 목록 보기 →</span>
-        </Link>
-      )}
-
-      {boardAlerts > 0 && (
-        <Link href="/nextlab/board" className="flex items-center justify-between gap-3 rounded-lg border border-sky-400 bg-sky-50/60 px-4 py-3 text-sm font-semibold text-sky-900 hover:bg-sky-50">
-          <span>🔔 게시판 새 글·미확인 {boardAlerts}건 (문의 {openInquiries} · 게시글 {unansweredPosts} · 메시지 {unreadMessages})</span>
-          <span className="underline-offset-4">게시판으로 이동 →</span>
-        </Link>
-      )}
+      <DashboardV2
+        scopeLabel={ctx.group ? ctx.group.name : '행사 전체'}
+        metrics={metrics}
+        budget={budget}
+        trend={trend}
+        delays={delays}
+        inbox={inbox}
+        assignQueue={cases.filter((c) => c.status === 'registered' || c.status === 'reassignment_pending').map(toQueue)}
+        closureQueue={cases.filter((c) => c.status === 'closure_requested').map(toQueue)}
+        board={{ inquiries: openInquiries, posts: boardPosts.filter((p) => p.replies.length === 0).length, messages: programMessages.filter((m) => !m.read).length }}
+        unconfirmedAssignments={unconfirmed ?? 0}
+        operatorRequestsUnread={unreadRequests}
+      />
 
       <div className="flex flex-col gap-3">
         <OperatorRequestsHeading unread={unreadRequests} />
         <OperatorRequestsPanel requests={operatorRequests} />
       </div>
-
-      {openInquiries > 0 && (
-        <Link
-          href="/nextlab/board?tab=inquiries"
-          className="flex items-center justify-between gap-3 rounded-lg border border-status-progress/40 bg-status-progress/10 px-4 py-3 transition-colors hover:bg-status-progress/15"
-        >
-          <span className="flex items-center gap-2 text-sm font-semibold text-status-progress">
-            <MessageCircleQuestion className="h-5 w-5" />새 멘티 문의 {openInquiries}건이 접수되었습니다.
-          </span>
-          <span className="text-sm font-medium text-status-progress underline-offset-4">멘티 문의로 이동 →</span>
-        </Link>
-      )}
-
-      <CaseActionQueue
-        title="멘토 배정 대기"
-        description="새로 등록됐거나 멘토 중도 종료로 재배정이 필요한 케이스입니다."
-        items={cases.filter((c) => c.status === 'registered' || c.status === 'reassignment_pending')}
-        basePath="/nextlab/cases"
-        ctaLabel="멘토 배정"
-        emptyText="배정 대기 건이 없습니다."
-        branding={b}
-      />
-
-      <CaseActionQueue
-        title="종결 검수 대기"
-        description="멘토가 관찰의견서를 제출하고 종결을 요청한 케이스입니다. 검수 승인 시 정산이 확정됩니다."
-        items={cases.filter((c) => c.status === 'closure_requested')}
-        basePath="/nextlab/cases"
-        ctaLabel="검수"
-        emptyText="검수 대기 건이 없습니다."
-        branding={b}
-      />
-
-      {/* 케이스 진행현황 표는 리포트 [진행현황] 탭(멘티/멘토 진행현황)으로 이전 (P20) */}
-      <Link
-        href="/nextlab/reports?tab=cases"
-        className="flex items-center justify-between rounded-lg border-2 bg-background px-4 py-3 text-sm font-semibold hover:bg-accent"
-      >
-        <span>케이스 진행현황 전체 보기 — 리포트 › 진행현황 (멘티/멘토 진행현황)</span>
-        <span>→</span>
-      </Link>
     </main>
   );
 }

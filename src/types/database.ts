@@ -845,6 +845,7 @@ export type Database = {
           note: string | null;
           preferred_mode: Database['public']['Enums']['consulting_mode'] | null;
           program_id: string;
+          rank: number | null;
           region: string | null;
           stage: string | null;
           summary: string | null;
@@ -864,6 +865,7 @@ export type Database = {
           note?: string | null;
           preferred_mode?: Database['public']['Enums']['consulting_mode'] | null;
           program_id: string;
+          rank?: number | null;
           region?: string | null;
           stage?: string | null;
           summary?: string | null;
@@ -883,6 +885,7 @@ export type Database = {
           note?: string | null;
           preferred_mode?: Database['public']['Enums']['consulting_mode'] | null;
           program_id?: string;
+          rank?: number | null;
           region?: string | null;
           stage?: string | null;
           summary?: string | null;
@@ -918,6 +921,7 @@ export type Database = {
           ended_by: string | null;
           id: string;
           is_active: boolean;
+          match_method: string | null;
           mentor_id: string;
           notice_sent_at: string | null;
           reason_visibility: string;
@@ -935,6 +939,7 @@ export type Database = {
           ended_by?: string | null;
           id?: string;
           is_active?: boolean;
+          match_method?: string | null;
           mentor_id: string;
           notice_sent_at?: string | null;
           reason_visibility?: string;
@@ -952,6 +957,7 @@ export type Database = {
           ended_by?: string | null;
           id?: string;
           is_active?: boolean;
+          match_method?: string | null;
           mentor_id?: string;
           notice_sent_at?: string | null;
           reason_visibility?: string;

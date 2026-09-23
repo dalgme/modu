@@ -41,6 +41,10 @@ async function caseInProgram(caseId: string, programId: string): Promise<boolean
 /** 추천 채택 기록 (docs §14-3): 추천 목록에 있던 멘토면 adopted_at, 아니면 recommended_rank: null 을 감사에 남긴다 */
 async function recordAdoption(caseId: string, mentorId: string, actorId: string, programId: string): Promise<void> {
   const rank = await markRecommendationAdopted(caseId, mentorId);
+  // 추천 목록에 있던 멘토를 채택했으면 매칭 방식 = 추천 (P27-08). 아니면 assignMentor 기본값(수동) 유지.
+  if (rank !== null && rank !== undefined) {
+    await createAdminClient().from('mentor_assignments').update({ match_method: 'recommended' }).eq('case_id', caseId).eq('mentor_id', mentorId).eq('is_active', true);
+  }
   await createAdminClient().from('audit_logs').insert({ actor_id: actorId, program_id: programId, action: 'match.adoption', entity_type: 'cases', entity_id: caseId, metadata: { mentor_id: mentorId, recommended_rank: rank } });
 }
 

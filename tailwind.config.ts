@@ -39,6 +39,9 @@ const config: Config = {
         brand: {
           teal: '#2AD1BF',
           navy: '#103355',
+          // 활성 서브탭·강조 (코랄) / 배정 버튼 (핫핑크)
+          coral: '#F0654A',
+          pink: '#FF2D8A',
         },
         midnight: {
           DEFAULT: 'hsl(var(--midnight))',

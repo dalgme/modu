@@ -208,3 +208,48 @@ export async function setPaymentDocStateAction(input: { userId: string; kind: 'r
   revalidatePath('/nextlab/roster');
   return { ok: true };
 }
+
+/**
+ * 지급서류 셋트 상태 (P27-16) — 멘토 매칭 리스트의 단일 버튼. 3종(이력서·통장·신분증)을 한 번에 같은 상태로 둔다.
+ * - = 여기서 관리 안 함 / X = 관리하지만 미수령 / O = 이메일 등으로 따로 수령. **비밀번호를 묻지 않는다**(확인 팝업만) — 대행 중은 불가, 감사 기록.
+ */
+export async function setPaymentDocSetStateAction(input: { userId: string; state: '-' | 'X' | 'O' }): Promise<Result> {
+  const op = await operator();
+  if ('error' in op) return { ok: false, error: op.error };
+  if (await getImpersonation()) return { ok: false, error: '대행 중에는 지급서류 상태를 바꿀 수 없습니다.' };
+  if (!['-', 'X', 'O'].includes(input.state)) return { ok: false, error: '상태값이 올바르지 않습니다.' };
+  const admin = createAdminClient();
+  const { data: member } = await admin.from('program_members').select('role').eq('program_id', op.programId).eq('user_id', input.userId).maybeSingle();
+  if (!member || member.role !== 'mentor') return { ok: false, error: '이 행사의 멘토가 아닙니다.' };
+  const now = new Date().toISOString();
+  const state = input.state === '-' ? null : input.state;
+  const receivedAt = input.state === 'O' ? now : null;
+  const { data: before } = await admin.from('mentor_payment_docs').select('resume_state, bankbook_state, id_card_state').eq('program_id', op.programId).eq('user_id', input.userId).maybeSingle();
+  const { error } = await admin.from('mentor_payment_docs').upsert(
+    {
+      program_id: op.programId,
+      user_id: input.userId,
+      checked_by: op.id,
+      resume_state: state,
+      resume_received_at: receivedAt,
+      bankbook_state: state,
+      bankbook_received_at: receivedAt,
+      id_card_state: state,
+      id_card_received_at: receivedAt,
+    },
+    { onConflict: 'program_id,user_id' },
+  );
+  if (error) return { ok: false, error: error.message };
+  const { error: auditError } = await admin.from('audit_logs').insert({
+    actor_id: op.id,
+    program_id: op.programId,
+    action: 'mentor.payment_doc_state',
+    entity_type: 'users',
+    entity_id: input.userId,
+    metadata: { kind: 'set', state: input.state, before: before ?? null, reauth: false },
+  });
+  if (auditError) console.error('payment doc set state audit failed:', auditError.message);
+  revalidatePath('/nextlab/roster');
+  revalidatePath('/nextlab/reports');
+  return { ok: true };
+}

@@ -115,7 +115,7 @@ export async function saveMentorProfileAction(programId: string, mentorId: strin
 export async function confirmMatchAction(caseId: string, mentorId: string): Promise<Result> {
   const op = await operatorCase(caseId);
   if ('error' in op) return { ok: false, error: op.error };
-  const r = await assignMentor(caseId, mentorId, op.id);
+  const r = await assignMentor(caseId, mentorId, op.id, 'recommended');
   if (!r.ok) return r;
   const rank = await markRecommendationAdopted(caseId, mentorId);
   const { error: auditError } = await createAdminClient().from('audit_logs').insert({
@@ -127,6 +127,27 @@ export async function confirmMatchAction(caseId: string, mentorId: string): Prom
     metadata: { mentor_id: mentorId, recommended_rank: rank, source: 'match_list' },
   });
   if (auditError) console.error('match adoption audit failed:', auditError.message);
+  await afterAssignmentConfirmed(op.programId, mentorId, op.id);
+  revalidatePath('/nextlab/roster');
+  revalidatePath(`/nextlab/cases/${caseId}`);
+  return { ok: true };
+}
+
+/** 운영사: 매칭 리스트 [수동 검색] 팝업에서 멘토를 골라 매칭 (P27-09) — 방식 = 수동. 추천 3명이 모두 맞지 않을 때 사용. */
+export async function manualMatchAction(caseId: string, mentorId: string): Promise<Result> {
+  const op = await operatorCase(caseId);
+  if ('error' in op) return { ok: false, error: op.error };
+  const r = await assignMentor(caseId, mentorId, op.id, 'manual');
+  if (!r.ok) return r;
+  const { error: auditError } = await createAdminClient().from('audit_logs').insert({
+    actor_id: op.id,
+    program_id: op.programId,
+    action: 'match.manual',
+    entity_type: 'cases',
+    entity_id: caseId,
+    metadata: { mentor_id: mentorId, source: 'match_list_manual_search' },
+  });
+  if (auditError) console.error('manual match audit failed:', auditError.message);
   await afterAssignmentConfirmed(op.programId, mentorId, op.id);
   revalidatePath('/nextlab/roster');
   revalidatePath(`/nextlab/cases/${caseId}`);

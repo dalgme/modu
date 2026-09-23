@@ -185,7 +185,10 @@ async function ensureGroupRoster(supportTypeId: string, mentorId: string): Promi
  * T2/T12 멘토 배정. registered → mentor_assigned, reassignment_pending → in_progress.
  * 조건부 update 로 원자적 검증. 운영사 전용(호출부 가드).
  */
-export async function assignMentor(caseId: string, mentorId: string, actorId: string): Promise<WorkflowResult> {
+/** 매칭 방식 (P27-08): 자동(멘티 재배치 희망) / 추천(자동 추천 매칭 확정) / 수동(운영자 멘토 검색) */
+export type MatchMethod = 'auto_preferred' | 'recommended' | 'manual';
+
+export async function assignMentor(caseId: string, mentorId: string, actorId: string, method: MatchMethod = 'manual'): Promise<WorkflowResult> {
   const admin = createAdminClient();
   const { data: c } = await admin
     .from('cases')
@@ -211,7 +214,7 @@ export async function assignMentor(caseId: string, mentorId: string, actorId: st
 
   const { data: assignment, error: assignError } = await admin
     .from('mentor_assignments')
-    .insert({ case_id: caseId, mentor_id: mentorId, assigned_by: actorId, is_active: true })
+    .insert({ case_id: caseId, mentor_id: mentorId, assigned_by: actorId, is_active: true, match_method: method })
     .select('id')
     .single();
   if (assignError || !assignment) return { ok: false, error: assignError?.message ?? '멘토 배정에 실패했습니다.' };
@@ -246,7 +249,7 @@ export async function assignMentor(caseId: string, mentorId: string, actorId: st
     action: 'case.assign_mentor',
     entity_type: 'cases',
     entity_id: caseId,
-    metadata: { mentor_id: mentorId, from_status: c.status },
+    metadata: { mentor_id: mentorId, from_status: c.status, match_method: method },
   });
   return { ok: true, caseId };
 }
@@ -255,7 +258,7 @@ export async function assignMentor(caseId: string, mentorId: string, actorId: st
  * T3 멘토 교체(상태 유지). 현재 활성 배정을 종료(end_kind=reassigned)하고 새 배정을 만든다.
  * 회차는 케이스 누적이라 승계된다. 이미 이행한 회차의 정산은 P4(부분 정산)에서 처리.
  */
-export async function reassignMentor(caseId: string, newMentorId: string, actorId: string, reason?: string): Promise<WorkflowResult> {
+export async function reassignMentor(caseId: string, newMentorId: string, actorId: string, reason?: string, method: MatchMethod = 'manual'): Promise<WorkflowResult> {
   const admin = createAdminClient();
   const { data: c } = await admin
     .from('cases')
@@ -288,7 +291,7 @@ export async function reassignMentor(caseId: string, newMentorId: string, actorI
 
   const { error: insErr } = await admin
     .from('mentor_assignments')
-    .insert({ case_id: caseId, mentor_id: newMentorId, assigned_by: actorId, is_active: true });
+    .insert({ case_id: caseId, mentor_id: newMentorId, assigned_by: actorId, is_active: true, match_method: method });
   if (insErr) {
     await admin
       .from('mentor_assignments')

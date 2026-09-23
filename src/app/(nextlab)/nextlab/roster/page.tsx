@@ -1,5 +1,4 @@
-import Link from 'next/link';
-import { Download } from 'lucide-react';
+import { Briefcase, Building2, Download, GraduationCap, Link2, Network, UserPlus, Users } from 'lucide-react';
 
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
@@ -11,9 +10,11 @@ import { listSupportTypes } from '@/lib/programs/data';
 import { getMentorFormStatus } from '@/lib/mentor-forms/data';
 import { featureEnabled } from '@/lib/platform/features';
 import { denyUnless } from '@/lib/auth/capabilities';
-import { CASE_STATUS_META } from '@/types/case-status';
+import { CASE_STATUSES, CASE_STATUS_META } from '@/types/case-status';
+import { SubTabs } from '@/components/common/sub-tabs';
+import { RankUploadButton } from '@/components/nextlab/rank-upload';
+import type { MentorGroupInfo, Withholding } from '@/components/nextlab/mentor-group-controls';
 import { MembersManager, type MenteeProgressItem } from '@/components/nextlab/members-manager';
-import { MentorsRoster } from '@/components/nextlab/mentors-roster';
 import { MentorFormsStatus } from '@/components/nextlab/mentor-forms-status';
 import { RegisterPanel } from '@/components/nextlab/register-panel';
 import { REG_ROLES, type RegKey } from '@/lib/roster/register-roles';
@@ -26,13 +27,13 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const TABS = [
-  { key: 'mentee', label: '멘티 명단' },
-  { key: 'mentor', label: '멘토 명단' },
-  { key: 'mentee-match', label: '멘티 매칭 리스트' },
-  { key: 'mentor-match', label: '멘토 매칭 리스트' },
-  { key: 'institution', label: '발주처' },
-  { key: 'nextlab', label: '운영사' },
-  { key: 'register', label: '회원 등록' },
+  { key: 'mentee', label: '멘티 명단', icon: Users },
+  { key: 'mentor', label: '멘토 명단', icon: GraduationCap },
+  { key: 'mentee-match', label: '멘티 매칭 리스트', icon: Link2 },
+  { key: 'mentor-match', label: '멘토 매칭 리스트', icon: Network },
+  { key: 'institution', label: '발주처', icon: Building2 },
+  { key: 'nextlab', label: '운영사', icon: Briefcase },
+  { key: 'register', label: '회원 등록', icon: UserPlus },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
@@ -93,13 +94,21 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   if (tab === 'mentee') {
     const cases = await listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined });
     const { createAdminClient } = await import('@/lib/supabase/admin');
-    const { data: responses } = cases.length
-      ? await createAdminClient().from('survey_responses').select('case_id').in('case_id', cases.map((c) => c.id))
-      : { data: [] as { case_id: string }[] };
+    const admin = createAdminClient();
+    const [{ data: responses }, { data: ranks }] = cases.length
+      ? await Promise.all([
+          admin.from('survey_responses').select('case_id').in('case_id', cases.map((c) => c.id)),
+          admin.from('mentee_profiles').select('case_id, rank').in('case_id', cases.map((c) => c.id)),
+        ])
+      : [{ data: [] as { case_id: string }[] }, { data: [] as { case_id: string; rank: number | null }[] }];
     const responded = new Set((responses ?? []).map((r) => r.case_id));
+    const rankByCase = new Map((ranks ?? []).map((r) => [r.case_id, r.rank]));
+    const rankByMentee = new Map<string, number>();
     const progress: Record<string, MenteeProgressItem[]> = {};
     for (const c of cases) {
       if (!c.mentee_id) continue;
+      const rk = rankByCase.get(c.id);
+      if (typeof rk === 'number') rankByMentee.set(c.mentee_id, Math.min(rk, rankByMentee.get(c.mentee_id) ?? Infinity));
       (progress[c.mentee_id] ??= []).push({
         caseId: c.id,
         groupName: c.supportTypeName,
@@ -111,12 +120,18 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         mentorName: c.mentorName,
         mentorActiveCount: c.mentorActiveCount,
         surveyStatus: responded.has(c.id) ? 'done' : c.survey_opened_at ? 'open' : 'none',
+        statusIndex: CASE_STATUSES.indexOf(c.status),
       });
     }
+    const menteeItems = memberItems.map((m) => ({ ...m, rank: rankByMentee.get(m.id) ?? null }));
     body = (
       <>
         <ActiveHelp />
-        <MembersManager members={memberItems} rosterColumns={roster.columns.map((c) => ({ id: c.id, target: c.target, name: c.name }))} rosterValues={roster.values} mode="mentee" progress={progress} />
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-300 bg-sky-100 px-4 py-2.5 text-sm dark:border-sky-800 dark:bg-sky-950/40">
+          <span className="font-semibold text-sky-950 dark:text-sky-100">멘티 {countOf('mentee')}명 · 순위는 [멘티 순위 업로드]로 갱신 (멘티명·순위 엑셀)</span>
+          <RankUploadButton />
+        </div>
+        <MembersManager members={menteeItems} rosterColumns={roster.columns.map((c) => ({ id: c.id, target: c.target, name: c.name }))} rosterValues={roster.values} mode="mentee" progress={progress} />
       </>
     );
   }
@@ -129,6 +144,15 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         ? getMentorFormStatus(ctx.programId, denyUnless(ctx, 'members.sensitive') === null)
         : Promise.resolve([]),
     ]);
+    const groupList = groups.map((g) => ({ id: g.id, name: g.name }));
+    const mentorItems = memberItems.map((m) => {
+      const mr = mentors.find((x) => x.id === m.id);
+      const mentorGroups: MentorGroupInfo[] = groupList.map((g) => {
+        const row = mr?.groups.find((r) => r.supportTypeId === g.id);
+        return { id: g.id, name: g.name, designated: mr?.designatedGroupIds.includes(g.id) ?? false, withholding: row ? ((row.withholdingMethod ?? '') as Withholding) : null };
+      });
+      return { ...m, mentorGroups };
+    });
     body = (
       <>
         <ActiveHelp />
@@ -156,8 +180,8 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         )}
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
-            <h2 className="text-lg font-semibold">멘토별 진행현황 · 지급서류</h2>
-            <p className="text-xs text-muted-foreground">담당 멘티 · 이행 회차 · 확정 실지급 · 지급서류 상태(- 관리 안 함 / X 관리하지만 미수령 / O 수령) · 그룹 지정 · 원천징수 · 운영사 평가. 지급서류 상태 변경은 비밀번호 재인증이 필요합니다.</p>
+            <h2 className="text-lg font-semibold">멘토 계정 관리</h2>
+            <p className="text-xs text-muted-foreground">정보 수정(그룹 지정·원천징수 포함) · 역할 변경 · 활성/비활성 · 로그인 안내 문자 · 화면 보기(대행). 진행현황·지급서류·운영사 평가는 [멘토 매칭 리스트]와 리포트에서 관리합니다.</p>
           </div>
           <Button asChild variant="outline" size="sm" className="gap-1">
             <a href="/api/staff/mentor-docs-zip" title="멘토별 폴더로 정리된 ZIP — 지급서류(이력서·통장·신분증)와 위촉 서식 제출 파일">
@@ -165,12 +189,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             </a>
           </Button>
         </div>
-        <MentorsRoster mentors={mentors} groups={groups.map((g) => ({ id: g.id, name: g.name }))} showUploads={featureEnabled(ctx.program.features, 'mentor_doc_upload')} />
-        <div>
-          <h2 className="text-lg font-semibold">멘토 계정 관리</h2>
-          <p className="text-xs text-muted-foreground">정보 수정 · 역할 변경 · 활성/비활성 · 로그인 안내 문자 · 화면 보기(대행)</p>
-        </div>
-        <MembersManager members={memberItems} rosterColumns={roster.columns.map((c) => ({ id: c.id, target: c.target, name: c.name }))} rosterValues={roster.values} mode="mentor" />
+        <MembersManager members={mentorItems} rosterColumns={roster.columns.map((c) => ({ id: c.id, target: c.target, name: c.name }))} rosterValues={roster.values} mode="mentor" />
       </>
     );
   }
@@ -190,8 +209,9 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
 
   if (tab === 'mentor-match' || tab === 'mentee-match') {
     const { loadMatchingLists } = await import('@/lib/data/matching-lists');
-    const lists = await loadMatchingLists(ctx.programId, ctx.supportTypeId ?? null);
-    body = tab === 'mentor-match' ? <MentorMatchList rows={lists.mentorRows} /> : <MenteeMatchList rows={lists.menteeRows} />;
+    const [lists, groups] = await Promise.all([loadMatchingLists(ctx.programId, ctx.supportTypeId ?? null), listSupportTypes(ctx.programId)]);
+    const groupList = groups.map((g) => ({ id: g.id, name: g.name }));
+    body = tab === 'mentor-match' ? <MentorMatchList rows={lists.mentorRows} groups={groupList} /> : <MenteeMatchList rows={lists.menteeRows} mentors={lists.mentorRows} toolbarExtra={<RankUploadButton />} />;
   }
 
   if (tab === 'register') {
@@ -219,22 +239,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
           <ExcelButton href={`/api/nextlab/roster-export?tab=${tab}`} label="엑셀 다운로드" />
         )}
       </div>
-      <nav className="flex flex-wrap gap-1.5">
-        {TABS.map((t) => (
-          <Link
-            key={t.key}
-            href={`/nextlab/roster?tab=${t.key}`}
-            className={`inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}
-          >
-            {t.label}
-            {tabCounts[t.key] !== undefined && (
-              <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${tab === t.key ? 'bg-primary-foreground/20' : 'bg-background text-foreground'}`}>
-                {tabCounts[t.key]}
-              </span>
-            )}
-          </Link>
-        ))}
-      </nav>
+      <SubTabs ariaLabel="회원 명단 탭" active={tab} items={TABS.map((t) => ({ key: t.key, label: t.label, icon: t.icon, href: `/nextlab/roster?tab=${t.key}`, count: tabCounts[t.key] }))} />
       {body}
     </main>
   );

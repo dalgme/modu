@@ -18,8 +18,9 @@ import { WITHHOLDING_LABELS } from '@/lib/settlement/compute';
 import { MetricsTiles } from '@/components/reports/metrics-tiles';
 import { SettlementsTable } from '@/components/settlement/settlements-table';
 import { CaseTable } from '@/components/cases/case-table';
-import { MentorsRoster } from '@/components/nextlab/mentors-roster';
-import type { MentorRosterItem } from '@/lib/data/mentors';
+import { MentorProgressTable } from '@/components/nextlab/matching-lists';
+import type { MentorMatchRow } from '@/lib/data/matching-lists';
+import { SubTabs } from '@/components/common/sub-tabs';
 import { MentorName } from '@/components/common/mentor-name';
 import type { Branding } from '@/lib/programs/branding';
 import { formatKRW } from '@/lib/utils/format';
@@ -48,7 +49,7 @@ export function ReportsBody({
   exportHref,
   groupFilter,
   casesView = 'mentee',
-  mentorsRoster,
+  mentorProgress,
   budget,
   delays,
   trend,
@@ -62,8 +63,8 @@ export function ReportsBody({
   exportHref: string;
   groupFilter?: { current: string | null; options: { id: string; name: string }[] };
   casesView?: 'mentee' | 'mentor';
-  /** 멘토 진행현황 = 회원 명단의 멘토 명단과 동일 표 (P25-16). 발주처는 열람 전용 */
-  mentorsRoster?: { mentors: MentorRosterItem[]; groups: { id: string; name: string }[]; showUploads?: boolean };
+  /** 멘토 진행현황 — 그룹별(담당 인원)·담당 멘티명·회차·확정 실지급·만족도·운영사 평가 (P27-17). 발주처는 운영사 평가 열 없음 */
+  mentorProgress?: MentorMatchRow[];
   /** 예산 집행 게이지 (개요 탭, P22) */
   budget?: BudgetOverview;
   /** 지연 케이스 목록 (개요 탭, P22·P26-03) */
@@ -88,25 +89,9 @@ export function ReportsBody({
           ))}
         </div>
       )}
-      {/* 탭 메뉴 (P26-02): 아이콘 + 라벨의 세그먼트 바, 활성 탭은 흰 카드 + 하단 강조선 */}
+      {/* 탭 메뉴 (P26-02 · P27-18): 짙은 청색 바, 활성 탭은 흰 박스 + 코랄 아이콘/글자 */}
       <div className="flex flex-wrap items-center gap-2">
-        <nav aria-label="리포트 탭" className="flex flex-1 flex-wrap gap-1 rounded-xl border bg-muted/50 p-1">
-          {REPORT_TABS.map((t) => {
-            const active = tab === t.key;
-            const Icon = t.icon;
-            return (
-              <Link
-                key={t.key}
-                href={`${reportsHref}?tab=${t.key}${groupQs}`}
-                aria-current={active ? 'page' : undefined}
-                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${active ? 'bg-background text-primary shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'}`}
-              >
-                <Icon className={`h-4 w-4 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
-                {t.label}
-              </Link>
-            );
-          })}
-        </nav>
+        <SubTabs ariaLabel="리포트 탭" active={tab} className="flex-1" items={REPORT_TABS.map((t) => ({ key: t.key, label: t.label, icon: t.icon, href: `${reportsHref}?tab=${t.key}${groupQs}` }))} />
         <div className="flex items-center gap-2">
           {base === '/nextlab' && (
             <Link href={`${reportsHref}/summary`} className="inline-flex h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-violet-300 bg-violet-50 px-3 text-xs font-bold text-violet-800 hover:bg-violet-100 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-200">
@@ -181,8 +166,8 @@ export function ReportsBody({
               </div>
               <CaseTable items={cases} basePath={`${base}/cases`} branding={branding} showGroup showLegend />
             </div>
-          ) : mentorsRoster ? (
-            <MentorsRoster mentors={mentorsRoster.mentors} groups={mentorsRoster.groups} readOnly={base === '/institution'} caseHrefBase={`${base}/cases`} showUploads={mentorsRoster.showUploads} />
+          ) : mentorProgress ? (
+            <MentorProgressTable rows={mentorProgress} caseHrefBase={`${base}/cases`} showReview={base === '/nextlab'} />
           ) : (
             <MentorsTable m={m} base={base} />
           )}

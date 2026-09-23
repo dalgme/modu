@@ -10,8 +10,8 @@ import { listCases } from '@/lib/data/cases';
 import { CASE_STATUS_META } from '@/types/case-status';
 import { GRADE_LABELS, type StaffGrade } from '@/lib/auth/capabilities';
 import { ROLE_LABELS } from '@/lib/auth/roles';
-import { loadMatchingLists } from '@/lib/data/matching-lists';
-import { mentorLabel } from '@/lib/utils/labels';
+import { loadMatchingLists, MATCH_METHOD_LABELS } from '@/lib/data/matching-lists';
+import { menteeOrg, mentorLabel } from '@/lib/utils/labels';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,11 +38,13 @@ export async function GET(request: Request): Promise<Response> {
     if (kind === 'mentee-match') {
       sheetName = '멘티 매칭 리스트';
       rows = lists.menteeRows.map((r) => ({
+        순위: r.rank ?? '',
         멘티: r.label,
         라운드: r.groupName ?? '',
         희망분야: r.needs.join(', '),
         '재배치 희망': r.preferredMentor ?? '',
         '배정 멘토': r.mentorName ? mentorLabel(r.mentorName, r.mentorActive) : '',
+        방식: r.matchMethod ? MATCH_METHOD_LABELS[r.matchMethod] : '',
         추천: r.mentorName ? '' : r.recommendations.map((x) => `${x.rank}. ${mentorLabel(x.mentorName, x.mentorActive)} ${Math.round(x.score)}점`).join(' / '),
         '매칭 일자': r.assignedAt ? r.assignedAt.slice(0, 10) : '',
         '멘토 확인': r.confirmedAt ? r.confirmedAt.slice(0, 10) : '',
@@ -53,12 +55,14 @@ export async function GET(request: Request): Promise<Response> {
     } else {
       sheetName = '멘토 매칭 리스트';
       rows = lists.mentorRows.flatMap((m) => {
-        const base = { 멘토: mentorLabel(m.mentorName, m.mentees.length), 소속: m.organization ?? '', 분야: m.expertise.join(', '), '그룹 지정': m.designatedGroupNames.join(', ') };
-        if (m.mentees.length === 0) return [{ ...base, 멘티: '', 라운드: '', '매칭 일자': '', '멘토 확인': '', 진행: '미배정(Pool)', 회차: '' }];
+        const base = { 멘토: mentorLabel(m.mentorName, m.mentees.length), 소속: m.organization ?? '', 휴대폰: m.phone ?? '', 이메일: m.email ?? '', 분야: m.expertise.join(', '), '그룹 지정': m.designatedGroupNames.join(', '), 지급서류: m.paymentDocState, '확정 실지급': m.settledNet, 만족도: m.surveyAvg ?? '', '운영사 평가': m.reviewAvg ?? '' };
+        if (m.mentees.length === 0) return [{ ...base, 순위: '', 멘티: '', 라운드: '', 방식: '', '매칭 일자': '', '멘토 확인': '', 진행: '미배정(Pool)', 회차: '' }];
         return m.mentees.map((c) => ({
           ...base,
+          순위: c.rank ?? '',
           멘티: c.label,
           라운드: c.groupName ?? '',
+          방식: c.matchMethod ? MATCH_METHOD_LABELS[c.matchMethod] : '',
           '매칭 일자': c.assignedAt ? c.assignedAt.slice(0, 10) : '',
           '멘토 확인': c.confirmedAt ? c.confirmedAt.slice(0, 10) : '',
           진행: c.statusLabel,
@@ -70,8 +74,8 @@ export async function GET(request: Request): Promise<Response> {
     // P23 컬럼 재정의: 이름·닉네임·고유번호·휴대폰·이메일·권역·유형·아이디어·희망분야·재배치 희망·비고 + 진행현황
     const cases = await listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined });
     const { data: profiles } = cases.length
-      ? await createAdminClient().from('mentee_profiles').select('case_id, nickname, external_no, region, mentee_type, needs, preferred_mentor, note').in('case_id', cases.map((c) => c.id))
-      : { data: [] as { case_id: string; nickname: string | null; external_no: string | null; region: string | null; mentee_type: string | null; needs: string[]; preferred_mentor: string | null; note: string | null }[] };
+      ? await createAdminClient().from('mentee_profiles').select('case_id, nickname, external_no, region, mentee_type, needs, preferred_mentor, note, rank').in('case_id', cases.map((c) => c.id))
+      : { data: [] as { case_id: string; nickname: string | null; external_no: string | null; region: string | null; mentee_type: string | null; needs: string[]; preferred_mentor: string | null; note: string | null; rank: number | null }[] };
     const profileByCase = new Map((profiles ?? []).map((p) => [p.case_id, p]));
     const byMentee = new Map<string, typeof cases>();
     for (const c of cases) {
@@ -90,13 +94,14 @@ export async function GET(request: Request): Promise<Response> {
           계정상태: active(m.is_active),
         };
         if (cs.length === 0) {
-          return [{ 이름: base.이름, 닉네임: '', 고유번호: '', 휴대폰: base.휴대폰, 이메일: base.이메일, 권역: '', 유형: '', 아이디어: '', 희망분야: '', '재배치 희망여부(멘토 이름)': '', 비고: '', 그룹: '', 진행상태: '', 회차: '', 담당멘토: '', 계정상태: base.계정상태 }];
+          return [{ 순위: '', 이름: base.이름, 닉네임: '', 고유번호: '', 휴대폰: base.휴대폰, 이메일: base.이메일, 권역: '', 유형: '', 아이디어: '', 희망분야: '', '재배치 희망여부(멘토 이름)': '', 비고: '', 그룹: '', 진행상태: '', 회차: '', 담당멘토: '', 계정상태: base.계정상태 }];
         }
         return cs.map((c) => {
           const p = profileByCase.get(c.id);
           return {
+            순위: p?.rank ?? '',
             이름: base.이름,
-            닉네임: p?.nickname ?? c.business_name ?? '',
+            닉네임: p?.nickname ?? menteeOrg(c.owner_name, c.business_name),
             고유번호: p?.external_no ?? '',
             휴대폰: base.휴대폰,
             이메일: base.이메일,

@@ -11,6 +11,7 @@ import { sendDelayNudgeAction } from '@/lib/reports/delay-actions';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
+import { menteeLabel } from '@/lib/utils/labels';
 
 const MENTOR_KINDS: DelayKind[] = ['no_round', 'stalled', 'revision'];
 
@@ -109,7 +110,7 @@ export function DelayList({ items, caseHrefBase, canNudge }: { items: DelayedCas
                   )}
                   <td className="px-3 py-2 font-medium">
                     <Link href={`${caseHrefBase}/${i.caseId}`} className="hover:underline">
-                      {i.ownerName}<span className="font-normal text-muted-foreground">/{i.businessName}</span>
+                      {menteeLabel(i.ownerName, i.businessName)}
                     </Link>
                   </td>
                   <td className="px-3 py-2 text-xs">{i.groupName ?? '-'}</td>

@@ -155,7 +155,7 @@ function buildRecommendationRows(
 
 /** 자동 확정 공통: 배정 + 메모리 부하 갱신 + 감사 */
 async function confirmAuto(pool: MentorPool, caseId: string, groupId: string, programId: string, m: ProgramMentor, actorId: string, reason: string): Promise<boolean> {
-  const r = await assignMentor(caseId, m.id, actorId);
+  const r = await assignMentor(caseId, m.id, actorId, 'auto_preferred');
   if (!r.ok) return false;
   m.activeByGroup.set(groupId, activeIn(m, groupId) + 1);
   const { error: auditError } = await createAdminClient().from('audit_logs').insert({
