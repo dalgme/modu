@@ -1,5 +1,8 @@
 import Link from 'next/link';
-import { Download } from 'lucide-react';
+import { AlertTriangle, ClipboardList, Coins, LayoutDashboard, Layers, Smile, TrendingUp, Users } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
+
+import { ExcelButton } from '@/components/common/excel-button';
 
 import type { ProgramMetrics } from '@/lib/reports/metrics';
 import type { BudgetOverview } from '@/lib/reports/budget';
@@ -21,16 +24,16 @@ import { MentorName } from '@/components/common/mentor-name';
 import type { Branding } from '@/lib/programs/branding';
 import { formatKRW } from '@/lib/utils/format';
 
+/** 리포트 탭 (P26-03: 잔여 과업 탭 제거 — 지연 케이스는 개요로, 잔여 회차 표는 진행현황과 중복) */
 export const REPORT_TABS = [
-  { key: 'overview', label: '개요' },
-  { key: 'trend', label: '월별 추이' },
-  { key: 'cases', label: '진행현황' },
-  { key: 'mentors', label: '멘토 실적' },
-  { key: 'groups', label: '그룹 실적' },
-  { key: 'settlement', label: '정산' },
-  { key: 'survey', label: '만족도' },
-  { key: 'backlog', label: '잔여 과업' },
-] as const;
+  { key: 'overview', label: '개요', icon: LayoutDashboard },
+  { key: 'trend', label: '월별 추이', icon: TrendingUp },
+  { key: 'cases', label: '진행현황', icon: ClipboardList },
+  { key: 'mentors', label: '멘토 실적', icon: Users },
+  { key: 'groups', label: '그룹 실적', icon: Layers },
+  { key: 'settlement', label: '정산', icon: Coins },
+  { key: 'survey', label: '만족도', icon: Smile },
+] as const satisfies readonly { key: string; label: string; icon: LucideIcon }[];
 export type ReportTab = (typeof REPORT_TABS)[number]['key'];
 
 /** 리포트 본문 (docs §19-2) — 운영사·발주처 공용.
@@ -60,10 +63,10 @@ export function ReportsBody({
   groupFilter?: { current: string | null; options: { id: string; name: string }[] };
   casesView?: 'mentee' | 'mentor';
   /** 멘토 진행현황 = 회원 명단의 멘토 명단과 동일 표 (P25-16). 발주처는 열람 전용 */
-  mentorsRoster?: { mentors: MentorRosterItem[]; groups: { id: string; name: string }[] };
+  mentorsRoster?: { mentors: MentorRosterItem[]; groups: { id: string; name: string }[]; showUploads?: boolean };
   /** 예산 집행 게이지 (개요 탭, P22) */
   budget?: BudgetOverview;
-  /** 지연 케이스 목록 (잔여 과업 탭, P22) */
+  /** 지연 케이스 목록 (개요 탭, P22·P26-03) */
   delays?: DelayedCase[];
   /** 월별 추이 (월별 추이 탭, P22) */
   trend?: TrendMonth[];
@@ -85,28 +88,47 @@ export function ReportsBody({
           ))}
         </div>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <nav className="flex flex-wrap gap-1.5">
-          {REPORT_TABS.map((t) => (
-            <Link key={t.key} href={`${reportsHref}?tab=${t.key}${groupQs}`} className={`rounded-full px-3 py-1 text-xs font-semibold ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}>
-              {t.label}
-            </Link>
-          ))}
+      {/* 탭 메뉴 (P26-02): 아이콘 + 라벨의 세그먼트 바, 활성 탭은 흰 카드 + 하단 강조선 */}
+      <div className="flex flex-wrap items-center gap-2">
+        <nav aria-label="리포트 탭" className="flex flex-1 flex-wrap gap-1 rounded-xl border bg-muted/50 p-1">
+          {REPORT_TABS.map((t) => {
+            const active = tab === t.key;
+            const Icon = t.icon;
+            return (
+              <Link
+                key={t.key}
+                href={`${reportsHref}?tab=${t.key}${groupQs}`}
+                aria-current={active ? 'page' : undefined}
+                className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-colors ${active ? 'bg-background text-primary shadow-sm ring-1 ring-border' : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'}`}
+              >
+                <Icon className={`h-4 w-4 ${active ? 'text-primary' : 'text-muted-foreground'}`} />
+                {t.label}
+              </Link>
+            );
+          })}
         </nav>
-        {base === '/nextlab' && (
-          <Link href={`${reportsHref}/summary`} className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-3 py-1 text-xs font-semibold text-violet-800 hover:bg-violet-200">
-            종합결과리포트 →
-          </Link>
-        )}
-        <a href={`${exportHref}?tab=${tab}`} className="inline-flex items-center gap-1 rounded-lg border bg-background px-3 py-1.5 text-xs font-semibold hover:bg-accent">
-          <Download className="h-4 w-4" /> 엑셀 내보내기
-        </a>
+        <div className="flex items-center gap-2">
+          {base === '/nextlab' && (
+            <Link href={`${reportsHref}/summary`} className="inline-flex h-9 items-center gap-1 whitespace-nowrap rounded-lg border border-violet-300 bg-violet-50 px-3 text-xs font-bold text-violet-800 hover:bg-violet-100 dark:border-violet-700 dark:bg-violet-950 dark:text-violet-200">
+              종합결과리포트 →
+            </Link>
+          )}
+          <ExcelButton href={`${exportHref}?tab=${tab}`} />
+        </div>
       </div>
 
       {tab === 'overview' && (
         <div className="flex flex-col gap-4">
           {budget && <BudgetCard overview={budget} settingsHint={base === '/nextlab'} />}
           <MetricsTiles m={m} base={base} reportsHref={reportsHref} />
+          {delays && (
+            <section className={`flex flex-col gap-2 rounded-xl border p-4 ${delays.length > 0 ? 'border-status-rejected/40 bg-status-rejected/5' : 'bg-background'}`}>
+              <h3 className="flex items-center gap-2 text-base font-bold">
+                <AlertTriangle className={`h-5 w-5 ${delays.length > 0 ? 'text-status-rejected' : 'text-muted-foreground'}`} /> 지연 케이스 {delays.length}건
+              </h3>
+              <DelayList items={delays} caseHrefBase={`${base}/cases`} canNudge={base === '/nextlab'} />
+            </section>
+          )}
         </div>
       )}
 
@@ -160,7 +182,7 @@ export function ReportsBody({
               <CaseTable items={cases} basePath={`${base}/cases`} branding={branding} showGroup showLegend />
             </div>
           ) : mentorsRoster ? (
-            <MentorsRoster mentors={mentorsRoster.mentors} groups={mentorsRoster.groups} readOnly={base === '/institution'} caseHrefBase={`${base}/cases`} />
+            <MentorsRoster mentors={mentorsRoster.mentors} groups={mentorsRoster.groups} readOnly={base === '/institution'} caseHrefBase={`${base}/cases`} showUploads={mentorsRoster.showUploads} />
           ) : (
             <MentorsTable m={m} base={base} />
           )}
@@ -227,21 +249,6 @@ export function ReportsBody({
         </div>
       )}
 
-      {tab === 'backlog' && (
-        <div className="flex flex-col gap-4">
-          <MetricsTiles m={m} base={base} reportsHref={reportsHref} />
-          {delays && (
-            <div className="flex flex-col gap-2">
-              <h3 className="text-base font-bold">🚨 지연 케이스 {delays.length}건</h3>
-              <DelayList items={delays} caseHrefBase={`${base}/cases`} canNudge={base === '/nextlab'} />
-            </div>
-          )}
-          <div className="flex flex-col gap-2">
-            <h3 className="text-base font-bold">잔여 회차 케이스</h3>
-            <CaseTable items={cases.filter((c) => !['closed', 'withdrawn'].includes(c.status) && c.roundsDone < c.requiredRounds)} basePath={`${base}/cases`} branding={branding} showGroup emptyText="잔여 회차가 있는 케이스가 없습니다." />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

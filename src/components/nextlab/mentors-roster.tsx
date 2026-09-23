@@ -8,7 +8,6 @@ import {
   addMentorGroupReviewAction,
   checkPaymentDocsAction,
   deleteMentorGroupReviewAction,
-  setMentorGroupDutyAction,
   setMentorGroupMembershipAction,
   setMentorGroupWithholdingAction,
   setPaymentDocStateAction,
@@ -26,24 +25,35 @@ import { cn } from '@/lib/utils';
 const DOC_LABEL = { resume: '이력서', bankbook: '통장', idCard: '신분증' } as const;
 type DocKey = keyof typeof DOC_LABEL;
 type DocState = '-' | 'O' | 'X';
-const NEXT_STATE: Record<DocState, DocState> = { '-': 'O', O: 'X', X: '-' };
+/** P26-05: - (관리 안 함) → X (관리하지만 미수령) → O (이메일 등으로 수령) → - */
+const NEXT_STATE: Record<DocState, DocState> = { '-': 'X', X: 'O', O: '-' };
+const STATE_DESC: Record<DocState, string> = {
+  '-': '이 멘토의 지급서류 셋트는 여기서 체크·관리하지 않음',
+  X: '관리하기로 했으나 아직 미수령',
+  O: '지급서류 셋트를 이메일 등으로 따로 수령함',
+};
+type Withholding = 'other_income' | 'business_income' | 'none' | '';
+const WH_LABEL: Record<Withholding, string> = { '': '그룹 기본', other_income: '기타소득', business_income: '사업소득', none: '없음' };
 const stateOf = (m: MentorRosterItem, k: DocKey): DocState => m.paymentDocs.states[k] ?? '-';
-const missing = (m: MentorRosterItem) => (['resume', 'bankbook', 'idCard'] as DocKey[]).some((k) => stateOf(m, k) !== 'O');
+/** 미수령 = 관리 대상(X)인 항목이 하나라도 있는 멘토 (- 는 관리 안 함이므로 제외) */
+const missing = (m: MentorRosterItem) => (['resume', 'bankbook', 'idCard'] as DocKey[]).some((k) => stateOf(m, k) === 'X');
 
 /**
- * 멘토 명단 (P25-15·17) — 이름(n)+팝업 · 서명 -/O · 지급서류 통합(O/X 상태버튼, 재인증) · 그룹 지정 · 원천징수 · 운영사 평가 · 관리(화면 보기·정보 수정).
- * readOnly(발주처 리포트)면 변경 컨트롤을 숨기고 열람만 한다.
+ * 멘토 명단 (P25-15·17 · P26-05/06) — 이름(n)+팝업 · 서명 -/O · 지급서류(-/X/O 상태버튼, 재인증) · 그룹 지정 · 원천징수(버튼→팝업 개별 변경) · 운영사 평가 · 관리(화면 보기·정보 수정).
+ * readOnly(발주처 리포트)면 변경 컨트롤을 숨기고 열람만 한다. showUploads = 멘토 플랫폼 업로드 기능(기본 off)이 켜진 행사에서만 제출파일 링크 표시.
  */
 export function MentorsRoster({
   mentors,
   groups,
   readOnly = false,
   caseHrefBase = '/nextlab/cases',
+  showUploads = false,
 }: {
   mentors: MentorRosterItem[];
   groups: { id: string; name: string }[];
   readOnly?: boolean;
   caseHrefBase?: string;
+  showUploads?: boolean;
 }) {
   const { toast } = useToast();
   const [pending, start] = useTransition();
@@ -60,6 +70,8 @@ export function MentorsRoster({
   // 상태버튼: 처음 한 번 비밀번호 재인증 후 같은 화면에서는 기억한다 (새로고침하면 다시 묻는다)
   const [docPw, setDocPw] = useState('');
   const [pwAsk, setPwAsk] = useState<{ userId: string; kind: DocKey; next: DocState } | null>(null);
+  // 원천징수 개별 변경 팝업 (P26-06) — 실수로 바뀌지 않도록 버튼→팝업→저장
+  const [whEdit, setWhEdit] = useState<{ userId: string; name: string; supportTypeId: string; groupName: string; value: Withholding } | null>(null);
 
   const list = useMemo(() => {
     const q = query.trim();
@@ -125,17 +137,17 @@ export function MentorsRoster({
     const s = stateOf(m, k);
     const up = m.paymentDocs.uploads[k];
     const cls = s === 'O' ? 'border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : s === 'X' ? 'border-rose-400 bg-rose-50 text-rose-700 dark:bg-rose-950 dark:text-rose-300' : 'border-border bg-background text-muted-foreground';
-    const title = `${DOC_LABEL[k]} 수령 ${s}${m.paymentDocs[k] ? ` (${formatDate(m.paymentDocs[k]!)})` : ''}${up ? ` · 멘토 제출 ${up.at ? formatDate(up.at) : ''}` : ' · 미제출'}${readOnly ? '' : ' — 누르면 - → O → X 순으로 바뀝니다(비밀번호 재인증)'}`;
+    const title = `${DOC_LABEL[k]} ${s} = ${STATE_DESC[s]}${m.paymentDocs[k] ? ` (${formatDate(m.paymentDocs[k]!)})` : ''}${showUploads ? (up ? ` · 멘토 제출 ${up.at ? formatDate(up.at) : ''}` : ' · 미제출') : ''}${readOnly ? '' : ' — 누르면 - → X → O 순으로 바뀝니다(비밀번호 재인증)'}`;
     return (
       <div key={k} className="flex flex-col items-center gap-0.5">
         <button type="button" disabled={readOnly || pending} onClick={() => cycleDoc(m, k)} title={title} className={cn('inline-flex h-7 min-w-[3.25rem] items-center justify-center gap-1 rounded-md border px-1.5 text-xs font-bold', cls, readOnly && 'cursor-default')}>
           <span className="font-normal text-[10px]">{DOC_LABEL[k]}</span> {s}
         </button>
-        {up?.url ? (
+        {showUploads && (up?.url ? (
           <a href={up.url} className="text-[10px] text-primary underline" title={up.name}>제출파일</a>
         ) : (
           <span className="text-[10px] text-muted-foreground">{up ? '제출됨' : '미제출'}</span>
-        )}
+        ))}
       </div>
     );
   };
@@ -165,7 +177,7 @@ export function MentorsRoster({
                 <select value={bulk[k]} onChange={(e) => setBulk((b) => ({ ...b, [k]: e.target.value as 'keep' | 'set' | 'clear' }))} className="h-9 rounded-md border bg-background px-2 text-sm">
                   <option value="keep">변경 없음</option>
                   <option value="set">수령 O (오늘)</option>
-                  <option value="clear">미확인 - 으로</option>
+                  <option value="clear">관리 안 함(-) 으로</option>
                 </select>
               </label>
             ))}
@@ -193,13 +205,14 @@ export function MentorsRoster({
               <th className="px-3 py-2 text-right">만족도</th>
               <th className="px-3 py-2 text-right">운영사 평가</th>
               <th className="px-3 py-2 text-center">서명</th>
-              <th className="px-3 py-2">지급서류</th>
-              <th className="px-3 py-2">그룹 지정 · 원천징수</th>
+              <th className="px-3 py-2" title="- 관리 안 함 / X 관리하지만 미수령 / O 수령">지급서류</th>
+              <th className="px-3 py-2">그룹 지정</th>
+              <th className="px-3 py-2">원천징수</th>
               {!readOnly && <th className="px-3 py-2 text-right">관리</th>}
             </tr>
           </thead>
           <tbody>
-            {list.length === 0 && <tr><td colSpan={readOnly ? 9 : 11} className="px-3 py-6 text-center text-muted-foreground">멘토가 없습니다.</td></tr>}
+            {list.length === 0 && <tr><td colSpan={readOnly ? 10 : 12} className="px-3 py-6 text-center text-muted-foreground">멘토가 없습니다.</td></tr>}
             {list.map((m) => (
               <tr key={m.id} className={`border-b align-top last:border-0 ${missing(m) ? 'bg-amber-50/30 dark:bg-amber-950/10' : ''}`}>
                 {!readOnly && <td className="px-3 py-2"><input type="checkbox" checked={selected.has(m.id)} onChange={() => setSelected((s) => { const n = new Set(s); if (n.has(m.id)) n.delete(m.id); else n.add(m.id); return n; })} aria-label="선택" /></td>}
@@ -225,51 +238,46 @@ export function MentorsRoster({
                   <div className="flex items-start gap-1.5">{(['resume', 'bankbook', 'idCard'] as DocKey[]).map((k) => stateBtn(m, k))}</div>
                 </td>
                 <td className="px-3 py-2">
-                  <div className="flex flex-col gap-1.5">
-                    {/* 그룹 지정: 지정 없음 = 모든 그룹에서 사용 / 하나라도 지정 = 지정 그룹에서만 후보 */}
-                    <div className="flex flex-wrap items-center gap-1">
-                      {groups.map((g) => {
-                        const on = m.designatedGroupIds.includes(g.id);
-                        return (
-                          <button
-                            key={g.id}
-                            type="button"
-                            disabled={readOnly || pending}
-                            title={on ? `${g.name} 지정됨 — 누르면 해제` : `${g.name} 에 지정`}
-                            onClick={() => start(async () => { const r = await setMentorGroupMembershipAction(g.id, m.id, !on); toast(r.ok ? { title: on ? '그룹 지정 해제' : '그룹 지정' } : { title: r.error, variant: 'destructive' }); })}
-                            className={cn('rounded-full border px-2 py-0.5 text-[11px] font-semibold', on ? 'border-violet-500 bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200' : 'border-border text-muted-foreground', readOnly && 'cursor-default')}
-                          >
-                            {g.name}
-                          </button>
-                        );
-                      })}
-                      {m.designatedGroupIds.length === 0 && <span className="text-[10px] text-muted-foreground">지정 없음 → 모든 그룹</span>}
-                    </div>
-                    {!readOnly && m.groups.map((g) => (
-                      <label key={g.supportTypeId} className="flex items-center gap-1 text-xs">
-                        <span className="w-20 truncate" title={g.supportTypeName}>{g.supportTypeName}</span>
-                        <select
-                          defaultValue={g.withholdingMethod ?? ''}
-                          disabled={pending}
-                          onChange={(e) => start(async () => { const r = await setMentorGroupWithholdingAction(g.supportTypeId, m.id, e.target.value as 'other_income' | 'business_income' | 'none' | ''); toast(r.ok ? { title: '저장' } : { title: r.error, variant: 'destructive' }); })}
-                          className="h-7 rounded border bg-background px-1 text-xs"
-                          title="이 그룹의 원천징수 방식"
+                  {/* 그룹 지정: 지정 없음 = 모든 그룹에서 사용 / 하나라도 지정 = 지정 그룹에서만 후보 */}
+                  <div className="flex flex-wrap items-center gap-1">
+                    {groups.map((g) => {
+                      const on = m.designatedGroupIds.includes(g.id);
+                      return (
+                        <button
+                          key={g.id}
+                          type="button"
+                          disabled={readOnly || pending}
+                          title={on ? `${g.name} 지정됨 — 누르면 해제` : `${g.name} 에 지정`}
+                          onClick={() => start(async () => { const r = await setMentorGroupMembershipAction(g.id, m.id, !on); toast(r.ok ? { title: on ? '그룹 지정 해제' : '그룹 지정' } : { title: r.error, variant: 'destructive' }); })}
+                          className={cn('rounded-full border px-2 py-0.5 text-[11px] font-semibold', on ? 'border-violet-500 bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-200' : 'border-border text-muted-foreground', readOnly && 'cursor-default')}
                         >
-                          <option value="">그룹 기본</option>
-                          <option value="other_income">기타소득</option>
-                          <option value="business_income">사업소득</option>
-                          <option value="none">없음</option>
-                        </select>
-                        <input
-                          defaultValue={g.duty ?? ''}
-                          placeholder="담당역할"
-                          title="이 그룹에서의 담당역할 메모 (포커스를 벗어나면 저장)"
-                          disabled={pending}
-                          onBlur={(e) => { if (e.target.value !== (g.duty ?? '')) start(async () => { const r = await setMentorGroupDutyAction(g.supportTypeId, m.id, e.target.value); toast(r.ok ? { title: '저장' } : { title: r.error, variant: 'destructive' }); }); }}
-                          className="h-7 w-24 rounded border bg-background px-1 text-xs"
-                        />
-                      </label>
-                    ))}
+                          {g.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {m.designatedGroupIds.length === 0 && <div className="mt-0.5 text-[10px] text-muted-foreground">지정 없음 → 모든 그룹</div>}
+                </td>
+                <td className="px-3 py-2">
+                  {/* 원천징수: 그룹 기본 권장. 개별 변경은 버튼 → 팝업에서만 (실수 방지, P26-06) */}
+                  <div className="flex flex-col gap-1">
+                    {m.groups.length === 0 && <span className="text-[10px] text-muted-foreground">-</span>}
+                    {m.groups.map((g) => {
+                      const v = (g.withholdingMethod ?? '') as Withholding;
+                      return (
+                        <button
+                          key={g.supportTypeId}
+                          type="button"
+                          disabled={readOnly || pending}
+                          onClick={() => setWhEdit({ userId: m.id, name: m.name, supportTypeId: g.supportTypeId, groupName: g.supportTypeName, value: v })}
+                          title={readOnly ? `${g.supportTypeName} 원천징수: ${WH_LABEL[v]}` : `${g.supportTypeName} 원천징수 ${WH_LABEL[v]} — 누르면 개별 변경 팝업`}
+                          className={cn('inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-md border px-2 text-[11px]', v ? 'border-amber-400 bg-amber-50 text-amber-900 dark:bg-amber-950 dark:text-amber-200' : 'border-border bg-background text-muted-foreground', readOnly && 'cursor-default')}
+                        >
+                          <span className="max-w-[5rem] truncate font-normal">{g.supportTypeName}</span>
+                          <span className="font-semibold">{WH_LABEL[v]}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </td>
                 {!readOnly && (
@@ -303,6 +311,44 @@ export function MentorsRoster({
               <Button type="submit" disabled={pending || !password}>{pending ? '저장 중…' : '확인'}</Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!whEdit} onOpenChange={(o) => { if (!o) setWhEdit(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>원천징수 개별 변경</DialogTitle>
+            <DialogDescription>
+              {whEdit ? `${whEdit.name} · ${whEdit.groupName}` : ''} — 원천징수는 그룹 기본(운영 설정)으로 통일하는 것을 권장합니다. 이 멘토만 다르게 적용해야 할 때만 변경하세요. 변경은 이후 확정되는 정산부터 적용됩니다.
+            </DialogDescription>
+          </DialogHeader>
+          {whEdit && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const cur = whEdit;
+                start(async () => {
+                  const r = await setMentorGroupWithholdingAction(cur.supportTypeId, cur.userId, cur.value);
+                  toast(r.ok ? { title: `원천징수: ${WH_LABEL[cur.value]}` } : { title: r.error, variant: 'destructive' });
+                  if (r.ok) setWhEdit(null);
+                });
+              }}
+              className="flex flex-col gap-3"
+            >
+              <div className="grid grid-cols-2 gap-1.5">
+                {(Object.keys(WH_LABEL) as Withholding[]).map((k) => (
+                  <label key={k || 'default'} className={cn('flex cursor-pointer items-center gap-2 rounded-md border px-2 py-1.5 text-sm', whEdit.value === k && 'border-primary bg-primary/5')}>
+                    <input type="radio" name="wh" checked={whEdit.value === k} onChange={() => setWhEdit({ ...whEdit, value: k })} />
+                    {WH_LABEL[k]}{k === '' && <span className="text-[10px] text-muted-foreground">(권장)</span>}
+                  </label>
+                ))}
+              </div>
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setWhEdit(null)} disabled={pending}>취소</Button>
+                <Button type="submit" disabled={pending}>{pending ? '저장 중…' : '저장'}</Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
 

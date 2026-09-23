@@ -64,7 +64,7 @@ export default async function Page() {
       )}
 
       {delays.length > 0 && (
-        <Link href="/nextlab/reports?tab=backlog" className="flex items-center justify-between gap-3 rounded-lg border-2 border-destructive/50 bg-destructive/5 px-4 py-3 text-sm font-semibold text-destructive hover:bg-destructive/10">
+        <Link href="/nextlab/reports?tab=overview" className="flex items-center justify-between gap-3 rounded-lg border-2 border-destructive/50 bg-destructive/5 px-4 py-3 text-sm font-semibold text-destructive hover:bg-destructive/10">
           <span>🚨 지연 케이스 {delays.length}건 (배정 지연 · 첫 회차 없음 · 장기 무진행 등) — 독려 문자를 보낼 수 있습니다</span>
           <span className="underline-offset-4">지연 목록 보기 →</span>
         </Link>

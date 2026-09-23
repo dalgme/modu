@@ -12,10 +12,11 @@ import { getMentorFormStatus } from '@/lib/mentor-forms/data';
 import { featureEnabled } from '@/lib/platform/features';
 import { denyUnless } from '@/lib/auth/capabilities';
 import { CASE_STATUS_META } from '@/types/case-status';
-import { MembersManager, CreateMemberForm, AddExistingMemberForm, type MenteeProgressItem } from '@/components/nextlab/members-manager';
+import { MembersManager, type MenteeProgressItem } from '@/components/nextlab/members-manager';
 import { MentorsRoster } from '@/components/nextlab/mentors-roster';
 import { MentorFormsStatus } from '@/components/nextlab/mentor-forms-status';
-import { BulkImportPanel } from '@/components/nextlab/bulk-import-panel';
+import { RegisterPanel, REG_ROLES, type RegKey } from '@/components/nextlab/register-panel';
+import { ExcelButton } from '@/components/common/excel-button';
 import { MenteeMatchList, MentorMatchList } from '@/components/nextlab/matching-lists';
 import { Button } from '@/components/ui/button';
 
@@ -34,13 +35,6 @@ const TABS = [
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
-const REG_ROLES = [
-  { key: 'mentee', label: '멘티' },
-  { key: 'mentor', label: '멘토' },
-  { key: 'nextlab', label: '운영사' },
-  { key: 'institution', label: '발주처' },
-] as const;
-type RegKey = (typeof REG_ROLES)[number]['key'];
 
 /** 활성/비활성의 의미와 전환 방법 안내 (모든 명단 미니탭 상단) */
 function ActiveHelp() {
@@ -79,6 +73,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     organization: m.organization,
     assignedCount: m.assignedCount,
     guideSentAt: m.guideSentAt,
+    note: m.note,
     is_active: m.is_active,
     must_change_password: m.must_change_password,
   }));
@@ -161,7 +156,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold">멘토별 진행현황 · 지급서류</h2>
-            <p className="text-xs text-muted-foreground">담당 멘티 · 이행 회차 · 확정 실지급 · 지급서류(이력서·통장사본·신분증사본) · 그룹별 원천징수 · 운영사 평가. 지급서류 체크는 비밀번호 재인증이 필요합니다.</p>
+            <p className="text-xs text-muted-foreground">담당 멘티 · 이행 회차 · 확정 실지급 · 지급서류 상태(- 관리 안 함 / X 관리하지만 미수령 / O 수령) · 그룹 지정 · 원천징수 · 운영사 평가. 지급서류 상태 변경은 비밀번호 재인증이 필요합니다.</p>
           </div>
           <Button asChild variant="outline" size="sm" className="gap-1">
             <a href="/api/staff/mentor-docs-zip" title="멘토별 폴더로 정리된 ZIP — 지급서류(이력서·통장·신분증)와 위촉 서식 제출 파일">
@@ -169,7 +164,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             </a>
           </Button>
         </div>
-        <MentorsRoster mentors={mentors} groups={groups.map((g) => ({ id: g.id, name: g.name }))} />
+        <MentorsRoster mentors={mentors} groups={groups.map((g) => ({ id: g.id, name: g.name }))} showUploads={featureEnabled(ctx.program.features, 'mentor_doc_upload')} />
         <div>
           <h2 className="text-lg font-semibold">멘토 계정 관리</h2>
           <p className="text-xs text-muted-foreground">정보 수정 · 역할 변경 · 활성/비활성 · 로그인 안내 문자 · 화면 보기(대행)</p>
@@ -202,42 +197,11 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     const groups = await listSupportTypes(ctx.programId);
     const groupOpts = groups.filter((g) => g.status === 'active').map((g) => ({ id: g.id, code: g.code, name: g.name }));
     body = (
-      <div className="grid gap-5 lg:grid-cols-[180px_1fr]">
-        {/* 좌측 세로 메뉴 — 자격별 등록 */}
-        <nav className="flex h-fit flex-row gap-1 overflow-x-auto rounded-xl border bg-background p-2 lg:flex-col">
-          {REG_ROLES.map((r) => (
-            <Link
-              key={r.key}
-              href={`/nextlab/roster?tab=register&reg=${r.key}`}
-              className={`flex items-center justify-between gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold ${reg === r.key ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
-            >
-              <span>{r.label} 등록</span>
-              <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${reg === r.key ? 'bg-primary-foreground/20' : 'bg-muted'}`}>
-                {countOf(r.key)}
-              </span>
-            </Link>
-          ))}
-        </nav>
-        <div className="flex flex-col gap-5">
-          {reg === 'mentee' ? (
-            <div className="flex flex-col gap-3 rounded-xl border bg-background p-4">
-              <p className="text-sm">
-                멘티 개별 등록은 <b>멘티 등록 폼</b>(케이스 생성)에서 합니다 — 이름·닉네임·고유번호·권역·유형·아이디어·희망분야·재배치 희망 등 멘티 컬럼을 입력하고, 계정이 자동 발급·연결됩니다.
-              </p>
-              <div>
-                <Button asChild>
-                  <Link href="/nextlab/cases/new">멘티 개별 등록 폼 열기</Link>
-                </Button>
-              </div>
-            </div>
-          ) : (
-            // key={reg}: 미니탭 전환 시 이전 역할의 입력값·미리보기가 남지 않게 완전히 새로 마운트
-            <CreateMemberForm key={reg} fixedRole={reg} />
-          )}
-          <BulkImportPanel key={reg} groups={groupOpts} fixedKind={reg} />
-          <AddExistingMemberForm />
-        </div>
-      </div>
+      <RegisterPanel
+        groups={groupOpts}
+        counts={{ mentee: countOf('mentee'), mentor: countOf('mentor'), nextlab: countOf('nextlab'), institution: countOf('institution') }}
+        initialReg={reg}
+      />
     );
   }
 
@@ -251,11 +215,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
           </p>
         </div>
         {(tab === 'mentee' || tab === 'mentor' || tab === 'institution' || tab === 'nextlab') && (
-          <Button asChild variant="outline" className="gap-1">
-            <a href={`/api/nextlab/roster-export?tab=${tab}`}>
-              <Download className="h-4 w-4" /> 엑셀 다운로드
-            </a>
-          </Button>
+          <ExcelButton href={`/api/nextlab/roster-export?tab=${tab}`} label="엑셀 다운로드" />
         )}
       </div>
       <nav className="flex flex-wrap gap-1.5">

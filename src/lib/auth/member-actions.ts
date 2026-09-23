@@ -70,7 +70,9 @@ export async function createMemberAction(
   }
   const gradeRaw = String(formData.get('grade') ?? '');
   const grade = parsed.data.role === 'nextlab' && isStaffGrade(gradeRaw) ? gradeRaw : null;
-  const duty = String(formData.get('duty') ?? '').trim() || null;
+  // 담당역할은 운영사 담당자에게만 있는 개념 (P26-07). 비고는 발주처·운영사 = program_members.note, 멘토 = mentor_profiles.note
+  const duty = parsed.data.role === 'nextlab' ? String(formData.get('duty') ?? '').trim() || null : null;
+  const memberNote = parsed.data.role === 'nextlab' || parsed.data.role === 'institution' ? String(formData.get('note') ?? '').trim() || null : null;
 
   const programId = await currentProgramId(actor);
   if (!programId) return { ok: false, error: '행사를 먼저 선택하세요.' };
@@ -80,7 +82,7 @@ export async function createMemberAction(
     // 이 행사 소속 + 행사 안 역할 (설계 B) + 운영사 등급·담당
     await createAdminClient()
       .from('program_members')
-      .upsert({ program_id: programId, user_id: result.userId, role: parsed.data.role, grade, duty, is_active: true, left_at: null }, { onConflict: 'program_id,user_id' });
+      .upsert({ program_id: programId, user_id: result.userId, role: parsed.data.role, grade, duty, note: memberNote, is_active: true, left_at: null }, { onConflict: 'program_id,user_id' });
     if (parsed.data.role === 'mentor') {
       // P23 멘토 컬럼: 분야(최대 10)·소속멘토기관·권역·비고 → 멘토 프로필
       const str = (k: string) => String(formData.get(k) ?? '').trim();
@@ -446,7 +448,8 @@ export async function updateMemberDetailsAction(
   const email = String(formData.get('email') ?? '').trim().toLowerCase();
   const organization = String(formData.get('organization') ?? '').trim() || null;
   const position = String(formData.get('position') ?? '').trim() || null;
-  const duty = String(formData.get('duty') ?? '').trim() || null;
+  const dutyRaw = String(formData.get('duty') ?? '').trim() || null;
+  const noteRaw = formData.has('note') ? String(formData.get('note') ?? '').trim() || null : undefined;
   const gradeRaw = String(formData.get('grade') ?? '');
   if (!name) return { ok: false, error: '이름을 입력하세요.' };
   if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return { ok: false, error: '이메일 형식을 확인하세요.' };
@@ -458,6 +461,7 @@ export async function updateMemberDetailsAction(
   const { data: current } = await admin.from('users').select('email, phone, name').eq('id', userId).maybeSingle();
   if (!current) return { ok: false, error: '회원을 찾을 수 없습니다.' };
   const grade = mem?.role === 'nextlab' ? (isStaffGrade(gradeRaw) ? gradeRaw : null) : null;
+  const duty = mem?.role === 'nextlab' ? dutyRaw : null;
   if (userId === actor.id && mem?.role === 'nextlab' && grade !== (mem.grade ?? null) && grade !== null && grade !== 'pl') {
     return { ok: false, error: '본인 등급은 낮출 수 없습니다. 다른 메인 담당자가 변경해야 합니다.' };
   }
@@ -477,9 +481,17 @@ export async function updateMemberDetailsAction(
 
   const [{ error: e1 }, { error: e2 }] = await Promise.all([
     admin.from('users').update({ name, phone: phone ?? current.phone, email: email || current.email, organization, position, updated_at: new Date().toISOString() }).eq('id', userId),
-    admin.from('program_members').update({ duty, grade }).eq('program_id', programId).eq('user_id', userId),
+    admin
+      .from('program_members')
+      .update({ duty, grade, ...(noteRaw !== undefined && (mem?.role === 'nextlab' || mem?.role === 'institution') ? { note: noteRaw } : {}) })
+      .eq('program_id', programId)
+      .eq('user_id', userId),
   ]);
   if (e1 || e2) return { ok: false, error: (e1 ?? e2)!.message };
+  if (noteRaw !== undefined && mem?.role === 'mentor') {
+    const { error: e3 } = await admin.from('mentor_profiles').upsert({ program_id: programId, user_id: userId, note: noteRaw }, { onConflict: 'program_id,user_id' });
+    if (e3) return { ok: false, error: e3.message };
+  }
   await admin.from('audit_logs').insert({
     actor_id: actor.id,
     program_id: programId,

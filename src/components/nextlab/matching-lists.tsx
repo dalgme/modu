@@ -3,7 +3,9 @@
 import { useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, Circle, Download, RefreshCw, Search, Undo2, UserCheck } from 'lucide-react';
+import { CheckCircle2, Circle, RefreshCw, Search, Undo2, UserCheck } from 'lucide-react';
+
+import { ExcelButton } from '@/components/common/excel-button';
 
 import type { MenteeMatchRow, MentorMatchRow } from '@/lib/data/matching-lists';
 import { confirmMatchAction } from '@/lib/matching/actions';
@@ -58,11 +60,7 @@ function ListToolbar({ query, onQuery, exportHref, summary }: { query: string; o
           <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input value={query} onChange={(e) => onQuery(e.target.value)} placeholder="이름 검색" className="h-9 w-44 pl-8" />
         </div>
-        <Button asChild variant="outline" size="sm" className="gap-1">
-          <a href={exportHref}>
-            <Download className="h-4 w-4" /> 엑셀 다운로드
-          </a>
-        </Button>
+        <ExcelButton href={exportHref} label="엑셀 다운로드" />
       </div>
     </div>
   );

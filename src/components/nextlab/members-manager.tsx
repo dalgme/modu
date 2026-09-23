@@ -66,6 +66,8 @@ export interface MemberItem {
   assignedCount: number;
   /** 로그인 안내 문자 최초 발송 일시 */
   guideSentAt: string | null;
+  /** 비고 (발주처·운영사·멘토) */
+  note: string | null;
 }
 
 export interface RosterColumnItem {
@@ -187,10 +189,18 @@ export function CreateMemberForm({ fixedRole }: { fixedRole?: UserRole }) {
                 </select>
               </div>
             )}
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="m-duty">이 행사에서의 담당역할</Label>
-              <Input id="m-duty" name="duty" autoComplete="off" placeholder="예: 정산 담당, A·B그룹 담당" />
-            </div>
+            {(!fixedRole || fixedRole === 'nextlab') && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="m-duty">이 행사에서의 담당역할 <span className="text-xs font-normal text-muted-foreground">(운영사 담당자만)</span></Label>
+                <Input id="m-duty" name="duty" autoComplete="off" placeholder="예: 정산 담당, A·B그룹 담당" />
+              </div>
+            )}
+            {staffOnly && (
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="m-staff-note">비고</Label>
+                <Input id="m-staff-note" name="note" autoComplete="off" />
+              </div>
+            )}
             {fixedRole === 'mentor' && (
               <>
                 {/* P23 멘토 컬럼: 분야·소속멘토기관·권역·비고 (멘토 프로필에 저장) */}
@@ -305,10 +315,18 @@ function MemberDetailsForm({ member }: { member: MemberItem }) {
           <Label className="text-xs" htmlFor={`ed-pos-${member.id}`}>직위{staff ? ' *' : ''}</Label>
           <Input id={`ed-pos-${member.id}`} name="position" defaultValue={member.position ?? ''} className="h-8 text-xs" placeholder="예: 팀장" />
         </div>
-        <div className="flex flex-col gap-1">
-          <Label className="text-xs" htmlFor={`ed-duty-${member.id}`}>담당역할</Label>
-          <Input id={`ed-duty-${member.id}`} name="duty" defaultValue={member.duty ?? ''} className="h-8 text-xs" placeholder="이 행사에서의 담당" />
-        </div>
+        {member.role === 'nextlab' && (
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs" htmlFor={`ed-duty-${member.id}`}>담당역할</Label>
+            <Input id={`ed-duty-${member.id}`} name="duty" defaultValue={member.duty ?? ''} className="h-8 text-xs" placeholder="이 행사에서의 담당" />
+          </div>
+        )}
+        {member.role !== 'mentee' && (
+          <div className="flex flex-col gap-1">
+            <Label className="text-xs" htmlFor={`ed-note-${member.id}`}>비고</Label>
+            <Input id={`ed-note-${member.id}`} name="note" defaultValue={member.note ?? ''} className="h-8 text-xs" />
+          </div>
+        )}
         {member.role === 'nextlab' && (
           <div className="flex flex-col gap-1">
             <Label className="text-xs" htmlFor={`ed-grade-${member.id}`}>운영사 등급</Label>
@@ -724,7 +742,8 @@ export function MembersManager({
                               <Badge variant="outline" title="아직 멘티가 배정되지 않은 Pool(대기) 멘토입니다. 배정되면 그 멘티에 대해 확정됩니다.">Pool 대기</Badge>
                             )
                           )}
-                          {m.duty && <span className="text-[11px] text-muted-foreground">{m.duty}</span>}
+                          {m.role === 'nextlab' && m.duty && <span className="text-[11px] text-muted-foreground">{m.duty}</span>}
+                          {m.note && <span className="text-[11px] text-muted-foreground" title="비고">비고: {m.note}</span>}
                           {m.primaryRole !== m.role && (
                             <span className="text-[10px] text-violet-700" title="계정 기본 역할과 다름 — 다른 행사에서는 이 역할로 활동">기본 {ROLE_LABELS[m.primaryRole]}</span>
                           )}

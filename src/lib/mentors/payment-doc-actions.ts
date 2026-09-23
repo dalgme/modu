@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 
 import { roleOrNull, getRealSessionProfile } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
+import { featureEnabled } from '@/lib/platform/features';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { moveFile } from '@/lib/storage/files';
 
@@ -35,6 +36,7 @@ export async function uploadPaymentDocAction(
   const real = await getRealSessionProfile();
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: '행사를 먼저 선택하세요.' };
+  if (!featureEnabled(ctx.program.features, 'mentor_doc_upload')) return { ok: false, error: '이 행사는 지급서류를 플랫폼으로 받지 않습니다. 운영사 안내에 따라 이메일 등으로 제출하세요.' };
 
   const admin = createAdminClient();
   const ext = staged.fileName.includes('.') ? staged.fileName.split('.').pop()!.toLowerCase().slice(0, 8) : 'bin';

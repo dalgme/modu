@@ -44,10 +44,10 @@ export function MetricsTiles({ m, base, reportsHref }: { m: ProgramMetrics; base
       <h2 className="text-base font-semibold">비수행 잔여 과업</h2>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
         <Tile label="미배정" value={b.unassigned} tone={b.unassigned ? 'warn' : 'default'} href={`${base}/dashboard`} />
-        <Tile label="잔여 회차" value={b.remainingRounds} sub={`정체(${b.stalledDays}일 무회차) ${b.stalled}건`} tone={b.stalled ? 'warn' : 'default'} href={`${reportsHref}?tab=backlog`} />
+        <Tile label="잔여 회차" value={b.remainingRounds} sub={`정체(${b.stalledDays}일 무회차) ${b.stalled}건`} tone={b.stalled ? 'warn' : 'default'} href={`${reportsHref}?tab=cases`} />
         <Tile label="검수 대기 / 보완 중" value={`${b.reviewPending} / ${b.revisionRequested}`} tone={b.reviewPending ? 'warn' : 'default'} href={`${base}/dashboard`} />
-        <Tile label="재배정 대기" value={b.reassignmentPending} sub={`미처리 요청 ${b.pendingRequests}건`} tone={b.reassignmentPending || b.pendingRequests ? 'warn' : 'default'} href={base === '/nextlab' ? '/nextlab/board?tab=requests' : `${reportsHref}?tab=backlog`} />
-        <Tile label="미서명 회차 / 미응답 설문" value={`${b.unsignedRounds} / ${b.unansweredSurveys}`} sub={`지급서류 미비 멘토 ${b.mentorsMissingDocs}명`} href={`${reportsHref}?tab=backlog`} />
+        <Tile label="재배정 대기" value={b.reassignmentPending} sub={`미처리 요청 ${b.pendingRequests}건`} tone={b.reassignmentPending || b.pendingRequests ? 'warn' : 'default'} href={base === '/nextlab' ? '/nextlab/board?tab=requests' : `${reportsHref}?tab=cases`} />
+        <Tile label="미서명 회차 / 미응답 설문" value={`${b.unsignedRounds} / ${b.unansweredSurveys}`} sub={`지급서류 미비 멘토 ${b.mentorsMissingDocs}명`} href={`${reportsHref}?tab=cases`} />
       </div>
       <h2 className="text-base font-semibold">정산</h2>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">

@@ -20,7 +20,7 @@ export const MENTOR_COLUMNS = ['이름', '소속', '휴대폰', '이메일', '�
 /** 멘티: 희망분야는 콤마(,)로 구분해 최대 6개, 재배치 희망은 희망 멘토 이름 */
 export const MENTEE_COLUMNS = ['이름', '닉네임', '고유번호', '휴대폰', '이메일', '권역', '유형', '아이디어', '희망분야', '재배치 희망여부(멘토 이름)', '비고'] as const;
 /** 운영사·발주처 담당자 공용 컬럼 (등급은 운영사만 해석) */
-export const STAFF_COLUMNS = ['이름', '이메일', '휴대폰', '소속', '직위', '등급(운영사)', '담당역할'] as const;
+export const STAFF_COLUMNS = ['이름', '이메일', '휴대폰', '소속', '직위', '등급(운영사)', '담당역할(운영사)', '비고'] as const;
 
 /** 복수 값 개수 상한 — 멘토 분야 10 / 멘티 희망분야 6 (사용자 확정 2026-09-22) */
 export const MAX_MENTOR_FIELDS = 10;
@@ -85,7 +85,7 @@ export function buildTemplate(kind: ImportKind): Buffer {
       ? ['홍길동', '○○컨설팅', '010-1234-5678', 'mentor@example.com', '마케팅, 재무, 투자유치', '대표', '○○멘토단', '세종', '비고 메모']
       : kind === 'mentee'
         ? ['김멘티', '팀모두', 'M-001', '010-9876-5432', 'mentee@example.com', '세종', '예비창업', '앱 서비스', '사업계획서, 마케팅', '', '비고 메모']
-        : ['박담당', 'staff@example.com', '010-5555-1234', kind === 'nextlab' ? '운영사' : '발주기관', '주임', kind === 'nextlab' ? 'pm' : '', '정산 담당'];
+        : ['박담당', 'staff@example.com', '010-5555-1234', kind === 'nextlab' ? '운영사' : '발주기관', '주임', kind === 'nextlab' ? 'pm' : '', kind === 'nextlab' ? '정산 담당' : '', '비고 메모'];
   const ws = XLSX.utils.aoa_to_sheet([[...columns], example]);
   const guide = XLSX.utils.aoa_to_sheet([
     ['안내'],
@@ -101,7 +101,7 @@ export function buildTemplate(kind: ImportKind): Buffer {
           ['· 재배치 희망여부: 재배치(배정)를 희망하는 멘토 이름을 적습니다. 비우면 희망 없음.'],
         ]
       : []),
-    ...(kind === 'nextlab' ? [['· 등급: pl(메인 담당) / pm / sub_pm(부PM) / observer(옵저버). 비우면 pl.']] : []),
+    ...(kind === 'nextlab' ? [['· 등급: pl(메인 담당) / pm / sub_pm(부PM) / observer(옵저버). 비우면 pl.'], ['· 담당역할(운영사)은 운영사 담당자에게만 적용됩니다.']] : []),
   ]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, IMPORT_KIND_LABELS[kind]);
@@ -220,7 +220,7 @@ export async function commitImport(programId: string, kind: ImportKind, rows: Im
         const grade = kind === 'nextlab' && ['pl', 'pm', 'sub_pm', 'observer'].includes(gradeRaw) ? gradeRaw : kind === 'nextlab' ? 'pl' : null;
         await admin
           .from('program_members')
-          .upsert({ program_id: programId, user_id: userId, role: kind, grade, duty: v['담당역할'] || null, is_active: true, left_at: null }, { onConflict: 'program_id,user_id' });
+          .upsert({ program_id: programId, user_id: userId, role: kind, grade, duty: kind === 'nextlab' ? v['담당역할(운영사)'] || null : null, note: v['비고'] || null, is_active: true, left_at: null }, { onConflict: 'program_id,user_id' });
       } else {
         if (!groupId) throw new Error('사업그룹을 선택하세요');
         const created = await createCase({

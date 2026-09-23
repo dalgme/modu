@@ -2,7 +2,9 @@
 
 import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { CheckCircle2, Download, Send, Trash2, Undo2, Wallet, X } from 'lucide-react';
+import { CheckCircle2, Send, Trash2, Undo2, Wallet, X } from 'lucide-react';
+
+import { ExcelButton } from '@/components/common/excel-button';
 
 import { confirmBatchAction, deleteBatchAction, markBatchPaidAction, removeFromBatchAction, submitBatchAction, unsubmitBatchAction } from '@/lib/settlement/actions';
 import { Button } from '@/components/ui/button';
@@ -29,11 +31,7 @@ export function BatchActions({ batchId, status, role, exportHref }: { batchId: s
 
   return (
     <div className="flex flex-wrap gap-2">
-      <Button asChild variant="outline" size="sm" className="gap-1">
-        <a href={exportHref}>
-          <Download className="h-4 w-4" /> 엑셀 내보내기
-        </a>
-      </Button>
+      <ExcelButton href={exportHref} />
       {role === 'nextlab' && status === 'draft' && (
         <>
           <Button size="sm" className="gap-1" disabled={pending} onClick={() => run('발주처에 제출', () => submitBatchAction(batchId))}>

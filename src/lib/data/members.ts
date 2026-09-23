@@ -87,6 +87,8 @@ export type MemberRow = Pick<
   assignedCount: number;
   /** 로그인 안내 문자 최초 발송 일시 (audit_logs 기반) */
   guideSentAt: string | null;
+  /** 비고 — 발주처·운영사는 program_members.note, 멘토는 mentor_profiles.note (멘티는 케이스별 mentee_profiles.note) */
+  note: string | null;
 };
 
 /** 로그인 안내 문자 발송 기록용 audit_logs action (스키마 변경 없이 발송 여부 추적) */
@@ -114,12 +116,12 @@ export async function listProgramMembers(programId: string, supportTypeId?: stri
   const admin = createAdminClient();
   const { data: memberships } = await admin
     .from('program_members')
-    .select('user_id, role, is_active, joined_at, grade, duty')
+    .select('user_id, role, is_active, joined_at, grade, duty, note')
     .eq('program_id', programId)
     .order('joined_at', { ascending: true });
   const ids = (memberships ?? []).map((m) => m.user_id);
   if (ids.length === 0) return [];
-  const [{ data: users }, { data: assigns }, { data: guides }, { data: menteeCases }, { data: groupRoster }] = await Promise.all([
+  const [{ data: users }, { data: assigns }, { data: guides }, { data: menteeCases }, { data: groupRoster }, { data: mentorNotes }] = await Promise.all([
     admin
       .from('users')
       .select('id, email, name, phone, role, is_active, must_change_password, invited_at, activated_at, created_at, position, organization')
@@ -130,7 +132,9 @@ export async function listProgramMembers(programId: string, supportTypeId?: stri
     supportTypeId
       ? admin.from('support_type_members').select('user_id, support_type_id, support_types!inner(program_id)').eq('is_active', true).eq('member_role', 'mentor').eq('support_types.program_id', programId)
       : Promise.resolve({ data: [] as { user_id: string; support_type_id: string }[] }),
+    admin.from('mentor_profiles').select('user_id, note').eq('program_id', programId).in('user_id', ids),
   ]);
+  const mentorNote = new Map((mentorNotes ?? []).map((p) => [p.user_id, p.note]));
   const inScopeAssign = (a: { cases: unknown }) => !supportTypeId || (a.cases as { support_type_id: string } | null)?.support_type_id === supportTypeId;
   const assignedCount = new Map<string, number>();
   for (const a of assigns ?? []) if (inScopeAssign(a)) assignedCount.set(a.mentor_id, (assignedCount.get(a.mentor_id) ?? 0) + 1);
@@ -167,6 +171,7 @@ export async function listProgramMembers(programId: string, supportTypeId?: stri
       organization: role === 'mentee' ? u.organization ?? businessOf.get(u.id) ?? null : u.organization,
       assignedCount: assignedCount.get(u.id) ?? 0,
       guideSentAt: guideAt.get(u.id) ?? null,
+      note: role === 'mentor' ? (mentorNote.get(u.id) ?? null) : role === 'mentee' ? null : (m.note ?? null),
     });
   }
   // 역할 순 → 이름 가나다순 (P25-11)
