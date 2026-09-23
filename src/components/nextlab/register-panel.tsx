@@ -9,13 +9,7 @@ import { AddExistingMemberForm, CreateMemberForm } from '@/components/nextlab/me
 import { BulkImportPanel } from '@/components/nextlab/bulk-import-panel';
 import { Button } from '@/components/ui/button';
 
-export const REG_ROLES = [
-  { key: 'mentee', label: '멘티' },
-  { key: 'mentor', label: '멘토' },
-  { key: 'nextlab', label: '운영사' },
-  { key: 'institution', label: '발주처' },
-] as const;
-export type RegKey = (typeof REG_ROLES)[number]['key'];
+import { REG_ROLES, type RegKey } from '@/lib/roster/register-roles';
 
 /**
  * 회원 등록 미니탭 (P26-08) — 자격별 좌측 메뉴를 클라이언트 상태로 전환한다.
