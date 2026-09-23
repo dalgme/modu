@@ -52,6 +52,9 @@ export function PwaInstallPrompt() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (isStandalone() || recentlyDismissed()) return;
+    // 로그인·공개 조사 화면에서는 배너를 띄우지 않는다 — 첫 화면에서 입력을 가린다 (P28)
+    const path = window.location.pathname;
+    if (path === '/login' || path.startsWith('/s/') || path.startsWith('/register')) return;
 
     const ua = window.navigator.userAgent.toLowerCase();
     const isIOS =

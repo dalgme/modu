@@ -54,7 +54,7 @@ export function AddStaffForm({ programId }: { programId: string }) {
       </select>
       <Input name="email" type="email" placeholder="이메일 (기존 계정이면 멤버십만 추가)" required />
       <Input name="name" placeholder="이름 (새 계정)" />
-      <Input name="phone" placeholder="휴대폰" />
+      <Input name="phone" type="tel" inputMode="tel" placeholder="휴대폰" />
       <Button type="submit" size="sm" disabled={pending}>추가·발급</Button>
       {cred && (
         <p className="sm:col-span-5 rounded-md border border-emerald-300 bg-emerald-50/50 px-3 py-2 text-xs">
@@ -117,7 +117,7 @@ export function PlatformAdminsForm({ admins, isOwner }: { admins: { id: string; 
             <div className="grid gap-2 sm:grid-cols-4">
               <Input name="email" type="email" placeholder="이메일" required />
               <Input name="name" placeholder="이름" required />
-              <Input name="phone" placeholder="휴대폰 (임시 비밀번호)" />
+              <Input name="phone" type="tel" inputMode="tel" placeholder="휴대폰 (임시 비밀번호)" />
               <Input name="position" placeholder="직위" />
             </div>
             <div className="flex justify-end"><Button type="submit" size="sm" disabled={pending}>발급</Button></div>

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { cn } from '@/lib/utils';
+import { useScrollActiveTab } from '@/components/common/use-scroll-active-tab';
 
 const TABS = [
   { href: '/mentor/dashboard', label: '대시보드' },
@@ -20,10 +21,11 @@ const TABS = [
 /** 멘토 상단 탭 내비게이션 (운영사 내비와 동일한 pill·sticky 스타일). showForms = 위촉 서식 기능 플래그 */
 export function MentorNav({ showForms = false }: { showForms?: boolean }) {
   const pathname = usePathname();
+  useScrollActiveTab(pathname);
   const tabs = TABS.filter((t) => !('feature' in t && t.feature === 'forms') || showForms);
   return (
     <nav className="sticky top-14 z-30 border-b bg-background/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/75">
-      <div className="mx-auto flex max-w-6xl gap-1.5 overflow-x-auto px-4 py-2">
+      <div className="mx-auto flex max-w-6xl no-scrollbar gap-1.5 overflow-x-auto px-4 py-2">
         {tabs.map((t) => {
           const active = pathname === t.href || pathname.startsWith(`${t.href}/`);
           const tone = 'tone' in t ? t.tone : undefined;

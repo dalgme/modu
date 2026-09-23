@@ -37,6 +37,12 @@ function isImageUrl(url: string): boolean {
 export function FileViewerProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<ViewerState | null>(null);
   const openUrl = useCallback((url: string, opts?: { title?: string }) => {
+    // 터치 기기에서 PDF 는 iframe 이 첫 페이지만 보이거나 스크롤이 안 되므로 새 탭으로 연다 (P28)
+    const coarse = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+    if (coarse && !isImageUrl(url)) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+      return;
+    }
     setState({ url, title: opts?.title ?? '미리보기' });
   }, []);
   const value = useMemo(() => ({ openUrl }), [openUrl]);

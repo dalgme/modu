@@ -292,9 +292,9 @@ export function MentorMatchList({ rows, groups, currentGroupId = null, caseHrefB
                     <th className="px-2 py-1">순위</th>
                     <th className="px-2 py-1">멘티</th>
                     <th className="px-2 py-1">라운드</th>
-                    <th className="px-2 py-1">방식</th>
-                    <th className="px-2 py-1">매칭 일자</th>
-                    <th className="px-2 py-1">확인 여부</th>
+                    <th className="hidden px-2 py-1 md:table-cell">방식</th>
+                    <th className="hidden px-2 py-1 md:table-cell">매칭 일자</th>
+                    <th className="hidden px-2 py-1 md:table-cell">확인 여부</th>
                     <th className="px-2 py-1">컨설팅 진행현황</th>
                     <th className="px-2 py-1 text-center" title="- 관리 안 함 / X 관리하지만 미수령 / O 수령">지급서류</th>
                     <th className="px-2 py-1">배정 관리</th>
@@ -308,9 +308,9 @@ export function MentorMatchList({ rows, groups, currentGroupId = null, caseHrefB
                         <Link href={`${caseHrefBase}/${c.caseId}`} className="font-medium text-primary hover:underline">{c.label}</Link>
                       </td>
                       <td className="px-2 py-1.5 whitespace-nowrap">{c.groupName ?? '-'}</td>
-                      <td className="px-2 py-1.5 whitespace-nowrap">{c.matchMethod ? MATCH_METHOD_LABELS[c.matchMethod] : '-'}</td>
-                      <td className="px-2 py-1.5 whitespace-nowrap">{c.assignedAt ? formatDate(c.assignedAt) : '-'}</td>
-                      <td className="px-2 py-1.5"><ConfirmMark at={c.confirmedAt} /></td>
+                      <td className="hidden px-2 py-1.5 whitespace-nowrap md:table-cell">{c.matchMethod ? MATCH_METHOD_LABELS[c.matchMethod] : '-'}</td>
+                      <td className="hidden px-2 py-1.5 whitespace-nowrap md:table-cell">{c.assignedAt ? formatDate(c.assignedAt) : '-'}</td>
+                      <td className="hidden px-2 py-1.5 md:table-cell"><ConfirmMark at={c.confirmedAt} /></td>
                       <td className="px-2 py-1.5 whitespace-nowrap">
                         <span className="mr-1.5">{c.statusLabel}</span>
                         <RoundDots done={c.roundsDone} required={c.requiredRounds} />
@@ -523,10 +523,10 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
               <th className="px-3 py-2">멘티 · 희망분야</th>
               <th className="px-3 py-2">라운드</th>
               <th className="px-3 py-2">배정 멘토 / 추천</th>
-              <th className="px-3 py-2">방식</th>
-              <th className="px-3 py-2">매칭 일자</th>
-              <th className="px-3 py-2">확인(멘토)</th>
-              <th className="px-3 py-2">만족도</th>
+              <th className="hidden px-3 py-2 md:table-cell">방식</th>
+              <th className="hidden px-3 py-2 md:table-cell">매칭 일자</th>
+              <th className="hidden px-3 py-2 md:table-cell">확인(멘토)</th>
+              <th className="hidden px-3 py-2 md:table-cell">만족도</th>
               <th className="px-3 py-2">진행</th>
             </tr>
           </thead>
@@ -618,16 +618,16 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
                           <MentorName id={r.mentorId} name={r.mentorName ?? '-'} count={r.mentorActive} caseHrefBase={caseHrefBase} />
                         </span>
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap">
+                      <td className="hidden px-3 py-2 whitespace-nowrap md:table-cell">
                         {r.matchMethod ? (
                           <span className={cn('rounded px-1.5 py-0.5 text-[11px] font-semibold', r.matchMethod === 'auto_preferred' ? 'bg-brand-coral/15 text-brand-coral' : r.matchMethod === 'recommended' ? 'bg-amber-100 text-amber-800' : 'bg-muted text-foreground')}>
                             {MATCH_METHOD_LABELS[r.matchMethod]}
                           </span>
                         ) : '-'}
                       </td>
-                      <td className="px-3 py-2 whitespace-nowrap">{r.assignedAt ? formatDate(r.assignedAt) : '-'}</td>
-                      <td className="px-3 py-2"><ConfirmMark at={r.confirmedAt} /></td>
-                      <td className="px-3 py-2 whitespace-nowrap">{r.surveyDone ? '작성 완료' : '-'}</td>
+                      <td className="hidden px-3 py-2 whitespace-nowrap md:table-cell">{r.assignedAt ? formatDate(r.assignedAt) : '-'}</td>
+                      <td className="hidden px-3 py-2 md:table-cell"><ConfirmMark at={r.confirmedAt} /></td>
+                      <td className="hidden px-3 py-2 whitespace-nowrap md:table-cell">{r.surveyDone ? '작성 완료' : '-'}</td>
                     </>
                   )}
                   <td className="px-3 py-2 whitespace-nowrap">

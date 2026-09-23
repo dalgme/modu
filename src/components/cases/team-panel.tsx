@@ -53,7 +53,7 @@ function MemberRow({ caseId, member }: { caseId: string; member: TeamMemberItem 
         {member.is_representative && <Badge className="shrink-0">대표</Badge>}
         <Input name="name" defaultValue={member.name} className="h-8 w-24 text-xs" required placeholder="이름 *" />
         <Input name="memberRole" defaultValue={member.member_role ?? ''} className="h-8 w-24 text-xs" placeholder="역할 (기획 등)" />
-        <Input name="phone" defaultValue={member.phone ?? ''} className="h-8 w-32 text-xs" placeholder="휴대폰" />
+        <Input name="phone" type="tel" inputMode="tel" defaultValue={member.phone ?? ''} className="h-8 w-32 text-xs" placeholder="휴대폰" />
         <Input name="email" defaultValue={member.email ?? ''} className="h-8 w-40 text-xs" placeholder="이메일" />
         <Submit>저장</Submit>
         <StateLine state={saveState} />
@@ -92,7 +92,7 @@ function AddMemberForm({ caseId }: { caseId: string }) {
       </button>
       <Input name="name" className="h-8 w-24 text-xs" required placeholder="이름 *" />
       <Input name="memberRole" className="h-8 w-24 text-xs" placeholder="역할 (개발 등)" />
-      <Input name="phone" className="h-8 w-32 text-xs" placeholder="휴대폰 (선택)" />
+      <Input name="phone" type="tel" inputMode="tel" className="h-8 w-32 text-xs" placeholder="휴대폰 (선택)" />
       <Input name="email" className="h-8 w-40 text-xs" placeholder="이메일 (선택)" />
       <Submit>팀원 추가</Submit>
       <StateLine state={state} />

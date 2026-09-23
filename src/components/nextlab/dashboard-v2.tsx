@@ -129,7 +129,7 @@ function Kpi({ label, value, sub }: { label: string; value: string | number; sub
   return (
     <div className="flex flex-col gap-0.5">
       <span className="text-xs text-midnight-foreground/70">{label}</span>
-      <span className="text-3xl font-extrabold leading-tight tabular-nums text-white">{value}</span>
+      <span className="text-2xl font-extrabold leading-tight tabular-nums text-white sm:text-3xl">{value}</span>
       {sub && <span className="text-[11px] text-midnight-foreground/70">{sub}</span>}
     </div>
   );

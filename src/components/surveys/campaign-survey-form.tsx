@@ -72,8 +72,8 @@ export function CampaignSurveyForm({ token, questions, scales, choices, channel 
           {q.qtype === 'single' && (
             <div className="flex flex-col gap-1">
               {(choices[q.id] ?? []).map((o) => (
-                <label key={o.id} className="flex items-center gap-2 text-sm">
-                  <input type="radio" name={q.id} checked={answers[q.id] === o.id} onChange={() => set(q.id, o.id)} /> {o.label}
+                <label key={o.id} className="flex min-h-[44px] cursor-pointer items-center gap-3 rounded-md px-2 text-sm hover:bg-accent">
+                  <input className="h-5 w-5 shrink-0" type="radio" name={q.id} checked={answers[q.id] === o.id} onChange={() => set(q.id, o.id)} /> {o.label}
                 </label>
               ))}
             </div>
@@ -83,8 +83,8 @@ export function CampaignSurveyForm({ token, questions, scales, choices, channel 
               {(choices[q.id] ?? []).map((o) => {
                 const cur = Array.isArray(answers[q.id]) ? (answers[q.id] as string[]) : [];
                 return (
-                  <label key={o.id} className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={cur.includes(o.id)} onChange={(e) => set(q.id, e.target.checked ? [...cur, o.id] : cur.filter((x) => x !== o.id))} /> {o.label}
+                  <label key={o.id} className="flex min-h-[44px] cursor-pointer items-center gap-3 rounded-md px-2 text-sm hover:bg-accent">
+                    <input className="h-5 w-5 shrink-0" type="checkbox" checked={cur.includes(o.id)} onChange={(e) => set(q.id, e.target.checked ? [...cur, o.id] : cur.filter((x) => x !== o.id))} /> {o.label}
                   </label>
                 );
               })}

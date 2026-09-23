@@ -109,6 +109,18 @@
   }
 }
 
+/* 앵커(#rounds 등) 이동 시 고정 헤더+탭에 가려지지 않게 (P28) */
+html {
+  scroll-padding-top: 7.5rem;
+}
+/* 가로 스크롤 탭 내비: 스크롤바 숨김 (P28) */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* PWA 세이프에어리어 (노치·홈 인디케이터) — 가로/하단 여백 */
 @supports (padding: max(0px)) {
   body {

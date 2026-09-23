@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { cn } from '@/lib/utils';
+import { useScrollActiveTab } from '@/components/common/use-scroll-active-tab';
 
 const TABS: { href: string; label: string; match?: string[]; external?: boolean }[] = [
   { href: '/nextlab/dashboard', label: '대시보드' },
@@ -21,9 +22,10 @@ const TABS: { href: string; label: string; match?: string[]; external?: boolean 
 /** 운영사 총괄관리자 상단 탭 내비게이션 */
 export function NextlabNav() {
   const pathname = usePathname();
+  useScrollActiveTab(pathname);
   return (
     <nav className="sticky top-14 z-30 border-b bg-background/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/75">
-      <div className="mx-auto flex max-w-6xl gap-1.5 overflow-x-auto px-4 py-2">
+      <div className="mx-auto flex max-w-6xl no-scrollbar gap-1.5 overflow-x-auto px-4 py-2">
         {TABS.map((t) => {
           const active = pathname === t.href || pathname.startsWith(`${t.href}/`) || (t.match ?? []).some((m) => pathname === m || pathname.startsWith(`${m}/`));
           const cls = cn(

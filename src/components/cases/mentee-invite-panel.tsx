@@ -92,6 +92,8 @@ export function MenteeInvitePanel({
               <Input
                 id="invite-phone"
                 name="phone"
+                type="tel"
+                inputMode="tel"
                 defaultValue={defaultPhone ?? ''}
                 placeholder="01012345678"
                 autoComplete="off"

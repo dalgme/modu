@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 import { cn } from '@/lib/utils';
+import { useScrollActiveTab } from '@/components/common/use-scroll-active-tab';
 
 const TABS = [
   { href: '/institution/dashboard', label: '대시보드' },
@@ -19,9 +20,10 @@ const TABS = [
 /** 발주처 상단 탭 내비게이션 (멘토·운영사 내비와 동일한 pill·sticky 스타일) */
 export function InstitutionNav() {
   const pathname = usePathname();
+  useScrollActiveTab(pathname);
   return (
     <nav className="sticky top-14 z-30 border-b bg-background/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/75">
-      <div className="mx-auto flex max-w-6xl gap-1.5 overflow-x-auto px-4 py-2">
+      <div className="mx-auto flex max-w-6xl no-scrollbar gap-1.5 overflow-x-auto px-4 py-2">
         {TABS.map((t) => {
           const active = pathname === t.href || pathname.startsWith(`${t.href}/`);
           const tone = 'tone' in t ? t.tone : undefined;

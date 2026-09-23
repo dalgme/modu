@@ -63,7 +63,7 @@ export async function AppHeader({ name, role, branding = PLATFORM_BRANDING, cont
             <span className="truncate font-semibold">{branding.appTitle}</span>
           )}
           {!platformMode && (
-            <span className="shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-xs font-medium">
+            <span className="hidden shrink-0 rounded-full bg-white/10 px-2 py-0.5 text-xs font-medium sm:inline-flex">
               {roleLabel(role, branding)}
               {gradeLabel && <span className="ml-1 text-midnight-foreground/70">· {gradeLabel}</span>}
             </span>

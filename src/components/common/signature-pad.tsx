@@ -155,7 +155,8 @@ export function SignaturePad({ label, onChange, loadSaved }: SignaturePadProps) 
             ref={ref}
             penColor="#111827"
             onEnd={handleEnd}
-            canvasProps={{ className: 'h-40 w-full touch-none' }}
+            clearOnResize={false}
+            canvasProps={{ className: 'h-48 w-full touch-none sm:h-40' }}
           />
         </div>
       ) : (

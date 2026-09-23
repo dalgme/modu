@@ -55,12 +55,12 @@ export function CaseTable({
           <TableHeader>
             <TableRow>
               <TableHead>멘티 (이름/연락처)</TableHead>
-              {showGroup && <TableHead>라운드</TableHead>}
+              {showGroup && <TableHead className="hidden md:table-cell">라운드</TableHead>}
               {showMentor && <TableHead>담당 멘토</TableHead>}
               <TableHead>회차</TableHead>
               <TableHead>단계</TableHead>
               <TableHead>상태</TableHead>
-              <TableHead className="text-right">등록일</TableHead>
+              <TableHead className="hidden text-right md:table-cell">등록일</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -72,7 +72,7 @@ export function CaseTable({
                   </Link>
                   <div className="text-xs text-muted-foreground">{c.phone || '-'}</div>
                 </TableCell>
-                {showGroup && <TableCell className="text-sm">{c.supportTypeName ?? '-'}</TableCell>}
+                {showGroup && <TableCell className="hidden text-sm md:table-cell">{c.supportTypeName ?? '-'}</TableCell>}
                 {showMentor && (
                   <TableCell className="text-sm">
                     {c.mentorId && c.mentorName ? <MentorName id={c.mentorId} name={c.mentorName} count={c.mentorActiveCount} caseHrefBase={basePath} /> : <span className="text-muted-foreground">미배정</span>}
@@ -87,7 +87,7 @@ export function CaseTable({
                 <TableCell>
                   <StatusBadge status={c.status} branding={branding} short />
                 </TableCell>
-                <TableCell className="text-right text-xs text-muted-foreground">{formatDate(c.created_at)}</TableCell>
+                <TableCell className="hidden text-right text-xs text-muted-foreground md:table-cell">{formatDate(c.created_at)}</TableCell>
               </TableRow>
             ))}
           </TableBody>

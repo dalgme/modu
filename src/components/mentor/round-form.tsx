@@ -38,7 +38,7 @@ export interface ParticipantOption {
 function TimeSelect({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
   const [h, m] = value.split(':');
   const set = (hh: string, mm: string) => onChange(`${hh}:${mm}`);
-  const cls = 'h-10 rounded-md border border-input bg-background px-2 text-sm tabular-nums';
+  const cls = 'h-10 rounded-md border border-input bg-background px-2 text-base tabular-nums sm:text-sm';
   return (
     <span className="inline-flex items-center gap-1">
       <select id={id} value={h} onChange={(e) => set(e.target.value, m ?? '00')} className={cls} aria-label="시">
@@ -157,7 +157,7 @@ export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOp
         </div>
         <div className="flex flex-col gap-1">
           <Label>시간 (24시간제 · 10분 단위)</Label>
-          <div className="flex items-center gap-1">
+          <div className="flex flex-wrap items-center gap-1">
             <TimeSelect
               id="r-start"
               value={startTime}

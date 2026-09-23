@@ -90,7 +90,7 @@ function F({ name, label, type = 'text', required, placeholder, hint }: { name: 
   return (
     <div className="flex flex-col gap-1">
       <Label htmlFor={name}>{label}</Label>
-      <Input id={name} name={name} type={type} required={required} placeholder={placeholder} />
+      <Input id={name} name={name} type={name === 'phone' ? 'tel' : type} inputMode={name === 'phone' ? 'tel' : undefined} required={required} placeholder={placeholder} />
       {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
     </div>
   );

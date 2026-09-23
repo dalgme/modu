@@ -107,14 +107,14 @@ export function SettlementsTable({
               )}
               <th className="px-3 py-2">멘토</th>
               <th className="px-3 py-2">멘티(기업·팀)</th>
-              <th className="px-3 py-2">그룹</th>
-              <th className="px-3 py-2">구분</th>
+              <th className="hidden px-3 py-2 md:table-cell">그룹</th>
+              <th className="hidden px-3 py-2 md:table-cell">구분</th>
               <th className="px-3 py-2 text-right">회차</th>
               <th className="px-3 py-2 text-right">지급총액</th>
-              <th className="px-3 py-2 text-right">원천징수</th>
+              <th className="hidden px-3 py-2 text-right md:table-cell">원천징수</th>
               <th className="px-3 py-2 text-right">실지급</th>
               <th className="px-3 py-2">상태</th>
-              <th className="px-3 py-2">확정일</th>
+              <th className="hidden px-3 py-2 md:table-cell">확정일</th>
             </tr>
           </thead>
           <tbody>
@@ -142,13 +142,13 @@ export function SettlementsTable({
                   </Link>
                   <span className="ml-1 text-xs text-muted-foreground">{s.ownerName}</span>
                 </td>
-                <td className="px-3 py-2 text-xs">{s.supportTypeName ?? '-'}</td>
-                <td className="px-3 py-2 text-xs">
+                <td className="hidden px-3 py-2 text-xs md:table-cell">{s.supportTypeName ?? '-'}</td>
+                <td className="hidden px-3 py-2 text-xs md:table-cell">
                   {s.kind === 'closure' ? '종결' : '부분'} · {WITHHOLDING_LABELS[s.withholding_method as 'other_income' | 'business_income' | 'none']}
                 </td>
                 <td className="px-3 py-2 text-right tabular-nums">{s.roundCount}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{formatKRW(Number(s.gross))}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{formatKRW(Number(s.withholding))}</td>
+                <td className="hidden px-3 py-2 text-right tabular-nums md:table-cell">{formatKRW(Number(s.withholding))}</td>
                 <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatKRW(Number(s.net))}</td>
                 <td className="px-3 py-2 text-xs">
                   {SETTLEMENT_STATUS_LABELS[s.status] ?? s.status}
@@ -158,7 +158,7 @@ export function SettlementsTable({
                     </Link>
                   )}
                 </td>
-                <td className="px-3 py-2 text-xs tabular-nums">{formatDate(s.confirmed_at)}</td>
+                <td className="hidden px-3 py-2 text-xs tabular-nums md:table-cell">{formatDate(s.confirmed_at)}</td>
               </tr>
             ))}
           </tbody>

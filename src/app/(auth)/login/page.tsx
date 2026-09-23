@@ -66,7 +66,6 @@ export default function LoginPage({
                 id="identifier"
                 name="identifier"
                 type="text"
-                inputMode="email"
                 autoComplete="username"
                 autoCapitalize="none"
                 required

@@ -152,6 +152,8 @@ export function CreateMemberForm({ fixedRole }: { fixedRole?: UserRole }) {
               <Input
                 id="m-phone"
                 name="phone"
+                type="tel"
+                inputMode="tel"
                 required
                 autoComplete="off"
                 placeholder="010-0000-0000"
@@ -307,7 +309,7 @@ function MemberDetailsForm({ member }: { member: MemberItem }) {
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs" htmlFor={`ed-phone-${member.id}`}>휴대폰</Label>
-          <Input id={`ed-phone-${member.id}`} name="phone" defaultValue={member.phone ?? ''} className="h-8 text-xs" placeholder="010-0000-0000" />
+          <Input id={`ed-phone-${member.id}`} name="phone" type="tel" inputMode="tel" defaultValue={member.phone ?? ''} className="h-8 text-xs" placeholder="010-0000-0000" />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs" htmlFor={`ed-email-${member.id}`}>이메일 (로그인 아이디)</Label>
@@ -742,7 +744,7 @@ export function MembersManager({
                 {showRank && <TableHead className="whitespace-nowrap">순위</TableHead>}
                 <TableHead>이름</TableHead>
                 <TableHead className="whitespace-nowrap">이메일/핸드폰</TableHead>
-                <TableHead>소속</TableHead>
+                <TableHead className="hidden md:table-cell">소속</TableHead>
                 <TableHead>역할</TableHead>
                 <TableHead>상태</TableHead>
                 {showProgress && <TableHead className="whitespace-nowrap">라운드 정보</TableHead>}
@@ -780,7 +782,7 @@ export function MembersManager({
                         <div>{m.email ?? '-'}</div>
                         <div>{m.phone ?? '-'}</div>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
+                      <TableCell className="hidden text-sm text-muted-foreground md:table-cell">
                         {[m.organization, m.position].filter(Boolean).join(' · ') || '-'}
                       </TableCell>
                       <TableCell>
