@@ -6,14 +6,14 @@ import { CASE_STATUS_META, CASE_STATUSES, type CaseStatus } from '@/types/case-s
 import { AUTO_MATCH_VERSION } from '@/lib/matching/auto-match';
 import { canTransition } from '@/lib/workflow/transitions';
 import { menteeLabel } from '@/lib/utils/labels';
-import type { MatchMethod } from '@/lib/workflow/cases';
+import type { MatchMethod, PaymentDocSetState } from '@/lib/matching/labels';
+
+export { MATCH_METHOD_LABELS, type MatchMethod, type PaymentDocSetState } from '@/lib/matching/labels';
 
 /**
  * P24·P25·P27 매칭 리스트 (회원 명단 탭 · 리포트 멘토 진행현황) — 멘토 기준 / 멘티 기준.
  * 범위(행사 전체/그룹)는 호출부 컨텍스트. 멘토 행에는 연락처·지급서류 상태·확정 실지급·만족도·운영사 평가까지 실린다(P27-06·16·17·19).
  */
-
-export type PaymentDocSetState = '-' | 'X' | 'O';
 
 export interface MentorMatchMentee {
   caseId: string;
@@ -112,12 +112,6 @@ export interface MatchingLists {
   mentorRows: MentorMatchRow[];
   menteeRows: MenteeMatchRow[];
 }
-
-export const MATCH_METHOD_LABELS: Record<MatchMethod, string> = {
-  auto_preferred: '자동(멘티 희망)',
-  recommended: '추천',
-  manual: '수동',
-};
 
 /** 3종 상태를 셋트 하나로: 하나라도 O 면 O, 하나라도 X 면 X, 아니면 - (P27-16 단일 버튼) */
 function docSetState(d: { resume_state: string | null; bankbook_state: string | null; id_card_state: string | null } | undefined): PaymentDocSetState {

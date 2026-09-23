@@ -6,7 +6,8 @@ import { useRouter } from 'next/navigation';
 import { CheckCircle2, Circle, FileCheck2, Mail, MessageSquare, Phone, RefreshCw, Search, Undo2, UserCheck, UserSearch } from 'lucide-react';
 
 import { ExcelButton } from '@/components/common/excel-button';
-import { MATCH_METHOD_LABELS, type MenteeMatchRow, type MentorMatchRow, type PaymentDocSetState } from '@/lib/data/matching-lists';
+import type { MenteeMatchRow, MentorMatchRow } from '@/lib/data/matching-lists';
+import { MATCH_METHOD_LABELS, type PaymentDocSetState } from '@/lib/matching/labels';
 import { confirmMatchAction, manualMatchAction } from '@/lib/matching/actions';
 import { addMentorGroupReviewAction, deleteMentorGroupReviewAction, setPaymentDocSetStateAction } from '@/lib/mentors/actions';
 import { reassignMentorAction, recallMentorAction } from '@/lib/workflow/case-actions';

@@ -1,3 +1,4 @@
+import type { MatchMethod } from '@/lib/matching/labels';
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -185,8 +186,7 @@ async function ensureGroupRoster(supportTypeId: string, mentorId: string): Promi
  * T2/T12 멘토 배정. registered → mentor_assigned, reassignment_pending → in_progress.
  * 조건부 update 로 원자적 검증. 운영사 전용(호출부 가드).
  */
-/** 매칭 방식 (P27-08): 자동(멘티 재배치 희망) / 추천(자동 추천 매칭 확정) / 수동(운영자 멘토 검색) */
-export type MatchMethod = 'auto_preferred' | 'recommended' | 'manual';
+export type { MatchMethod };
 
 export async function assignMentor(caseId: string, mentorId: string, actorId: string, method: MatchMethod = 'manual'): Promise<WorkflowResult> {
   const admin = createAdminClient();
