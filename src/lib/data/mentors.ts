@@ -143,10 +143,12 @@ export async function listProgramMentors(programId: string, supportTypeId?: stri
     .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
 }
 
-/** 지급서류 3종 모두 수령했는지 (품의 경고·차단용) */
+/**
+ * 지급서류 미수령 멘토 (품의 경고·차단용) — P26 의미: '-' = 여기서 관리 안 함(미수령 아님), 'X' = 관리하지만 미수령, 'O' = 수령.
+ * 따라서 **X 가 하나라도 있는 멘토만** 미수령으로 본다.
+ */
 export async function mentorsMissingPaymentDocs(programId: string, mentorIds: string[]): Promise<Set<string>> {
   if (mentorIds.length === 0) return new Set();
-  const { data } = await createAdminClient().from('mentor_payment_docs').select('user_id, resume_received_at, bankbook_received_at, id_card_received_at').eq('program_id', programId).in('user_id', mentorIds);
-  const complete = new Set((data ?? []).filter((d) => d.resume_received_at && d.bankbook_received_at && d.id_card_received_at).map((d) => d.user_id));
-  return new Set(mentorIds.filter((id) => !complete.has(id)));
+  const { data } = await createAdminClient().from('mentor_payment_docs').select('user_id, resume_state, bankbook_state, id_card_state').eq('program_id', programId).in('user_id', mentorIds);
+  return new Set((data ?? []).filter((d) => [d.resume_state, d.bankbook_state, d.id_card_state].some((s) => s === 'X')).map((d) => d.user_id));
 }

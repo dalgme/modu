@@ -117,7 +117,7 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
         admin.from('round_extension_requests').select('id').in('case_id', caseIds).eq('status', 'pending'),
         admin.from('mentor_change_requests').select('id').in('case_id', caseIds).eq('status', 'pending'),
         admin.from('mentor_withdrawal_requests').select('id').in('case_id', caseIds).eq('status', 'pending'),
-        admin.from('mentor_payment_docs').select('user_id, resume_received_at, bankbook_received_at, id_card_received_at').eq('program_id', programId),
+        admin.from('mentor_payment_docs').select('user_id, resume_state, bankbook_state, id_card_state').eq('program_id', programId),
         admin.from('mentor_group_reviews').select('mentor_id, rating').eq('program_id', programId).is('deleted_at', null),
         admin.from('round_extension_requests').select('case_id, extra_rounds').in('case_id', caseIds).eq('status', 'approved'),
         admin.from('cases').select('id, predecessor_case_id').eq('program_id', programId).in('predecessor_case_id', caseIds),
@@ -158,8 +158,9 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
   const remainingRounds = cases.filter((c) => !['closed', 'withdrawn'].includes(c.status)).reduce((a, c) => a + Math.max(0, plannedOf(c.id) - (logsByCase.get(c.id)?.length ?? 0)), 0);
   const unansweredSurveys = cases.filter((c) => (SURVEY_OPEN_STATUSES as readonly string[]).includes(c.status) && !scoreByCase.has(c.id)).length;
   const mentorIds = new Set(assigns.map((a) => a.mentor_id));
-  const docsComplete = new Set((docsR.data ?? []).filter((d: { resume_received_at: string | null; bankbook_received_at: string | null; id_card_received_at: string | null }) => d.resume_received_at && d.bankbook_received_at && d.id_card_received_at).map((d: { user_id: string }) => d.user_id));
-  const mentorsMissingDocs = Array.from(mentorIds).filter((m) => !docsComplete.has(m)).length;
+  // 지급서류 미수령 = 상태 X 가 하나라도 있는 멘토 ('-' 관리 안 함은 제외, P26)
+  const docsMissing = new Set((docsR.data ?? []).filter((d: { resume_state: string | null; bankbook_state: string | null; id_card_state: string | null }) => [d.resume_state, d.bankbook_state, d.id_card_state].some((s) => s === 'X')).map((d: { user_id: string }) => d.user_id));
+  const mentorsMissingDocs = Array.from(mentorIds).filter((m) => docsMissing.has(m)).length;
 
   // ---- evaluation
   const scores = responses.map((r) => r.score).filter((s): s is number => typeof s === 'number');

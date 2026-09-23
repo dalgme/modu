@@ -36,9 +36,10 @@ export function MentorName({
   const text = count === undefined || count === null ? name : mentorLabel(name, count);
   if (!id) return <span className={className}>{text}</span>;
 
+  // 열 때마다 다시 불러온다 — 배정·평가가 바뀐 뒤 옛 데이터가 보이지 않게 (P28)
   const load = async () => {
     setOpen(true);
-    if (data || loading) return;
+    if (loading) return;
     setLoading(true);
     setError(null);
     try {
@@ -61,9 +62,17 @@ export function MentorName({
         <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{data ? mentorLabel(data.name, data.activeCount) : name} · 멘토 정보</DialogTitle>
-            <DialogDescription>개인 정보 · 분야 · 그룹별 매칭 멘티 · 멘티별 만족도 · 운영사 평가 (담당 멘티는 현재 범위 기준)</DialogDescription>
+            <DialogDescription>
+              개인 정보 · 분야 · 그룹별 매칭 멘티 · 멘티별 만족도 · 운영사 평가 (담당 멘티는 현재 범위 기준)
+              {caseHrefBase.startsWith('/nextlab') && (
+                <>
+                  {' · '}
+                  <Link href={`/nextlab/roster?tab=mentor&edit=${id}`} className="font-medium text-primary underline underline-offset-2">명단에서 정보 수정</Link>
+                </>
+              )}
+            </DialogDescription>
           </DialogHeader>
-          {loading && <p className="text-sm text-muted-foreground">불러오는 중…</p>}
+          {loading && !data && <p className="text-sm text-muted-foreground">불러오는 중…</p>}
           {error && (
             <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
               {error}

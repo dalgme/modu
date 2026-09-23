@@ -159,9 +159,10 @@ export async function GET(request: Request): Promise<Response> {
         소속: m.organization ?? '',
         직위: m.position ?? '',
         등급: m.role === 'nextlab' ? GRADE_LABELS[(m.grade as StaffGrade | null) ?? 'pl'] : '',
-        담당역할: m.duty ?? '',
+        담당역할: m.role === 'nextlab' ? (m.duty ?? '') : '',
         휴대폰: m.phone ?? '',
         이메일: m.email ?? '',
+        비고: m.note ?? '',
         계정상태: active(m.is_active),
       }));
   }

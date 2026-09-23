@@ -26,6 +26,27 @@ export async function countMentorActiveInGroup(mentorId: string, supportTypeId: 
   return count ?? 0;
 }
 
+/**
+ * 그룹 지정 게이트 (P25 규칙 · P28 서버 강제) — 활성 지정이 하나라도 있으면 지정 그룹에서만 배정할 수 있다. 위반이면 안내 문구, 아니면 null.
+ */
+export async function assertMentorEligible(mentorId: string, supportTypeId: string): Promise<string | null> {
+  const admin = createAdminClient();
+  const { data: g } = await admin.from('support_types').select('program_id, name').eq('id', supportTypeId).maybeSingle();
+  if (!g) return '그룹을 찾을 수 없습니다.';
+  const { data: rows } = await admin
+    .from('support_type_members')
+    .select('support_type_id, support_types!inner(program_id)')
+    .eq('user_id', mentorId)
+    .eq('member_role', 'mentor')
+    .eq('is_active', true)
+    .eq('support_types.program_id', g.program_id);
+  const designated = (rows ?? []).map((r) => r.support_type_id);
+  if (designated.length > 0 && !designated.includes(supportTypeId)) {
+    return `이 멘토는 다른 그룹에만 지정되어 있어 ${g.name} 에 배정할 수 없습니다. (회원 명단 › 멘토 계정 관리 › 정보 수정에서 그룹 지정을 바꾸세요)`;
+  }
+  return null;
+}
+
 /** 정원 게이트 — 초과면 안내 문구, 아니면 null */
 export async function assertMentorCapacity(mentorId: string, supportTypeId: string): Promise<string | null> {
   const admin = createAdminClient();

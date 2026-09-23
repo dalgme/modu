@@ -38,11 +38,10 @@ export default async function Page() {
     computeMonthlyTrend(ctx.programId, groupId),
     listDelayedCases(ctx.programId, groupId),
   ]);
-  // 멘토가 아직 확인하지 않은 배정 (범위 내 케이스)
-  const caseIds = cases.map((c) => c.id);
-  const { count: unconfirmed } = caseIds.length
-    ? await createAdminClient().from('mentor_assignments').select('id', { count: 'exact', head: true }).eq('is_active', true).is('confirmed_at', null).in('case_id', caseIds)
-    : { count: 0 };
+  // 멘토가 아직 확인하지 않은 배정 (범위 내 케이스) — 조인 필터로 센다 (케이스 id 나열은 수백 건에서 URL 이 길어진다)
+  let unconfirmedQ = createAdminClient().from('mentor_assignments').select('id, cases!inner(program_id, support_type_id)', { count: 'exact', head: true }).eq('is_active', true).is('confirmed_at', null).eq('cases.program_id', ctx.programId);
+  if (groupId) unconfirmedQ = unconfirmedQ.eq('cases.support_type_id', groupId);
+  const { count: unconfirmed } = await unconfirmedQ;
   const toQueue = (c: (typeof cases)[number]): DashboardQueueCase => ({
     caseId: c.id,
     label: menteeLabel(c.owner_name, c.business_name),

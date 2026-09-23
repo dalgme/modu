@@ -19,6 +19,8 @@ export interface RankUploadResult {
   notFound: string[];
   ambiguous: string[];
   invalid: string[];
+  /** 같은 멘티가 여러 행에 있으면 마지막 행만 적용 */
+  duplicate: string[];
 }
 type Result = RankUploadResult | { ok: false; error: string };
 
@@ -62,32 +64,35 @@ export async function uploadMenteeRankAction(formData: FormData): Promise<Result
   const byName = new Map<string, string[]>();
   for (const c of cases ?? []) (byName.get(c.owner_name.trim()) ?? byName.set(c.owner_name.trim(), []).get(c.owner_name.trim())!).push(c.id);
 
-  const updates: { case_id: string; program_id: string; rank: number }[] = [];
+  const rankByCase = new Map<string, number>();
   const notFound: string[] = [];
   const ambiguous: string[] = [];
   const invalid: string[] = [];
+  const duplicate: string[] = [];
   for (const r of rows) {
     const name = String(r[nameKey] ?? '').trim();
-    const rankRaw = String(r[rankKey] ?? '').trim().replace(/[^\d]/g, '');
+    const rankRaw = String(r[rankKey] ?? '').trim();
     const no = noKey ? String(r[noKey] ?? '').trim() : '';
     if (!name && !no) continue;
     const rank = Number(rankRaw);
-    if (!rankRaw || !Number.isInteger(rank) || rank < 0) {
-      invalid.push(`${name || no}: 순위 '${String(r[rankKey] ?? '')}'`);
+    if (!rankRaw || !Number.isInteger(rank) || rank < 1) {
+      invalid.push(`${name || no}: 순위 '${rankRaw}' (1 이상의 정수여야 합니다)`);
       continue;
     }
-    let ids = no ? (byNo.get(no) ?? []) : [];
-    if (ids.length === 0 && name) ids = byName.get(name) ?? [];
+    // 고유번호가 적혀 있으면 그것으로만 찾는다(다른 사람에게 잘못 붙는 것을 막기 위해 이름 폴백 없음)
+    const ids = no ? (byNo.get(no) ?? []) : name ? (byName.get(name) ?? []) : [];
     if (ids.length === 0) {
-      notFound.push(name || no);
+      notFound.push(no ? `${name || '-'} (고유번호 ${no})` : name);
       continue;
     }
     if (ids.length > 1) {
       ambiguous.push(`${name || no} (${ids.length}건 — 고유번호 컬럼으로 구분하세요)`);
       continue;
     }
-    updates.push({ case_id: ids[0]!, program_id: ctx.programId, rank });
+    if (rankByCase.has(ids[0]!)) duplicate.push(name || no);
+    rankByCase.set(ids[0]!, rank);
   }
+  const updates = Array.from(rankByCase.entries()).map(([case_id, rank]) => ({ case_id, program_id: ctx.programId, rank }));
   if (updates.length > 0) {
     const { error } = await admin.from('mentee_profiles').upsert(updates, { onConflict: 'case_id' });
     if (error) return { ok: false, error: error.message };
@@ -98,10 +103,10 @@ export async function uploadMenteeRankAction(formData: FormData): Promise<Result
     action: 'mentee.rank_upload',
     entity_type: 'programs',
     entity_id: ctx.programId,
-    metadata: { file: file.name, rows: rows.length, updated: updates.length, not_found: notFound.length, ambiguous: ambiguous.length, invalid: invalid.length, support_type_id: ctx.supportTypeId ?? null },
+    metadata: { file: file.name, rows: rows.length, updated: updates.length, not_found: notFound.length, ambiguous: ambiguous.length, invalid: invalid.length, duplicate: duplicate.length, support_type_id: ctx.supportTypeId ?? null },
   });
   if (auditError) console.error('rank upload audit failed:', auditError.message);
   revalidatePath('/nextlab/roster');
   revalidatePath('/nextlab/reports');
-  return { ok: true, updated: updates.length, notFound, ambiguous, invalid };
+  return { ok: true, updated: updates.length, notFound, ambiguous, invalid, duplicate };
 }

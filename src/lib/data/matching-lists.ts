@@ -56,6 +56,7 @@ export interface MentorMatchRow {
   expertise: string[];
   /** 그룹 지정 (비어 있으면 모든 그룹에서 사용) */
   designatedGroupNames: string[];
+  designatedGroupIds: string[];
   mentees: MentorMatchMentee[];
   /** 지급서류 셋트 상태 (-/X/O, 3종 통합 — P27-16) */
   paymentDocState: PaymentDocSetState;
@@ -113,7 +114,7 @@ export interface MatchingLists {
   menteeRows: MenteeMatchRow[];
 }
 
-/** 3종 상태를 셋트 하나로: 하나라도 O 면 O, 하나라도 X 면 X, 아니면 - (P27-16 단일 버튼) */
+/** 3종 상태를 셋트 하나로: 셋 다 O 면 O, X 나 O 가 하나라도 있으면 X(일부 미수령), 아니면 - (P27-16 단일 버튼) */
 function docSetState(d: { resume_state: string | null; bankbook_state: string | null; id_card_state: string | null } | undefined): PaymentDocSetState {
   if (!d) return '-';
   const states = [d.resume_state, d.bankbook_state, d.id_card_state];
@@ -150,6 +151,12 @@ export async function loadMatchingLists(programId: string, supportTypeId?: strin
     admin.from('mentor_payment_docs').select('user_id, resume_state, bankbook_state, id_card_state').eq('program_id', programId),
     admin.from('mentor_group_reviews').select('id, mentor_id, support_type_id, rating, memo, author_id, created_at').eq('program_id', programId).is('deleted_at', null).order('created_at', { ascending: false }),
   ]);
+  // 멘토별 이행 회차 = 그 멘토가 보고서까지 등록한 회차 (교체 전 멘토 회차는 그 멘토 몫)
+  const { data: reportedLogs } = caseIds.length
+    ? await admin.from('mentoring_logs').select('mentor_id').in('case_id', caseIds).not('report_registered_at', 'is', null)
+    : { data: [] as { mentor_id: string }[] };
+  const reportedByMentor = new Map<string, number>();
+  for (const l of reportedLogs ?? []) reportedByMentor.set(l.mentor_id, (reportedByMentor.get(l.mentor_id) ?? 0) + 1);
 
   const assignByCase = new Map((assigns ?? []).map((a) => [a.case_id, a]));
   const profileByCase = new Map((profiles ?? []).map((p) => [p.case_id, p]));
@@ -270,10 +277,11 @@ export async function loadMatchingLists(programId: string, supportTypeId?: strin
         email: m.email,
         expertise: expertiseByMentor.get(m.id) ?? [],
         designatedGroupNames: (designatedByMentor.get(m.id) ?? []).map((g) => g.name),
+        designatedGroupIds: (designatedByMentor.get(m.id) ?? []).map((g) => g.id),
         mentees,
         paymentDocState: docSetState(docByUser.get(m.id)),
         settledNet: (settlements ?? []).filter((s) => s.mentor_id === m.id && scopedCaseIds.has(s.case_id)).reduce((a, s) => a + Number(s.net), 0),
-        roundsDone: mentees.reduce((a, x) => a + x.roundsDone, 0),
+        roundsDone: reportedByMentor.get(m.id) ?? 0,
         surveyAvg: scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 100) / 100 : null,
         reviewAvg: ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10 : null,
         reviews: myReviews,

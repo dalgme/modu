@@ -60,7 +60,7 @@ export async function addToBatch(batchId: string, settlementIds: string[], actor
     const missing = await mentorsMissingPaymentDocs(batch.program_id, Array.from(new Set((mentorRows ?? []).map((m) => m.mentor_id))));
     if (missing.size > 0) {
       const { data: names } = await admin.from('users').select('name').in('id', Array.from(missing));
-      return { ok: false, error: `지급서류(이력서·통장사본·신분증사본) 미수령 멘토가 있어 편성할 수 없습니다: ${(names ?? []).map((n) => n.name).join(', ')} — 멘토 명단에서 수령 체크 후 다시 시도하세요.` };
+      return { ok: false, error: `지급서류(이력서·통장사본·신분증사본) 미수령 멘토가 있어 편성할 수 없습니다: ${(names ?? []).map((n) => n.name).join(', ')} — 회원 명단 › 멘토 매칭 리스트의 [지급서류]에서 O 로 바꾼 뒤 다시 시도하세요.` };
     }
   }
   const now = new Date().toISOString();

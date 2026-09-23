@@ -6,7 +6,7 @@ import { queueNotification } from '@/lib/workflow/notifications';
 import { inviteMentee } from '@/lib/auth/admin-accounts';
 import { toStoredPhone } from '@/lib/auth/identifier';
 import { assertTransition, assignTarget, TRANSITIONS } from '@/lib/workflow/transitions';
-import { assertMentorCapacity } from '@/lib/matching/capacity';
+import { assertMentorCapacity, assertMentorEligible } from '@/lib/matching/capacity';
 import type { CaseFormInput } from '@/lib/validations/case';
 import type { TablesInsert } from '@/types/database';
 
@@ -171,15 +171,23 @@ async function assertMentorInProgram(programId: string, mentorId: string): Promi
   return null;
 }
 
-/** 배정된 멘토를 그룹 명부(support_type_members)에도 올린다 (없으면 추가·비활성이면 재활성) */
-async function ensureGroupRoster(supportTypeId: string, mentorId: string): Promise<void> {
+/**
+ * 배정된 멘토의 그룹 명부 행을 보장한다 (원천징수 override 등 그룹별 설정의 자리).
+ * **그룹 지정(is_active)은 만들지 않는다** — P25 규칙: 지정 없음 = 모든 그룹 후보. 배정만으로 다른 그룹 후보에서 빠지면 안 된다.
+ * 이미 다른 그룹에 활성 지정이 있는 멘토(= 지정 운영 중)는 이 그룹도 지정에 추가한다(배정 사실과 지정을 일치).
+ */
+async function ensureGroupRoster(supportTypeId: string, mentorId: string, programId: string): Promise<void> {
   const admin = createAdminClient();
-  await admin
-    .from('support_type_members')
-    .upsert(
-      { support_type_id: supportTypeId, user_id: mentorId, member_role: 'mentor', is_active: true, left_at: null },
-      { onConflict: 'support_type_id,user_id' },
-    );
+  const [{ data: row }, { data: designated }] = await Promise.all([
+    admin.from('support_type_members').select('id, is_active').eq('support_type_id', supportTypeId).eq('user_id', mentorId).maybeSingle(),
+    admin.from('support_type_members').select('support_type_id, support_types!inner(program_id)').eq('user_id', mentorId).eq('member_role', 'mentor').eq('is_active', true).eq('support_types.program_id', programId),
+  ]);
+  const usesDesignation = (designated ?? []).length > 0;
+  if (!row) {
+    await admin.from('support_type_members').insert({ support_type_id: supportTypeId, user_id: mentorId, member_role: 'mentor', is_active: usesDesignation, left_at: null });
+  } else if (usesDesignation && !row.is_active) {
+    await admin.from('support_type_members').update({ is_active: true, left_at: null }).eq('id', row.id);
+  }
 }
 
 /**
@@ -208,7 +216,9 @@ export async function assignMentor(caseId: string, mentorId: string, actorId: st
     .eq('is_active', true)
     .maybeSingle();
   if (active) return { ok: false, error: '이미 활성 멘토가 있습니다. 재배정을 사용하세요.' };
-  // 매칭 규칙 (P25-04): 라운드별 멘토 1인당 정원
+  // 매칭 규칙 (P25-04): 그룹 지정 + 라운드별 멘토 1인당 정원 — UI 와 같은 규칙을 서버가 강제
+  const eligibleErr = await assertMentorEligible(mentorId, c.support_type_id);
+  if (eligibleErr) return { ok: false, error: eligibleErr };
   const capacityErr = await assertMentorCapacity(mentorId, c.support_type_id);
   if (capacityErr) return { ok: false, error: capacityErr };
 
@@ -231,7 +241,7 @@ export async function assignMentor(caseId: string, mentorId: string, actorId: st
     return { ok: false, error: '이미 처리된 케이스입니다. 새로고침 후 다시 시도하세요.' };
   }
 
-  await ensureGroupRoster(c.support_type_id, mentorId);
+  await ensureGroupRoster(c.support_type_id, mentorId, c.program_id);
   await admin.from('case_status_history').insert({
     case_id: caseId,
     from_status: c.status,
@@ -243,7 +253,7 @@ export async function assignMentor(caseId: string, mentorId: string, actorId: st
   if (c.mentee_id) {
     await queueNotification(admin, { caseId, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'mentor_assigned' });
   }
-  await admin.from('audit_logs').insert({
+  const { error: auditError } = await admin.from('audit_logs').insert({
     actor_id: actorId,
     program_id: c.program_id,
     action: 'case.assign_mentor',
@@ -251,6 +261,7 @@ export async function assignMentor(caseId: string, mentorId: string, actorId: st
     entity_id: caseId,
     metadata: { mentor_id: mentorId, from_status: c.status, match_method: method },
   });
+  if (auditError) console.error('assign audit failed:', auditError.message);
   return { ok: true, caseId };
 }
 
@@ -279,6 +290,8 @@ export async function reassignMentor(caseId: string, newMentorId: string, actorI
     .maybeSingle();
   if (!current) return { ok: false, error: '활성 멘토 배정이 없습니다. 신규 배정을 사용하세요.' };
   if (current.mentor_id === newMentorId) return { ok: false, error: '현재 멘토와 동일합니다. 다른 멘토를 선택하세요.' };
+  const eligibleErr = await assertMentorEligible(newMentorId, c.support_type_id);
+  if (eligibleErr) return { ok: false, error: eligibleErr };
   const capacityErr = await assertMentorCapacity(newMentorId, c.support_type_id);
   if (capacityErr) return { ok: false, error: capacityErr };
 
@@ -300,7 +313,7 @@ export async function reassignMentor(caseId: string, newMentorId: string, actorI
     return { ok: false, error: insErr.message };
   }
 
-  await ensureGroupRoster(c.support_type_id, newMentorId);
+  await ensureGroupRoster(c.support_type_id, newMentorId, c.program_id);
   await admin.from('case_status_history').insert({
     case_id: caseId,
     from_status: c.status,

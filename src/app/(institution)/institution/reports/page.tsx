@@ -22,7 +22,8 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   const delays = tab === 'overview' ? await listDelayedCases(ctx.programId, groupId) : undefined;
   const trend = tab === 'trend' ? await computeMonthlyTrend(ctx.programId, groupId) : undefined;
   // 멘토 진행현황 = 그룹별(담당 인원)·담당 멘티명·회차·확정 실지급·만족도·운영사 평가 (P27-17)
-  const mentorProgress = tab === 'cases' && searchParams.view === 'mentor' ? (await loadMatchingLists(ctx.programId, groupId)).mentorRows : undefined;
+  // 발주처에는 운영사 평가(메모·작성자)를 내려보내지 않는다 — 열을 숨기는 것과 별개로 페이로드에서 제거
+  const mentorProgress = tab === 'cases' && searchParams.view === 'mentor' ? (await loadMatchingLists(ctx.programId, groupId)).mentorRows.map((r) => ({ ...r, reviews: [], reviewAvg: null })) : undefined;
   return (
     <main className="flex flex-col gap-5">
       <div>

@@ -14,8 +14,10 @@ export interface CaseListItem extends CaseRow {
   supportTypeCode: string | null;
   /** 그룹 회차 수 (승인된 추가 회차는 별도 합산) */
   requiredRounds: number;
-  /** 등록된(이행) 회차 수 */
+  /** 이행 회차 수 = 보고서(2단계)까지 등록된 회차 (CLAUDE.md §3-1) */
   roundsDone: number;
+  /** 등록된 회차 전체(계획 포함) */
+  roundsPlanned: number;
   /** 활성 배정 멘토 */
   mentorName: string | null;
   mentorId: string | null;
@@ -81,11 +83,15 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
       .select('case_id, mentor_id, assigned_at')
       .in('case_id', caseIds)
       .eq('is_active', true),
-    supabase.from('mentoring_logs').select('case_id').in('case_id', caseIds),
+    supabase.from('mentoring_logs').select('case_id, report_registered_at').in('case_id', caseIds),
   ]);
   const typeMap = new Map((types ?? []).map((t) => [t.id, t]));
   const roundsByCase = new Map<string, number>();
-  for (const l of logs ?? []) roundsByCase.set(l.case_id, (roundsByCase.get(l.case_id) ?? 0) + 1);
+  const plannedByCase = new Map<string, number>();
+  for (const l of logs ?? []) {
+    plannedByCase.set(l.case_id, (plannedByCase.get(l.case_id) ?? 0) + 1);
+    if (l.report_registered_at) roundsByCase.set(l.case_id, (roundsByCase.get(l.case_id) ?? 0) + 1);
+  }
 
   const mentorIds = Array.from(new Set((assigns ?? []).map((a) => a.mentor_id)));
   const menteeIds = Array.from(new Set(cases.map((c) => c.mentee_id).filter(Boolean))) as string[];
@@ -119,6 +125,7 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
       supportTypeCode: t?.code ?? null,
       requiredRounds: t?.required_rounds ?? 0,
       roundsDone: roundsByCase.get(c.id) ?? 0,
+      roundsPlanned: plannedByCase.get(c.id) ?? 0,
       mentorName: a ? (mentorNameById.get(a.mentor_id) ?? null) : null,
       mentorId: a?.mentor_id ?? null,
       mentorAssignedAt: a?.assigned_at ?? null,

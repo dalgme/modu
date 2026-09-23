@@ -137,12 +137,13 @@ export function PaymentDocSetButton({ mentorId, mentorName, state, readOnly = fa
 
 /* ──────────────────────────── 운영사 평가 (P27-19) ──────────────────────────── */
 
-export function MentorReviewButton({ mentor, groups }: { mentor: MentorMatchRow; groups: { id: string; name: string }[] }) {
+export function MentorReviewButton({ mentor, groups, currentGroupId }: { mentor: MentorMatchRow; groups: { id: string; name: string }[]; currentGroupId?: string | null }) {
   const { toast } = useToast();
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
-  const [groupId, setGroupId] = useState(groups[0]?.id ?? '');
+  // 기본 그룹 = 현재 범위 그룹(범위 스위처) → 없으면 첫 그룹 (P28)
+  const [groupId, setGroupId] = useState((currentGroupId && groups.some((g) => g.id === currentGroupId) ? currentGroupId : groups[0]?.id) ?? '');
   const [rating, setRating] = useState<string>('');
   const [memo, setMemo] = useState('');
   const submit = () => {
@@ -210,12 +211,12 @@ export function MentorReviewButton({ mentor, groups }: { mentor: MentorMatchRow;
 
 /* ──────────────────────────── 멘토 매칭 리스트 ──────────────────────────── */
 
-export function MentorMatchList({ rows, groups, caseHrefBase = '/nextlab/cases' }: { rows: MentorMatchRow[]; groups: { id: string; name: string }[]; caseHrefBase?: string }) {
+export function MentorMatchList({ rows, groups, currentGroupId = null, caseHrefBase = '/nextlab/cases' }: { rows: MentorMatchRow[]; groups: { id: string; name: string }[]; currentGroupId?: string | null; caseHrefBase?: string }) {
   const { toast } = useToast();
   const router = useRouter();
   const [pending, start] = useTransition();
   const [query, setQuery] = useState('');
-  const [reassign, setReassign] = useState<{ caseId: string; menteeLabel: string; currentMentorId: string } | null>(null);
+  const [reassign, setReassign] = useState<{ caseId: string; menteeLabel: string; currentMentorId: string; groupId: string; groupName: string } | null>(null);
   const [newMentorId, setNewMentorId] = useState<string | undefined>();
 
   const filtered = useMemo(() => {
@@ -270,7 +271,7 @@ export function MentorMatchList({ rows, groups, caseHrefBase = '/nextlab/cases' 
             <span className="text-xs text-muted-foreground">분야:</span>
             <Chips items={m.expertise} max={10} />
             {m.designatedGroupNames.length > 0 && <span className="text-[11px] text-violet-700">지정: {m.designatedGroupNames.join(', ')}</span>}
-            <MentorReviewButton mentor={m} groups={groups} />
+            <MentorReviewButton mentor={m} groups={groups} currentGroupId={currentGroupId} />
             {m.mentees.length === 0 && (
               <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">지급서류 <PaymentDocSetButton mentorId={m.mentorId} mentorName={m.mentorName} state={m.paymentDocState} size="xs" /></span>
             )}
@@ -324,7 +325,7 @@ export function MentorMatchList({ rows, groups, caseHrefBase = '/nextlab/cases' 
                           <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-[11px]" disabled={!c.canRecall || pending} title={c.canRecall ? '배정을 해제하고 등록 단계로' : '회차가 시작되어 회수할 수 없습니다 — 재배정 또는 케이스 상세의 강제 중도 종료를 사용'} onClick={() => recall(c.caseId, c.label)}>
                             <Undo2 className="h-3 w-3" /> 멘토 회수
                           </Button>
-                          <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-[11px]" disabled={!c.canReassign || pending} title={c.canReassign ? '다른 멘토로 즉시 교체(잔여 회차 승계)' : '이 단계에서는 재배정할 수 없습니다'} onClick={() => { setReassign({ caseId: c.caseId, menteeLabel: c.label, currentMentorId: m.mentorId }); setNewMentorId(undefined); }}>
+                          <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-[11px]" disabled={!c.canReassign || pending} title={c.canReassign ? '다른 멘토로 즉시 교체(잔여 회차 승계)' : '이 단계에서는 재배정할 수 없습니다'} onClick={() => { setReassign({ caseId: c.caseId, menteeLabel: c.label, currentMentorId: m.mentorId, groupId: c.groupId, groupName: c.groupName ?? '-' }); setNewMentorId(undefined); }}>
                             <RefreshCw className="h-3 w-3" /> 멘토 재배정
                           </Button>
                         </div>
@@ -342,14 +343,23 @@ export function MentorMatchList({ rows, groups, caseHrefBase = '/nextlab/cases' 
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>멘토 재배정</DialogTitle>
-            <DialogDescription>{reassign?.menteeLabel} 멘티를 다른 멘토로 교체합니다. 진행한 회차는 그대로 두고 잔여 회차를 새 멘토가 승계합니다. 라운드별 정원(매칭 규칙)을 넘는 멘토는 서버에서 거부됩니다.</DialogDescription>
+            <DialogDescription>{reassign?.menteeLabel} 멘티({reassign?.groupName})를 다른 멘토로 교체합니다. 진행한 회차는 그대로 두고 잔여 회차를 새 멘토가 승계합니다. 괄호 안 숫자는 이 그룹에서 현재 담당 중인 멘티 수이며, 라운드별 정원(매칭 규칙)을 넘거나 다른 그룹에만 지정된 멘토는 선택할 수 없습니다.</DialogDescription>
           </DialogHeader>
           <Select value={newMentorId} onValueChange={setNewMentorId}>
             <SelectTrigger><SelectValue placeholder="새 멘토 선택" /></SelectTrigger>
             <SelectContent>
-              {rows.filter((x) => x.mentorId !== reassign?.currentMentorId).map((x) => (
-                <SelectItem key={x.mentorId} value={x.mentorId}>{mentorLabel(x.mentorName, x.mentees.length)}{x.designatedGroupNames.length ? ` · 지정 ${x.designatedGroupNames.join('/')}` : ''}</SelectItem>
-              ))}
+              {rows
+                .filter((x) => x.mentorId !== reassign?.currentMentorId)
+                .map((x) => {
+                  const inGroup = reassign ? x.mentees.filter((c) => c.groupId === reassign.groupId && !c.withdrawn).length : x.mentees.length;
+                  const eligible = !reassign || x.designatedGroupIds.length === 0 || x.designatedGroupIds.includes(reassign.groupId);
+                  return (
+                    <SelectItem key={x.mentorId} value={x.mentorId} disabled={!eligible}>
+                      {mentorLabel(x.mentorName, inGroup)}
+                      {!eligible ? ` · 다른 그룹 지정(${x.designatedGroupNames.join('/')})` : x.designatedGroupNames.length ? ` · 지정 ${x.designatedGroupNames.join('/')}` : ''}
+                    </SelectItem>
+                  );
+                })}
             </SelectContent>
           </Select>
           <DialogFooter>
@@ -469,7 +479,7 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
       .map((m) => ({
         m,
         inGroup: m.mentees.filter((c) => c.groupId === manualFor.groupId && !c.withdrawn).length,
-        eligible: m.designatedGroupNames.length === 0 || (manualFor.groupName ? m.designatedGroupNames.includes(manualFor.groupName) : true),
+        eligible: m.designatedGroupIds.length === 0 || m.designatedGroupIds.includes(manualFor.groupId),
       }))
       .filter((x) => !q || x.m.mentorName.includes(q) || x.m.expertise.some((e) => e.includes(q)))
       .sort((a, b) => Number(b.eligible) - Number(a.eligible) || a.inGroup - b.inGroup || a.m.mentorName.localeCompare(b.m.mentorName, 'ko'));

@@ -8,10 +8,12 @@ export function CaseStepNumbers({ status }: { status: CaseStatus }) {
   const current = statusStep(status);
   const meta = CASE_STATUS_META[status];
   const rejected = meta.tone === 'rejected';
+  const withdrawn = status === 'withdrawn';
   const idx = Math.max(0, CASE_STEP_ORDER.findIndex((s) => CASE_STATUS_META[s].step === current));
-  const center = idx * PITCH + 8;
+  // 중도 종료(step 0)는 특정 단계 위가 아니라 전체 위에 라벨만 붙인다
+  const center = withdrawn ? (CASE_STEP_ORDER.length * PITCH) / 2 : idx * PITCH + 8;
   return (
-    <span className="relative inline-block pt-3.5" aria-label={`${current}단계 ${meta.short}`}>
+    <span className={cn('relative inline-block pt-3.5', withdrawn && 'opacity-60')} aria-label={`${withdrawn ? '' : `${current}단계 `}${meta.short}`}>
       <span
         className={cn('absolute top-0 whitespace-nowrap text-[10px] font-bold leading-none', rejected ? 'text-status-rejected' : 'text-primary')}
         style={{ left: center, transform: 'translateX(-50%)' }}

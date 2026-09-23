@@ -48,7 +48,7 @@ export function RankUploadButton() {
           <DialogHeader>
             <DialogTitle>멘티 순위 업로드</DialogTitle>
             <DialogDescription>
-              &ldquo;멘티명, 멘티 순위&rdquo; 두 컬럼이 있는 엑셀(xlsx)을 올리면 멘티 명단·매칭 리스트의 순위가 갱신됩니다. 이름으로 찾으며, 동명이인은 고유번호 컬럼으로 구분합니다. 현재 범위(행사 전체/그룹)의 멘티만 대상입니다.
+              &ldquo;멘티명, 멘티 순위&rdquo; 두 컬럼이 있는 엑셀(xlsx)을 올리면 멘티 명단·매칭 리스트의 순위가 갱신됩니다. 순위 = 선발 순위이며 명단·매칭 리스트 정렬과 표시에만 쓰입니다. 이름으로 찾으며, 동명이인은 고유번호 컬럼으로 구분합니다. 현재 범위(행사 전체/그룹)의 멘티만 대상이고, 파일에 없는 멘티의 순위는 그대로 둡니다.
             </DialogDescription>
           </DialogHeader>
           <form onSubmit={submit} className="flex flex-col gap-3">
@@ -60,6 +60,7 @@ export function RankUploadButton() {
                 {result.notFound.length > 0 && <p className="mt-1 text-destructive">찾지 못함 {result.notFound.length}: {result.notFound.join(', ')}</p>}
                 {result.ambiguous.length > 0 && <p className="mt-1 text-amber-700">동명이인 {result.ambiguous.length}: {result.ambiguous.join(', ')}</p>}
                 {result.invalid.length > 0 && <p className="mt-1 text-amber-700">순위 형식 오류 {result.invalid.length}: {result.invalid.join(', ')}</p>}
+                {result.duplicate.length > 0 && <p className="mt-1 text-muted-foreground">중복 행(마지막 값 적용) {result.duplicate.length}: {result.duplicate.join(', ')}</p>}
               </div>
             )}
             <DialogFooter>

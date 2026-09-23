@@ -7,6 +7,7 @@ import { createStaffOrMentorAccount } from '@/lib/auth/admin-accounts';
 import { toStoredPhone } from '@/lib/auth/identifier';
 import { createCase } from '@/lib/workflow/cases';
 import { runProgramAutoMatch } from '@/lib/matching/auto-match';
+import { STAFF_GRADES } from '@/lib/auth/capabilities';
 
 /**
  * 멘토/멘티 엑셀 일괄 등록 (운영사) — 컬럼 재정의 2026-09-22 (P23).
@@ -101,7 +102,7 @@ export function buildTemplate(kind: ImportKind): Buffer {
           ['· 재배치 희망여부: 재배치(배정)를 희망하는 멘토 이름을 적습니다. 비우면 희망 없음.'],
         ]
       : []),
-    ...(kind === 'nextlab' ? [['· 등급: pl(메인 담당) / pm / sub_pm(부PM) / observer(옵저버). 비우면 pl.'], ['· 담당역할(운영사)은 운영사 담당자에게만 적용됩니다.']] : []),
+    ...(kind === 'nextlab' ? [['· 등급: pl(메인 담당) / pm / deputy_pm(부PM) / observer(옵저버). 비우면 pl.'], ['· 담당역할(운영사)은 운영사 담당자에게만 적용됩니다.']] : []),
   ]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, IMPORT_KIND_LABELS[kind]);
@@ -216,11 +217,12 @@ export async function commitImport(programId: string, kind: ImportKind, rows: Im
         } else {
           result.linked += 1;
         }
-        const gradeRaw = (v['등급(운영사)'] ?? '').trim().toLowerCase();
-        const grade = kind === 'nextlab' && ['pl', 'pm', 'sub_pm', 'observer'].includes(gradeRaw) ? gradeRaw : kind === 'nextlab' ? 'pl' : null;
-        await admin
+        const gradeRaw = (v['등급(운영사)'] ?? '').trim().toLowerCase().replace('sub_pm', 'deputy_pm').replace('부pm', 'deputy_pm');
+        const grade = kind === 'nextlab' ? ((STAFF_GRADES as string[]).includes(gradeRaw) ? gradeRaw : 'pl') : null;
+        const { error: memberError } = await admin
           .from('program_members')
           .upsert({ program_id: programId, user_id: userId, role: kind, grade, duty: kind === 'nextlab' ? v['담당역할(운영사)'] || null : null, note: v['비고'] || null, is_active: true, left_at: null }, { onConflict: 'program_id,user_id' });
+        if (memberError) throw new Error(`행사 소속 등록 실패: ${memberError.message}`);
       } else {
         if (!groupId) throw new Error('사업그룹을 선택하세요');
         const created = await createCase({

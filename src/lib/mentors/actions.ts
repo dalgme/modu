@@ -68,7 +68,7 @@ export async function checkPaymentDocsAction(input: { userIds: string[]; fields:
       metadata: { before: before ? { resume: before.resume_received_at, bankbook: before.bankbook_received_at, id_card: before.id_card_received_at } : null, after: patch, reauth: true } as Json,
     });
   }
-  revalidatePath('/nextlab/mentors');
+  revalidatePath('/nextlab/roster');
   revalidatePath('/nextlab/settlements');
   return { ok: true, message: `${ids.length}명의 지급서류 수령 상태를 저장했습니다.` };
 }
@@ -80,11 +80,18 @@ export async function setMentorGroupWithholdingAction(supportTypeId: string, use
   const admin = createAdminClient();
   const { data: g } = await admin.from('support_types').select('program_id').eq('id', supportTypeId).maybeSingle();
   if (!g || g.program_id !== op.programId) return { ok: false, error: '이 행사의 그룹이 아닙니다.' };
+  const { data: member } = await admin.from('program_members').select('role').eq('program_id', op.programId).eq('user_id', userId).maybeSingle();
+  if (!member || member.role !== 'mentor') return { ok: false, error: '이 행사의 멘토가 아닙니다.' };
+  // 원천징수 override 는 그룹 지정(is_active)과 별개다 — 기존 행이면 방식만 갱신, 없으면 **비활성(지정 아님)** 행으로 만든다.
+  // (정산 정책 해석 policy.ts 는 is_active 를 보지 않으므로 비활성 행도 override 로 적용된다)
   const { data: before } = await admin.from('support_type_members').select('withholding_method').eq('support_type_id', supportTypeId).eq('user_id', userId).maybeSingle();
-  const { error } = await admin.from('support_type_members').upsert({ support_type_id: supportTypeId, user_id: userId, member_role: 'mentor', is_active: true, withholding_method: method || null }, { onConflict: 'support_type_id,user_id' });
+  const { error } = before
+    ? await admin.from('support_type_members').update({ withholding_method: method || null }).eq('support_type_id', supportTypeId).eq('user_id', userId)
+    : await admin.from('support_type_members').insert({ support_type_id: supportTypeId, user_id: userId, member_role: 'mentor', is_active: false, withholding_method: method || null });
   if (error) return { ok: false, error: error.message };
-  await admin.from('audit_logs').insert({ actor_id: op.id, program_id: op.programId, action: 'settings.update', entity_type: 'support_type_members', entity_id: userId, metadata: { key: 'mentor_withholding', support_type_id: supportTypeId, before: before?.withholding_method ?? null, after: method || null } });
-  revalidatePath('/nextlab/mentors');
+  const { error: auditError } = await admin.from('audit_logs').insert({ actor_id: op.id, program_id: op.programId, action: 'settings.update', entity_type: 'support_type_members', entity_id: userId, metadata: { key: 'mentor_withholding', support_type_id: supportTypeId, before: before?.withholding_method ?? null, after: method || null } });
+  if (auditError) console.error('withholding audit failed:', auditError.message);
+  revalidatePath('/nextlab/roster');
   return { ok: true };
 }
 
@@ -99,10 +106,13 @@ export async function addMentorGroupReviewAction(input: { supportTypeId: string;
   const admin = createAdminClient();
   const { data: g } = await admin.from('support_types').select('program_id').eq('id', input.supportTypeId).maybeSingle();
   if (!g || g.program_id !== op.programId) return { ok: false, error: '이 행사의 그룹이 아닙니다.' };
+  const { data: member } = await admin.from('program_members').select('role').eq('program_id', op.programId).eq('user_id', input.mentorId).maybeSingle();
+  if (!member || member.role !== 'mentor') return { ok: false, error: '이 행사의 멘토가 아닙니다.' };
   const { error } = await admin.from('mentor_group_reviews').insert({ program_id: op.programId, support_type_id: input.supportTypeId, mentor_id: input.mentorId, author_id: op.id, rating, memo: memo || null, tags: (input.tags ?? []).slice(0, 10) });
   if (error) return { ok: false, error: error.message };
-  await admin.from('audit_logs').insert({ actor_id: op.id, program_id: op.programId, action: 'mentor.group_review', entity_type: 'users', entity_id: input.mentorId, metadata: { support_type_id: input.supportTypeId, rating, memo_len: memo.length } });
-  revalidatePath('/nextlab/mentors');
+  const { error: auditError } = await admin.from('audit_logs').insert({ actor_id: op.id, program_id: op.programId, action: 'mentor.group_review', entity_type: 'users', entity_id: input.mentorId, metadata: { support_type_id: input.supportTypeId, rating, memo_len: memo.length } });
+  if (auditError) console.error('group review audit failed:', auditError.message);
+  revalidatePath('/nextlab/roster');
   return { ok: true };
 }
 
@@ -112,8 +122,11 @@ export async function deleteMentorGroupReviewAction(id: string): Promise<Result>
   const admin = createAdminClient();
   const { data: row } = await admin.from('mentor_group_reviews').select('id, program_id').eq('id', id).maybeSingle();
   if (!row || row.program_id !== op.programId) return { ok: false, error: '이 행사의 기록이 아닙니다.' };
-  await admin.from('mentor_group_reviews').update({ deleted_at: new Date().toISOString() }).eq('id', id);
-  revalidatePath('/nextlab/mentors');
+  const { error } = await admin.from('mentor_group_reviews').update({ deleted_at: new Date().toISOString() }).eq('id', id);
+  if (error) return { ok: false, error: error.message };
+  const { error: auditError } = await admin.from('audit_logs').insert({ actor_id: op.id, program_id: op.programId, action: 'mentor.group_review_hide', entity_type: 'mentor_group_reviews', entity_id: id, metadata: {} });
+  if (auditError) console.error('group review hide audit failed:', auditError.message);
+  revalidatePath('/nextlab/roster');
   return { ok: true };
 }
 
@@ -126,7 +139,7 @@ export async function setMentorGroupDutyAction(supportTypeId: string, userId: st
   if (!g || g.program_id !== op.programId) return { ok: false, error: '이 행사의 그룹이 아닙니다.' };
   const { error } = await admin.from('support_type_members').upsert({ support_type_id: supportTypeId, user_id: userId, member_role: 'mentor', is_active: true, duty: duty.trim() || null }, { onConflict: 'support_type_id,user_id' });
   if (error) return { ok: false, error: error.message };
-  revalidatePath('/nextlab/mentors');
+  revalidatePath('/nextlab/roster');
   return { ok: true };
 }
 

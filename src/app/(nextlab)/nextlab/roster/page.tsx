@@ -5,7 +5,7 @@ import { requireContext } from '@/lib/programs/context';
 import { listProgramMembers } from '@/lib/data/members';
 import { listRosterColumns } from '@/lib/data/roster-columns';
 import { listCases } from '@/lib/data/cases';
-import { listProgramMentors } from '@/lib/data/mentors';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { listSupportTypes } from '@/lib/programs/data';
 import { getMentorFormStatus } from '@/lib/mentor-forms/data';
 import { featureEnabled } from '@/lib/platform/features';
@@ -137,19 +137,24 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   }
 
   if (tab === 'mentor') {
-    const [mentors, groups, formStatus] = await Promise.all([
-      listProgramMentors(ctx.programId, ctx.supportTypeId ?? null),
+    const [groups, formStatus] = await Promise.all([
       listSupportTypes(ctx.programId),
       featureEnabled(ctx.program.features, 'mentor_forms')
         ? getMentorFormStatus(ctx.programId, denyUnless(ctx, 'members.sensitive') === null)
         : Promise.resolve([]),
     ]);
     const groupList = groups.map((g) => ({ id: g.id, name: g.name }));
+    // 그룹 지정·원천징수 override 는 범위(그룹)와 무관하게 행사 전체 그룹 기준으로 보여준다 —
+    // listProgramMentors 는 범위 그룹만 남기므로 명부 행을 직접 조회 (P28)
+    const mentorIds = memberItems.filter((m) => m.role === 'mentor').map((m) => m.id);
+    const { data: rosterRows } = mentorIds.length
+      ? await createAdminClient().from('support_type_members').select('user_id, support_type_id, is_active, withholding_method').eq('member_role', 'mentor').in('user_id', mentorIds).in('support_type_id', groupList.map((g) => g.id))
+      : { data: [] as { user_id: string; support_type_id: string; is_active: boolean; withholding_method: string | null }[] };
     const mentorItems = memberItems.map((m) => {
-      const mr = mentors.find((x) => x.id === m.id);
+      const mine = (rosterRows ?? []).filter((r) => r.user_id === m.id);
       const mentorGroups: MentorGroupInfo[] = groupList.map((g) => {
-        const row = mr?.groups.find((r) => r.supportTypeId === g.id);
-        return { id: g.id, name: g.name, designated: mr?.designatedGroupIds.includes(g.id) ?? false, withholding: row ? ((row.withholdingMethod ?? '') as Withholding) : null };
+        const row = mine.find((r) => r.support_type_id === g.id);
+        return { id: g.id, name: g.name, designated: row?.is_active ?? false, withholding: row ? ((row.withholding_method ?? '') as Withholding) : null };
       });
       return { ...m, mentorGroups };
     });
@@ -211,7 +216,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     const { loadMatchingLists } = await import('@/lib/data/matching-lists');
     const [lists, groups] = await Promise.all([loadMatchingLists(ctx.programId, ctx.supportTypeId ?? null), listSupportTypes(ctx.programId)]);
     const groupList = groups.map((g) => ({ id: g.id, name: g.name }));
-    body = tab === 'mentor-match' ? <MentorMatchList rows={lists.mentorRows} groups={groupList} /> : <MenteeMatchList rows={lists.menteeRows} mentors={lists.mentorRows} toolbarExtra={<RankUploadButton />} />;
+    body = tab === 'mentor-match' ? <MentorMatchList rows={lists.mentorRows} groups={groupList} currentGroupId={ctx.supportTypeId ?? null} /> : <MenteeMatchList rows={lists.menteeRows} mentors={lists.mentorRows} toolbarExtra={<RankUploadButton />} />;
   }
 
   if (tab === 'register') {

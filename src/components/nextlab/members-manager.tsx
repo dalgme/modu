@@ -634,16 +634,13 @@ export function MembersManager({
   const [query, setQuery] = useState('');
   // 멘티 명단 정렬 — 순위 / 이름(가나다) / 진행현황 (P27-02)
   const [sortKey, setSortKey] = useState<'rank' | 'name' | 'progress'>(mode === 'mentee' ? 'rank' : 'name');
-  // 멘토 명단 표의 [정보 수정] 버튼이 이 컴포넌트의 편집 패널을 연다 (P25-15)
+  // 멘토 팝업 [명단에서 정보 수정] 링크(?edit=userId)로 들어오면 그 회원의 편집 패널을 바로 연다 (P28)
   useEffect(() => {
-    const open = (e: Event) => {
-      const id = (e as CustomEvent<{ id: string }>).detail?.id;
-      if (!id) return;
-      setEditing(id);
-      window.setTimeout(() => document.getElementById(`member-row-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
-    };
-    window.addEventListener('modu:edit-member', open);
-    return () => window.removeEventListener('modu:edit-member', open);
+    const id = new URLSearchParams(window.location.search).get('edit');
+    if (!id || !members.some((m) => m.id === id)) return;
+    setEditing(id);
+    window.setTimeout(() => document.getElementById(`member-row-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const filtered = members
     .filter((m) => MODE_MATCH[mode](m.role))

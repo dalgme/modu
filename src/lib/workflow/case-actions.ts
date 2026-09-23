@@ -42,10 +42,13 @@ async function caseInProgram(caseId: string, programId: string): Promise<boolean
 async function recordAdoption(caseId: string, mentorId: string, actorId: string, programId: string): Promise<void> {
   const rank = await markRecommendationAdopted(caseId, mentorId);
   // 추천 목록에 있던 멘토를 채택했으면 매칭 방식 = 추천 (P27-08). 아니면 assignMentor 기본값(수동) 유지.
+  const admin = createAdminClient();
   if (rank !== null && rank !== undefined) {
-    await createAdminClient().from('mentor_assignments').update({ match_method: 'recommended' }).eq('case_id', caseId).eq('mentor_id', mentorId).eq('is_active', true);
+    const { error } = await admin.from('mentor_assignments').update({ match_method: 'recommended' }).eq('case_id', caseId).eq('mentor_id', mentorId).eq('is_active', true);
+    if (error) console.error('match_method update failed:', error.message);
   }
-  await createAdminClient().from('audit_logs').insert({ actor_id: actorId, program_id: programId, action: 'match.adoption', entity_type: 'cases', entity_id: caseId, metadata: { mentor_id: mentorId, recommended_rank: rank } });
+  const { error: auditError } = await admin.from('audit_logs').insert({ actor_id: actorId, program_id: programId, action: 'match.adoption', entity_type: 'cases', entity_id: caseId, metadata: { mentor_id: mentorId, recommended_rank: rank } });
+  if (auditError) console.error('adoption audit failed:', auditError.message);
 }
 
 /** 운영사: 멘티(케이스) 등록 (T1) — P23 컬럼 재정의: 닉네임·고유번호·권역·유형·희망분야·재배치 희망·비고를 프로필에 함께 저장 */

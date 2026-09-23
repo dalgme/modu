@@ -286,7 +286,7 @@ export function DashboardV2(p: DashboardV2Props) {
   const unassigned = perf.byStatus.registered + perf.byStatus.reassignment_pending;
   const assigned = Math.max(0, active - unassigned);
   const boardTotal = p.board.inquiries + p.board.posts + p.board.messages;
-  const missed = m.backlog.unansweredSurveys + m.backlog.unsignedRounds + p.unconfirmedAssignments;
+  const missed = m.backlog.unansweredSurveys + m.backlog.unsignedRounds + p.unconfirmedAssignments + m.backlog.mentorsMissingDocs;
 
   return (
     <div className="flex flex-col gap-6">
