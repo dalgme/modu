@@ -49,9 +49,9 @@ export async function checkPaymentDocsAction(input: { userIds: string[]; fields:
   const { data: existing } = await admin.from('mentor_payment_docs').select('*').eq('program_id', op.programId).in('user_id', ids);
   const byUser = new Map((existing ?? []).map((d) => [d.user_id, d]));
   const patch: Record<string, string | null> = {};
-  if (input.fields.resume !== undefined) patch.resume_received_at = input.fields.resume ? now : null;
-  if (input.fields.bankbook !== undefined) patch.bankbook_received_at = input.fields.bankbook ? now : null;
-  if (input.fields.idCard !== undefined) patch.id_card_received_at = input.fields.idCard ? now : null;
+  if (input.fields.resume !== undefined) { patch.resume_received_at = input.fields.resume ? now : null; patch.resume_state = input.fields.resume ? 'O' : null; }
+  if (input.fields.bankbook !== undefined) { patch.bankbook_received_at = input.fields.bankbook ? now : null; patch.bankbook_state = input.fields.bankbook ? 'O' : null; }
+  if (input.fields.idCard !== undefined) { patch.id_card_received_at = input.fields.idCard ? now : null; patch.id_card_state = input.fields.idCard ? 'O' : null; }
   if (Object.keys(patch).length === 0 && input.note === undefined) return { ok: false, error: '변경할 항목을 선택하세요.' };
 
   for (const uid of ids) {

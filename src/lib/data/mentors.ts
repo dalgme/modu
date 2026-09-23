@@ -27,12 +27,18 @@ export interface MentorRosterItem {
     resume: string | null;
     bankbook: string | null;
     idCard: string | null;
+    /** 수령 상태 O/X (null = '-') — P25-17 */
+    states: { resume: 'O' | 'X' | null; bankbook: 'O' | 'X' | null; idCard: 'O' | 'X' | null };
     note: string | null;
     /** 멘토 본인이 업로드한 파일 (제출) — 수령 체크와 별개 상태 */
     uploads: { resume: PaymentDocUpload | null; bankbook: PaymentDocUpload | null; idCard: PaymentDocUpload | null };
   };
-  /** 그룹 명부 (그룹별 원천징수 override) */
+  /** 그룹 명부 (그룹별 원천징수 override) — 조회 범위(그룹)로 좁혀짐 */
   groups: { supportTypeId: string; supportTypeName: string; withholdingMethod: string | null; isActive: boolean; duty: string | null }[];
+  /** 그룹 지정 전체 (범위 무관) — 비어 있으면 모든 그룹에서 사용 (P25) */
+  designatedGroupIds: string[];
+  /** 이 행사(범위)에서의 분야 */
+  expertise: string[];
   reviews: (Tables<'mentor_group_reviews'> & { authorName: string; supportTypeName: string })[];
   reviewAvg: number | null;
 }
@@ -48,7 +54,7 @@ export async function listProgramMentors(programId: string, supportTypeId?: stri
   if (mentors.length === 0) return [];
   const mids = mentors.map((m) => m.id);
 
-  const [{ data: groups }, { data: roster }, { data: assigns }, { data: logs }, { data: settlements }, { data: docs }, { data: sigs }, { data: reviews }, { data: cases }] = await Promise.all([
+  const [{ data: groups }, { data: roster }, { data: assigns }, { data: logs }, { data: settlements }, { data: docs }, { data: sigs }, { data: reviews }, { data: cases }, { data: mentorProfiles }] = await Promise.all([
     admin.from('support_types').select('id, name').eq('program_id', programId),
     admin.from('support_type_members').select('*').in('user_id', mids),
     admin.from('mentor_assignments').select('mentor_id, case_id, is_active').in('mentor_id', mids),
@@ -58,7 +64,9 @@ export async function listProgramMentors(programId: string, supportTypeId?: stri
     admin.from('mentor_signatures').select('user_id').in('user_id', mids),
     admin.from('mentor_group_reviews').select('*').eq('program_id', programId).in('mentor_id', mids).is('deleted_at', null).order('created_at', { ascending: false }),
     admin.from('cases').select('id, support_type_id').eq('program_id', programId),
+    admin.from('mentor_profiles').select('user_id, expertise').eq('program_id', programId).in('user_id', mids),
   ]);
+  const expertiseByUser = new Map((mentorProfiles ?? []).map((p) => [p.user_id, p.expertise ?? []]));
   const groupName = new Map((groups ?? []).map((g) => [g.id, g.name]));
   const groupIds = new Set((groups ?? []).map((g) => g.id));
   const caseGroup = new Map((cases ?? []).map((c) => [c.id, c.support_type_id]));
@@ -111,10 +119,17 @@ export async function listProgramMentors(programId: string, supportTypeId?: stri
           resume: d?.resume_received_at ?? null,
           bankbook: d?.bankbook_received_at ?? null,
           idCard: d?.id_card_received_at ?? null,
+          states: {
+            resume: (d?.resume_state as 'O' | 'X' | null) ?? null,
+            bankbook: (d?.bankbook_state as 'O' | 'X' | null) ?? null,
+            idCard: (d?.id_card_state as 'O' | 'X' | null) ?? null,
+          },
           note: d?.note ?? null,
           uploads: uploadsByUser.get(m.id) ?? { resume: null, bankbook: null, idCard: null },
         },
         groups: myGroups.map((r) => ({ supportTypeId: r.support_type_id, supportTypeName: groupName.get(r.support_type_id) ?? '-', withholdingMethod: r.withholding_method, isActive: r.is_active, duty: r.duty })),
+        designatedGroupIds: (roster ?? []).filter((r) => r.user_id === m.id && r.is_active && groupIds.has(r.support_type_id)).map((r) => r.support_type_id),
+        expertise: expertiseByUser.get(m.id) ?? [],
         reviews: myReviews,
         reviewAvg: ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10 : null,
       };

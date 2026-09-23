@@ -31,6 +31,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ViewAsStartButton } from '@/components/nextlab/view-as-start-button';
+import { MentorName } from '@/components/common/mentor-name';
+import { RoundDots } from '@/components/common/round-dots';
+import { Search } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -543,7 +546,9 @@ export interface MenteeProgressItem {
   withdrawn: boolean;
   roundsDone: number;
   requiredRounds: number;
+  mentorId: string | null;
   mentorName: string | null;
+  mentorActiveCount: number;
   /** 만족도 조사 — none: 미개시 / open: 개시(응답 대기) / done: 응답 완료 */
   surveyStatus: 'none' | 'open' | 'done';
 }
@@ -597,7 +602,22 @@ export function MembersManager({
   const tab = mode;
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
-  const filtered = members.filter((m) => MODE_MATCH[mode](m.role));
+  const [query, setQuery] = useState('');
+  // 멘토 명단 표의 [정보 수정] 버튼이 이 컴포넌트의 편집 패널을 연다 (P25-15)
+  useEffect(() => {
+    const open = (e: Event) => {
+      const id = (e as CustomEvent<{ id: string }>).detail?.id;
+      if (!id) return;
+      setEditing(id);
+      window.setTimeout(() => document.getElementById(`member-row-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50);
+    };
+    window.addEventListener('modu:edit-member', open);
+    return () => window.removeEventListener('modu:edit-member', open);
+  }, []);
+  const filtered = members
+    .filter((m) => MODE_MATCH[mode](m.role))
+    .filter((m) => !query.trim() || m.name.includes(query.trim()) || (m.phone ?? '').includes(query.trim()))
+    .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   const tabColumns = useMemo(
     () => (tab === 'mentor' || tab === 'mentee' ? rosterColumns.filter((c) => c.target === tab) : []),
     [tab, rosterColumns],
@@ -623,7 +643,7 @@ export function MembersManager({
   };
 
   const showProgress = mode === 'mentee' && !!progress;
-  const colSpan = 6 + (showProgress ? 1 : 0) + tabColumns.length + 1;
+  const colSpan = 6 + (showProgress ? 2 : 0) + tabColumns.length + 1;
 
   return (
     <div className="flex flex-col gap-6">
@@ -635,6 +655,14 @@ export function MembersManager({
         {selectedMembers.length > 0 && (
           <LoginGuideBar selected={selectedMembers} onDone={() => setSelected(new Set())} />
         )}
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="이름·휴대폰 검색" className="h-9 w-52 pl-8" />
+          </div>
+          <span className="text-xs text-muted-foreground">{filtered.length}명 · 가나다순</span>
+        </div>
 
         <div className="overflow-x-auto rounded-lg border bg-card">
           <Table>
@@ -648,7 +676,8 @@ export function MembersManager({
                 <TableHead>소속</TableHead>
                 <TableHead>역할</TableHead>
                 <TableHead>상태</TableHead>
-                {showProgress && <TableHead>진행현황</TableHead>}
+                {showProgress && <TableHead className="whitespace-nowrap">라운드 정보</TableHead>}
+                {showProgress && <TableHead className="whitespace-nowrap">진행현황</TableHead>}
                 {tabColumns.map((c) => (
                   <TableHead key={c.id} className="whitespace-nowrap text-xs">{c.name}</TableHead>
                 ))}
@@ -665,7 +694,7 @@ export function MembersManager({
               ) : (
                 filtered.map((m) => (
                   <Fragment key={m.id}>
-                    <TableRow>
+                    <TableRow id={`member-row-${m.id}`}>
                       <TableCell>
                         <input
                           type="checkbox"
@@ -675,10 +704,8 @@ export function MembersManager({
                         />
                       </TableCell>
                       <TableCell className="font-medium">
-                        {m.name}
-                        {m.phone && (
-                          <span className="ml-1 text-xs text-muted-foreground">· {m.phone}</span>
-                        )}
+                        {m.role === 'mentor' ? <MentorName id={m.id} name={m.name} count={m.assignedCount} /> : m.name}
+                        {m.phone && <div className="text-xs font-normal text-muted-foreground">{m.phone}</div>}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{m.email ?? '-'}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
@@ -686,7 +713,7 @@ export function MembersManager({
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col items-start gap-1">
-                          <Badge variant="secondary">
+                          <Badge variant="secondary" className="whitespace-nowrap">
                             {ROLE_LABELS[m.role]}
                             {m.role === 'nextlab' && <span className="ml-1 font-normal text-muted-foreground">· {GRADE_LABELS[(m.grade as StaffGrade | null) ?? 'pl']}</span>}
                           </Badge>
@@ -722,26 +749,36 @@ export function MembersManager({
                         </div>
                       </TableCell>
                       {showProgress && (
+                        <TableCell className="whitespace-nowrap text-xs">
+                          {(progress?.[m.id] ?? []).length === 0 ? (
+                            <span className="text-muted-foreground">케이스 없음</span>
+                          ) : (
+                            <div className="flex flex-col gap-1.5">
+                              {(progress?.[m.id] ?? []).map((p) => (
+                                <Link key={p.caseId} href={`/nextlab/cases/${p.caseId}`} className="hover:underline">{p.groupName ?? '-'}</Link>
+                              ))}
+                            </div>
+                          )}
+                        </TableCell>
+                      )}
+                      {showProgress && (
                         <TableCell>
                           <div className="flex flex-col gap-1">
                             {!m.is_active && (
                               <Badge variant="destructive" className="w-fit text-[10px]" title="비활성 회원 — 진행현황에 비활성화로 표시됩니다.">비활성화</Badge>
                             )}
-                            {(progress?.[m.id] ?? []).length === 0 ? (
-                              <span className="text-[11px] text-muted-foreground">케이스 없음</span>
-                            ) : (
-                              (progress?.[m.id] ?? []).map((p) => (
-                                <div key={p.caseId} className="flex flex-wrap items-center gap-1.5">
-                                  <Link href={`/nextlab/cases/${p.caseId}`} className="text-[11px] leading-tight hover:underline">
-                                    <span className="text-muted-foreground">{p.groupName ?? '-'}</span>{' '}
-                                    <span className={cn('font-medium', p.withdrawn && 'text-destructive')}>{p.withdrawn ? '중도 종료' : p.statusLabel}</span>{' '}
-                                    <span className="tabular-nums">{p.roundsDone}/{p.requiredRounds}회</span>
-                                    {p.mentorName && <span className="text-muted-foreground"> · {p.mentorName}</span>}
-                                  </Link>
-                                  <SurveyControl item={p} />
-                                </div>
-                              ))
-                            )}
+                            {(progress?.[m.id] ?? []).map((p) => (
+                              <div key={p.caseId} className="flex flex-wrap items-center gap-1.5 text-[11px] leading-tight">
+                                <Link href={`/nextlab/cases/${p.caseId}`} className={cn('font-medium hover:underline', p.withdrawn && 'text-destructive')}>{p.withdrawn ? '중도 종료' : p.statusLabel}</Link>
+                                <RoundDots done={p.roundsDone} required={p.requiredRounds} />
+                                {p.mentorName && (
+                                  <span className="text-muted-foreground">
+                                    · <MentorName id={p.mentorId} name={p.mentorName} count={p.mentorActiveCount} className="text-[11px]" />
+                                  </span>
+                                )}
+                                <SurveyControl item={p} />
+                              </div>
+                            ))}
                           </div>
                         </TableCell>
                       )}

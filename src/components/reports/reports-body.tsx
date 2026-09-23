@@ -15,6 +15,9 @@ import { WITHHOLDING_LABELS } from '@/lib/settlement/compute';
 import { MetricsTiles } from '@/components/reports/metrics-tiles';
 import { SettlementsTable } from '@/components/settlement/settlements-table';
 import { CaseTable } from '@/components/cases/case-table';
+import { MentorsRoster } from '@/components/nextlab/mentors-roster';
+import type { MentorRosterItem } from '@/lib/data/mentors';
+import { MentorName } from '@/components/common/mentor-name';
 import type { Branding } from '@/lib/programs/branding';
 import { formatKRW } from '@/lib/utils/format';
 
@@ -42,6 +45,7 @@ export function ReportsBody({
   exportHref,
   groupFilter,
   casesView = 'mentee',
+  mentorsRoster,
   budget,
   delays,
   trend,
@@ -55,6 +59,8 @@ export function ReportsBody({
   exportHref: string;
   groupFilter?: { current: string | null; options: { id: string; name: string }[] };
   casesView?: 'mentee' | 'mentor';
+  /** 멘토 진행현황 = 회원 명단의 멘토 명단과 동일 표 (P25-16). 발주처는 열람 전용 */
+  mentorsRoster?: { mentors: MentorRosterItem[]; groups: { id: string; name: string }[] };
   /** 예산 집행 게이지 (개요 탭, P22) */
   budget?: BudgetOverview;
   /** 지연 케이스 목록 (잔여 과업 탭, P22) */
@@ -153,6 +159,8 @@ export function ReportsBody({
               </div>
               <CaseTable items={cases} basePath={`${base}/cases`} branding={branding} showGroup showLegend />
             </div>
+          ) : mentorsRoster ? (
+            <MentorsRoster mentors={mentorsRoster.mentors} groups={mentorsRoster.groups} readOnly={base === '/institution'} caseHrefBase={`${base}/cases`} />
           ) : (
             <MentorsTable m={m} base={base} />
           )}
@@ -251,7 +259,7 @@ function MentorsTable({ m, base }: { m: ProgramMetrics; base: '/nextlab' | '/ins
         <tbody>
           {m.mentors.map((x) => (
             <tr key={x.id} className="border-b last:border-0">
-              <td className="px-3 py-2 font-medium">{x.name}</td>
+              <td className="px-3 py-2 font-medium"><MentorName id={x.id} name={x.name} count={x.activeCases} caseHrefBase={`${base}/cases`} /></td>
               <td className="px-3 py-2 text-right tabular-nums">{x.cases} ({x.activeCases})</td>
               <td className="px-3 py-2 text-right tabular-nums">{x.roundsDone}</td>
               <td className="px-3 py-2 text-right tabular-nums">{x.roundsCompleted}</td>

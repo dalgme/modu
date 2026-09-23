@@ -138,9 +138,10 @@ export async function GET(request: Request): Promise<Response> {
         '담당 멘티': m.activeCases,
         '배정 상태': m.activeCases > 0 ? '확정' : 'Pool 대기',
         '이행 회차': m.totalRounds,
-        이력서: m.paymentDocs.resume ? '수령' : '미수령',
-        통장사본: m.paymentDocs.bankbook ? '수령' : '미수령',
-        신분증사본: m.paymentDocs.idCard ? '수령' : '미수령',
+        서명: m.signatureRegistered ? 'O' : '-',
+        이력서: m.paymentDocs.states.resume ?? '-',
+        통장사본: m.paymentDocs.states.bankbook ?? '-',
+        신분증사본: m.paymentDocs.states.idCard ?? '-',
       };
     });
   } else {

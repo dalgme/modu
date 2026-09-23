@@ -111,7 +111,9 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         withdrawn: c.status === 'withdrawn',
         roundsDone: c.roundsDone,
         requiredRounds: c.requiredRounds,
+        mentorId: c.mentorId,
         mentorName: c.mentorName,
+        mentorActiveCount: c.mentorActiveCount,
         surveyStatus: responded.has(c.id) ? 'done' : c.survey_opened_at ? 'open' : 'none',
       });
     }
