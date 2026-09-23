@@ -4,6 +4,7 @@ import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { listBatches, listSettlements, BATCH_STATUS_LABELS } from '@/lib/data/settlements';
 import { SettlementsTable } from '@/components/settlement/settlements-table';
+import { SettlementFlowStrip } from '@/components/settlement/settlement-flow-strip';
 import { formatDate, formatKRW } from '@/lib/utils/format';
 
 export const dynamic = 'force-dynamic';
@@ -18,6 +19,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     listBatches(ctx.programId),
   ]);
   const drafts = batches.filter((b) => b.status === 'draft');
+  const submitted = batches.filter((b) => b.status === 'submitted');
 
   return (
     <main className="flex flex-col gap-6">
@@ -27,6 +29,13 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
           검수 승인(종결)·중도 종료 시 확정된 정산 건을 골라 지급 품의를 편성하고 발주처에 제출합니다. {ctx.group ? `(${ctx.group.name})` : ''}
         </p>
       </div>
+
+      <SettlementFlowStrip current={drafts.length > 0 ? 3 : 2} />
+      {submitted.length > 0 && (
+        <p className="rounded-lg border border-sky-300 bg-sky-50/60 px-3 py-2 text-sm text-sky-900 dark:bg-sky-950/20 dark:text-sky-100">
+          발주처 정산 확인을 기다리는 품의 {submitted.length}건이 있습니다. 확인이 끝나면 품의 상세에서 [지급 완료]를 눌러 케이스를 종결하세요.
+        </p>
+      )}
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center gap-2">
@@ -61,7 +70,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
               {batches.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-3 py-6 text-center text-muted-foreground">
-                    품의가 없습니다. 위에서 지급 대기 건을 선택해 편성하세요.
+                    아직 품의가 없습니다. 지급 대기 건이 생기면(케이스 상세에서 검수 승인) 위 목록에서 체크해 [품의 편성]을 누르세요.
                   </td>
                 </tr>
               )}

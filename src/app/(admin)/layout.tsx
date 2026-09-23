@@ -4,11 +4,16 @@ import { AppHeader } from '@/components/common/app-header';
 import { NextlabNav } from '@/components/nextlab/nextlab-nav';
 import { InstitutionNav } from '@/components/nav/institution-nav';
 import { GRADE_LABELS } from '@/lib/auth/capabilities';
+import { ScopeSwitcher } from '@/components/common/scope-switcher';
+import { listMyGroups } from '@/lib/programs/data';
 
 // 관리 화면(감사로그·설정·문자발송)은 발주처·운영사 공용. 각 역할의 상단 탭을 유지한다.
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const profile = await requireStaff();
   const ctx = await requireContext(profile);
+  // 운영사·발주처 콘솔과 같은 범위 스위처 — 문자 수신자 목록 등이 이 범위로 필터된다 (P28)
+  const groups = await listMyGroups(ctx.programId, { id: profile.id, role: ctx.role, isPlatformAdmin: false });
+  const scopeGroups = groups.map((g) => ({ id: g.group.id, code: g.group.code, name: g.group.name, caseCount: g.caseCount, ended: g.group.status !== 'active' }));
   return (
     <div className="min-h-screen bg-muted/20">
       <AppHeader
@@ -20,7 +25,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       />
       {profile.role === 'nextlab' && <NextlabNav />}
       {profile.role === 'institution' && <InstitutionNav />}
-      <div className="mx-auto max-w-6xl px-4 py-6">{children}</div>
+      <ScopeSwitcher groups={scopeGroups} currentGroupId={ctx.supportTypeId} emptyHref={profile.role === 'nextlab' ? '/nextlab/settings?tab=groups' : undefined} />
+      <div className="mx-auto max-w-6xl px-4 py-6 pb-24 md:pb-6">{children}</div>
     </div>
   );
 }

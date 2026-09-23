@@ -9,7 +9,7 @@ import { getImpersonation } from '@/lib/auth/impersonation';
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { generateRecommendations, markRecommendationAdopted, type RecommendationItem } from '@/lib/matching/recommend';
-import { afterAssignmentConfirmed } from '@/lib/matching/auto-match';
+import { afterAssignmentConfirmed, rebuildAutoRecommendations } from '@/lib/matching/auto-match';
 import { assignMentor } from '@/lib/workflow/cases';
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -34,6 +34,20 @@ export async function recommendMentorsAction(caseId: string): Promise<{ ok: true
   const r = await generateRecommendations(caseId, op.id);
   if (r.ok) revalidatePath(`/nextlab/cases/${caseId}`);
   return r;
+}
+
+/** 운영사: 희망분야 기반 자동 추천 다시 계산 (추천이 비었거나 멘토 등록 이후) — 자동 배정 없음 */
+export async function rebuildRecommendationsAction(caseId: string): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
+  const op = await operatorCase(caseId);
+  if ('error' in op) return { ok: false, error: op.error };
+  try {
+    const count = await rebuildAutoRecommendations(caseId, op.id);
+    revalidatePath('/nextlab/roster');
+    revalidatePath(`/nextlab/cases/${caseId}`);
+    return { ok: true, count };
+  } catch (err) {
+    return { ok: false, error: `추천 재계산 실패: ${err instanceof Error ? err.message : String(err)}` };
+  }
 }
 
 const list = z.array(z.string().trim().min(1).max(40)).max(30).default([]);

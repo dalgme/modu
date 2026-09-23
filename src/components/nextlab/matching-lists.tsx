@@ -8,7 +8,7 @@ import { CheckCircle2, Circle, FileCheck2, Mail, MessageSquare, Phone, RefreshCw
 import { ExcelButton } from '@/components/common/excel-button';
 import type { MenteeMatchRow, MentorMatchRow } from '@/lib/data/matching-lists';
 import { MATCH_METHOD_LABELS, type PaymentDocSetState } from '@/lib/matching/labels';
-import { confirmMatchAction, manualMatchAction } from '@/lib/matching/actions';
+import { confirmMatchAction, manualMatchAction, rebuildRecommendationsAction } from '@/lib/matching/actions';
 import { addMentorGroupReviewAction, deleteMentorGroupReviewAction, setPaymentDocSetStateAction } from '@/lib/mentors/actions';
 import { reassignMentorAction, recallMentorAction } from '@/lib/workflow/case-actions';
 import { matchedPairs } from '@/lib/matching/eligibility';
@@ -281,7 +281,7 @@ export function MentorMatchList({ rows, groups, currentGroupId = null, caseHrefB
               {m.email && <span className="inline-flex items-center gap-1 whitespace-nowrap"><Mail className="h-3 w-3" />{m.email}</span>}
             </span>
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${m.mentees.length > 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
-              {m.mentees.length > 0 ? `담당 멘티 ${m.mentees.length}` : '미배정 (Pool)'}
+              {m.mentees.length > 0 ? `담당 멘티 ${m.mentees.length}` : '미배정 (배정 대기)'}
             </span>
           </div>
           {m.mentees.length > 0 && (
@@ -412,7 +412,7 @@ export function MentorProgressTable({ rows, caseHrefBase = '/nextlab/cases', sho
                 <tr key={m.mentorId} className="border-b align-top last:border-0">
                   <td className="px-3 py-2 whitespace-nowrap"><MentorName id={m.mentorId} name={m.mentorName} count={m.mentees.filter((c) => !c.withdrawn).length} caseHrefBase={caseHrefBase} /></td>
                   <td className="px-3 py-2">
-                    {byGroup.size === 0 ? <span className="text-muted-foreground">미배정 (Pool)</span> : (
+                    {byGroup.size === 0 ? <span className="text-muted-foreground">미배정 (배정 대기)</span> : (
                       <div className="flex flex-wrap gap-1">
                         {Array.from(byGroup.entries()).map(([g, n]) => <span key={g} className="rounded bg-violet-100 px-1.5 py-0.5 text-[11px] font-semibold text-violet-800 dark:bg-violet-950 dark:text-violet-200">{g} ({n})</span>)}
                       </div>
@@ -512,7 +512,7 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
         }
       />
       <p className="text-xs text-muted-foreground">
-        재배치 희망 멘토가 후보 자격(그룹 지정·라운드 정원)이면 등록 시 자동 확정됩니다. 아니면 희망분야 <b>1순위 → 2순위 → …</b> 순서로 후보 멘토 최대 3명이 추천되며(높은 순위 일치 우선) [매칭 확정]을 누르면 배정됩니다.
+        희망 멘토(엑셀 &lsquo;재배치 희망여부&rsquo;)가 후보 자격(그룹 지정·라운드 정원)이면 등록 시 자동 확정됩니다. 아니면 희망분야 <b>1순위 → 2순위 → …</b> 순서로 후보 멘토 최대 3명이 추천되며(높은 순위 일치 우선) [매칭 확정]을 누르면 배정됩니다.
         추천 3명이 모두 맞지 않으면 [수동 검색]으로 멘토를 직접 골라 매칭하세요. 방식 = 자동(멘티 희망) / 추천 / 수동. 추천 옆 <b>(n)</b>은 그 멘토의 현재 확정 멘티 수입니다.
       </p>
       <div className="overflow-x-auto rounded-xl border bg-background">
@@ -542,7 +542,7 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
                   <td className="px-3 py-2">
                     <Link href={`${caseHrefBase}/${r.caseId}`} className="font-medium text-primary hover:underline">{r.label}</Link>
                     <div className="mt-1"><Chips items={r.needs} tone="amber" max={6} /></div>
-                    {r.preferredMentor && <p className="mt-0.5 text-[11px] text-muted-foreground">재배치 희망: {r.preferredMentor}</p>}
+                    {r.preferredMentor && <p className="mt-0.5 text-[11px] text-muted-foreground">희망 멘토: {r.preferredMentor}</p>}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.groupName ?? '-'}</td>
                   {unassigned ? (
@@ -581,7 +581,26 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
                           </tbody>
                         </table>
                       ) : (
-                        <span className="text-muted-foreground">미배정 · 추천 없음</span>
+                        <span className="inline-flex flex-wrap items-center gap-2 text-muted-foreground">
+                          미배정 · 추천 없음
+                          {r.canConfirm && (
+                            <button
+                              type="button"
+                              disabled={pending}
+                              className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-semibold text-foreground hover:bg-accent disabled:opacity-50"
+                              title="희망분야·희망 멘토 기준으로 미배정 멘토 후보를 다시 찾습니다 (자동 배정 없음)"
+                              onClick={() =>
+                                start(async () => {
+                                  const res = await rebuildRecommendationsAction(r.caseId);
+                                  toast(res.ok ? { title: res.count > 0 ? `후보 ${res.count}명을 추천했습니다.` : '조건에 맞는 미배정 멘토가 없습니다. 수동 검색을 이용하세요.' } : { title: res.error, variant: 'destructive' });
+                                  if (res.ok) router.refresh();
+                                })
+                              }
+                            >
+                              <RefreshCw className="h-3 w-3" /> 추천 다시 계산
+                            </button>
+                          )}
+                        </span>
                       )}
                       {r.canConfirm && (
                         <div className="mt-1.5">
@@ -646,7 +665,7 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
               {pairsFor.matchMethod === 'auto_preferred' && (
                 <div className="flex flex-col items-center gap-1 rounded-xl bg-brand-coral px-4 py-3 text-center text-white shadow">
                   <span className="text-lg font-extrabold tracking-tight">재배정 희망 자동 매칭</span>
-                  <span className="text-xs opacity-90">멘티가 재배치 희망 멘토로 &lsquo;{pairsFor.preferredMentor ?? pairsFor.mentorName}&rsquo;을(를) 지정해 등록 시 자동 확정되었습니다.</span>
+                  <span className="text-xs opacity-90">멘티가 희망 멘토로 &lsquo;{pairsFor.preferredMentor ?? pairsFor.mentorName}&rsquo;을(를) 지정해 등록 시 자동 확정되었습니다.</span>
                 </div>
               )}
               <table className="w-full text-xs">

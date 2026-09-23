@@ -123,7 +123,7 @@ export function MenteeInvitePanel({
             {state.email && <p className="mt-1 text-muted-foreground">{state.email}</p>}
             {state.tempPassword && (
               <>
-                <p className="mt-2 font-medium text-primary">임시 비밀번호 (한 번만 표시됩니다)</p>
+                <p className="mt-2 font-medium text-primary">임시 비밀번호 (= 본인 휴대폰 번호 숫자만 · 최초 로그인 시 변경)</p>
                 <code className="mt-1 block break-all rounded bg-background px-2 py-1 font-mono text-base">
                   {state.tempPassword}
                 </code>

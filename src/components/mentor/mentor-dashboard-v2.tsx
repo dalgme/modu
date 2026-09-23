@@ -134,8 +134,14 @@ export function MentorDashboardV2({
                       <span className="text-[11px] leading-snug text-muted-foreground">{t.action.hint}</span>
                       {(t.menteePhone || t.menteeEmail) && (
                         <span className="flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
-                          {t.menteePhone && <span className="inline-flex items-center gap-1"><Phone className="h-3 w-3" />{t.menteePhone}</span>}
-                          {t.menteeEmail && <span className="inline-flex items-center gap-1"><Mail className="h-3 w-3" />{t.menteeEmail}</span>}
+                          {t.menteePhone && (
+                            <a href={`tel:${t.menteePhone.replace(/\D/g, '')}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-primary hover:underline"><Phone className="h-3 w-3" />{t.menteePhone}</a>
+                          )}
+                          {t.menteePhone && (
+                            <a href={`sms:${t.menteePhone.replace(/\D/g, '')}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-primary hover:underline">문자</a>
+                          )}
+                          {t.menteeEmail && <a href={`mailto:${t.menteeEmail}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 hover:underline"><Mail className="h-3 w-3" />{t.menteeEmail}</a>}
+                          <Link href={`/mentor/qna?tab=messages&case=${t.caseId}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-primary hover:underline">메시지</Link>
                         </span>
                       )}
                     </span>

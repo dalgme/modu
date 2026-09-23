@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { getProgramSmsSettingsView } from '@/lib/sms/secrets';
@@ -24,6 +25,7 @@ export default async function Page() {
   return (
     <main className="flex flex-col gap-5">
       <div>
+        <Link href="/nextlab/settings" className="text-xs text-muted-foreground hover:underline">← 운영 설정</Link>
         <h1 className="text-2xl font-semibold">문자 API 설정 (행사별)</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {ctx.program.name} 의 문자 발송 자격증명입니다. 값은 저장 즉시 암호화되고 다시 표시되지 않습니다. 변경에는 비밀번호 재인증이 필요합니다.

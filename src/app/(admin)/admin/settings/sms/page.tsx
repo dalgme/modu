@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { requireStaff } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import {
@@ -7,13 +8,12 @@ import {
   getSolapiMessages,
 } from '@/lib/notifications/solapi';
 import { listSmsRecipients } from '@/lib/data/members';
-import { getMentorReminderConfig, getMenteeGuideSmsTemplate } from '@/lib/data/app-settings';
+import { getMentorReminderConfig } from '@/lib/data/app-settings';
 import { listMentorsNeedingWeeklyReminder } from '@/lib/notifications/mentor-weekly-reminder';
 import { listScheduledMessages } from '@/lib/data/scheduled-messages';
 import { SmsComposer } from '@/components/admin/sms-composer';
 import { SmsSendList } from '@/components/admin/sms-send-list';
 import { MentorReminderCard } from '@/components/admin/mentor-reminder-card';
-import { MenteeGuideSmsCard } from '@/components/admin/mentee-guide-sms-card';
 import { ScheduledMessagesList } from '@/components/admin/scheduled-messages-list';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -41,11 +41,10 @@ export default async function Page() {
     : [null, null, []];
 
   // 예약·자동안내문 관련 데이터 (Solapi 연동 여부와 무관하게 DB 조회)
-  const [reminderConfig, eligibleMentors, scheduled, menteeGuideTemplate] = await Promise.all([
+  const [reminderConfig, eligibleMentors, scheduled] = await Promise.all([
     getMentorReminderConfig(),
     listMentorsNeedingWeeklyReminder(),
     listScheduledMessages(),
-    getMenteeGuideSmsTemplate(),
   ]);
   const eligiblePreview = eligibleMentors.map((m) => ({ name: m.name, companies: m.companies }));
 
@@ -82,20 +81,6 @@ export default async function Page() {
         </CardContent>
       </Card>
 
-      {/* 멘티 안내 문자 문구 (운영사 '멘티기업 현황판'의 안내문자 버튼이 사용) */}
-      <Card className="border-l-4 border-l-primary">
-        <CardHeader>
-          <CardTitle className="text-base">멘티 안내 문자 문구</CardTitle>
-          <p className="text-xs text-muted-foreground">
-            운영사 <b>멘티기업 현황판</b>의 &lsquo;멘티 안내 문자보내기&rsquo; 버튼이 보내는
-            문구입니다. 지원신청 서류 안내·플랫폼 사용 안내(아이디·비밀번호·URL)를 담습니다.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <MenteeGuideSmsCard initialTemplate={menteeGuideTemplate} />
-        </CardContent>
-      </Card>
-
       {/* 상태·잔액 카드 */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <div className="rounded-lg border bg-card p-4">
@@ -120,10 +105,9 @@ export default async function Page() {
 
       {!configured && (
         <div className="rounded-lg border border-status-rejected/40 bg-status-rejected/5 p-4 text-sm">
-          <p className="font-medium text-status-rejected">API 키가 설정되지 않았습니다.</p>
+          <p className="font-medium text-status-rejected">플랫폼 공통 문자 API 가 설정되지 않았습니다.</p>
           <p className="mt-1 text-muted-foreground">
-            Vercel 환경변수 SOLAPI_API_KEY · SOLAPI_API_SECRET · SOLAPI_SENDER_NUMBER_1 설정 후
-            재배포하세요.
+            행사별 문자 API 를 <Link href="/nextlab/settings/sms-api" className="underline">운영 설정 › 문자 API</Link>에 등록하면 그 발신번호로 발송됩니다. 플랫폼 공통 발송이 필요하면 플랫폼 관리자에게 문의하세요.
           </p>
         </div>
       )}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -43,9 +43,17 @@ const STATUS_LABEL = { done: '완료', planned: '예약', pending: '보고서 �
  * 컨설팅 스케줄 달력 (P20) — 월/주/일 보기. 멘토·멘티 화면 공용.
  * caseHrefBase 를 주면 이벤트 클릭 → 케이스 상세로 이동.
  */
-export function ScheduleCalendar({ events, caseHrefBase }: { events: ScheduleEvent[]; caseHrefBase?: string }) {
+export function ScheduleCalendar({ events, caseHrefBase, eventHref }: { events: ScheduleEvent[]; caseHrefBase?: string; /** 케이스 id 와 무관한 고정 이동 링크 (멘티: 회차 확인 화면) */ eventHref?: string }) {
   const [view, setView] = useState<View>('month');
   const [anchor, setAnchor] = useState(() => new Date());
+  // 폰에서는 월 격자가 너무 좁아 주 보기로 시작 (P28)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 640) setView('week');
+  }, []);
+  const upcoming = useMemo(() => {
+    const now = Date.now() - 3600000;
+    return events.filter((e) => !e.reported && new Date(e.startedAt).getTime() >= now).sort((a, b) => a.startedAt.localeCompare(b.startedAt)).slice(0, 5);
+  }, [events]);
 
   const byDate = useMemo(() => {
     const m = new Map<string, ScheduleEvent[]>();
@@ -90,13 +98,27 @@ export function ScheduleCalendar({ events, caseHrefBase }: { events: ScheduleEve
         )}
       </span>
     );
-    return caseHrefBase ? <Link href={`${caseHrefBase}/${e.caseId}`}>{inner}</Link> : inner;
+    return caseHrefBase ? <Link href={`${caseHrefBase}/${e.caseId}`}>{inner}</Link> : eventHref ? <Link href={eventHref}>{inner}</Link> : inner;
   };
 
   const today = ymd(new Date());
 
   return (
     <div className="flex flex-col gap-3">
+      {/* 다가오는 일정 — 달력을 넘기지 않아도 다음 5건이 바로 보이게 (P28) */}
+      {upcoming.length > 0 && (
+        <div className="rounded-xl border bg-background p-3">
+          <p className="mb-1.5 text-xs font-bold text-muted-foreground">다가오는 일정</p>
+          <ul className="flex flex-col gap-1">
+            {upcoming.map((e) => (
+              <li key={e.id} className="flex flex-wrap items-center gap-x-2 text-sm">
+                <span className="tabular-nums font-semibold">{new Date(e.startedAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' })} {hm(e.startedAt)}</span>
+                <EventChip e={e} full />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <Button size="sm" variant="outline" onClick={() => move(-1)} aria-label="이전"><ChevronLeft className="h-4 w-4" /></Button>

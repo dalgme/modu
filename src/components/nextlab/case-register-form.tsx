@@ -75,7 +75,7 @@ export function CaseRegisterForm({ groups, defaultGroupId }: { groups: { id: str
       <F name="mentee_type" label="유형" hint="예) 예비창업 / 기창업" />
       <F name="item" label="아이디어" />
       <F name="needs" label="희망분야" hint="콤마(,)로 구분, 최대 6개" />
-      <F name="preferred_mentor" label="재배치 희망여부 (멘토 이름)" hint="재배치(배정)를 희망하는 멘토 이름 — 비우면 희망 없음" />
+      <F name="preferred_mentor" label="희망 멘토 (멘토 이름)" hint="멘티가 배정을 희망하는 멘토 이름(엑셀의 '재배치 희망여부' 컬럼) — 그 멘토가 미배정이면 등록 즉시 자동 확정, 비우면 희망 없음" />
       <F name="note" label="비고" />
       <div className="sm:col-span-2 flex justify-end">
         <Button type="submit" disabled={pending || groups.length === 0}>

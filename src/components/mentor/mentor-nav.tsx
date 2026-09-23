@@ -12,7 +12,7 @@ const TABS = [
   { href: '/mentor/forms', label: '위촉 서류', feature: 'forms' },
   { href: '/mentor/profile', label: '내 프로필' },
   { href: '/mentor/signature', label: '내 서명' },
-  { href: '/mentor/qna', label: '문의 및 요청하기' },
+  { href: '/mentor/qna', label: '문의·멘티 메시지' },
   { href: '/mentor/guide', label: '이용안내', tone: 'green' as const },
   { href: '/mentor/install', label: '📱 휴대폰 설치', tone: 'purple' as const },
 ];

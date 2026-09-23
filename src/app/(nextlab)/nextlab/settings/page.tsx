@@ -45,6 +45,13 @@ const TABS = [
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
+/** 설정 탭 묶음 — 필수 준비(운영 시작 전) / 운영 정책 / 관리 */
+const SETTING_GROUPS: { label: string; keys: string[]; extra?: { href: string; label: string } }[] = [
+  { label: '필수 준비', keys: ['program', 'groups', 'rates', 'matching'] },
+  { label: '운영 정책', keys: ['withholding', 'budget', 'gates', 'reports', 'survey', 'mentor-forms', 'tags'] },
+  { label: '관리', keys: ['permissions', 'succession', 'audit'], extra: { href: '/nextlab/settings/sms-api', label: '문자 API' } },
+];
+
 /** 운영 설정 (docs/MODU-DESIGN.md §16) — 탭별 서버 렌더. 승계 개설·감사 로그도 미니탭 (P20) */
 export default async function Page({ searchParams }: { searchParams: { tab?: string; source?: string } }) {
   const profile = await requireNextlab();
@@ -173,15 +180,27 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         <h1 className="text-2xl font-semibold">운영 설정</h1>
         <p className="mt-1 text-sm text-muted-foreground">{ctx.program.name} — 저장 즉시 이 행사 전체에 반영됩니다. 숫자 한도는 적용일 이력으로 쌓이며 과거 정산은 바뀌지 않습니다.</p>
       </div>
-      <nav className="flex flex-wrap gap-1.5">
-        {visibleTabs.map((t) => (
-          <Link key={t.key} href={`/nextlab/settings?tab=${t.key}`} className={`rounded-full px-3 py-1 text-xs font-semibold ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}>
-            {t.label}
-          </Link>
-        ))}
-        <Link href="/nextlab/settings/sms-api" className="rounded-full bg-muted px-3 py-1 text-xs font-semibold hover:bg-accent">
-          문자 API
-        </Link>
+      {/* 탭을 3묶음으로 — 처음 쓰는 담당자가 "먼저 해야 할 것"을 구분하도록 (P28) */}
+      <nav className="flex flex-col gap-1.5 rounded-xl border bg-background p-3" aria-label="운영 설정 메뉴">
+        {SETTING_GROUPS.map((g) => {
+          const items = visibleTabs.filter((t) => g.keys.includes(t.key));
+          if (items.length === 0 && !g.extra) return null;
+          return (
+            <div key={g.label} className="flex flex-wrap items-center gap-1.5">
+              <span className="w-20 shrink-0 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">{g.label}</span>
+              {items.map((t) => (
+                <Link key={t.key} href={`/nextlab/settings?tab=${t.key}`} className={`rounded-full px-3 py-1 text-xs font-semibold ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}>
+                  {t.label}
+                </Link>
+              ))}
+              {g.extra && (
+                <Link href={g.extra.href} className="rounded-full bg-muted px-3 py-1 text-xs font-semibold hover:bg-accent">
+                  {g.extra.label}
+                </Link>
+              )}
+            </div>
+          );
+        })}
       </nav>
       {body}
     </main>

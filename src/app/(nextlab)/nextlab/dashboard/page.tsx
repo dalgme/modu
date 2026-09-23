@@ -17,6 +17,7 @@ import { listDelayedCases } from '@/lib/reports/delays';
 import { CASE_STATUS_META } from '@/types/case-status';
 import { menteeLabel } from '@/lib/utils/labels';
 import { DashboardV2, type DashboardQueueCase } from '@/components/nextlab/dashboard-v2';
+import { SetupChecklist } from '@/components/nextlab/setup-checklist';
 import { OperatorRequestsPanel, OperatorRequestsHeading } from '@/components/nextlab/operator-requests-panel';
 
 export const dynamic = 'force-dynamic';
@@ -42,6 +43,16 @@ export default async function Page() {
   let unconfirmedQ = createAdminClient().from('mentor_assignments').select('id, cases!inner(program_id, support_type_id)', { count: 'exact', head: true }).eq('is_active', true).is('confirmed_at', null).eq('cases.program_id', ctx.programId);
   if (groupId) unconfirmedQ = unconfirmedQ.eq('cases.support_type_id', groupId);
   const { count: unconfirmed } = await unconfirmedQ;
+  // 운영 시작 체크리스트 — 그룹·단가·멘토·멘티·배정 중 하나라도 비어 있으면 상단에 안내 (P28)
+  const adminDb = createAdminClient();
+  const [{ count: groupCount }, { count: rateCount }, { count: mentorCount }, { count: menteeCount }] = await Promise.all([
+    adminDb.from('support_types').select('id', { count: 'exact', head: true }).eq('program_id', ctx.programId),
+    adminDb.from('consulting_rates').select('id', { count: 'exact', head: true }).eq('program_id', ctx.programId),
+    adminDb.from('program_members').select('user_id', { count: 'exact', head: true }).eq('program_id', ctx.programId).eq('role', 'mentor').eq('is_active', true),
+    adminDb.from('program_members').select('user_id', { count: 'exact', head: true }).eq('program_id', ctx.programId).eq('role', 'mentee').eq('is_active', true),
+  ]);
+  const setup = { groups: groupCount ?? 0, rates: rateCount ?? 0, mentors: mentorCount ?? 0, mentees: menteeCount ?? 0, assigned: cases.filter((c) => c.mentorId).length };
+  const showSetup = setup.groups === 0 || setup.rates === 0 || setup.mentors === 0 || setup.mentees === 0 || setup.assigned === 0;
   const toQueue = (c: (typeof cases)[number]): DashboardQueueCase => ({
     caseId: c.id,
     label: menteeLabel(c.owner_name, c.business_name),
@@ -69,6 +80,8 @@ export default async function Page() {
           <Link href="/nextlab/reports" className="rounded-lg border bg-background px-3 py-2 text-sm font-semibold hover:bg-accent">리포트</Link>
         </div>
       </div>
+
+      {showSetup && <SetupChecklist s={setup} />}
 
       <DashboardV2
         scopeLabel={ctx.group ? ctx.group.name : '행사 전체'}

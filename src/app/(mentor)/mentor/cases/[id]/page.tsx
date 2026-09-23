@@ -7,7 +7,10 @@ import { getObservationReport, getObservationReportFile, getRoundAllowance, list
 import { listTeamMembers } from '@/lib/data/team-members';
 import { listCaseDocuments, listRequiredDocSlots } from '@/lib/workflow/case-documents';
 import { RequiredDocsPanel } from '@/components/cases/required-docs-panel';
-import { normalizeObservation } from '@/lib/workflow/closure';
+import { checkClosureReadiness, normalizeObservation } from '@/lib/workflow/closure';
+import { resolveRoundReportPolicy } from '@/lib/documents/round-report';
+import { createAdminClient } from '@/lib/supabase/admin';
+import { MentorCaseNextStep } from '@/components/mentor/mentor-case-next-step';
 import { resolveRate, kstDate } from '@/lib/settlement/rates';
 import { canTransition } from '@/lib/workflow/transitions';
 import { CaseDetailShell } from '@/components/cases/case-detail-shell';
@@ -32,7 +35,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   if (!item || item.program_id !== ctx.programId || item.mentorId !== profile.id) notFound();
 
   const today = kstDate(new Date());
-  const [history, predecessors, rounds, allowance, obs, obsFile, requests, docs, online, offline, settlements, statements, estimates, slots] = await Promise.all([
+  const [history, predecessors, rounds, allowance, obs, obsFile, requests, docs, online, offline, settlements, statements, estimates, slots, readiness, reportPolicy, lastReview] = await Promise.all([
     getCaseStatusHistory(item.id),
     listPredecessorCases(item.id),
     listRounds(item.id),
@@ -47,6 +50,10 @@ export default async function Page({ params }: { params: { id: string } }) {
     listStatementFiles(item.id),
     estimateSettlements(item.id, profile.id),
     listRequiredDocSlots(item.id, 'mentor'),
+    checkClosureReadiness(item.id),
+    resolveRoundReportPolicy(item.program_id, item.support_type_id),
+    // 보완 요청 사유 — 운영사 검수 기록(reviews) 최신 1건
+    createAdminClient().from('reviews').select('result, comment, created_at').eq('case_id', item.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
   ]);
   const teamMembers = await listTeamMembers(item.id);
   // 참가자 선택지 — 멘티 본인(대표)이 항상 첫 항목. 팀원 명단에 대표 표시가 있으면 함께 노출
@@ -67,18 +74,28 @@ export default async function Page({ params }: { params: { id: string } }) {
   const roundsEditable = canTransition('submit_round', item.status);
   const observation = normalizeObservation(obs?.content ?? {});
   const hasObservation = observation.summary.trim().length > 0 || !!obsFile;
-  const closureOk = canTransition('request_closure', item.status) && rounds.length >= item.requiredRounds && hasObservation;
-  const closureHint = !canTransition('request_closure', item.status)
-    ? '컨설팅 진행 중(또는 보완 요청) 단계에서만 종결을 요청할 수 있습니다.'
-    : rounds.length < item.requiredRounds
-      ? `필수 회차 ${item.requiredRounds}회 중 ${rounds.length}회 등록됨 — 회차를 모두 등록하세요.`
-      : !hasObservation
-        ? '관찰의견서 총평을 작성(임시 저장)하거나 완성본을 올리면 종결을 요청할 수 있습니다.'
-        : '관찰의견서를 제출하고 종결을 요청합니다.';
+  // 버튼 조건 = 서버 게이트(requestClosure)와 같은 함수 (P28) — 보고서 등록 기준 회차·서명/필수서류 정책 포함
+  const closureOk = readiness.ok;
+  const closureHint = readiness.hint;
+  const reported = rounds.filter((r) => r.report_registered_at).length;
+  const revisionNote = item.status === 'revision_requested' && lastReview.data?.result === 'revision_requested' ? { comment: lastReview.data.comment, at: lastReview.data.created_at } : null;
 
   return (
     <main className="flex flex-col gap-5">
       <CaseDetailBackNav dashboardHref="/mentor/dashboard" />
+      <MentorCaseNextStep
+        status={item.status}
+        reported={reported}
+        planned={rounds.length}
+        required={item.requiredRounds}
+        maxRounds={maxRounds}
+        hasObservation={hasObservation}
+        closureOk={closureOk}
+        closureHint={closureHint}
+        revisionNote={revisionNote}
+        reportPending={rounds.filter((r) => !r.report_registered_at && new Date(r.started_at).getTime() <= Date.now()).map((r) => r.round_no)}
+        nextPlanned={rounds.filter((r) => !r.report_registered_at && new Date(r.started_at).getTime() > Date.now()).map((r) => ({ roundNo: r.round_no, startedAt: r.started_at }))[0] ?? null}
+      />
       <CaseDetailShell item={item} history={history} predecessors={predecessors} branding={ctx.branding} basePath="/mentor/cases">
         <div id="requests" className="scroll-mt-36" />
         <MentorRequests
@@ -99,7 +116,7 @@ export default async function Page({ params }: { params: { id: string } }) {
                 {allowance.approvedExtra > 0 && <span className="ml-1 text-xs text-muted-foreground">(추가 {allowance.approvedExtra}회 승인)</span>}
               </CardTitle>
               <p className="text-xs text-muted-foreground">
-                회차 등록 = 이행(예상 정산). 관찰의견서 제출 후 운영사 검수가 끝나면 완료(정산 확정)로 바뀝니다.
+                ① [회차 등록]으로 일정·방법·참가자를 남기고(사전·사후 모두 가능) → ② 진행 후 그 회차의 [보고서 등록]까지 마쳐야 이행으로 인정되어 정산에 포함됩니다. 관찰의견서 제출 후 운영사 검수가 끝나면 정산이 확정됩니다.
               </p>
             </div>
             {roundsEditable && (
@@ -113,7 +130,7 @@ export default async function Page({ params }: { params: { id: string } }) {
             )}
           </CardHeader>
           <CardContent>
-            <RoundsList caseId={item.id} rounds={rounds} editable={roundsEditable} />
+            <RoundsList caseId={item.id} rounds={rounds} editable={roundsEditable} signEnabled={reportPolicy.menteeConfirmSignature} />
           </CardContent>
         </Card>
 

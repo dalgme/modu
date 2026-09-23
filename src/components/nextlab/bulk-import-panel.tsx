@@ -19,14 +19,21 @@ const KIND_LABELS: Record<ImportKind, string> = {
 /** 엑셀 일괄 등록: 템플릿 → 업로드(검증 미리보기) → 확정 → 임시 비밀번호 표.
  *  fixedKind 를 주면 그 종류 전용(종류 토글 숨김) — 회원 명단 [회원 등록] 미니탭에서 사용.
  *  사업그룹은 컬럼이 아니라 여기서 선택한다(P23) — 멘티 필수, 멘토 선택. */
-export function BulkImportPanel({ groups, fixedKind }: { groups: { id: string; code: string; name: string }[]; fixedKind?: ImportKind }) {
+const COLUMN_HELP: Record<ImportKind, { cols: string; note: string }> = {
+  mentee: { cols: '이름 · 닉네임 · 고유번호 · 휴대폰 · 이메일 · 권역 · 유형 · 아이디어 · 희망분야(콤마, 최대 6) · 재배치 희망여부(멘토 이름) · 비고', note: '이름·휴대폰은 필수(휴대폰 = 로그인 아이디·임시 비밀번호), 이메일이 없으면 자동 생성됩니다. 사업그룹은 컬럼이 아니라 아래에서 선택합니다.' },
+  mentor: { cols: '이름 · 소속 · 휴대폰 · 이메일 · 분야(콤마, 최대 10) · 직위 · 소속멘토기관 · 권역 · 비고', note: '이름·휴대폰 필수. 그룹을 고르지 않으면 모든 그룹에서 배정 후보가 됩니다.' },
+  nextlab: { cols: '이름 · 이메일 · 휴대폰 · 소속 · 직위 · 등급(운영사: pl/pm/deputy_pm/observer) · 담당역할(운영사) · 비고', note: '이름·휴대폰 필수, 이메일이 없으면 자동 생성.' },
+  institution: { cols: '이름 · 이메일 · 휴대폰 · 소속 · 직위 · (등급·담당역할은 비움) · 비고', note: '이름·휴대폰 필수, 이메일이 없으면 자동 생성.' },
+};
+
+export function BulkImportPanel({ groups, fixedKind, defaultGroupId }: { groups: { id: string; code: string; name: string }[]; fixedKind?: ImportKind; /** 현재 범위 그룹 — 업로드 그룹 기본값 (P28) */ defaultGroupId?: string | null }) {
   const { toast } = useToast();
   const [pending, start] = useTransition();
   // fixedKind 가 있으면 항상 그 값을 쓴다 — useState 초기값만 믿으면 미니탭(멘티→멘토) 전환 시
   // 컴포넌트가 재사용되어 이전 종류가 남는다(멘토 탭에서 멘티 템플릿이 받아지던 버그).
   const [kindState, setKind] = useState<ImportKind>(fixedKind ?? 'mentee');
   const kind = fixedKind ?? kindState;
-  const [groupId, setGroupId] = useState('');
+  const [groupId, setGroupId] = useState(defaultGroupId && groups.some((g) => g.id === defaultGroupId) ? defaultGroupId : '');
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -97,6 +104,11 @@ export function BulkImportPanel({ groups, fixedKind }: { groups: { id: string; c
             </a>
           </Button>
         </div>
+        <p className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          <b className="text-foreground">엑셀 컬럼 순서:</b> {COLUMN_HELP[kind].cols}
+          <br />
+          {COLUMN_HELP[kind].note} 템플릿의 1행(헤더)은 그대로 두고 2행 예시는 지운 뒤 입력하세요. 휴대폰·이메일이 이미 있는 계정은 새로 만들지 않고 이 행사에 연결만 합니다.
+        </p>
         {needsGroup && (
           <div className="flex flex-wrap items-center gap-2 text-sm">
             <span className="font-semibold">사업그룹 {kind === 'mentee' ? <b className="text-destructive">*</b> : <span className="text-xs font-normal text-muted-foreground">(선택 — 그룹 명부에도 올릴 때)</span>}</span>
@@ -106,7 +118,7 @@ export function BulkImportPanel({ groups, fixedKind }: { groups: { id: string; c
               className="h-9 rounded-md border bg-background px-2 text-sm"
               disabled={pending}
             >
-              <option value="">{kind === 'mentee' ? '그룹 선택 (필수)' : '그룹 미지정 (행사 공통 Pool)'}</option>
+              <option value="">{kind === 'mentee' ? '그룹 선택 (필수)' : '그룹 미지정 (모든 그룹에서 후보)'}</option>
               {groups.map((g) => (
                 <option key={g.id} value={g.id}>
                   {g.code} · {g.name}
@@ -178,7 +190,7 @@ export function BulkImportPanel({ groups, fixedKind }: { groups: { id: string; c
           {result.credentials.length > 0 && (
             <>
               <p className="text-xs text-muted-foreground">
-                신규 계정의 임시 비밀번호입니다(최초 로그인 시 변경 강제). 이 화면을 벗어나면 다시 볼 수 없으니 지금 안내하세요.
+                신규 계정의 임시 비밀번호입니다 — <b>임시 비밀번호 = 본인 휴대폰 번호(숫자만)</b>, 최초 로그인 시 변경을 요구합니다. 따로 적어두지 않아도 회원 명단에서 [로그인 안내 문자 발송]을 누르면 아이디·임시 비밀번호가 자동 안내됩니다.
               </p>
               <table className="w-full text-xs">
                 <thead>

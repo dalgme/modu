@@ -126,7 +126,7 @@ export async function listProgramMembers(programId: string, supportTypeId?: stri
       .from('users')
       .select('id, email, name, phone, role, is_active, must_change_password, invited_at, activated_at, created_at, position, organization')
       .in('id', ids),
-    admin.from('mentor_assignments').select('mentor_id, case_id, cases!inner(program_id, support_type_id)').in('mentor_id', ids).eq('is_active', true).eq('cases.program_id', programId),
+    admin.from('mentor_assignments').select('mentor_id, case_id, notice_sent_at, cases!inner(program_id, support_type_id)').in('mentor_id', ids).eq('is_active', true).eq('cases.program_id', programId),
     admin.from('audit_logs').select('entity_id, created_at').eq('action', LOGIN_GUIDE_SMS_ACTION).eq('program_id', programId).eq('entity_type', 'users').in('entity_id', ids).order('created_at', { ascending: true }),
     admin.from('cases').select('mentee_id, business_name, support_type_id, created_at').eq('program_id', programId).not('mentee_id', 'is', null).order('created_at', { ascending: false }),
     supportTypeId
@@ -146,6 +146,11 @@ export async function listProgramMembers(programId: string, supportTypeId?: stri
   const guideAt = new Map<string, string>();
   for (const g of guides ?? []) {
     if (g.entity_id && !guideAt.has(g.entity_id)) guideAt.set(g.entity_id, g.created_at);
+  }
+  // 전원 배정 시 자동 발송된 멘토 로그인 안내(mentor_assignments.notice_sent_at)도 "안내 발송"으로 친다 (P28)
+  for (const a of assigns ?? []) {
+    const at = (a as { notice_sent_at?: string | null }).notice_sent_at;
+    if (at && !guideAt.has(a.mentor_id)) guideAt.set(a.mentor_id, at);
   }
   const businessOf = new Map<string, string>();
   for (const c of menteeCases ?? []) {

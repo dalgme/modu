@@ -24,7 +24,7 @@ export default async function Page() {
         <h1 className="text-2xl font-semibold">만족도 조사</h1>
         <p className="mt-1 text-sm text-muted-foreground">컨설팅이 마무리되면 담당 멘토와 프로그램에 대한 의견을 남겨 주세요. 응답은 운영사·발주처만 열람하며 멘토에게는 개인 응답이 공개되지 않습니다.</p>
       </div>
-      {!c && <p className="text-sm text-muted-foreground">등록된 케이스가 없습니다.</p>}
+      {!c && <p className="text-sm text-muted-foreground">아직 등록된 컨설팅이 없습니다. 운영사에 문의해 주세요.</p>}
       {c && !survey && <p className="text-sm text-muted-foreground">아직 준비된 만족도 양식이 없습니다.</p>}
       {c && survey && survey.response && (
         <div className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50/50 px-4 py-3 text-sm">

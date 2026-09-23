@@ -20,10 +20,13 @@ export function RegisterPanel({
   groups,
   counts,
   initialReg,
+  defaultGroupId = null,
 }: {
   groups: { id: string; code: string; name: string }[];
   counts: Record<RegKey, number>;
   initialReg: RegKey;
+  /** 현재 범위 그룹 — 엑셀 업로드 그룹 기본값 (P28) */
+  defaultGroupId?: string | null;
 }) {
   const [reg, setReg] = useState<RegKey>(initialReg);
 
@@ -58,7 +61,7 @@ export function RegisterPanel({
         {reg === 'mentee' ? (
           <div className="flex flex-col gap-3 rounded-xl border bg-background p-4">
             <p className="text-sm">
-              멘티 개별 등록은 <b>멘티 등록 폼</b>(케이스 생성)에서 합니다 — 이름·닉네임·고유번호·권역·유형·아이디어·희망분야·재배치 희망·비고를 입력하고, 계정이 자동 발급·연결됩니다.
+              멘티 개별 등록은 <b>멘티 등록 폼</b>(케이스 생성)에서 합니다 — 이름·닉네임·고유번호·권역·유형·아이디어·희망분야·희망 멘토·비고를 입력하고, 계정이 자동 발급·연결됩니다.
             </p>
             <div>
               <Button asChild>
@@ -69,7 +72,7 @@ export function RegisterPanel({
         ) : (
           <CreateMemberForm fixedRole={reg as UserRole} />
         )}
-        <BulkImportPanel groups={groups} fixedKind={reg as ImportKind} />
+        <BulkImportPanel groups={groups} fixedKind={reg as ImportKind} defaultGroupId={defaultGroupId} />
         <AddExistingMemberForm />
       </div>
     </div>

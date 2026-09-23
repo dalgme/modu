@@ -11,13 +11,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 
-/** 10분 단위 24시간제 시각 옵션 (00:00 ~ 23:50) */
-const TIME_OPTIONS: string[] = Array.from({ length: 24 * 6 }, (_, i) => {
-  const h = Math.floor(i / 6);
-  const m = (i % 6) * 10;
-  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
-});
-
 function todayLocal(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -41,20 +34,32 @@ export interface ParticipantOption {
   subLabel?: string;
 }
 
-/** 시각 선택 — 24시간제 10분 단위 클릭 선택 */
+/** 시각 선택 — 24시간제, 시(00~23)·분(10분 단위) 두 개의 짧은 목록으로 (긴 144개 목록보다 폰에서 고르기 쉽다, P28) */
 function TimeSelect({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
+  const [h, m] = value.split(':');
+  const set = (hh: string, mm: string) => onChange(`${hh}:${mm}`);
+  const cls = 'h-10 rounded-md border border-input bg-background px-2 text-sm tabular-nums';
   return (
-    <select
-      id={id}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      className="h-10 rounded-md border border-input bg-background px-2 text-sm tabular-nums"
-    >
-      {TIME_OPTIONS.map((t) => (
-        <option key={t} value={t}>{t}</option>
-      ))}
-    </select>
+    <span className="inline-flex items-center gap-1">
+      <select id={id} value={h} onChange={(e) => set(e.target.value, m ?? '00')} className={cls} aria-label="시">
+        {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((hh) => (
+          <option key={hh} value={hh}>{hh}시</option>
+        ))}
+      </select>
+      <select value={m} onChange={(e) => set(h ?? '00', e.target.value)} className={cls} aria-label="분">
+        {['00', '10', '20', '30', '40', '50'].map((mm) => (
+          <option key={mm} value={mm}>{mm}분</option>
+        ))}
+      </select>
+    </span>
   );
+}
+
+/** 시작 시각을 바꾸면 종료가 시작보다 빠르지 않게 60분 뒤로 따라간다 */
+function plusMinutes(hhmm: string, add: number): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  const total = Math.min(23 * 60 + 50, (h ?? 0) * 60 + (m ?? 0) + add);
+  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
 /**
@@ -153,7 +158,14 @@ export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOp
         <div className="flex flex-col gap-1">
           <Label>시간 (24시간제 · 10분 단위)</Label>
           <div className="flex items-center gap-1">
-            <TimeSelect id="r-start" value={startTime} onChange={setStartTime} />
+            <TimeSelect
+              id="r-start"
+              value={startTime}
+              onChange={(v) => {
+                setStartTime(v);
+                if (endTime <= v) setEndTime(plusMinutes(v, 60));
+              }}
+            />
             <span className="text-sm text-muted-foreground">~</span>
             <TimeSelect id="r-end" value={endTime} onChange={setEndTime} />
             <span className={`ml-1 whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold tabular-nums ${minutes > 0 ? 'bg-primary/10 text-primary' : 'bg-destructive/10 text-destructive'}`}>

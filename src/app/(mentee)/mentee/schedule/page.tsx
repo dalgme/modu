@@ -18,7 +18,7 @@ export default async function Page() {
           담당 멘토가 등록한 컨설팅 예약과 완료된 회차를 달력으로 봅니다. 일정 변경이 필요하면 멘토 메시지로 문의하세요.
         </p>
       </div>
-      <ScheduleCalendar events={events} />
+      <ScheduleCalendar events={events} eventHref="/mentee/rounds" />
     </main>
   );
 }

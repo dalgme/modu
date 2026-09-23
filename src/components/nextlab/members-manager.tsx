@@ -91,7 +91,7 @@ function TempPasswordNotice({ email, tempPassword }: { email?: string; tempPassw
   if (!tempPassword) return null;
   return (
     <div className="rounded-md border border-primary/30 bg-primary/5 p-3 text-sm">
-      <p className="font-medium text-primary">임시 비밀번호 (한 번만 표시됩니다)</p>
+      <p className="font-medium text-primary">임시 비밀번호 (= 본인 휴대폰 번호 숫자만 · 최초 로그인 시 변경)</p>
       {email && <p className="mt-1 text-muted-foreground">{email}</p>}
       <code className="mt-1 block break-all rounded bg-background px-2 py-1 font-mono text-base">
         {tempPassword}
@@ -128,7 +128,7 @@ export function CreateMemberForm({ fixedRole }: { fixedRole?: UserRole }) {
         <CardTitle className="text-lg">{fixedRole ? `${ROLE_LABELS[fixedRole]} 개별 등록` : '회원 계정 발급'}</CardTitle>
         <CardDescription>
           {fixedRole === 'mentor'
-            ? <>멘토는 등록 시 <b>Pool(배정 대기)</b> 상태이며, 멘티에게 배정되면 그 멘티에 대해 확정됩니다.</>
+            ? <>멘토는 등록 시 <b>미배정(배정 대기)</b> 상태이며, 멘티에게 배정되면 그 멘티에 대해 확정됩니다.</>
             : fixedRole
               ? <>{ROLE_LABELS[fixedRole]} 담당자 계정을 발급합니다.</>
               : <>발주처 담당자 · 운영사 · 멘토 계정을 발급합니다. 멘티는 케이스 등록 후 초대됩니다.</>}
@@ -262,7 +262,7 @@ export function AddExistingMemberForm() {
       <CardHeader>
         <CardTitle className="text-lg">기존 계정을 이 행사에 추가</CardTitle>
         <CardDescription>
-          다른 행사에서 이미 쓰는 계정을 이 행사에 소속시킵니다. 역할은 행사마다 따로 정합니다(예: 다른 행사의 멘토를 이 행사에서는 멘티로). 새 계정은 만들지 않습니다.
+          이미 계정이 있는 사람(다른 행사에서 등록된 멘토·멘티·담당자)을 이 행사에 소속시킵니다. 이메일이나 휴대폰으로 찾고 이 행사에서의 역할을 정합니다. 새 계정은 만들지 않으며, 처음 등록하는 사람은 위 [회원 등록]을 쓰세요.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -395,7 +395,12 @@ function RowSubmit({ children, variant }: { children: string; variant?: 'outline
 function ToggleActiveForm({ member }: { member: MemberItem }) {
   const [, action] = useFormState<MemberActionState, FormData>(setMemberActiveAction, undefined);
   return (
-    <form action={action}>
+    <form
+      action={action}
+      onSubmit={(e) => {
+        if (member.is_active && !window.confirm(`${member.name} 회원을 비활성화합니다. 로그인이 막히고 명단·진행현황에 '비활성화'로 표시됩니다(데이터는 유지, 다시 활성화 가능). 계속할까요?`)) e.preventDefault();
+      }}
+    >
       <input type="hidden" name="userId" value={member.id} />
       <input type="hidden" name="active" value={member.is_active ? 'false' : 'true'} />
       <RowSubmit variant={member.is_active ? 'destructive' : 'outline'}>
@@ -634,6 +639,8 @@ export function MembersManager({
   const [query, setQuery] = useState('');
   // 멘티 명단 정렬 — 순위 / 이름(가나다) / 진행현황 (P27-02)
   const [sortKey, setSortKey] = useState<'rank' | 'name' | 'progress'>(mode === 'mentee' ? 'rank' : 'name');
+  // 로그인 안내 미발송 회원만 보기 (P28)
+  const [onlyUnsent, setOnlyUnsent] = useState(false);
   // 멘토 팝업 [명단에서 정보 수정] 링크(?edit=userId)로 들어오면 그 회원의 편집 패널을 바로 연다 (P28)
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('edit');
@@ -645,6 +652,7 @@ export function MembersManager({
   const filtered = members
     .filter((m) => MODE_MATCH[mode](m.role))
     .filter((m) => !query.trim() || m.name.includes(query.trim()) || (m.phone ?? '').includes(query.trim()))
+    .filter((m) => !onlyUnsent || !m.guideSentAt)
     .sort((a, b) => {
       const byName = a.name.localeCompare(b.name, 'ko');
       if (mode !== 'mentee' || sortKey === 'name') return byName;
@@ -684,11 +692,26 @@ export function MembersManager({
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-3">
         {(tab === 'mentor' || tab === 'mentee') && (
-          <RosterColumnManager target={tab} columns={tabColumns} />
+          <details className="rounded-md border border-dashed bg-muted/20">
+            <summary className="cursor-pointer px-3 py-1.5 text-xs font-medium text-muted-foreground">임의 컬럼(카테고리 마크) 관리{tabColumns.length ? ` · ${tabColumns.length}개` : ''}</summary>
+            <RosterColumnManager target={tab} columns={tabColumns} />
+          </details>
         )}
 
-        {selectedMembers.length > 0 && (
-          <LoginGuideBar selected={selectedMembers} onDone={() => setSelected(new Set())} />
+        {(tab === 'mentor' || tab === 'mentee') && (
+          selectedMembers.length > 0 ? (
+            <LoginGuideBar selected={selectedMembers} onDone={() => setSelected(new Set())} />
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              <span>
+                <b className="text-foreground">로그인 안내 문자</b> — 왼쪽 체크박스로 회원을 선택하면 아이디·임시 비밀번호 안내 문자를 일괄 발송할 수 있습니다.
+              </span>
+              <label className="inline-flex cursor-pointer items-center gap-1.5">
+                <input type="checkbox" checked={onlyUnsent} onChange={(e) => setOnlyUnsent(e.target.checked)} className="h-3.5 w-3.5" />
+                안내 미발송 회원만 보기
+              </label>
+            </div>
+          )
         )}
 
         <div className="flex flex-wrap items-center gap-2">

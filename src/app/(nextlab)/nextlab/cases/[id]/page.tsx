@@ -25,6 +25,8 @@ import { CaseEndPanel } from '@/components/settlement/case-end-panel';
 import { canTransition } from '@/lib/workflow/transitions';
 import { CaseDetailShell } from '@/components/cases/case-detail-shell';
 import { CaseDetailBackNav } from '@/components/cases/case-detail-back-nav';
+import { CaseNextStep } from '@/components/cases/case-next-step';
+import { ViewAsStartButton } from '@/components/nextlab/view-as-start-button';
 import { MentorAssignPanel } from '@/components/cases/mentor-assign-panel';
 import { MenteeInvitePanel } from '@/components/cases/mentee-invite-panel';
 import { CaseDocumentsPanel } from '@/components/cases/case-documents-panel';
@@ -75,8 +77,20 @@ export default async function Page({ params }: { params: { id: string } }) {
   return (
     <main className="flex flex-col gap-5">
       <CaseDetailBackNav dashboardHref="/nextlab/dashboard" />
+      <CaseNextStep
+        status={item.status}
+        mentorName={item.mentorName}
+        roundsReported={rounds.filter((r) => r.report_registered_at).length}
+        roundsPlanned={rounds.length}
+        requiredRounds={item.requiredRounds}
+        pendingRequests={pendingExt.length + pendingWd.length}
+        pendingChangeRequests={(changeReqs.data ?? []).length}
+        menteeLinked={!!item.mentee_id}
+      />
       <CaseDetailShell item={item} history={history} predecessors={predecessors} branding={ctx.branding} basePath="/nextlab/cases" showLoginId>
+        <div id="invite" className="scroll-mt-40" />
         <MenteeInvitePanel caseId={item.id} menteeLinked={!!item.mentee_id} defaultName={item.owner_name} defaultPhone={item.phone} defaultEmail={item.email} />
+        <div id="assign" className="scroll-mt-40" />
         <MentorAssignPanel
           caseId={item.id}
           mentors={mentors.map((m) => ({ id: m.id, name: m.inGroup ? m.name : `${m.name} (그룹 외)` }))}
@@ -91,8 +105,10 @@ export default async function Page({ params }: { params: { id: string } }) {
         {(canTransition('assign_mentor', item.status) || canTransition('reassign_mentor', item.status)) && (
           <MatchRecommendations caseId={item.id} initial={recs} assignable={canTransition('assign_mentor', item.status)} reassignable={item.mentorId !== null && canTransition('reassign_mentor', item.status)} currentMentorId={item.mentorId} modelConfigured={!!process.env.ANTHROPIC_API_KEY} />
         )}
+        <div id="profile" className="scroll-mt-40" />
         <MenteeProfileForm caseId={item.id} value={mp ? { industry: mp.industry, stage: mp.stage, region: mp.region, preferred_mode: mp.preferred_mode, needs: mp.needs, keywords: mp.keywords, summary: mp.summary, nickname: mp.nickname, external_no: mp.external_no, mentee_type: mp.mentee_type, preferred_mentor: mp.preferred_mentor, note: mp.note } : null} tags={tagOptions} />
 
+        <div id="team" className="scroll-mt-40" />
         <TeamPanel
           caseId={item.id}
           item={item.item}
@@ -100,17 +116,19 @@ export default async function Page({ params }: { params: { id: string } }) {
           members={teamMembers.map((m) => ({ id: m.id, name: m.name, member_role: m.member_role, phone: m.phone, email: m.email, is_representative: m.is_representative }))}
         />
 
+        <div id="review" className="scroll-mt-40" />
         {canTransition('review_approve', item.status) && (
           <ClosureReviewPanel caseId={item.id} estimates={estimateProps} observationUrl={obsFile?.url ?? null} />
         )}
 
+        <div id="settlement" className="scroll-mt-40" />
         <SettlementCard items={settlements} statements={statements} canCancel batchHrefBase="/nextlab/settlements/batches" />
 
         {pendingExt.length > 0 && (
           <Card className="border-amber-300">
             <CardHeader>
               <CardTitle className="text-base">추가 회차 요청 (처리 대기)</CardTitle>
-              <p className="text-xs text-muted-foreground">승인·반려는 <a href="/nextlab/requests" className="text-primary underline">요청함</a>에서 처리합니다.</p>
+              <p className="text-xs text-muted-foreground">승인·반려는 <a href="/nextlab/board?tab=requests" className="text-primary underline">게시판 › 처리 대기 요청</a>에서 처리합니다.</p>
             </CardHeader>
             <CardContent className="flex flex-col gap-2 text-sm">
               {pendingExt.map((r) => (
@@ -122,6 +140,7 @@ export default async function Page({ params }: { params: { id: string } }) {
           </Card>
         )}
 
+        <div id="change" className="scroll-mt-40" />
         <MentorChangePanel requests={changeReqs.data ?? []} mentors={mentors.map((m) => ({ id: m.id, name: m.inGroup ? m.name : `${m.name} (그룹 외)` }))} currentMentorId={item.mentorId} />
 
         <CaseEndPanel
@@ -133,18 +152,23 @@ export default async function Page({ params }: { params: { id: string } }) {
           hasActiveMentor={item.mentorId !== null}
         />
 
-        <Card>
+        <Card id="rounds" className="scroll-mt-40">
           <CardHeader>
             <CardTitle className="text-base">
               회차 {rounds.length} / {item.requiredRounds}
+              <span className="ml-2 text-xs font-normal text-muted-foreground">보고서 등록 {rounds.filter((r) => r.report_registered_at).length}회차</span>
             </CardTitle>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+              <span>회차 등록·보고서·관찰의견서는 담당 멘토가 합니다. 멘토를 대신해 처리해야 하면 대행 로그인으로 그 화면에서 등록하세요.</span>
+              {item.mentorId && item.mentorName && <ViewAsStartButton targetUserId={item.mentorId} targetName={item.mentorName} size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" />}
+            </div>
           </CardHeader>
           <CardContent>
             <RoundsList caseId={item.id} rounds={rounds} editable={false} />
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="observation" className="scroll-mt-40">
           <CardHeader>
             <CardTitle className="text-base">관찰의견서</CardTitle>
           </CardHeader>
@@ -160,6 +184,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         </Card>
 
         <SurveyResultCard survey={survey} />
+        <div id="docs" className="scroll-mt-40" />
         <a
           href={`/api/staff/case-docs-zip?case=${item.id}`}
           className="flex items-center justify-between rounded-lg border bg-background px-4 py-2.5 text-sm font-semibold hover:bg-accent"

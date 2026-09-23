@@ -32,16 +32,31 @@ export function RoundReportForm({ caseId, logId, roundNo }: { caseId: string; lo
     start(async () => {
       try {
         let reportFile: StagedFile | null = null;
+        const MB = 1024 * 1024;
         if (kind === 'file') {
           const f = reportRef.current?.files?.[0];
           if (!f) {
             toast({ title: '보고서 파일을 선택하세요.', variant: 'destructive' });
             return;
           }
+          if (f.size > 20 * MB) {
+            toast({ title: '보고서 파일은 20MB 이하만 올릴 수 있습니다.', description: `${f.name} (${(f.size / MB).toFixed(1)}MB)`, variant: 'destructive' });
+            return;
+          }
           reportFile = await stageUpload(f, 'documents');
         }
+        const picked = Array.from(photosRef.current?.files ?? []);
+        if (picked.length > 10) {
+          toast({ title: '사진은 최대 10장까지 첨부할 수 있습니다.', description: `${picked.length}장을 선택했습니다.`, variant: 'destructive' });
+          return;
+        }
+        const tooBig = picked.find((f) => f.size > 10 * MB);
+        if (tooBig) {
+          toast({ title: '사진 한 장은 10MB 이하여야 합니다.', description: `${tooBig.name} (${(tooBig.size / MB).toFixed(1)}MB)`, variant: 'destructive' });
+          return;
+        }
         const photos: string[] = [];
-        for (const f of Array.from(photosRef.current?.files ?? []).slice(0, 10)) {
+        for (const f of picked) {
           photos.push((await stageUpload(f, 'photos')).stagingPath);
         }
         const r = await registerRoundReportAction({
@@ -61,7 +76,8 @@ export function RoundReportForm({ caseId, logId, roundNo }: { caseId: string; lo
         setOpen(false);
         router.refresh();
       } catch (err) {
-        toast({ title: err instanceof Error ? err.message : '등록 실패', variant: 'destructive' });
+        const msg = err instanceof Error ? err.message : '';
+        toast({ title: '보고서 등록에 실패했습니다.', description: /network|fetch|Failed/i.test(msg) ? '네트워크 연결을 확인한 뒤 다시 시도하세요.' : msg || undefined, variant: 'destructive' });
       }
     });
   };
@@ -144,6 +160,7 @@ export function RoundReportForm({ caseId, logId, roundNo }: { caseId: string; lo
       <div className="flex flex-col gap-1">
         <Label>사진 (최대 10장)</Label>
         <Input ref={photosRef} type="file" accept="image/*" multiple />
+        <p className="text-[11px] text-muted-foreground">사진 최대 10장 · 장당 10MB · 보고서 파일 20MB 이하</p>
       </div>
       <div className="flex justify-end gap-2">
         <Button size="sm" variant="outline" onClick={() => setOpen(false)} disabled={pending}>

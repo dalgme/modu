@@ -109,7 +109,7 @@ export function MentorName({
                 <dd>{data.designatedGroups.length ? data.designatedGroups.join(', ') : '지정 없음 (모든 그룹에서 사용)'}</dd>
                 <dt className="text-muted-foreground">그룹별 매칭 멘티</dt>
                 <dd className="flex flex-wrap gap-1">
-                  {data.byGroup.length === 0 && <span className="text-muted-foreground">배정 없음 (Pool)</span>}
+                  {data.byGroup.length === 0 && <span className="text-muted-foreground">배정 없음 (배정 대기)</span>}
                   {data.byGroup.map((g) => (
                     <span key={g.groupName} className="rounded bg-violet-100 px-1.5 py-0.5 text-xs font-semibold text-violet-800 dark:bg-violet-950 dark:text-violet-200">{g.groupName} ({g.count})</span>
                   ))}
@@ -126,7 +126,7 @@ export function MentorName({
               <div>
                 <p className="mb-1 font-semibold">담당 멘티 {data.mentees.length}명 (현재 범위)</p>
                 {data.mentees.length === 0 ? (
-                  <p className="text-muted-foreground">현재 배정된 멘티가 없습니다 (Pool).</p>
+                  <p className="text-muted-foreground">현재 배정된 멘티가 없습니다 (배정 대기).</p>
                 ) : (
                   <div className="overflow-x-auto rounded-lg border">
                     <table className="w-full text-xs">

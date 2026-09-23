@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Briefcase, Building2, Download, GraduationCap, Link2, Network, UserPlus, Users } from 'lucide-react';
 
 import { requireNextlab } from '@/lib/auth/guards';
@@ -216,7 +217,16 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     const { loadMatchingLists } = await import('@/lib/data/matching-lists');
     const [lists, groups] = await Promise.all([loadMatchingLists(ctx.programId, ctx.supportTypeId ?? null), listSupportTypes(ctx.programId)]);
     const groupList = groups.map((g) => ({ id: g.id, name: g.name }));
-    body = tab === 'mentor-match' ? <MentorMatchList rows={lists.mentorRows} groups={groupList} currentGroupId={ctx.supportTypeId ?? null} /> : <MenteeMatchList rows={lists.menteeRows} mentors={lists.mentorRows} toolbarExtra={<RankUploadButton />} />;
+    body = (
+      <>
+        <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+          {tab === 'mentee-match'
+            ? '멘티를 등록하면 희망 멘토가 비어 있을 때 자동 확정되고, 아니면 희망분야 순으로 후보 3명이 추천됩니다. 이 범위의 멘티가 전원 배정되면 매칭된 멘토에게 로그인 안내 문자가 자동으로 1회 발송됩니다(발송 여부는 멘토 명단의 "안내 발송" 표시).'
+            : '멘토별 담당 멘티·매칭일·멘토 확인(로그인 후 대시보드 열람)·진행현황·지급서류를 한눈에 봅니다. 미배정 멘토는 배정 대기 상태입니다.'}
+        </p>
+        {tab === 'mentor-match' ? <MentorMatchList rows={lists.mentorRows} groups={groupList} currentGroupId={ctx.supportTypeId ?? null} /> : <MenteeMatchList rows={lists.menteeRows} mentors={lists.mentorRows} toolbarExtra={<RankUploadButton />} />}
+      </>
+    );
   }
 
   if (tab === 'register') {
@@ -227,6 +237,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         groups={groupOpts}
         counts={{ mentee: countOf('mentee'), mentor: countOf('mentor'), nextlab: countOf('nextlab'), institution: countOf('institution') }}
         initialReg={reg}
+        defaultGroupId={ctx.supportTypeId ?? null}
       />
     );
   }
@@ -240,9 +251,16 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             <b>{ctx.program.name}</b>{ctx.group ? ` · ${ctx.group.name}` : ''} — 역할은 이 행사 안에서의 역할입니다. 회원 정보를 수정하면 명단·진행현황·문서에 즉시 반영됩니다.
           </p>
         </div>
-        {(tab === 'mentee' || tab === 'mentor' || tab === 'institution' || tab === 'nextlab') && (
-          <ExcelButton href={`/api/nextlab/roster-export?tab=${tab}`} label="엑셀 다운로드" />
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {tab !== 'register' && (
+            <Link href="/nextlab/roster?tab=register" className="rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90">
+              + 회원 등록
+            </Link>
+          )}
+          {(tab === 'mentee' || tab === 'mentor' || tab === 'institution' || tab === 'nextlab') && (
+            <ExcelButton href={`/api/nextlab/roster-export?tab=${tab}`} label="엑셀 다운로드" />
+          )}
+        </div>
       </div>
       <SubTabs ariaLabel="회원 명단 탭" active={tab} items={TABS.map((t) => ({ key: t.key, label: t.label, icon: t.icon, href: `/nextlab/roster?tab=${t.key}`, count: tabCounts[t.key] }))} />
       {body}

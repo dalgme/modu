@@ -52,7 +52,7 @@ export default async function Page() {
         todo={
           primary
             ? {
-                unsignedRounds: policy?.menteeConfirmSignature ? rounds.filter((r) => !r.mentee_signed_at).length : 0,
+                unsignedRounds: policy?.menteeConfirmSignature ? rounds.filter((r) => r.report_registered_at && !r.mentee_signed_at).length : 0,
                 surveyOpen: !!survey && !survey.response && surveyOpenFor(primary),
                 surveyDone: !!survey?.response,
                 missingDocs: slots.filter((s) => s.required && s.forRole === 'mentee' && s.files.length === 0).map((s) => s.name),

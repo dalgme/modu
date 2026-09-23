@@ -144,12 +144,12 @@ function durationLabel(startedAt: string, endedAt: string): string {
 }
 
 /** 회차 목록 (멘토·스태프 공용). 멘토는 2단계 보고서 등록·마지막 회차 삭제 가능(정산 전) */
-export function RoundsList({ caseId, rounds, editable }: { caseId: string; rounds: RoundItem[]; editable: boolean }) {
+export function RoundsList({ caseId, rounds, editable, signEnabled = true }: { caseId: string; rounds: RoundItem[]; editable: boolean; /** 그룹 서명 정책이 꺼져 있으면 서명 배지·현장 서명 버튼을 숨긴다 (P28) */ signEnabled?: boolean }) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
   const [editingPlan, setEditingPlan] = useState<string | null>(null);
-  if (rounds.length === 0) return <p className="text-sm text-muted-foreground">등록된 회차가 없습니다.</p>;
+  if (rounds.length === 0) return <p className="text-sm text-muted-foreground">등록된 회차가 없습니다. {editable ? '위 [회차 등록]에서 1단계 계획/실행 정보를 먼저 등록하세요.' : '담당 멘토가 [회차 등록]으로 계획을 등록하면 여기에 표시됩니다.'}</p>;
   const last = rounds[rounds.length - 1]!;
   return (
     <ol className="flex flex-col gap-3">
@@ -173,7 +173,7 @@ export function RoundsList({ caseId, rounds, editable }: { caseId: string; round
               ) : (
                 <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">보고서 대기 (2단계)</span>
               )}
-              {r.report_registered_at && (r.mentee_signed_at ? (
+              {signEnabled && r.report_registered_at && (r.mentee_signed_at ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] text-emerald-800"><PenLine className="h-3 w-3" /> 멘티 서명</span>
               ) : (
                 <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">서명 대기</span>
@@ -241,7 +241,7 @@ export function RoundsList({ caseId, rounds, editable }: { caseId: string; round
               <RoundReportForm caseId={caseId} logId={r.id} roundNo={r.round_no} />
             </div>
           )}
-          {editable && r.report_registered_at && !r.mentee_signed_at && !r.locked && (
+          {signEnabled && editable && r.report_registered_at && !r.mentee_signed_at && !r.locked && (
             <div className="mt-2">
               <CollectSignature caseId={caseId} logId={r.id} roundNo={r.round_no} />
             </div>

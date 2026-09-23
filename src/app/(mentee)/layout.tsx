@@ -20,6 +20,7 @@ export default async function MenteeLayout({ children }: { children: React.React
       <MenteeNav />
       <div className="mx-auto max-w-3xl px-4 py-6 pb-24 md:pb-6">{children}</div>
       <MobileTabBar
+        hideOn={['/mentee/consent']}
         tabs={[
           { href: '/mentee/dashboard', label: '홈', icon: LayoutDashboard },
           { href: '/mentee/schedule', label: '일정', icon: CalendarDays },

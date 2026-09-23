@@ -23,7 +23,7 @@ export default async function Page() {
           그룹 필수서류와 사업계획서·증빙 등 관련 서류를 올립니다. 멘토에게 보여줄 파일만 &lsquo;멘토에게 공개&rsquo;를 켜세요.
         </p>
       </div>
-      {cases.length === 0 && <p className="text-sm text-muted-foreground">등록된 케이스가 없습니다.</p>}
+      {cases.length === 0 && <p className="text-sm text-muted-foreground">아직 등록된 컨설팅이 없습니다. 운영사에 문의해 주세요.</p>}
       {cases.map((c, i) => {
         const editable = c.status !== 'closed' && c.status !== 'withdrawn';
         return (

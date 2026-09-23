@@ -1,5 +1,7 @@
 import Link from 'next/link';
 
+import { menteeLabel } from '@/lib/utils/labels';
+
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -57,7 +59,7 @@ export default async function Page() {
       <div>
         <h1 className="text-2xl font-semibold">조사 관리</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {ctx.program.name}{ctx.group ? ` · ${ctx.group.name}` : ''} — 만족도·사전선호도·중간 점검 등 여러 조사를 개설하고, 실시간 응답률·문항별 분석과 미참여자 독려까지 한 곳에서 관리합니다. 종결 만족도(케이스별 자동 조사)의 실시간 분석은 리포트 탭에 있습니다.
+          {ctx.program.name}{ctx.group ? ` · ${ctx.group.name}` : ''} — 만족도·사전선호도·중간 점검 등 여러 조사를 개설하고, 실시간 응답률·문항별 분석과 미참여자 독려까지 한 곳에서 관리합니다. 종결 만족도(케이스별 자동 조사)의 실시간 분석은 이 화면 아래에 있습니다.
         </p>
       </div>
 
@@ -94,7 +96,7 @@ export default async function Page() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-base font-semibold">종결 만족도 실시간 분석</h2>
-            <p className="text-xs text-muted-foreground">종결 요청 이상 케이스의 멘티가 대상인 자동 조사{sat.templateName ? ` · 양식 ${sat.templateName}` : ''}. 멘티는 로그인 후 [만족도 조사]에서 응답합니다.</p>
+            <p className="text-xs text-muted-foreground">목표 회차의 보고서가 모두 등록되면 자동으로 열리는 케이스별 조사(케이스 상세 [만족도 생성]으로 먼저 열 수도 있음){sat.templateName ? ` · 양식 ${sat.templateName}` : ''}. 멘티는 로그인 후 [만족도 조사]에서 응답하며, 개시 1주 후 미응답자에게 독려 문자가 자동 1회 발송됩니다.</p>
           </div>
           <SatisfactionRemindButton unresponded={sat.unresponded.length} />
         </div>
@@ -123,7 +125,7 @@ export default async function Page() {
             <ul className="mt-2 grid gap-1 sm:grid-cols-2">
               {sat.unresponded.map((u) => (
                 <li key={u.caseId} className="rounded bg-amber-50/60 px-2 py-1 text-xs">
-                  {u.name} · {u.businessName} <span className="text-muted-foreground">({CASE_STATUS_META[u.status as CaseStatus]?.short ?? u.status}{u.phone ? '' : ' · 휴대폰 없음'})</span>
+                  {menteeLabel(u.name, u.businessName)} <span className="text-muted-foreground">({CASE_STATUS_META[u.status as CaseStatus]?.short ?? u.status}{u.phone ? '' : ' · 휴대폰 없음'})</span>
                 </li>
               ))}
             </ul>

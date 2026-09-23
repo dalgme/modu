@@ -41,7 +41,7 @@ export function MenteeDashboardBody({
       <div>
         <h1 className="text-2xl font-semibold">{name}님, 안녕하세요</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {primary ? `${primary.supportTypeName ?? ''} 컨설팅 진행 현황입니다.` : '아직 등록된 케이스가 없습니다.'}
+          {primary ? `${primary.supportTypeName ?? ''} 컨설팅 진행 현황입니다.` : '아직 등록된 컨설팅이 없습니다. 운영사에 문의해 주세요.'}
         </p>
       </div>
 
@@ -69,7 +69,7 @@ export function MenteeDashboardBody({
                 <span>
                   <b>만족도 조사</b>
                   <br />
-                  <span className="text-xs text-muted-foreground">{todo.surveyDone ? '응답 완료' : todo.surveyOpen ? '참여해 주세요' : '종결 요청 후 열립니다'}</span>
+                  <span className="text-xs text-muted-foreground">{todo.surveyDone ? '응답 완료' : todo.surveyOpen ? '참여해 주세요' : '목표 회차 보고서가 모두 등록되면 열립니다'}</span>
                 </span>
               </Link>
               <Link href="/mentee/documents" className={`flex items-center gap-2 rounded-xl border p-3 text-sm shadow-sm ${todo.missingDocs.length > 0 ? 'border-amber-300 bg-amber-50/50' : 'bg-background'}`}>

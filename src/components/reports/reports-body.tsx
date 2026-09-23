@@ -76,19 +76,7 @@ export function ReportsBody({
   const groupQs = groupFilter?.current ? `&group=${groupFilter.current}` : '';
   return (
     <div className="flex flex-col gap-5">
-      {groupFilter && groupFilter.options.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 rounded-xl border-2 bg-background px-3 py-2">
-          <span className="text-xs font-semibold text-muted-foreground">라운드(그룹)별:</span>
-          <Link href={`${reportsHref}?tab=${tab}`} className={`rounded-full px-3 py-1 text-xs font-semibold ${!groupFilter.current ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}>
-            전체
-          </Link>
-          {groupFilter.options.map((g) => (
-            <Link key={g.id} href={`${reportsHref}?tab=${tab}&group=${g.id}`} className={`rounded-full px-3 py-1 text-xs font-semibold ${groupFilter.current === g.id ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}>
-              {g.name}
-            </Link>
-          ))}
-        </div>
-      )}
+      {/* 라운드(그룹) 칩은 상단 [범위] 스위처로 통합 (P28) — groupFilter 는 링크 쿼리 유지용 */}
       {/* 탭 메뉴 (P26-02 · P27-18): 짙은 청색 바, 활성 탭은 흰 박스 + 코랄 아이콘/글자 */}
       <div className="flex flex-wrap items-center gap-2">
         <SubTabs ariaLabel="리포트 탭" active={tab} className="flex-1" items={REPORT_TABS.map((t) => ({ key: t.key, label: t.label, icon: t.icon, href: `${reportsHref}?tab=${t.key}${groupQs}` }))} />

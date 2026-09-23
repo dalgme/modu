@@ -1,6 +1,7 @@
 'use client';
 
 import { useTransition } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Layers } from 'lucide-react';
 
@@ -20,7 +21,7 @@ export interface ScopeGroupOption {
  * 범위 스위처 (P25) — 운영사·발주처 화면 상단에 상시 노출.
  * "행사 전체"와 사업그룹(라운드)을 한 번의 클릭으로 오가며, 아래 모든 명단·매칭·정산·조사·설정이 이 범위로 필터된다.
  */
-export function ScopeSwitcher({ groups, currentGroupId }: { groups: ScopeGroupOption[]; currentGroupId: string | null }) {
+export function ScopeSwitcher({ groups, currentGroupId, emptyHref }: { groups: ScopeGroupOption[]; currentGroupId: string | null; /** 그룹이 없을 때 안내 문구의 이동 링크 (운영사: 운영 설정 › 사업그룹) */ emptyHref?: string }) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
@@ -66,7 +67,12 @@ export function ScopeSwitcher({ groups, currentGroupId }: { groups: ScopeGroupOp
             <span className={cn('rounded-full px-1.5 text-[10px] tabular-nums', currentGroupId === g.id ? 'bg-primary-foreground/20' : 'bg-muted')}>{g.caseCount}</span>
           </button>
         ))}
-        {groups.length === 0 && <span className="text-xs text-muted-foreground">사업그룹이 아직 없습니다 — 운영 설정에서 개설하세요.</span>}
+        {groups.length === 0 && (
+          <span className="text-xs text-muted-foreground">
+            사업그룹이 아직 없습니다 —{' '}
+            {emptyHref ? <Link href={emptyHref} className="font-semibold text-primary underline underline-offset-2">운영 설정에서 개설하기</Link> : '운영 설정에서 개설하세요.'}
+          </span>
+        )}
       </div>
     </div>
   );

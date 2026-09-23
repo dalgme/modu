@@ -1,11 +1,12 @@
-import { requireStaff } from '@/lib/auth/guards';
+import { requirePlatformAdmin } from '@/lib/auth/guards';
 import { getFeatureFlags } from '@/lib/data/app-settings';
 import { FeatureTogglesCard } from '@/components/admin/feature-toggles-card';
 
 export const dynamic = 'force-dynamic';
 
 export default async function Page() {
-  await requireStaff();
+  // 붙임서식 노출 토글은 플랫폼 통합관리자 전용 (P28) — 운영사 메뉴에서는 노출하지 않는다
+  await requirePlatformAdmin();
   const flags = await getFeatureFlags();
 
   return (

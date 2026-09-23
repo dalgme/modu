@@ -24,13 +24,14 @@ export function ViewAsStartButton({
   className?: string;
   size?: 'sm' | 'default' | 'lg';
   variant?: 'default' | 'outline' | 'secondary';
-  /** 버튼 문구 커스텀 (기본: "{이름} 멘토로 대행 시작") */
+  /** 버튼 문구 커스텀 (기본: "{이름} 계정으로 대행 로그인") */
   label?: string;
 }) {
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
 
   async function onStart() {
+    if (!window.confirm(`${targetName} 계정으로 대행 로그인합니다.\n대행 중 처리한 작업은 ${targetName} 명의로 기록되고, 실행자(본인)는 감사 로그에 남습니다. 계속할까요?`)) return;
     setBusy(true);
     try {
       const res = await startViewAsAction(targetUserId);
@@ -56,7 +57,7 @@ export function ViewAsStartButton({
       className={className}
     >
       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserCog className="h-4 w-4" />}
-      {busy ? '전환 중…' : (label ?? `${targetName} 멘토로 대행 시작`)}
+      {busy ? '전환 중…' : (label ?? `${targetName} 계정으로 대행 로그인`)}
     </Button>
   );
 }

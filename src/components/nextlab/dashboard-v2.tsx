@@ -6,6 +6,7 @@ import {
   AlertTriangle,
   ArrowRight,
   BellRing,
+  BookOpen,
   ClipboardCheck,
   Coins,
   FileSpreadsheet,
@@ -275,6 +276,7 @@ const SHORTCUTS: { href: string; label: string; icon: LucideIcon; desc: string }
   { href: '/nextlab/reports', label: '리포트', icon: FileSpreadsheet, desc: '개요 · 진행현황 · 월별 추이 · 엑셀' },
   { href: '/nextlab/surveys', label: '조사', icon: ClipboardCheck, desc: '만족도·사전조사 개설 · 응답 분석' },
   { href: '/admin/settings/sms', label: '문자 발송', icon: Send, desc: '로그인 안내 · 독려 · 예약 발송' },
+  { href: '/guide.html#tab-op', label: '이용안내', icon: BookOpen, desc: '운영사 업무 흐름 · 역할별 안내서' },
   { href: '/nextlab/settings', label: '운영 설정', icon: Settings, desc: '그룹 · 단가 · 매칭 규칙 · 권한' },
 ];
 
@@ -300,7 +302,7 @@ export function DashboardV2(p: DashboardV2Props) {
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
           <AlertCard icon={Users} label="멘토 배정 대기" value={p.assignQueue.length} sub="새로 등록됐거나 재배정이 필요한 멘티" tone="navy" href="/nextlab/roster?tab=mentee-match" hrefLabel="매칭 리스트" onDetail={() => setDetail('assign')} />
           <AlertCard icon={AlertTriangle} label="지연 케이스" value={p.delays.length} sub="배정·첫 회차·장기 무진행·보완 지연 — 독려 문자 가능" tone="red" href="/nextlab/reports?tab=overview" hrefLabel="리포트 개요" onDetail={() => setDetail('delay')} />
-          <AlertCard icon={ClipboardCheck} label="종결 검수 대기" value={p.closureQueue.length} sub="관찰의견서 제출 · 승인 시 정산 확정" tone="violet" href="/nextlab/settlements" hrefLabel="정산·품의" onDetail={() => setDetail('closure')} />
+          <AlertCard icon={ClipboardCheck} label="종결 검수 대기" value={p.closureQueue.length} sub="관찰의견서 제출 · 승인 시 정산 확정" tone="violet" href="/nextlab/reports?tab=cases" hrefLabel="검수할 케이스" onDetail={() => setDetail('closure')} />
           <AlertCard icon={Inbox} label="처리 대기 요청" value={p.inbox.length} sub={`추가 회차 · 멘토 변경 · 중도 종료${p.operatorRequestsUnread ? ` · 발주처 요청 미확인 ${p.operatorRequestsUnread}` : ''}`} tone="amber" href="/nextlab/board?tab=requests" hrefLabel="요청함" onDetail={() => setDetail('inbox')} />
           <AlertCard icon={MessageSquare} label="게시판 새 소식" value={boardTotal} sub={`문의 ${p.board.inquiries} · 게시글 ${p.board.posts} · 메시지 ${p.board.messages}`} tone="sky" href="/nextlab/board" hrefLabel="게시판" />
         </div>
@@ -331,7 +333,23 @@ export function DashboardV2(p: DashboardV2Props) {
         </div>
       </section>
 
-      {/* ③ 차트 */}
+      {/* ③ 바로가기 — 처음 쓰는 담당자가 차트보다 먼저 찾는 것 (P28) */}
+      <section className="flex flex-col gap-2">
+        <h2 className="text-base font-bold">바로가기</h2>
+        <div className="grid grid-cols-2 gap-2 md:grid-cols-3 xl:grid-cols-5">
+          {SHORTCUTS.map((s) => (
+            <Link key={s.href} href={s.href} className="group flex items-start gap-3 rounded-xl border-2 bg-background p-3 transition-colors hover:border-primary hover:bg-primary/5">
+              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-midnight text-white group-hover:bg-primary"><s.icon className="h-4 w-4" /></span>
+              <span className="flex flex-col">
+                <span className="text-sm font-semibold">{s.label}</span>
+                <span className="text-[11px] text-muted-foreground">{s.desc}</span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* ④ 차트 */}
       <div className="grid gap-4 lg:grid-cols-2">
         <Panel title="진행 단계 분포" sub="케이스가 어느 단계에 몰려 있는지 — 붉은 막대(재배정 대기·보완 요청·중도 종료)는 조치가 필요한 단계">
           <StatusBars m={m} />
@@ -347,24 +365,8 @@ export function DashboardV2(p: DashboardV2Props) {
         </Panel>
       </div>
 
-      {/* ④ 예산 */}
+      {/* ⑤ 예산 */}
       <BudgetCard overview={p.budget} settingsHint />
-
-      {/* ⑤ 바로가기 */}
-      <section className="flex flex-col gap-2">
-        <h2 className="text-base font-bold">바로가기</h2>
-        <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
-          {SHORTCUTS.map((s) => (
-            <Link key={s.href} href={s.href} className="group flex items-start gap-3 rounded-xl border-2 bg-background p-3 transition-colors hover:border-primary hover:bg-primary/5">
-              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-midnight text-white group-hover:bg-primary"><s.icon className="h-4 w-4" /></span>
-              <span className="flex flex-col">
-                <span className="text-sm font-semibold">{s.label}</span>
-                <span className="text-[11px] text-muted-foreground">{s.desc}</span>
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
 
       {/* 팝업 상세 */}
       <Dialog open={detail === 'assign'} onOpenChange={(o) => { if (!o) setDetail(null); }}>

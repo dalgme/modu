@@ -11,12 +11,14 @@ const TABS = [
   { href: '/mentee/rounds', label: '회차 확인·서명' },
   { href: '/mentee/survey', label: '만족도 조사' },
   { href: '/mentee/documents', label: '내 서류' },
-  { href: '/mentee/inquiries', label: '문의하기·내역' },
+  { href: '/mentee/inquiries', label: '문의·멘토 메시지' },
 ];
 
 /** 멘티 상단 탭 내비게이션 (진행현황 / 문의하기·내역) */
 export function MenteeNav() {
   const pathname = usePathname();
+  // 동의 화면에서는 메뉴를 숨긴다 — 동의 전에는 다른 화면으로 갈 수 없다 (P28)
+  if (pathname.startsWith('/mentee/consent')) return null;
   return (
     <nav className="sticky top-14 z-30 border-b bg-background/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/75">
       <div className="mx-auto flex max-w-3xl gap-1.5 overflow-x-auto px-4 py-2">

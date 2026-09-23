@@ -108,7 +108,7 @@ export function MentorAssignPanel({
   async function onRecall() {
     if (
       !window.confirm(
-        '멘토 배정을 회수하고 대상자 등록 단계로 되돌립니다.\n발주처가 내용을 수정·재업로드해 다시 배정 요청할 수 있습니다. 계속할까요?',
+        '멘토 배정을 회수하고 멘티 등록(배정 대기) 단계로 되돌립니다.\n회차가 등록되기 전에만 가능하며, 이후 다른 멘토를 다시 배정할 수 있습니다. 계속할까요?',
       )
     ) {
       return;
@@ -117,7 +117,7 @@ export function MentorAssignPanel({
     const result = await recallMentorAction(caseId);
     setRecalling(false);
     if (result.ok) {
-      toast({ title: '멘토 배정을 회수했습니다. 대상자 등록 단계로 돌아갑니다.' });
+      toast({ title: '멘토 배정을 회수했습니다. 배정 대기 단계로 돌아갑니다.' });
       router.refresh();
     } else {
       toast({ title: '회수 실패', description: result.error, variant: 'destructive' });
@@ -158,7 +158,7 @@ export function MentorAssignPanel({
           </div>
         )}
         {!assignable && !currentMentorName && (
-          <p className="text-xs text-muted-foreground">멘토 배정은 &lsquo;대상자 등록&rsquo; 또는 &lsquo;재배정 대기&rsquo; 단계에서만 가능합니다.</p>
+          <p className="text-xs text-muted-foreground">멘토 배정은 &lsquo;멘티 등록&rsquo; 또는 &lsquo;재배정 대기&rsquo; 단계에서만 가능합니다. 추천·수동 검색은 회원 명단 › 멘티 매칭 리스트에서도 할 수 있습니다.</p>
         )}
 
         {/* 배정 관리 3경로 (P22) — 담당 멘토가 있으면 세 가지 방법을 항상 카드로 보여준다.

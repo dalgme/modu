@@ -25,6 +25,7 @@ export default async function NextlabLayout({ children }: { children: React.Reac
       <ScopeSwitcher
         groups={groups.map((g) => ({ id: g.group.id, code: g.group.code, name: g.group.name, caseCount: g.caseCount, ended: g.group.status !== 'active' }))}
         currentGroupId={ctx.supportTypeId}
+        emptyHref="/nextlab/settings?tab=groups"
       />
       {ctx.grade === 'observer' && (
         <p className="border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-center text-xs text-amber-800">

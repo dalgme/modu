@@ -53,7 +53,7 @@ export function MenteeProfileForm({ caseId, value, tags }: { caseId: string; val
     <Card>
       <CardHeader>
         <CardTitle className="text-base">멘티 정보 · 매칭 프로필</CardTitle>
-        <p className="text-xs text-muted-foreground">명단 컬럼(닉네임·고유번호·권역·유형·희망분야·재배치 희망·비고)과 AI 매칭 입력입니다. 엑셀 일괄 등록 값이 채워져 있으면 그대로 두거나 보완하세요.</p>
+        <p className="text-xs text-muted-foreground">명단 컬럼(닉네임·고유번호·권역·유형·희망분야·희망 멘토·비고)과 AI 매칭 입력입니다. 엑셀 일괄 등록 값이 채워져 있으면 그대로 두거나 보완하세요.</p>
       </CardHeader>
       <CardContent>
         <form
@@ -79,7 +79,7 @@ export function MenteeProfileForm({ caseId, value, tags }: { caseId: string; val
             <Input id="mentee_type" name="mentee_type" defaultValue={value?.mentee_type ?? ''} placeholder="예) 예비창업 / 기창업" />
           </div>
           <div className="flex flex-col gap-1">
-            <Label htmlFor="preferred_mentor">재배치 희망여부 (멘토 이름)</Label>
+            <Label htmlFor="preferred_mentor">희망 멘토 (멘토 이름 · 엑셀 &lsquo;재배치 희망여부&rsquo; 컬럼)</Label>
             <Input id="preferred_mentor" name="preferred_mentor" defaultValue={value?.preferred_mentor ?? ''} placeholder="비우면 희망 없음" />
           </div>
           <TagField name="industry" label="업종" defaultValue={value?.industry ? [value.industry] : []} options={tags.industry ?? []} hint="하나만" />

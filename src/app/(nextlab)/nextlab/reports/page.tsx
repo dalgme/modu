@@ -27,7 +27,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     <main className="flex flex-col gap-5">
       <div>
         <h1 className="text-2xl font-semibold">리포트</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{ctx.program.name}{ctx.group ? ` · ${ctx.group.name}` : ' · 행사 전체'} — 수행 성과 · 잔여 과업 · 성과평가 · 정산.</p>
+        <p className="mt-1 text-sm text-muted-foreground">{ctx.program.name}{ctx.group ? ` · ${ctx.group.name}` : ' · 행사 전체'} — 개요 · 진행현황(멘티/멘토) · 성과평가 · 정산 · 월별 추이. 범위는 상단 [범위]에서 바꿉니다.</p>
       </div>
       <ReportsBody
         m={m}

@@ -22,10 +22,10 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 const TABS = [
+  { key: 'requests', label: '처리 대기 요청' },
   { key: 'all', label: '전체 글' },
   { key: 'inquiries', label: '멘티 문의' },
   { key: 'qna', label: '멘토·운영 게시판' },
-  { key: 'requests', label: '요청함' },
   { key: 'messages', label: '멘토·멘티 메시지' },
   { key: 'faq', label: '멘토 FAQ' },
 ] as const;

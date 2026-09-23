@@ -17,13 +17,14 @@ export default async function Page() {
   const rounds = c ? await listRounds(c.id) : [];
   const policy = c ? await resolveRoundReportPolicy(c.program_id, c.support_type_id) : null;
   const signEnabled = !!policy?.menteeConfirmSignature;
-  const unsigned = signEnabled ? rounds.filter((r) => !r.mentee_signed_at).length : 0;
+  // 서명 대상 = 보고서(2단계)가 등록된 회차만 — 계획만 있는 회차는 아직 서명할 내용이 없다 (P28)
+  const unsigned = signEnabled ? rounds.filter((r) => r.report_registered_at && !r.mentee_signed_at).length : 0;
   return (
     <main className="flex flex-col gap-5">
       <div>
         <h1 className="text-2xl font-semibold">컨설팅 회차 확인 · 서명</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {c ? `${c.supportTypeName ?? ''} · 회차 ${rounds.length}/${c.requiredRounds}` : '등록된 케이스가 없습니다.'}
+          {c ? `${c.supportTypeName ?? ''} · 보고서 등록 ${rounds.filter((r) => r.report_registered_at).length}/${c.requiredRounds}회차` : '아직 등록된 컨설팅이 없습니다. 운영사에 문의해 주세요.'}
           {unsigned > 0 && <span className="ml-2 font-semibold text-amber-700">서명 대기 {unsigned}회차</span>}
         </p>
       </div>

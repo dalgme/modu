@@ -44,7 +44,7 @@ export function MentorChangePanel({ requests, mentors, currentMentorId }: { requ
         <CardTitle className="flex items-center gap-2 text-base">
           <UserCog className="h-4 w-4" /> 멘티의 멘토 변경 요청
         </CardTitle>
-        <p className="text-xs text-muted-foreground">수락하면 현재 멘토 배정을 종료하고 새 멘토를 배정합니다(T3). 회차 수는 그대로 이어집니다.</p>
+        <p className="text-xs text-muted-foreground">수락하면 현재 멘토 배정을 종료하고 새 멘토를 배정합니다. 진행한 회차는 그대로 두고 잔여 회차를 새 멘토가 이어갑니다.</p>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-sm">
         {requests.map((r) => (
