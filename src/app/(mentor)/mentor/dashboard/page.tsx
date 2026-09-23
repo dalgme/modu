@@ -3,7 +3,8 @@ import { getImpersonation } from '@/lib/auth/impersonation';
 import { requireContext } from '@/lib/programs/context';
 import { markAssignmentsConfirmed } from '@/lib/matching/auto-match';
 import { listMentorCases } from '@/lib/data/cases';
-import { MentorDashboardBody } from '@/components/mentor/mentor-dashboard-body';
+import { loadMentorDashboard } from '@/lib/data/role-dashboard';
+import { MentorDashboardV2 } from '@/components/mentor/mentor-dashboard-v2';
 import { listMyOpenSurveys } from '@/lib/surveys/campaigns';
 import { OpenSurveysCard } from '@/components/surveys/open-surveys-card';
 import { getMentorFormsForMentor } from '@/lib/mentor-forms/data';
@@ -15,7 +16,10 @@ export default async function Page() {
   const ctx = await requireContext(profile);
   // P24: 멘토 본인이 로그인해 대시보드(배정 멘티)를 열람하면 매칭 리스트에 '확인' 표시. 대행 중에는 기록하지 않는다.
   if (!(await getImpersonation())) await markAssignmentsConfirmed(profile.id, ctx.programId);
-  const cases = await listMentorCases(profile.id, { programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined });
+  const [cases, dash] = await Promise.all([
+    listMentorCases(profile.id, { programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined }),
+    loadMentorDashboard(profile.id, ctx.programId, ctx.supportTypeId ?? null, '/mentor/cases'),
+  ]);
   const openSurveys = await listMyOpenSurveys(profile.id, ctx.programId);
   const pendingForms = (await getMentorFormsForMentor(ctx.programId, profile.id)).filter((f) => !f.submittedAt);
   const unreadMessages = await countUnreadMessages(profile.id, ctx.programId);
@@ -36,7 +40,7 @@ export default async function Page() {
         </div>
       )}
       <OpenSurveysCard surveys={openSurveys} />
-      <MentorDashboardBody name={profile.name} cases={cases} basePath="/mentor/cases" branding={ctx.branding} />
+      <MentorDashboardV2 name={profile.name} data={dash} cases={cases} basePath="/mentor/cases" branding={ctx.branding} guideHref="/mentor/guide" scheduleHref="/mentor/schedule" settlementsHref="/mentor/settlements" />
     </main>
   );
 }

@@ -12,6 +12,7 @@ import { MenteeDashboardBody } from '@/components/mentee/mentee-dashboard-body';
 import { listMyOpenSurveys } from '@/lib/surveys/campaigns';
 import { OpenSurveysCard } from '@/components/surveys/open-surveys-card';
 import { countUnreadMessages } from '@/lib/messages/data';
+import { loadMenteeDashboardExtra } from '@/lib/data/role-dashboard';
 import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
@@ -32,7 +33,7 @@ export default async function Page() {
   const pendingChange = changeRequests.find((r) => r.status === 'pending') ?? null;
   const lastDecision = changeRequests.find((r) => r.status !== 'pending') ?? null;
 
-  const unreadMessages = await countUnreadMessages(profile.id, ctx.programId);
+  const [unreadMessages, extra] = await Promise.all([countUnreadMessages(profile.id, ctx.programId), loadMenteeDashboardExtra(primary, ctx.programId)]);
 
   return (
     <main className="flex flex-col gap-5">
@@ -47,6 +48,7 @@ export default async function Page() {
         name={profile.name}
         cases={cases}
         branding={ctx.branding}
+        extra={extra}
         todo={
           primary
             ? {

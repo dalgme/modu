@@ -80,6 +80,7 @@ export default async function Page({ params }: { params: { id: string } }) {
     <main className="flex flex-col gap-5">
       <CaseDetailBackNav dashboardHref="/mentor/dashboard" />
       <CaseDetailShell item={item} history={history} predecessors={predecessors} branding={ctx.branding} basePath="/mentor/cases">
+        <div id="requests" className="scroll-mt-36" />
         <MentorRequests
           caseId={item.id}
           canRequestClosure={closureOk}
@@ -90,7 +91,7 @@ export default async function Page({ params }: { params: { id: string } }) {
           pendingWithdrawal={requests.withdrawals.some((r) => r.status === 'pending')}
         />
 
-        <Card>
+        <Card id="rounds" className="scroll-mt-36">
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
             <div>
               <CardTitle className="text-base">
@@ -116,7 +117,7 @@ export default async function Page({ params }: { params: { id: string } }) {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card id="observation" className="scroll-mt-36">
           <CardHeader>
             <CardTitle className="text-base">관찰의견서 (멘티당 1건)</CardTitle>
             <p className="text-xs text-muted-foreground">컨설팅을 마무리하며 작성합니다. 종결 요청 시 PDF 로 확정되어 운영사에 제출됩니다.</p>

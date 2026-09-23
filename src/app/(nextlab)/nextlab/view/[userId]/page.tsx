@@ -6,7 +6,8 @@ import { getMemberById } from '@/lib/data/members';
 import { membershipRole } from '@/lib/auth/program-role';
 import { listCases, listMentorCases, listMenteeCases } from '@/lib/data/cases';
 import { ViewAsShell, VIEW_AS_TABS } from '@/components/nextlab/view-as-shell';
-import { MentorDashboardBody } from '@/components/mentor/mentor-dashboard-body';
+import { MentorDashboardV2 } from '@/components/mentor/mentor-dashboard-v2';
+import { loadMentorDashboard, loadMenteeDashboardExtra } from '@/lib/data/role-dashboard';
 import { MenteeDashboardBody } from '@/components/mentee/mentee-dashboard-body';
 import { InstitutionDashboardBody } from '@/components/institution/institution-dashboard-body';
 
@@ -25,11 +26,12 @@ export default async function Page({ params, searchParams }: { params: { userId:
 
   let body: React.ReactNode;
   if (target.role === 'mentor') {
-    const cases = await listMentorCases(target.id, scope);
-    body = <MentorDashboardBody name={target.name} cases={cases} basePath="/nextlab/cases" branding={ctx.branding} viewAsUserId={target.id} />;
+    const [cases, dash] = await Promise.all([listMentorCases(target.id, scope), loadMentorDashboard(target.id, ctx.programId, ctx.supportTypeId ?? null, '/nextlab/cases')]);
+    body = <MentorDashboardV2 name={target.name} data={dash} cases={cases} basePath="/nextlab/cases" branding={ctx.branding} guideHref={`/nextlab/view/${target.id}`} scheduleHref={`/nextlab/view/${target.id}`} settlementsHref={`/nextlab/view/${target.id}`} />;
   } else if (target.role === 'mentee') {
     const cases = await listMenteeCases(target.id, { programId: ctx.programId });
-    body = <MenteeDashboardBody name={target.name} cases={cases} branding={ctx.branding} />;
+    const extra = await loadMenteeDashboardExtra(cases[0] ?? null, ctx.programId);
+    body = <MenteeDashboardBody name={target.name} cases={cases} branding={ctx.branding} extra={extra} />;
   } else {
     const cases = await listCases(scope);
     body = <InstitutionDashboardBody cases={cases} basePath="/nextlab/cases" branding={ctx.branding} groupName={ctx.group?.name ?? null} />;

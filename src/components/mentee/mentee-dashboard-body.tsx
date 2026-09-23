@@ -6,6 +6,8 @@ import { MenteeJourney } from '@/components/cases/mentee-journey';
 import { StatusBadge } from '@/components/cases/status-badge';
 import { formatDate } from '@/lib/utils/format';
 import { MentorChangeRequest } from '@/components/mentee/mentor-change-request';
+import { MentorContactCard } from '@/components/mentee/mentor-contact-card';
+import type { MenteeDashboardExtra } from '@/lib/data/role-dashboard';
 import { PenLine, ClipboardList, FileWarning, CheckCircle2 } from 'lucide-react';
 
 /** 멘티 대시보드 본문 — 현재 그룹 케이스의 여정 + 다른 그룹(승계) 케이스 목록 */
@@ -24,11 +26,14 @@ export function MenteeDashboardBody({
   cases,
   branding,
   todo,
+  extra,
 }: {
   name: string;
   cases: CaseListItem[];
   branding: Branding;
   todo?: MenteeTodo | null;
+  /** 담당 멘토 연락처·다음 일정 (P28) */
+  extra?: MenteeDashboardExtra | null;
 }) {
   const [primary, ...others] = cases;
   return (
@@ -48,6 +53,7 @@ export function MenteeDashboardBody({
             requiredRounds={primary.requiredRounds}
             branding={branding}
           />
+          {extra && <MentorContactCard extra={extra} />}
           {todo && (
             <div className="grid gap-2 sm:grid-cols-3">
               <Link href="/mentee/rounds" className={`flex items-center gap-2 rounded-xl border p-3 text-sm shadow-sm ${todo.unsignedRounds > 0 ? 'border-amber-300 bg-amber-50/50' : 'bg-background'}`}>
