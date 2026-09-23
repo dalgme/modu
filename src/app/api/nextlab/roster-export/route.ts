@@ -10,6 +10,8 @@ import { listCases } from '@/lib/data/cases';
 import { CASE_STATUS_META } from '@/types/case-status';
 import { GRADE_LABELS, type StaffGrade } from '@/lib/auth/capabilities';
 import { ROLE_LABELS } from '@/lib/auth/roles';
+import { loadMatchingLists } from '@/lib/data/matching-lists';
+import { mentorLabel } from '@/lib/utils/labels';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,7 +23,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!ctx) return NextResponse.json({ error: 'no_context' }, { status: 400 });
 
   const tab = new URL(request.url).searchParams.get('tab');
-  const kind = tab === 'mentor' || tab === 'staff' || tab === 'institution' || tab === 'nextlab' ? tab : 'mentee';
+  const kind = tab === 'mentor' || tab === 'staff' || tab === 'institution' || tab === 'nextlab' || tab === 'mentee-match' || tab === 'mentor-match' ? tab : 'mentee';
   /** 관리자 시트 역할 필터 — staff(구 링크)는 발주처+운영사 전체 */
   const staffRoles: ('nextlab' | 'institution')[] = kind === 'institution' ? ['institution'] : kind === 'nextlab' ? ['nextlab'] : ['nextlab', 'institution'];
   const members = await listProgramMembers(ctx.programId, ctx.supportTypeId);
@@ -30,7 +32,41 @@ export async function GET(request: Request): Promise<Response> {
   let rows: Record<string, string | number>[] = [];
   let sheetName = '멘티 명단';
 
-  if (kind === 'mentee') {
+  if (kind === 'mentee-match' || kind === 'mentor-match') {
+    // P25 매칭 리스트 엑셀
+    const lists = await loadMatchingLists(ctx.programId, ctx.supportTypeId ?? null);
+    if (kind === 'mentee-match') {
+      sheetName = '멘티 매칭 리스트';
+      rows = lists.menteeRows.map((r) => ({
+        멘티: r.label,
+        라운드: r.groupName ?? '',
+        희망분야: r.needs.join(', '),
+        '재배치 희망': r.preferredMentor ?? '',
+        '배정 멘토': r.mentorName ? mentorLabel(r.mentorName, r.mentorActive) : '',
+        추천: r.mentorName ? '' : r.recommendations.map((x) => `${x.rank}. ${mentorLabel(x.mentorName, x.mentorActive)} ${Math.round(x.score)}점`).join(' / '),
+        '매칭 일자': r.assignedAt ? r.assignedAt.slice(0, 10) : '',
+        '멘토 확인': r.confirmedAt ? r.confirmedAt.slice(0, 10) : '',
+        만족도: r.surveyDone ? '작성 완료' : '',
+        진행: r.statusLabel,
+        회차: `${r.roundsDone}/${r.requiredRounds}`,
+      }));
+    } else {
+      sheetName = '멘토 매칭 리스트';
+      rows = lists.mentorRows.flatMap((m) => {
+        const base = { 멘토: mentorLabel(m.mentorName, m.mentees.length), 소속: m.organization ?? '', 분야: m.expertise.join(', '), '그룹 지정': m.designatedGroupNames.join(', ') };
+        if (m.mentees.length === 0) return [{ ...base, 멘티: '', 라운드: '', '매칭 일자': '', '멘토 확인': '', 진행: '미배정(Pool)', 회차: '' }];
+        return m.mentees.map((c) => ({
+          ...base,
+          멘티: c.label,
+          라운드: c.groupName ?? '',
+          '매칭 일자': c.assignedAt ? c.assignedAt.slice(0, 10) : '',
+          '멘토 확인': c.confirmedAt ? c.confirmedAt.slice(0, 10) : '',
+          진행: c.statusLabel,
+          회차: `${c.roundsDone}/${c.requiredRounds}`,
+        }));
+      });
+    }
+  } else if (kind === 'mentee') {
     // P23 컬럼 재정의: 이름·닉네임·고유번호·휴대폰·이메일·권역·유형·아이디어·희망분야·재배치 희망·비고 + 진행현황
     const cases = await listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined });
     const { data: profiles } = cases.length

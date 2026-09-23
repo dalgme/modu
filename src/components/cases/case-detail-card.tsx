@@ -1,3 +1,4 @@
+import { menteeOrg } from '@/lib/utils/labels';
 import type { CaseListItem } from '@/lib/data/cases';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDate } from '@/lib/utils/format';
@@ -6,7 +7,7 @@ import { formatDate } from '@/lib/utils/format';
 export function CaseDetailCard({ item, showLoginId = false }: { item: CaseListItem; showLoginId?: boolean }) {
   const rows: { label: string; value: string | null }[] = [
     { label: '멘티(대표자)', value: item.owner_name },
-    { label: '기업·팀명', value: item.business_name },
+    { label: '닉네임(소속)', value: menteeOrg(item.owner_name, item.business_name) || '-' },
     { label: '사업그룹', value: item.supportTypeName },
     { label: '연락처', value: item.phone },
     { label: '이메일', value: item.email },

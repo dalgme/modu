@@ -10,7 +10,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { assignMentorSchema, caseFormSchema } from '@/lib/validations/case';
 import { succeedCases, type SuccessionResult } from '@/lib/workflow/succession';
 import { markRecommendationAdopted } from '@/lib/matching/recommend';
-import { afterAssignmentConfirmed, autoMatchMentee } from '@/lib/matching/auto-match';
+import { afterAssignmentConfirmed, autoMatchMentee, rebalanceAllOpenRecommendations } from '@/lib/matching/auto-match';
 import {
   assignMentor,
   createCase,
@@ -139,7 +139,16 @@ export async function recallMentorAction(caseId: string, reason?: string): Promi
   if (!(await caseInProgram(caseId, ctx.programId))) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
 
   const result = await recallMentor(caseId, profile.id, reason);
-  if (result.ok) revalidateCase(caseId);
+  if (result.ok) {
+    // 회수된 멘토가 다시 후보가 되므로 미배정 멘티 추천 재계산 (실패해도 회수는 유지)
+    try {
+      await rebalanceAllOpenRecommendations(ctx.programId, profile.id);
+    } catch (err) {
+      console.error('rebalance after recall failed:', err instanceof Error ? err.message : err);
+    }
+    revalidatePath('/nextlab/roster');
+    revalidateCase(caseId);
+  }
   return result;
 }
 

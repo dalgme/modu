@@ -2,6 +2,8 @@
 
 import { useState, useTransition } from 'react';
 import Link from 'next/link';
+
+import { menteeLabel } from '@/lib/utils/labels';
 import { useRouter } from 'next/navigation';
 
 import type { CaseListItem } from '@/lib/data/cases';
@@ -70,7 +72,7 @@ export function SuccessionPanel({ groups, sourceGroupId, cases }: { groups: { id
           <thead>
             <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
               <th className="px-3 py-2"><input type="checkbox" aria-label="전체" checked={cases.length > 0 && cases.every((c) => selected.has(c.id))} onChange={(e) => setSelected(e.target.checked ? new Set(cases.map((c) => c.id)) : new Set())} /></th>
-              <th className="px-3 py-2">기업(팀)</th><th className="px-3 py-2">멘티</th><th className="px-3 py-2">멘토</th><th className="px-3 py-2">상태</th><th className="px-3 py-2 text-right">회차</th>
+              <th className="px-3 py-2">멘티</th><th className="px-3 py-2">연락처</th><th className="px-3 py-2">멘토</th><th className="px-3 py-2">상태</th><th className="px-3 py-2 text-right">회차</th>
             </tr>
           </thead>
           <tbody>
@@ -78,8 +80,8 @@ export function SuccessionPanel({ groups, sourceGroupId, cases }: { groups: { id
             {cases.map((c) => (
               <tr key={c.id} className="border-b last:border-0">
                 <td className="px-3 py-2"><input type="checkbox" checked={selected.has(c.id)} onChange={() => toggle(c.id)} aria-label="선택" /></td>
-                <td className="px-3 py-2 font-medium"><Link href={`/nextlab/cases/${c.id}`} className="hover:underline">{c.business_name}</Link></td>
-                <td className="px-3 py-2">{c.owner_name}</td>
+                <td className="px-3 py-2 font-medium"><Link href={`/nextlab/cases/${c.id}`} className="hover:underline">{menteeLabel(c.owner_name, c.business_name)}</Link></td>
+                <td className="px-3 py-2">{c.phone ?? '-'}</td>
                 <td className="px-3 py-2">{c.mentorName ?? '-'}</td>
                 <td className="px-3 py-2 text-xs">{CASE_STATUS_META[c.status].short}</td>
                 <td className="px-3 py-2 text-right tabular-nums">{c.roundsDone}/{c.requiredRounds}</td>

@@ -151,7 +151,7 @@ export function ReportsBody({
                   </tbody>
                 </table>
               </div>
-              <CaseTable items={cases} basePath={`${base}/cases`} branding={branding} showGroup />
+              <CaseTable items={cases} basePath={`${base}/cases`} branding={branding} showGroup showLegend />
             </div>
           ) : (
             <MentorsTable m={m} base={base} />

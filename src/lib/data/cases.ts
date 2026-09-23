@@ -22,6 +22,8 @@ export interface CaseListItem extends CaseRow {
   mentorAssignedAt: string | null;
   /** 멘티 로그인 아이디 = 이름+휴대폰 뒷4자리. 계정 미발급이면 null */
   menteeLoginId: string | null;
+  /** 담당 멘토의 현재 확정 배정 멘티 수 — 조회 범위(행사/그룹) 기준 (P25-10 "이름(n)") */
+  mentorActiveCount: number;
 }
 
 function deriveMenteeLoginId(acc: { name: string | null; phone: string | null } | undefined): string | null {
@@ -98,6 +100,15 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
   const mentorNameById = new Map((mentors ?? []).map((m) => [m.id, m.name]));
   const assignByCase = new Map((assigns ?? []).map((a) => [a.case_id, a]));
   const menteeAccById = new Map((mentees ?? []).map((m) => [m.id, m]));
+  // 멘토별 확정 배정 수 — 조회 범위(행사, 그룹이 있으면 그룹) 기준. 필터로 잘린 목록이 아니라 범위 전체를 센다.
+  const mentorActive = new Map<string, number>();
+  if (mentorIds.length) {
+    let q = supabase.from('mentor_assignments').select('mentor_id, cases!inner(program_id, support_type_id)').eq('is_active', true).in('mentor_id', mentorIds);
+    if (filters.programId) q = q.eq('cases.program_id', filters.programId);
+    if (filters.supportTypeId) q = q.eq('cases.support_type_id', filters.supportTypeId);
+    const { data: allActive } = await q;
+    for (const a of allActive ?? []) mentorActive.set(a.mentor_id, (mentorActive.get(a.mentor_id) ?? 0) + 1);
+  }
 
   return cases.map((c) => {
     const t = typeMap.get(c.support_type_id);
@@ -112,6 +123,7 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
       mentorId: a?.mentor_id ?? null,
       mentorAssignedAt: a?.assigned_at ?? null,
       menteeLoginId: deriveMenteeLoginId(c.mentee_id ? menteeAccById.get(c.mentee_id) : undefined),
+      mentorActiveCount: a ? (mentorActive.get(a.mentor_id) ?? 0) : 0,
     };
   });
 }

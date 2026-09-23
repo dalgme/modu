@@ -1,4 +1,6 @@
 import Link from 'next/link';
+
+import { menteeLabel } from '@/lib/utils/labels';
 import { ArrowRight } from 'lucide-react';
 
 import type { CaseListItem } from '@/lib/data/cases';
@@ -40,7 +42,7 @@ export function CaseActionQueue({
             <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2">
               <div className="min-w-0">
                 {/* 멘티 표시 형식 = "이름/소속" (P20 결정) */}
-                <span className="font-medium">{c.owner_name}<span className="font-normal text-muted-foreground">/{c.business_name}</span></span>
+                <span className="font-medium">{menteeLabel(c.owner_name, c.business_name)}</span>
                 <span className="ml-2 text-xs text-muted-foreground">
                   {c.supportTypeName ?? '-'} · {formatDate(c.updated_at)}
                 </span>

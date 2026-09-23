@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { assignMentor } from '@/lib/workflow/cases';
 import { sendSolapiSms } from '@/lib/notifications/solapi';
 import { resolveSmsCredentials } from '@/lib/sms/secrets';
-import { mentorEligibleForGroup } from '@/lib/matching/eligibility';
+import { fieldMatches, mentorEligibleForGroup } from '@/lib/matching/eligibility';
 import { DEFAULT_MAX_MENTEES_PER_MENTOR } from '@/lib/matching/capacity';
 
 /**
@@ -23,20 +23,6 @@ import { DEFAULT_MAX_MENTEES_PER_MENTOR } from '@/lib/matching/capacity';
 export const AUTO_MATCH_VERSION = 'auto-v1';
 const MAX_RECOMMEND = 3;
 const OPEN_STATUSES = ['registered', 'reassignment_pending'] as const;
-
-const norm = (s: string) => s.toLowerCase().replace(/[\s·,/()-]/g, '');
-
-/** 분야 적합: 정규화 후 동일하거나 한쪽이 다른 쪽을 포함 */
-export function fieldMatches(need: string, expertise: string[]): string | null {
-  const n = norm(need);
-  if (!n) return null;
-  for (const e of expertise) {
-    const x = norm(e);
-    if (!x) continue;
-    if (x === n || x.includes(n) || n.includes(x)) return e;
-  }
-  return null;
-}
 
 interface ProgramMentor {
   id: string;

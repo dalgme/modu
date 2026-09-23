@@ -1,5 +1,7 @@
 import Link from 'next/link';
 
+import { menteeLabel } from '@/lib/utils/labels';
+
 import type { CaseListItem } from '@/lib/data/cases';
 import type { Tables } from '@/types/database';
 import type { Branding } from '@/lib/programs/branding';
@@ -35,9 +37,9 @@ export function CaseDetailShell({
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-semibold">{item.business_name}</h1>
+          <h1 className="truncate text-2xl font-semibold">{menteeLabel(item.owner_name, item.business_name)}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {item.owner_name} · {item.supportTypeName ?? '-'} · 회차 {item.roundsDone}/{item.requiredRounds}
+            {item.phone || '-'} · {item.supportTypeName ?? '-'} · 회차 {item.roundsDone}/{item.requiredRounds}
           </p>
         </div>
         <StatusBadge status={item.status} branding={branding} showStep />
