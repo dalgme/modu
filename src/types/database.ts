@@ -1236,6 +1236,9 @@ export type Database = {
           id_card_path: string | null;
           id_card_received_at: string | null;
           id_card_uploaded_at: string | null;
+          id_card_state: string | null;
+          resume_state: string | null;
+          bankbook_state: string | null;
           note: string | null;
           program_id: string;
           resume_file_name: string | null;
@@ -1257,6 +1260,9 @@ export type Database = {
           id_card_path?: string | null;
           id_card_received_at?: string | null;
           id_card_uploaded_at?: string | null;
+          id_card_state?: string | null;
+          resume_state?: string | null;
+          bankbook_state?: string | null;
           note?: string | null;
           program_id: string;
           resume_file_name?: string | null;
@@ -1278,6 +1284,9 @@ export type Database = {
           id_card_path?: string | null;
           id_card_received_at?: string | null;
           id_card_uploaded_at?: string | null;
+          id_card_state?: string | null;
+          resume_state?: string | null;
+          bankbook_state?: string | null;
           note?: string | null;
           program_id?: string;
           resume_file_name?: string | null;
@@ -2876,6 +2885,7 @@ export type Database = {
       support_types: {
         Row: {
           mentoring_budget: number | null;
+          max_mentees_per_mentor: number;
           code: string;
           created_at: string;
           description: string | null;
@@ -2895,6 +2905,7 @@ export type Database = {
         };
         Insert: {
           mentoring_budget?: number | null;
+          max_mentees_per_mentor?: number;
           code: string;
           created_at?: string;
           description?: string | null;
@@ -2914,6 +2925,7 @@ export type Database = {
         };
         Update: {
           mentoring_budget?: number | null;
+          max_mentees_per_mentor?: number;
           code?: string;
           created_at?: string;
           description?: string | null;

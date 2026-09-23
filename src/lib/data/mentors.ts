@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { Tables } from '@/types/database';
+import { mentorEligibleForGroup } from '@/lib/matching/eligibility';
 
 export interface PaymentDocUpload {
   name: string;
@@ -118,7 +119,13 @@ export async function listProgramMentors(programId: string, supportTypeId?: stri
         reviewAvg: ratings.length ? Math.round((ratings.reduce((a, b) => a + b, 0) / ratings.length) * 10) / 10 : null,
       };
     })
-    .filter((m) => !supportTypeId || m.groups.length > 0 || m.activeCases > 0);
+    .filter((m) => {
+      if (!supportTypeId) return true;
+      // 그룹 범위: 지정이 없는 멘토(모든 그룹 사용) · 이 그룹에 지정된 멘토 · 이 그룹에 활성 배정이 있는 멘토
+      const designatedAnywhere = (roster ?? []).filter((r) => r.user_id === m.id && r.is_active && groupIds.has(r.support_type_id)).map((r) => r.support_type_id);
+      return mentorEligibleForGroup(designatedAnywhere, supportTypeId) || m.activeCases > 0;
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
 }
 
 /** 지급서류 3종 모두 수령했는지 (품의 경고·차단용) */

@@ -524,3 +524,24 @@ export async function saveBudgetsAction(input: unknown): Promise<Result> {
   revalidatePath('/institution/settlements');
   return { ok: true };
 }
+
+const matchingRulesSchema = z.object({
+  groups: z.array(z.object({ id: z.string().uuid(), maxMenteesPerMentor: z.number().int().min(1).max(50) })).max(20),
+});
+
+/** 매칭 규칙 저장 (P25-04) — 라운드(그룹)별 멘토 1인당 최대 멘티 수 */
+export async function saveMatchingRulesAction(input: unknown): Promise<Result> {
+  const op = await operator('settings');
+  if ('error' in op) return { ok: false, error: op.error };
+  const parsed = matchingRulesSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: '1 이상 50 이하의 정수를 입력하세요.' };
+  const admin = createAdminClient();
+  const { data: before } = await admin.from('support_types').select('id, max_mentees_per_mentor').eq('program_id', op.programId);
+  for (const g of parsed.data.groups) {
+    const { error } = await admin.from('support_types').update({ max_mentees_per_mentor: g.maxMenteesPerMentor }).eq('id', g.id).eq('program_id', op.programId);
+    if (error) return { ok: false, error: error.message };
+  }
+  await audit(op.id, op.programId, 'matching_rules', before, parsed.data.groups, op.programId);
+  revalidateAll();
+  return { ok: true };
+}

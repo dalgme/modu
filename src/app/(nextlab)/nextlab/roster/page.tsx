@@ -62,7 +62,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   const reg = (REG_ROLES.find((r) => r.key === searchParams.reg)?.key ?? 'mentee') as RegKey;
 
   const [members, roster] = await Promise.all([
-    listProgramMembers(ctx.programId),
+    listProgramMembers(ctx.programId, ctx.supportTypeId),
     listRosterColumns(ctx.programId),
   ]);
   const memberItems = members.map((m) => ({

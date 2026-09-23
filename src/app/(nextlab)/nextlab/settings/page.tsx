@@ -23,6 +23,7 @@ import { loadProgramAuditRows } from '@/lib/audit/rows';
 import { SuccessionPanel } from '@/components/nextlab/succession-panel';
 import { AuditTable } from '@/components/audit/audit-table';
 import { BudgetForm } from '@/components/settings/budget-form';
+import { MatchingRulesForm } from '@/components/settings/matching-rules-form';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,7 @@ const TABS = [
   { key: 'rates', label: '단가·한도' },
   { key: 'withholding', label: '정산(원천징수)' },
   { key: 'budget', label: '예산' },
+  { key: 'matching', label: '매칭 규칙' },
   { key: 'gates', label: '종결 게이트·서명 정책' },
   { key: 'reports', label: '보고서 양식' },
   { key: 'survey', label: '만족도 양식' },
@@ -78,6 +80,10 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         }}
       />
     );
+  }
+  if (tab === 'matching') {
+    const groups = await listSupportTypes(ctx.programId);
+    body = <MatchingRulesForm value={{ groups: groups.map((g) => ({ id: g.id, name: g.name, code: g.code, maxMenteesPerMentor: g.max_mentees_per_mentor ?? 2 })) }} />;
   }
   if (tab === 'gates') {
     const tpl = await resolveRoundReportTemplate(ctx.programId, null);

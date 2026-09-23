@@ -24,7 +24,7 @@ export async function GET(request: Request): Promise<Response> {
   const kind = tab === 'mentor' || tab === 'staff' || tab === 'institution' || tab === 'nextlab' ? tab : 'mentee';
   /** 관리자 시트 역할 필터 — staff(구 링크)는 발주처+운영사 전체 */
   const staffRoles: ('nextlab' | 'institution')[] = kind === 'institution' ? ['institution'] : kind === 'nextlab' ? ['nextlab'] : ['nextlab', 'institution'];
-  const members = await listProgramMembers(ctx.programId);
+  const members = await listProgramMembers(ctx.programId, ctx.supportTypeId);
   const active = (b: boolean) => (b ? '활성' : '비활성');
 
   let rows: Record<string, string | number>[] = [];

@@ -37,7 +37,7 @@ export default async function Page() {
   const configured = solapiConfigured();
 
   const [balance, messages, recipients] = configured
-    ? await Promise.all([getSolapiBalance(), getSolapiMessages(120), listSmsRecipients(ctx.programId)])
+    ? await Promise.all([getSolapiBalance(), getSolapiMessages(120), listSmsRecipients(ctx.programId, ctx.supportTypeId)])
     : [null, null, []];
 
   // 예약·자동안내문 관련 데이터 (Solapi 연동 여부와 무관하게 DB 조회)

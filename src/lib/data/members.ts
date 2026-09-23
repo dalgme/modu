@@ -3,6 +3,7 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { Tables } from '@/types/database';
 import type { UserRole } from '@/lib/auth/roles';
+import { mentorEligibleForGroup } from '@/lib/matching/eligibility';
 
 export interface MentorLoad {
   id: string;
@@ -103,7 +104,13 @@ const ROLE_ORDER: Record<UserRole, number> = {
  * 이 행사의 회원 목록 (운영사 전용). 역할은 **행사 안 역할**(program_members.role, 설계 B).
  * service_role 로 조회 — 호출부(page)에서 requireNextlab + requireContext 로 권한·범위 강제.
  */
-export async function listProgramMembers(programId: string): Promise<MemberRow[]> {
+/**
+ * 행사 회원 명단. supportTypeId(그룹 범위, P25)를 주면:
+ *  - 멘티 = 그 그룹에 케이스가 있는 사람만
+ *  - 멘토 = 그 그룹 명부(support_type_members)에 있거나 그 그룹에 활성 배정이 있는 사람만, assignedCount 도 그룹 기준
+ *  - 발주처·운영사 = 행사 소속 그대로
+ */
+export async function listProgramMembers(programId: string, supportTypeId?: string | null): Promise<MemberRow[]> {
   const admin = createAdminClient();
   const { data: memberships } = await admin
     .from('program_members')
@@ -112,17 +119,26 @@ export async function listProgramMembers(programId: string): Promise<MemberRow[]
     .order('joined_at', { ascending: true });
   const ids = (memberships ?? []).map((m) => m.user_id);
   if (ids.length === 0) return [];
-  const [{ data: users }, { data: assigns }, { data: guides }, { data: menteeCases }] = await Promise.all([
+  const [{ data: users }, { data: assigns }, { data: guides }, { data: menteeCases }, { data: groupRoster }] = await Promise.all([
     admin
       .from('users')
       .select('id, email, name, phone, role, is_active, must_change_password, invited_at, activated_at, created_at, position, organization')
       .in('id', ids),
-    admin.from('mentor_assignments').select('mentor_id, case_id, cases!inner(program_id)').in('mentor_id', ids).eq('is_active', true).eq('cases.program_id', programId),
+    admin.from('mentor_assignments').select('mentor_id, case_id, cases!inner(program_id, support_type_id)').in('mentor_id', ids).eq('is_active', true).eq('cases.program_id', programId),
     admin.from('audit_logs').select('entity_id, created_at').eq('action', LOGIN_GUIDE_SMS_ACTION).eq('program_id', programId).eq('entity_type', 'users').in('entity_id', ids).order('created_at', { ascending: true }),
-    admin.from('cases').select('mentee_id, business_name, created_at').eq('program_id', programId).not('mentee_id', 'is', null).order('created_at', { ascending: false }),
+    admin.from('cases').select('mentee_id, business_name, support_type_id, created_at').eq('program_id', programId).not('mentee_id', 'is', null).order('created_at', { ascending: false }),
+    supportTypeId
+      ? admin.from('support_type_members').select('user_id, support_type_id, support_types!inner(program_id)').eq('is_active', true).eq('member_role', 'mentor').eq('support_types.program_id', programId)
+      : Promise.resolve({ data: [] as { user_id: string; support_type_id: string }[] }),
   ]);
+  const inScopeAssign = (a: { cases: unknown }) => !supportTypeId || (a.cases as { support_type_id: string } | null)?.support_type_id === supportTypeId;
   const assignedCount = new Map<string, number>();
-  for (const a of assigns ?? []) assignedCount.set(a.mentor_id, (assignedCount.get(a.mentor_id) ?? 0) + 1);
+  for (const a of assigns ?? []) if (inScopeAssign(a)) assignedCount.set(a.mentor_id, (assignedCount.get(a.mentor_id) ?? 0) + 1);
+  const menteeInScope = new Set((menteeCases ?? []).filter((c) => !supportTypeId || c.support_type_id === supportTypeId).map((c) => c.mentee_id as string));
+  // 멘토 그룹 지정 규칙: 지정이 하나도 없으면 모든 그룹에서 사용(복제), 있으면 지정 그룹에서만
+  const designated = new Map<string, Set<string>>();
+  for (const r of groupRoster ?? []) (designated.get(r.user_id) ?? designated.set(r.user_id, new Set()).get(r.user_id)!).add(r.support_type_id);
+  const mentorInScope = (id: string) => !supportTypeId || mentorEligibleForGroup(designated.get(id) ?? new Set(), supportTypeId) || assignedCount.has(id);
   const guideAt = new Map<string, string>();
   for (const g of guides ?? []) {
     if (g.entity_id && !guideAt.has(g.entity_id)) guideAt.set(g.entity_id, g.created_at);
@@ -137,6 +153,8 @@ export async function listProgramMembers(programId: string): Promise<MemberRow[]
     const u = byId.get(m.user_id);
     if (!u) continue;
     const role = m.role as UserRole;
+    if (supportTypeId && role === 'mentee' && !menteeInScope.has(u.id)) continue;
+    if (supportTypeId && role === 'mentor' && !mentorInScope(u.id)) continue;
     rows.push({
       ...u,
       primaryRole: u.role,
@@ -151,9 +169,10 @@ export async function listProgramMembers(programId: string): Promise<MemberRow[]
       guideSentAt: guideAt.get(u.id) ?? null,
     });
   }
+  // 역할 순 → 이름 가나다순 (P25-11)
   return rows.sort((a, b) => {
     const r = ROLE_ORDER[a.role] - ROLE_ORDER[b.role];
-    return r !== 0 ? r : a.created_at.localeCompare(b.created_at);
+    return r !== 0 ? r : a.name.localeCompare(b.name, 'ko');
   });
 }
 
@@ -178,11 +197,18 @@ export interface SmsRecipient {
  * 문자 발송 수신 대상 목록: 활성·휴대폰 보유 회원 (운영사 전용 호출부 가드).
  * 역할순(운영사→발주처→멘토→멘티) 정렬. 멘티는 소속 기업명을 함께 반환.
  */
-export async function listSmsRecipients(programId: string): Promise<SmsRecipient[]> {
+export async function listSmsRecipients(programId: string, supportTypeId?: string | null): Promise<SmsRecipient[]> {
   const admin = createAdminClient();
-  // 이 행사 소속만, 역할은 행사 안 역할 (설계 B)
+  // 이 행사 소속만, 역할은 행사 안 역할 (설계 B). 그룹 범위(P25)면 멘티·멘토는 그 그룹 기준으로 좁힌다.
   const { data: memberships } = await admin.from('program_members').select('user_id, role').eq('program_id', programId).eq('is_active', true);
   const roleOf = new Map((memberships ?? []).map((m) => [m.user_id, m.role as UserRole]));
+  if (supportTypeId) {
+    const scoped = await listProgramMembers(programId, supportTypeId);
+    const allowed = new Set(scoped.map((m) => m.id));
+    for (const [id, role] of Array.from(roleOf.entries())) {
+      if ((role === 'mentee' || role === 'mentor') && !allowed.has(id)) roleOf.delete(id);
+    }
+  }
   const ids = Array.from(roleOf.keys());
   const { data } = ids.length
     ? await admin.from('users').select('id, name, phone, is_active').in('id', ids).eq('is_active', true).not('phone', 'is', null)

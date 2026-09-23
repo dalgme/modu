@@ -129,3 +129,82 @@ export async function setMentorGroupDutyAction(supportTypeId: string, userId: st
   revalidatePath('/nextlab/mentors');
   return { ok: true };
 }
+
+/** 멘토 그룹 지정/해제 (P25) — 지정이 하나라도 있으면 그 그룹에서만 매칭 후보, 없으면 모든 그룹에서 사용 */
+export async function setMentorGroupMembershipAction(supportTypeId: string, userId: string, active: boolean): Promise<Result> {
+  const op = await operator();
+  if ('error' in op) return { ok: false, error: op.error };
+  const admin = createAdminClient();
+  const [{ data: g }, { data: member }] = await Promise.all([
+    admin.from('support_types').select('program_id, name').eq('id', supportTypeId).maybeSingle(),
+    admin.from('program_members').select('role').eq('program_id', op.programId).eq('user_id', userId).maybeSingle(),
+  ]);
+  if (!g || g.program_id !== op.programId) return { ok: false, error: '이 행사의 그룹이 아닙니다.' };
+  if (!member || member.role !== 'mentor') return { ok: false, error: '이 행사의 멘토가 아닙니다.' };
+  if (!active) {
+    // 이 그룹에 활성 배정이 있으면 지정 해제 불가 — 배정 해제/재배정이 먼저
+    const { count } = await admin
+      .from('mentor_assignments')
+      .select('id, cases!inner(support_type_id)', { count: 'exact', head: true })
+      .eq('mentor_id', userId)
+      .eq('is_active', true)
+      .eq('cases.support_type_id', supportTypeId);
+    if ((count ?? 0) > 0) return { ok: false, error: `이 그룹에 담당 멘티 ${count}명이 있어 지정을 해제할 수 없습니다. 먼저 배정을 해제·재배정하세요.` };
+  }
+  const { error } = await admin
+    .from('support_type_members')
+    .upsert({ support_type_id: supportTypeId, user_id: userId, member_role: 'mentor', is_active: active, left_at: active ? null : new Date().toISOString() }, { onConflict: 'support_type_id,user_id' });
+  if (error) return { ok: false, error: error.message };
+  const { error: auditError } = await admin.from('audit_logs').insert({
+    actor_id: op.id,
+    program_id: op.programId,
+    action: active ? 'mentor.group_assign' : 'mentor.group_unassign',
+    entity_type: 'users',
+    entity_id: userId,
+    metadata: { support_type_id: supportTypeId, group_name: g.name },
+  });
+  if (auditError) console.error('mentor group membership audit failed:', auditError.message);
+  revalidatePath('/nextlab/roster');
+  return { ok: true };
+}
+
+/**
+ * 지급서류 수령 상태 O/X 버튼 (P25-17) — 기본 '-'. 비밀번호 재인증 필수(원본 규칙 유지, 대행 불가).
+ * O 로 바꾸면 수령 시각도 기록, '-'/X 는 수령 시각을 지운다.
+ */
+export async function setPaymentDocStateAction(input: { userId: string; kind: 'resume' | 'bankbook' | 'idCard'; state: '-' | 'O' | 'X'; password: string }): Promise<Result> {
+  const op = await operator();
+  if ('error' in op) return { ok: false, error: op.error };
+  if (await getImpersonation()) return { ok: false, error: '대행 중에는 지급서류 상태를 바꿀 수 없습니다.' };
+  const real = await getRealSessionProfile();
+  if (!real) return { ok: false, error: '로그인이 필요합니다.' };
+  const reauth = await reauthenticate({ id: real.id, email: real.email }, input.password ?? '');
+  if (!reauth.ok) return { ok: false, error: reauth.error };
+  const admin = createAdminClient();
+  const { data: member } = await admin.from('program_members').select('role').eq('program_id', op.programId).eq('user_id', input.userId).maybeSingle();
+  if (!member || member.role !== 'mentor') return { ok: false, error: '이 행사의 멘토가 아닙니다.' };
+  const now = new Date().toISOString();
+  const state = input.state === '-' ? null : input.state;
+  const receivedAt = input.state === 'O' ? now : null;
+  const patch =
+    input.kind === 'resume'
+      ? { resume_state: state, resume_received_at: receivedAt }
+      : input.kind === 'bankbook'
+        ? { bankbook_state: state, bankbook_received_at: receivedAt }
+        : { id_card_state: state, id_card_received_at: receivedAt };
+  const { error } = await admin
+    .from('mentor_payment_docs')
+    .upsert({ program_id: op.programId, user_id: input.userId, checked_by: op.id, ...patch }, { onConflict: 'program_id,user_id' });
+  if (error) return { ok: false, error: error.message };
+  const { error: auditError } = await admin.from('audit_logs').insert({
+    actor_id: op.id,
+    program_id: op.programId,
+    action: 'mentor.payment_doc_state',
+    entity_type: 'users',
+    entity_id: input.userId,
+    metadata: { kind: input.kind, state: input.state },
+  });
+  if (auditError) console.error('payment doc state audit failed:', auditError.message);
+  revalidatePath('/nextlab/roster');
+  return { ok: true };
+}

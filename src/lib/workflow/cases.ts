@@ -5,6 +5,7 @@ import { queueNotification } from '@/lib/workflow/notifications';
 import { inviteMentee } from '@/lib/auth/admin-accounts';
 import { toStoredPhone } from '@/lib/auth/identifier';
 import { assertTransition, assignTarget, TRANSITIONS } from '@/lib/workflow/transitions';
+import { assertMentorCapacity } from '@/lib/matching/capacity';
 import type { CaseFormInput } from '@/lib/validations/case';
 import type { TablesInsert } from '@/types/database';
 
@@ -204,6 +205,9 @@ export async function assignMentor(caseId: string, mentorId: string, actorId: st
     .eq('is_active', true)
     .maybeSingle();
   if (active) return { ok: false, error: '이미 활성 멘토가 있습니다. 재배정을 사용하세요.' };
+  // 매칭 규칙 (P25-04): 라운드별 멘토 1인당 정원
+  const capacityErr = await assertMentorCapacity(mentorId, c.support_type_id);
+  if (capacityErr) return { ok: false, error: capacityErr };
 
   const { data: assignment, error: assignError } = await admin
     .from('mentor_assignments')
@@ -272,6 +276,8 @@ export async function reassignMentor(caseId: string, newMentorId: string, actorI
     .maybeSingle();
   if (!current) return { ok: false, error: '활성 멘토 배정이 없습니다. 신규 배정을 사용하세요.' };
   if (current.mentor_id === newMentorId) return { ok: false, error: '현재 멘토와 동일합니다. 다른 멘토를 선택하세요.' };
+  const capacityErr = await assertMentorCapacity(newMentorId, c.support_type_id);
+  if (capacityErr) return { ok: false, error: capacityErr };
 
   const now = new Date().toISOString();
   const { error: endErr } = await admin
