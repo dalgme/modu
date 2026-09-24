@@ -1326,6 +1326,69 @@ export type Database = {
           },
         ];
       };
+      mentor_reminder_settings: {
+        Row: {
+          created_at: string;
+          enabled: boolean;
+          id: string;
+          last_result: Json | null;
+          last_sent_on: string | null;
+          program_id: string;
+          send_hour: number;
+          send_minute: number;
+          support_type_id: string | null;
+          template: string;
+          updated_at: string;
+          updated_by: string | null;
+          weekday: number;
+        };
+        Insert: {
+          created_at?: string;
+          enabled?: boolean;
+          id?: string;
+          last_result?: Json | null;
+          last_sent_on?: string | null;
+          program_id: string;
+          send_hour?: number;
+          send_minute?: number;
+          support_type_id?: string | null;
+          template: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          weekday?: number;
+        };
+        Update: {
+          created_at?: string;
+          enabled?: boolean;
+          id?: string;
+          last_result?: Json | null;
+          last_sent_on?: string | null;
+          program_id?: string;
+          send_hour?: number;
+          send_minute?: number;
+          support_type_id?: string | null;
+          template?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+          weekday?: number;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "mentor_reminder_settings_program_id_fkey";
+            columns: ["program_id"];
+            isOneToOne: false;
+            referencedRelation: "programs";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "mentor_reminder_settings_support_type_id_fkey";
+            columns: ["support_type_id"];
+            isOneToOne: false;
+            referencedRelation: "support_types";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       mentor_profiles: {
         Row: {
           bio: string | null;

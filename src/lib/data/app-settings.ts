@@ -3,8 +3,6 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 /** 운영 설정 키 */
-const MENTOR_REMINDER_TEMPLATE_KEY = 'mentor_weekly_reminder_template';
-const MENTOR_REMINDER_ENABLED_KEY = 'mentor_weekly_reminder_enabled';
 const MENTEE_GUIDE_SMS_TEMPLATE_KEY = 'mentee_guide_sms_template';
 
 /**
@@ -57,15 +55,6 @@ export function renderMenteeGuideSms(
     .join(vars.password)
     .split('{url}')
     .join(vars.url);
-}
-
-/** 주간 멘토 안내문 기본 템플릿 ({mentor}=멘토명, {companies}=미완료 기업명 목록) */
-export const DEFAULT_MENTOR_REMINDER_TEMPLATE =
-  '[{program}] {mentor}멘토님, 이번주에도 [{companies}] 멘티에 대한 컨설팅 회차 등록·보고서 작성 진행 잘 부탁드리겠습니다';
-
-export interface MentorReminderConfig {
-  template: string;
-  enabled: boolean;
 }
 
 /** 단일 설정값 조회 (없으면 null) */
@@ -145,44 +134,3 @@ export async function saveFeatureFlags(
   ]);
 }
 
-/** 주간 멘토 안내문 설정(문구·활성 여부) 조회 */
-export async function getMentorReminderConfig(): Promise<MentorReminderConfig> {
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from('app_settings')
-    .select('key, value')
-    .in('key', [MENTOR_REMINDER_TEMPLATE_KEY, MENTOR_REMINDER_ENABLED_KEY]);
-  const map = new Map((data ?? []).map((r) => [r.key, r.value]));
-  const template = map.get(MENTOR_REMINDER_TEMPLATE_KEY);
-  return {
-    template: template && template.trim() ? template : DEFAULT_MENTOR_REMINDER_TEMPLATE,
-    enabled: (map.get(MENTOR_REMINDER_ENABLED_KEY) ?? 'true') !== 'false',
-  };
-}
-
-/** 주간 멘토 안내문 설정 저장 */
-export async function saveMentorReminderConfig(
-  cfg: MentorReminderConfig,
-  updatedBy?: string | null,
-): Promise<void> {
-  await Promise.all([
-    setSetting(MENTOR_REMINDER_TEMPLATE_KEY, cfg.template, updatedBy),
-    setSetting(MENTOR_REMINDER_ENABLED_KEY, cfg.enabled ? 'true' : 'false', updatedBy),
-  ]);
-}
-
-/** 템플릿 치환: {mentor}=멘토명, {companies}=기업명 목록(쉼표 구분) */
-export function renderMentorReminder(
-  template: string,
-  mentorName: string,
-  companies: string[],
-  programName?: string,
-): string {
-  return template
-    .split('{program}')
-    .join(programName ?? '멘토링 프로그램')
-    .split('{mentor}')
-    .join(mentorName)
-    .split('{companies}')
-    .join(companies.join(', '));
-}

@@ -15,12 +15,10 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { sendSms } from '@/lib/notifications/provider';
 import { sendSolapiSms, getSolapiBalance } from '@/lib/notifications/solapi';
 import {
-  saveMentorReminderConfig,
-  type MentorReminderConfig,
-} from '@/lib/data/app-settings';
-import {
-  sendMentorWeeklyReminders,
-  type WeeklyReminderResult,
+  listReminderSettings,
+  sendReminderForSetting,
+  DEFAULT_MENTOR_REMINDER_TEMPLATE,
+  type ReminderSendResult as ReminderRunResult,
 } from '@/lib/notifications/mentor-weekly-reminder';
 
 export type TestSmsResult = { ok: true; providerId?: string } | { ok: false; error: string };
@@ -36,7 +34,7 @@ export type ScheduleSmsResult =
   | { ok: false; error: string };
 export type SimpleResult = { ok: true } | { ok: false; error: string };
 export type ReminderSendResult =
-  | ({ ok: true } & WeeklyReminderResult)
+  | ({ ok: true } & ReminderRunResult)
   | { ok: false; error: string };
 
 /** 관리자: 문자 테스트 발송 */
@@ -172,20 +170,88 @@ export async function cancelScheduledSmsAction(id: string): Promise<SimpleResult
   return { ok: true };
 }
 
-/** 관리자: 주간 멘토 안내문 문구·활성 여부 저장 */
-export async function saveMentorReminderAction(input: MentorReminderConfig): Promise<SimpleResult> {
-  const actor = await requireStaff();
-  { const denied = await smsDenied(); if (denied) return { ok: false, error: denied }; }
+/** 운영사 전용 게이트 — 리마인더 설정·발송은 운영사(sms 권한)만 */
+async function reminderContext(): Promise<{ actorId: string; programId: string; groupIds: Set<string> } | { error: string }> {
+  const profile = await requireStaff();
+  if (profile.role !== 'nextlab') return { error: '운영사 담당자만 설정할 수 있습니다.' };
+  const ctx = await contextOrNull(profile);
+  if (!ctx) return { error: '행사를 먼저 선택하세요.' };
+  const denied = denyUnless(ctx, 'sms');
+  if (denied) return { error: denied };
+  const { data: groups } = await createAdminClient().from('support_types').select('id').eq('program_id', ctx.programId);
+  return { actorId: profile.id, programId: ctx.programId, groupIds: new Set((groups ?? []).map((g) => g.id)) };
+}
+
+export interface ReminderSettingInput {
+  /** null = 행사 공통 */
+  supportTypeId: string | null;
+  enabled: boolean;
+  weekday: number;
+  sendHour: number;
+  sendMinute: number;
+  template: string;
+}
+
+/** 운영사: 리마인더 설정 저장 (행사 공통 또는 그룹 override) — 표현식 유니크라 select→update/insert */
+export async function saveMentorReminderSettingAction(input: ReminderSettingInput): Promise<SimpleResult> {
+  const c = await reminderContext();
+  if ('error' in c) return { ok: false, error: c.error };
   const template = (input.template ?? '').trim();
   if (!template) return { ok: false, error: '안내문 내용을 입력하세요.' };
-  await saveMentorReminderConfig({ template, enabled: !!input.enabled }, actor.id);
+  if (template.length > 1000) return { ok: false, error: '안내문은 1,000자 이내로 입력하세요.' };
+  const weekday = Number(input.weekday);
+  const sendHour = Number(input.sendHour);
+  const sendMinute = Number(input.sendMinute);
+  if (!Number.isInteger(weekday) || weekday < 0 || weekday > 6) return { ok: false, error: '요일이 올바르지 않습니다.' };
+  if (!Number.isInteger(sendHour) || sendHour < 0 || sendHour > 23) return { ok: false, error: '시각이 올바르지 않습니다.' };
+  if (![0, 10, 20, 30, 40, 50].includes(sendMinute)) return { ok: false, error: '분은 10분 단위로 선택하세요.' };
+  if (input.supportTypeId && !c.groupIds.has(input.supportTypeId)) return { ok: false, error: '이 행사의 그룹이 아닙니다.' };
+  const admin = createAdminClient();
+  let q = admin.from('mentor_reminder_settings').select('id').eq('program_id', c.programId);
+  q = input.supportTypeId ? q.eq('support_type_id', input.supportTypeId) : q.is('support_type_id', null);
+  const { data: existing } = await q.maybeSingle();
+  const values = { enabled: !!input.enabled, weekday, send_hour: sendHour, send_minute: sendMinute, template, updated_by: c.actorId, updated_at: new Date().toISOString() };
+  const { error } = existing
+    ? await admin.from('mentor_reminder_settings').update(values).eq('id', existing.id)
+    : await admin.from('mentor_reminder_settings').insert({ program_id: c.programId, support_type_id: input.supportTypeId, ...values });
+  if (error) return { ok: false, error: `저장 실패: ${error.message}` };
+  const { error: auditErr } = await admin.from('audit_logs').insert({
+    actor_id: c.actorId,
+    action: 'sms.mentor_reminder_setting',
+    entity_type: 'mentor_reminder_settings',
+    entity_id: existing?.id ?? null,
+    program_id: c.programId,
+    metadata: { support_type_id: input.supportTypeId, enabled: !!input.enabled, weekday, send_hour: sendHour, send_minute: sendMinute },
+  });
+  if (auditErr) console.error('reminder setting audit failed:', auditErr.message);
   return { ok: true };
 }
 
-/** 관리자: 주간 멘토 안내문 지금 즉시 발송(수동 트리거·테스트) */
-export async function sendMentorReminderNowAction(): Promise<ReminderSendResult> {
-  await requireStaff();
-  { const denied = await smsDenied(); if (denied) return { ok: false, error: denied }; }
-  const result = await sendMentorWeeklyReminders();
+/** 운영사: 그룹 override 해제 → 그 그룹은 행사 공통 설정을 따른다 */
+export async function clearMentorReminderGroupAction(supportTypeId: string): Promise<SimpleResult> {
+  const c = await reminderContext();
+  if ('error' in c) return { ok: false, error: c.error };
+  if (!c.groupIds.has(supportTypeId)) return { ok: false, error: '이 행사의 그룹이 아닙니다.' };
+  const admin = createAdminClient();
+  const { error } = await admin.from('mentor_reminder_settings').delete().eq('program_id', c.programId).eq('support_type_id', supportTypeId);
+  if (error) return { ok: false, error: `해제 실패: ${error.message}` };
+  const { error: auditErr } = await admin.from('audit_logs').insert({ actor_id: c.actorId, action: 'sms.mentor_reminder_setting', entity_type: 'mentor_reminder_settings', entity_id: null, program_id: c.programId, metadata: { support_type_id: supportTypeId, cleared: true } });
+  if (auditErr) console.error('reminder setting audit failed:', auditErr.message);
+  return { ok: true };
+}
+
+/** 운영사: 해당 범위(행사 공통 또는 그룹) 리마인더 지금 발송 — 켜져 있는 설정만 */
+export async function sendMentorReminderNowAction(supportTypeId: string | null): Promise<ReminderSendResult> {
+  const c = await reminderContext();
+  if ('error' in c) return { ok: false, error: c.error };
+  const settings = await listReminderSettings(c.programId);
+  const setting = settings.find((s) => s.supportTypeId === supportTypeId);
+  if (!setting) return { ok: false, error: '먼저 설정을 저장하세요.' };
+  const result = await sendReminderForSetting(setting, settings, c.actorId);
   return { ok: true, ...result };
+}
+
+/** 기본 문구 (화면의 [기본 문구로] 버튼) */
+export async function defaultMentorReminderTemplateAction(): Promise<string> {
+  return DEFAULT_MENTOR_REMINDER_TEMPLATE;
 }

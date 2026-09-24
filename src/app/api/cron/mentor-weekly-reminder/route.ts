@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-import { sendMentorWeeklyReminders } from '@/lib/notifications/mentor-weekly-reminder';
+import { runDueMentorReminders } from '@/lib/notifications/mentor-weekly-reminder';
 import { safeEqual } from '@/lib/auth/secret';
 
 export const dynamic = 'force-dynamic';
@@ -14,14 +14,13 @@ function authorized(request: Request): boolean {
 }
 
 /**
- * Vercel Cron: 매주 월요일 12:30(KST) 멘토 주간 안내문 자동 발송.
- * 조건: 활성 배정 멘티가 있고 회차 등록이 남은 멘토.
- * (vercel.json 은 UTC 기준 — 월요일 03:30 UTC = 월요일 12:30 KST)
+ * Vercel Cron: 매시 :30 (UTC) — 행사·그룹별 리마인더 설정(mentor_reminder_settings) 중
+ * KST 기준 오늘 요일·설정 시각이 지났고 아직 오늘 안 보낸 행을 발송한다 (P29). 최대 1시간 지연.
  */
 export async function GET(request: Request) {
   if (!authorized(request)) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
-  const result = await sendMentorWeeklyReminders();
+  const result = await runDueMentorReminders();
   return NextResponse.json(result);
 }

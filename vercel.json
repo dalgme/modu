@@ -11,7 +11,7 @@
     },
     {
       "path": "/api/cron/mentor-weekly-reminder",
-      "schedule": "30 3 * * 1"
+      "schedule": "30 * * * *"
     },
     {
       "path": "/api/cron/survey-reminders",

@@ -12,7 +12,7 @@ const TABS = [
   { href: '/institution/settlements', label: '정산 확인' },
   { href: '/institution/mentors', label: '멘토 현황' },
   { href: '/institution/requests', label: '요청/문의', tone: 'amber' as const },
-  { href: '/admin/settings/sms', label: '문자발송 현황', tone: 'sky' as const },
+  { href: '/admin/settings/sms', label: '문자 발송', tone: 'sky' as const },
   { href: '/institution/guide', label: '이용방법', tone: 'green' as const },
   { href: '/institution/install', label: '📱 핸드폰 설치', tone: 'purple' as const },
 ];
