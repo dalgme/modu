@@ -15,6 +15,7 @@ import {
   updateMemberDetailsAction,
   removeMemberFromProgramAction,
   setMemberActiveAction,
+  lockMemberAccountAction,
   resetMemberPasswordAction,
   deleteMemberAction,
   addRosterColumnAction,
@@ -34,6 +35,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ViewAsStartButton } from '@/components/nextlab/view-as-start-button';
+import { RosterBulkActions } from '@/components/nextlab/roster-bulk-actions';
 import { MentorName } from '@/components/common/mentor-name';
 import { RoundDots } from '@/components/common/round-dots';
 import { ContactLinks } from '@/components/common/contact-links';
@@ -476,20 +478,38 @@ function RowSubmit({ children, variant }: { children: string; variant?: 'outline
   );
 }
 
+/** 행사 범위 활성/비활성 (program_members.is_active) — 계정 잠금은 LockAccountForm (P31: 다른 행사 로그인은 막지 않는다) */
 function ToggleActiveForm({ member }: { member: MemberItem }) {
   const [, action] = useFormState<MemberActionState, FormData>(setMemberActiveAction, undefined);
   return (
     <form
       action={action}
       onSubmit={(e) => {
-        if (member.is_active && !window.confirm(`${member.name} 회원을 비활성화합니다. 로그인이 막히고 명단·진행현황에 '비활성화'로 표시됩니다(데이터는 유지, 다시 활성화 가능). 계속할까요?`)) e.preventDefault();
+        if (member.memberActive && !window.confirm(`${member.name} 회원을 이 행사에서 비활성화합니다. 명단·진행현황에 '비활성화'로 표시되고 이 행사 화면에 들어올 수 없습니다(데이터는 유지, 다시 활성화 가능). 다른 행사 로그인은 막지 않습니다. 계속할까요?`)) e.preventDefault();
       }}
     >
       <input type="hidden" name="userId" value={member.id} />
-      <input type="hidden" name="active" value={member.is_active ? 'false' : 'true'} />
-      <RowSubmit variant={member.is_active ? 'destructive' : 'outline'}>
-        {member.is_active ? '비활성화' : '활성화'}
+      <input type="hidden" name="active" value={member.memberActive ? 'false' : 'true'} />
+      <RowSubmit variant={member.memberActive ? 'destructive' : 'outline'}>
+        {member.memberActive ? '이 행사에서 비활성화' : '이 행사에서 활성화'}
       </RowSubmit>
+    </form>
+  );
+}
+
+/** 계정 잠금(users.is_active) — 모든 행사 로그인 차단. 테스트 계정 정리·퇴사 등 (P31) */
+function LockAccountForm({ member }: { member: MemberItem }) {
+  const [, action] = useFormState<MemberActionState, FormData>(lockMemberAccountAction, undefined);
+  return (
+    <form
+      action={action}
+      onSubmit={(e) => {
+        if (member.is_active && !window.confirm(`${member.name} 계정을 잠급니다. 모든 행사에서 로그인이 차단됩니다(데이터 유지, 해제 가능). 계속할까요?`)) e.preventDefault();
+      }}
+    >
+      <input type="hidden" name="userId" value={member.id} />
+      <input type="hidden" name="locked" value={member.is_active ? 'true' : 'false'} />
+      <RowSubmit variant={member.is_active ? 'destructive' : 'outline'}>{member.is_active ? '계정 잠금' : '계정 잠금 해제'}</RowSubmit>
     </form>
   );
 }
@@ -800,6 +820,12 @@ export function MembersManager({
   const showRank = mode === 'mentee';
   const colSpan = 6 + (showRank ? 1 : 0) + (showProgress ? 2 : 0) + tabColumns.length + 1;
   const kind = mode;
+  // 일괄 작업의 그룹 목록 = 멘토 행에 실린 행사 그룹(지정 여부 무관) 합집합 (P31)
+  const bulkGroups = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const m of members) for (const g of m.mentorGroups ?? []) map.set(g.id, g.name);
+    return Array.from(map, ([id, name]) => ({ id, name }));
+  }, [members]);
   const editingMember = editing ? members.find((m) => m.id === editing) ?? null : null;
 
   return (
@@ -817,7 +843,7 @@ export function MembersManager({
             <>
               <LoginGuideBar selected={selectedMembers} onDone={() => setSelected(new Set())} />
               {/* (P31) 일괄 작업 마운트 지점 — 다른 작업자가 실제 컴포넌트로 교체 */}
-              <RosterBulkActionsSlot selectedIds={Array.from(selected)} kind={kind} />
+              <RosterBulkActions selectedIds={Array.from(selected)} kind={kind === 'staff' ? 'staff' : kind} groups={bulkGroups} onDone={() => setSelected(new Set())} />
             </>
           ) : (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
@@ -1064,6 +1090,7 @@ function MemberEditPanel({ member: m }: { member: MemberItem }) {
         <RoleSelectForm member={m} />
         {m.memberActive && <RemoveFromProgramForm member={m} />}
         <ToggleActiveForm member={m} />
+        <LockAccountForm member={m} />
         <ResetPasswordForm member={m} />
         <DeleteMemberForm member={m} />
       </div>
@@ -1071,11 +1098,4 @@ function MemberEditPanel({ member: m }: { member: MemberItem }) {
   );
 }
 
-/**
- * (P31) 명단 일괄 작업 마운트 지점 — 체크한 회원 id 와 명단 종류(mentee/mentor/staff)를 받는다.
- * 자리만 잡아 둔 플레이스홀더이며, 다른 작업자가 실제 컴포넌트로 교체한다.
- */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function RosterBulkActionsSlot(_: { selectedIds: string[]; kind: string }) {
-  return null;
-}
+

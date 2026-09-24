@@ -8,7 +8,7 @@ import { contextOrNull } from '@/lib/programs/context';
 import { reauthenticate } from '@/lib/sms/reauth';
 import { disableProgramSms, logSmsAccess, markSmsVerified, resolveSmsCredentials, storeProgramSmsCredentials } from '@/lib/sms/secrets';
 import { sendSolapiSms } from '@/lib/notifications/solapi';
-import { normalizePhone } from '@/lib/auth/identifier';
+import { normalizePhone } from '@/lib/utils/phone';
 
 type Result = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -62,7 +62,7 @@ export async function disableSmsCredentialsAction(formData: FormData): Promise<R
 export async function testSmsAction(): Promise<Result> {
   const g = await guard();
   if ('error' in g) return { ok: false, error: g.error };
-  const phone = g.phone ? normalizePhone(g.phone) : null;
+  const phone = normalizePhone(g.phone); // (P31) +82·표기 편차 흡수
   if (!phone) return { ok: false, error: '내 계정에 휴대폰 번호가 없어 테스트 발송을 할 수 없습니다.' };
   const creds = await resolveSmsCredentials(g.programId, 'test');
   if (!creds || creds.source !== 'program') return { ok: false, error: '행사 문자 API 가 설정되지 않았거나 복호화에 실패했습니다.' };

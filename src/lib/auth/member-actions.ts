@@ -12,6 +12,8 @@ import {
 import { createAccountSchema, inviteMenteeSchema } from '@/lib/validations/auth';
 import { contextOrNull } from '@/lib/programs/context';
 import { resolveUserByIdentifier, toStoredPhone } from '@/lib/auth/identifier';
+import { normalizeEmail, normalizePhone } from '@/lib/utils/phone';
+import { fetchAllIn } from '@/lib/supabase/paginate';
 import { LOGIN_GUIDE_SMS_ACTION } from '@/lib/data/members';
 import { resolveSmsCredentials } from '@/lib/sms/secrets';
 import { sendSolapiSms } from '@/lib/notifications/solapi';
@@ -100,10 +102,14 @@ export async function createMemberAction(
   const actor = await requireNextlab();
   { const denied = await deniedFor(actor, 'members'); if (denied) return { ok: false, error: denied }; }
 
+  // (P31) 이메일 소문자·휴대폰 표기 편차(+82·앞자리 0) 정규화 — 조회와 저장이 같은 값을 쓴다
+  const phoneRaw = String(formData.get('phone') ?? '').trim();
+  const phoneNorm = phoneRaw ? toStoredPhone(phoneRaw) : null;
+  if (phoneRaw && !normalizePhone(phoneRaw)) return { ok: false, error: '휴대폰 번호 형식을 확인하세요. (01X 로 시작하는 10~11자리)' };
   const parsed = createAccountSchema.safeParse({
-    email: formData.get('email'),
-    name: formData.get('name'),
-    phone: formData.get('phone') || undefined,
+    email: normalizeEmail(String(formData.get('email') ?? '')),
+    name: String(formData.get('name') ?? '').trim(),
+    phone: phoneNorm ?? undefined,
     role: formData.get('role'),
     position: formData.get('position') || undefined,
     organization: formData.get('organization') || undefined,
@@ -123,8 +129,19 @@ export async function createMemberAction(
   if (!ctx || !programId) return { ok: false, error: '행사를 먼저 선택하세요.' };
   { const denied = guardGrantPL(ctx, grade); if (denied) return { ok: false, error: denied }; }
 
+  // 중복 사전 검사 — 같은 이메일/휴대폰 계정이 있으면 발급 대신 [기존 계정 추가] 안내
+  {
+    const admin = createAdminClient();
+    const [{ data: byEmail }, { data: byPhone }] = await Promise.all([
+      admin.from('users').select('id, name').ilike('email', parsed.data.email).limit(1),
+      parsed.data.phone ? admin.from('users').select('id, name').eq('phone', parsed.data.phone).limit(1) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    ]);
+    const dup = byEmail?.[0] ?? byPhone?.[0];
+    if (dup) return { ok: false, error: `이미 같은 ${byEmail?.[0] ? '이메일' : '휴대폰'}의 계정(${dup.name})이 있습니다. 새로 발급하지 말고 [기존 계정을 이 행사에 추가]를 사용하세요.` };
+  }
+
   try {
-    const result = await createStaffOrMentorAccount({ ...parsed.data, actorId: actor.id });
+    const result = await createStaffOrMentorAccount({ ...parsed.data, actorId: actor.id, programId });
     // 이 행사 소속 + 행사 안 역할 (설계 B) + 운영사 등급·담당
     await createAdminClient()
       .from('program_members')
@@ -181,9 +198,9 @@ export async function inviteMenteeAction(
 
   const parsed = inviteMenteeSchema.safeParse({
     caseId: formData.get('caseId'),
-    email: formData.get('email'),
-    name: formData.get('name'),
-    phone: formData.get('phone') || undefined,
+    email: normalizeEmail(String(formData.get('email') ?? '')),
+    name: String(formData.get('name') ?? '').trim(),
+    phone: (formData.get('phone') ? toStoredPhone(String(formData.get('phone'))) : null) ?? undefined,
   });
   if (!parsed.success) {
     return { ok: false, error: parsed.error.issues[0]?.message ?? '입력값을 확인하세요.' };
@@ -202,7 +219,7 @@ export async function inviteMenteeAction(
   }
 
   try {
-    const result = await inviteMentee({ ...parsed.data, actorId: actor.id });
+    const result = await inviteMentee({ ...parsed.data, actorId: actor.id, programId: await currentProgramId(actor) });
     revalidatePath(`/nextlab/cases/${parsed.data.caseId}`);
     revalidatePath('/nextlab/members');
     return {
@@ -218,7 +235,9 @@ export async function inviteMenteeAction(
 }
 
 /**
- * 회원 활성/비활성 전환. 비활성 계정은 로그인이 차단된다(requireUser 가드).
+ * 회원 활성/비활성 전환 — **행사 범위**(program_members.is_active). (P31: 기본을 계정 잠금에서 행사 소속 활성으로 전환)
+ * 비활성 = 이 행사에서 명단·배정·문자·조사 대상에서 빠지고 진행현황에 '비활성화'로 표시. 다른 행사 활동과 로그인에는 영향 없다.
+ * 계정 자체를 잠그려면(로그인 차단) `lockMemberAccountAction` 을 쓴다.
  */
 export async function setMemberActiveAction(
   _prev: MemberActionState,
@@ -228,6 +247,8 @@ export async function setMemberActiveAction(
   { const denied = await deniedFor(actor, 'members.sensitive'); if (denied) return { ok: false, error: denied }; }
   const userId = String(formData.get('userId') ?? '');
   const active = String(formData.get('active') ?? '') === 'true';
+  // 구 폼 호환: lockAccount=true 면 계정 잠금(users.is_active)까지 함께
+  const lockAccount = String(formData.get('lockAccount') ?? '') === 'true';
 
   if (!userId) return { ok: false, error: '대상 회원을 확인할 수 없습니다.' };
   if (userId === actor.id) return { ok: false, error: '본인 계정은 비활성화할 수 없습니다.' };
@@ -241,15 +262,52 @@ export async function setMemberActiveAction(
 
   const admin = createAdminClient();
   const { error } = await admin
-    .from('users')
-    .update({ is_active: active, updated_at: new Date().toISOString() })
-    .eq('id', userId);
+    .from('program_members')
+    .update(active ? { is_active: true, left_at: null } : { is_active: false })
+    .eq('program_id', programId)
+    .eq('user_id', userId);
   if (error) return { ok: false, error: '상태 변경에 실패했습니다.' };
+  if (lockAccount) {
+    const { error: lockError } = await admin.from('users').update({ is_active: active, updated_at: new Date().toISOString() }).eq('id', userId);
+    if (lockError) return { ok: false, error: `행사 소속은 바꿨지만 계정 잠금에 실패했습니다: ${lockError.message}` };
+  }
 
-  await audit(programId, actor.id, active ? 'account.activate' : 'account.deactivate', 'users', userId, {});
+  await audit(programId, actor.id, active ? 'membership.activate' : 'membership.deactivate', 'users', userId, { lock_account: lockAccount });
 
   revalidatePath('/nextlab/members');
-  return { ok: true, message: active ? '계정을 활성화했습니다.' : '계정을 비활성화했습니다.' };
+  revalidatePath('/nextlab/roster');
+  return { ok: true, message: active ? '이 행사에서 활성화했습니다.' : `이 행사에서 비활성화했습니다.${lockAccount ? ' (계정 로그인도 차단)' : ' 로그인은 가능하며 다른 행사에는 영향이 없습니다.'}` };
+}
+
+/**
+ * 계정 잠금/해제 (users.is_active) — 로그인 자체를 막는다. 모든 행사에 영향. (P31: 행사 소속 활성과 분리)
+ */
+export async function lockMemberAccountAction(
+  _prev: MemberActionState,
+  formData: FormData,
+): Promise<MemberActionState> {
+  const actor = await requireNextlab();
+  { const denied = await deniedFor(actor, 'members.sensitive'); if (denied) return { ok: false, error: denied }; }
+  const userId = String(formData.get('userId') ?? '');
+  const locked = String(formData.get('locked') ?? '') === 'true';
+  if (!userId) return { ok: false, error: '대상 회원을 확인할 수 없습니다.' };
+  if (userId === actor.id) return { ok: false, error: '본인 계정은 잠글 수 없습니다.' };
+  const ctx = await contextOrNull(actor);
+  const programId = ctx?.programId ?? null;
+  if (!ctx || !programId || !(await assertMemberOfProgram(programId, userId))) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
+  if (locked) {
+    const denied = await guardStaffChange(ctx, await membershipOf(programId, userId), userId, { demotes: true });
+    if (denied) return { ok: false, error: denied };
+  }
+  const admin = createAdminClient();
+  const { data: target } = await admin.from('users').select('is_platform_admin').eq('id', userId).maybeSingle();
+  if (target?.is_platform_admin) return { ok: false, error: '플랫폼 관리자 계정은 잠글 수 없습니다.' };
+  const { error } = await admin.from('users').update({ is_active: !locked, updated_at: new Date().toISOString() }).eq('id', userId);
+  if (error) return { ok: false, error: '계정 상태 변경에 실패했습니다.' };
+  await audit(programId, actor.id, locked ? 'account.deactivate' : 'account.activate', 'users', userId, {});
+  revalidatePath('/nextlab/members');
+  revalidatePath('/nextlab/roster');
+  return { ok: true, message: locked ? '계정을 잠갔습니다. 모든 행사에서 로그인이 차단됩니다.' : '계정 잠금을 해제했습니다.' };
 }
 
 /**
@@ -752,15 +810,17 @@ export async function sendLoginGuideAction(
   const customHead = String(formData.get('message') ?? '').trim();
 
   const admin = createAdminClient();
-  const [{ data: program }, { data: memberships }] = await Promise.all([
+  const [{ data: program }, memberships] = await Promise.all([
     admin.from('programs').select('name, sms_footer').eq('id', programId).maybeSingle(),
-    admin.from('program_members').select('user_id').eq('program_id', programId).in('user_id', userIds),
+    fetchAllIn<{ user_id: string; is_active: boolean }>(userIds, (chunk, from, to) => admin.from('program_members').select('user_id, is_active').eq('program_id', programId).in('user_id', chunk).range(from, to)),
   ]);
   if (!program) return { ok: false, error: '행사를 찾을 수 없습니다.' };
-  const memberIds = new Set((memberships ?? []).map((m) => m.user_id));
+  const memberIds = new Set(memberships.filter((m) => m.is_active).map((m) => m.user_id));
   const targets = userIds.filter((id) => memberIds.has(id));
-  if (targets.length === 0) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
-  const { data: users } = await admin.from('users').select('id, name, email, phone, must_change_password, is_active').in('id', targets);
+  if (targets.length === 0) return { ok: false, error: '이 행사 소속(활성) 회원이 아닙니다.' };
+  const users = await fetchAllIn<{ id: string; name: string; email: string | null; phone: string | null; must_change_password: boolean; is_active: boolean }>(targets, (chunk, from, to) =>
+    admin.from('users').select('id, name, email, phone, must_change_password, is_active').in('id', chunk).range(from, to),
+  );
 
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
   if (!base) return { ok: false, error: '앱 주소(NEXT_PUBLIC_APP_URL)가 설정되지 않아 링크를 만들 수 없습니다.' };
@@ -769,36 +829,35 @@ export async function sendLoginGuideAction(
   let sent = 0;
   let failed = 0;
   let skipped = 0;
-  for (const u of users ?? []) {
-    const digits = (u.phone ?? '').replace(/\D/g, '');
-    if (!u.is_active || digits.length < 10) {
-      skipped += 1;
-      continue;
-    }
+  const sendable = users.filter((u) => u.is_active && (normalizePhone(u.phone) ?? '').length >= 10);
+  skipped = users.length - sendable.length;
+  const buildText = (u: (typeof users)[number]) => {
     const head = customHead
       ? customHead.replaceAll('{name}', u.name)
       : `[${program.name}] ${u.name}님, '${program.name}' 멘토링 플랫폼에 회원으로 등록되었습니다.`;
     const lines = [head, `${base}/login`, `아이디: 이메일(${u.email ?? '-'}) 또는 휴대폰 번호`];
     if (u.must_change_password) lines.push('임시 비밀번호: 본인 휴대폰 번호(숫자만). 첫 로그인 시 비밀번호를 변경해 주세요.');
     if (program.sms_footer) lines.push(program.sms_footer);
-    try {
-      const r = await sendSolapiSms(digits, lines.join('\n'), creds ? { creds } : {});
-      if (r.ok) {
+    return lines.join('\n');
+  };
+  // (P31) 10명 단위 병렬 발송 — 수백 명도 서버 액션 시간 안에 끝난다. 실패는 건별로 집계
+  const BATCH = 10;
+  const auditRows: { actor_id: string; program_id: string; action: string; entity_type: string; entity_id: string; metadata: { phone_last4: string } }[] = [];
+  for (let i = 0; i < sendable.length; i += BATCH) {
+    const batch = sendable.slice(i, i + BATCH);
+    const results = await Promise.allSettled(batch.map((u) => sendSolapiSms(normalizePhone(u.phone)!, buildText(u), creds ? { creds } : {})));
+    results.forEach((r, idx) => {
+      const u = batch[idx]!;
+      if (r.status === 'fulfilled' && r.value.ok) {
         sent += 1;
-        // 발송 이력 = 명단의 '안내 발송됨' 표시 근거. insert 실패를 삼키지 않는다(§6-3).
-        const { error: auditError } = await admin.from('audit_logs').insert({
-          actor_id: actor.id,
-          program_id: programId,
-          action: LOGIN_GUIDE_SMS_ACTION,
-          entity_type: 'users',
-          entity_id: u.id,
-          metadata: { phone_last4: digits.slice(-4) },
-        });
-        if (auditError) console.error('login guide audit insert failed:', auditError.message);
+        auditRows.push({ actor_id: actor.id, program_id: programId, action: LOGIN_GUIDE_SMS_ACTION, entity_type: 'users', entity_id: u.id, metadata: { phone_last4: normalizePhone(u.phone)!.slice(-4) } });
       } else failed += 1;
-    } catch {
-      failed += 1;
-    }
+    });
+  }
+  // 발송 이력 = 명단의 '안내 발송됨' 표시 근거. insert 실패를 삼키지 않는다(§6-3).
+  if (auditRows.length) {
+    const { error: auditError } = await admin.from('audit_logs').insert(auditRows);
+    if (auditError) console.error('login guide audit insert failed:', auditError.message);
   }
   revalidatePath('/nextlab/members');
   if (sent === 0) return { ok: false, error: `발송된 문자가 없습니다. (실패 ${failed} · 제외 ${skipped} — 비활성 계정·휴대폰 없음)` };

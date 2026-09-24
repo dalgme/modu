@@ -339,7 +339,19 @@ export interface CampaignExportData {
   title: string;
   summary: Record<string, string | number>[];
   raw: Record<string, string | number>[];
+  /** 범위 라벨 (그룹명 또는 행사 전체) — 엑셀 메타용 (P31) */
+  scopeLabel: string;
+  /** 대상자·응답 수 */
+  targets: number;
+  responded: number;
 }
+
+/** 문항 유형 한국어 라벨 (엑셀·화면 공용, P31) */
+export const QTYPE_LABELS: Record<string, string> = { scale: '척도', single: '단일 선택', multi: '복수 선택', text: '주관식', rank: '순위' };
+const qtypeLabel = (t: string) => QTYPE_LABELS[t] ?? t;
+
+/** ISO → 'YYYY-MM-DD HH:mm' (KST) */
+const kstDateTime = (iso: string | null | undefined) => (iso ? new Date(new Date(iso).getTime() + 9 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ') : '');
 
 function answerText(q: SurveyQuestionRow, v: unknown): string {
   if (v === undefined || v === null || v === '') return '';
@@ -360,7 +372,7 @@ export async function buildCampaignExportData(id: string, programId: string): Pr
   if (!d || d.campaign.program_id !== programId) return null;
   const roleLabel = (r: string) => (r === 'mentee' ? '멘티' : r === 'mentor' ? '멘토' : r);
   const summary: Record<string, string | number>[] = d.aggregates.map((a, i) => {
-    const base: Record<string, string | number> = { 번호: i + 1, 문항: a.label, 유형: a.qtype, 응답수: a.n };
+    const base: Record<string, string | number> = { 번호: i + 1, 문항: a.label, 유형: qtypeLabel(a.qtype), 응답수: a.n };
     if (a.qtype === 'scale') {
       base['평균'] = a.avg ?? '';
       base['분포'] = (a.distribution ?? []).map((x) => `${x.value}:${x.count}`).join(' ');
@@ -379,7 +391,8 @@ export async function buildCampaignExportData(id: string, programId: string): Pr
       역할: roleLabel(t.role),
       그룹: t.support_type_id ? (d.groupName ?? '') : '',
       휴대폰: t.phone ?? '',
-      응답일시: t.responded_at ?? '',
+      응답여부: t.responded_at ? '응답' : '미응답',
+      응답일시: kstDateTime(t.responded_at),
       경로: t.responded_at ? (t.channel === 'sms' ? '문자 링크' : '플랫폼') : '',
       독려횟수: t.notify_count,
       점수: t.score ?? '',
@@ -390,5 +403,12 @@ export async function buildCampaignExportData(id: string, programId: string): Pr
     });
     return row;
   });
-  return { title: d.campaign.title, summary, raw };
+  return {
+    title: d.campaign.title,
+    summary,
+    raw,
+    scopeLabel: d.campaign.support_type_id ? (d.groupName ?? '그룹') : '행사 전체',
+    targets: d.targets.length,
+    responded: d.targets.filter((t) => !!t.responded_at).length,
+  };
 }

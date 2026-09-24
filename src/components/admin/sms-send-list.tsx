@@ -246,7 +246,7 @@ export function SmsSendList({
 
       {/* 수신인 목록 팝업 */}
       <Dialog open={!!openBatch} onOpenChange={(o) => !o && setOpenBatch(null)}>
-        <DialogContent className="max-h-[85vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>수신인 목록 ({openBatch?.recipients.length ?? 0}명)</DialogTitle>
             <DialogDescription className="line-clamp-2">

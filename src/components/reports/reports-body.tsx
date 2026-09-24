@@ -106,7 +106,7 @@ export function ReportsBody({
               종합결과리포트 →
             </Link>
           )}
-          <ExcelButton href={`${exportHref}?tab=${tab}${periodQs}${trendYear ? `&year=${trendYear}` : ''}`} />
+          <ExcelButton href={`${exportHref}${exportHref.includes('?') ? '&' : '?'}tab=${tab}${periodQs}${trendYear ? `&year=${trendYear}` : ''}${casesView === 'mentor' ? '&view=mentor' : ''}`} />
         </div>
       </div>
 

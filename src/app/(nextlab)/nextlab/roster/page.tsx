@@ -14,6 +14,8 @@ import { denyUnless } from '@/lib/auth/capabilities';
 import { CASE_STATUSES, CASE_STATUS_META } from '@/types/case-status';
 import { SubTabs } from '@/components/common/sub-tabs';
 import { RankUploadButton } from '@/components/nextlab/rank-upload';
+import { RosterValuesUploadButton } from '@/components/nextlab/roster-bulk-actions';
+import { fetchAllIn } from '@/lib/supabase/paginate';
 import type { MentorGroupInfo, Withholding } from '@/components/nextlab/mentor-group-controls';
 import { MembersManager, type MenteeProgressItem } from '@/components/nextlab/members-manager';
 import { MentorFormsStatus } from '@/components/nextlab/mentor-forms-status';
@@ -94,16 +96,15 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
 
   if (tab === 'mentee') {
     const cases = await listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined });
-    const { createAdminClient } = await import('@/lib/supabase/admin');
     const admin = createAdminClient();
-    const [{ data: responses }, { data: ranks }] = cases.length
-      ? await Promise.all([
-          admin.from('survey_responses').select('case_id').in('case_id', cases.map((c) => c.id)),
-          admin.from('mentee_profiles').select('case_id, rank').in('case_id', cases.map((c) => c.id)),
-        ])
-      : [{ data: [] as { case_id: string }[] }, { data: [] as { case_id: string; rank: number | null }[] }];
-    const responded = new Set((responses ?? []).map((r) => r.case_id));
-    const rankByCase = new Map((ranks ?? []).map((r) => [r.case_id, r.rank]));
+    // (P31) 케이스 id in() 200개 청크 — 멘티 400명 규모에서 URL 길이·1,000행 캡에 잘리지 않게
+    const caseIds = cases.map((c) => c.id);
+    const [responses, ranks] = await Promise.all([
+      fetchAllIn<{ case_id: string }>(caseIds, (chunk, from, to) => admin.from('survey_responses').select('case_id').in('case_id', chunk).range(from, to)),
+      fetchAllIn<{ case_id: string; rank: number | null }>(caseIds, (chunk, from, to) => admin.from('mentee_profiles').select('case_id, rank').in('case_id', chunk).range(from, to)),
+    ]);
+    const responded = new Set(responses.map((r) => r.case_id));
+    const rankByCase = new Map(ranks.map((r) => [r.case_id, r.rank]));
     const rankByMentee = new Map<string, number>();
     const progress: Record<string, MenteeProgressItem[]> = {};
     for (const c of cases) {
@@ -130,7 +131,11 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         <ActiveHelp />
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-sky-300 bg-sky-100 px-4 py-2.5 text-sm dark:border-sky-800 dark:bg-sky-950/40">
           <span className="font-semibold text-sky-950 dark:text-sky-100">멘티 {countOf('mentee')}명 · 순위는 [멘티 순위 업로드]로 갱신 (멘티명·순위 엑셀)</span>
-          <RankUploadButton />
+          <div className="flex flex-wrap items-center gap-2">
+            <RankUploadButton />
+            <RosterValuesUploadButton target="mentee" />
+            <ExcelButton href="/api/nextlab/roster-export?tab=mentee&dedupe=1" label="재업로드용 엑셀 (1인 1행)" title="일괄 등록 템플릿과 같은 헤더 — [기존 정보 갱신] 모드로 다시 올릴 수 있습니다" />
+          </div>
         </div>
         <MembersManager members={menteeItems} rosterColumns={roster.columns.map((c) => ({ id: c.id, target: c.target, name: c.name }))} rosterValues={roster.values} mode="mentee" progress={progress} />
       </>
@@ -148,11 +153,14 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     // 그룹 지정·원천징수 override 는 범위(그룹)와 무관하게 행사 전체 그룹 기준으로 보여준다 —
     // listProgramMentors 는 범위 그룹만 남기므로 명부 행을 직접 조회 (P28)
     const mentorIds = memberItems.filter((m) => m.role === 'mentor').map((m) => m.id);
-    const { data: rosterRows } = mentorIds.length
-      ? await createAdminClient().from('support_type_members').select('user_id, support_type_id, is_active, withholding_method').eq('member_role', 'mentor').in('user_id', mentorIds).in('support_type_id', groupList.map((g) => g.id))
-      : { data: [] as { user_id: string; support_type_id: string; is_active: boolean; withholding_method: string | null }[] };
+    const groupIds = groupList.map((g) => g.id);
+    const rosterRows = groupIds.length
+      ? await fetchAllIn<{ user_id: string; support_type_id: string; is_active: boolean; withholding_method: string | null }>(mentorIds, (chunk, from, to) =>
+          createAdminClient().from('support_type_members').select('user_id, support_type_id, is_active, withholding_method').eq('member_role', 'mentor').in('user_id', chunk).in('support_type_id', groupIds).range(from, to),
+        )
+      : [];
     const mentorItems = memberItems.map((m) => {
-      const mine = (rosterRows ?? []).filter((r) => r.user_id === m.id);
+      const mine = rosterRows.filter((r) => r.user_id === m.id);
       const mentorGroups: MentorGroupInfo[] = groupList.map((g) => {
         const row = mine.find((r) => r.support_type_id === g.id);
         return { id: g.id, name: g.name, designated: row?.is_active ?? false, withholding: row ? ((row.withholding_method ?? '') as Withholding) : null };
@@ -189,11 +197,15 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             <h2 className="text-lg font-semibold">멘토 계정 관리</h2>
             <p className="text-xs text-muted-foreground">정보 수정(그룹 지정·원천징수 포함) · 역할 변경 · 활성/비활성 · 로그인 안내 문자 · 화면 보기(대행). 진행현황·지급서류·운영사 평가는 [멘토 매칭 리스트]와 리포트에서 관리합니다.</p>
           </div>
-          <Button asChild variant="outline" size="sm" className="gap-1">
-            <a href="/api/staff/mentor-docs-zip" title="멘토별 폴더로 정리된 ZIP — 지급서류(이력서·통장·신분증)와 위촉 서식 제출 파일">
-              <Download className="h-4 w-4" /> 멘토 서류 일괄 다운로드 (ZIP)
-            </a>
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <RosterValuesUploadButton target="mentor" />
+            <ExcelButton href="/api/nextlab/rounds-export" label="회차 엑셀" title="현재 범위의 멘토별 회차(일자·시간·방법·참가자·보고서·단가·정산 상태)" />
+            <Button asChild variant="outline" size="sm" className="gap-1">
+              <a href="/api/staff/mentor-docs-zip" title="멘토별 폴더로 정리된 ZIP — 지급서류(이력서·통장·신분증)와 위촉 서식 제출 파일">
+                <Download className="h-4 w-4" /> 멘토 서류 일괄 다운로드 (ZIP)
+              </a>
+            </Button>
+          </div>
         </div>
         <MembersManager members={mentorItems} rosterColumns={roster.columns.map((c) => ({ id: c.id, target: c.target, name: c.name }))} rosterValues={roster.values} mode="mentor" />
       </>

@@ -2,6 +2,7 @@ import type { MatchMethod } from '@/lib/matching/labels';
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { logAudit } from '@/lib/workflow/audit';
 import { dropPlannedRoundsOfMentor } from '@/lib/workflow/rounds';
 import { queueNotification } from '@/lib/workflow/notifications';
 import { inviteMentee } from '@/lib/auth/admin-accounts';
@@ -23,7 +24,7 @@ export interface CreateCaseInput extends CaseFormInput {
 }
 
 export type CreateCaseResult =
-  | { ok: true; caseId: string; menteeCredential?: { email: string; tempPassword: string }; linkedExisting?: boolean }
+  | { ok: true; caseId: string; menteeCredential?: { email: string; tempPassword: string }; linkedExisting?: boolean; /** 케이스는 생성됐지만 멘티 계정 발급이 실패한 사유 (P31) */ menteeInviteError?: string }
   | { ok: false; error: string };
 
 /**
@@ -92,6 +93,7 @@ export async function createCase(input: CreateCaseInput): Promise<CreateCaseResu
 
   // 멘티 계정: 기존 계정 연결(승계) 또는 휴대폰 기반 자동 발급. 실패해도 케이스는 유지.
   let menteeCredential: { email: string; tempPassword: string } | undefined;
+  let menteeInviteError: string | undefined;
   let menteeId = input.menteeId ?? null;
   let linkedExisting = false;
   if (!menteeId) {
@@ -124,12 +126,15 @@ export async function createCase(input: CreateCaseInput): Promise<CreateCaseResu
           name: input.owner_name,
           phone: storedPhone,
           actorId: input.createdBy,
+          programId: input.programId,
         });
         menteeCredential = { email: res.email, tempPassword: res.tempPassword };
         const { data: row } = await admin.from('cases').select('mentee_id').eq('id', created.id).maybeSingle();
         menteeId = row?.mentee_id ?? null;
-      } catch {
-        /* 계정 발급 실패는 무시 — 회원관리에서 초대 가능 */
+      } catch (err) {
+        // 계정 발급 실패를 삼키지 않는다 — 결과에 담고 감사에 남긴다. 회원관리에서 다시 초대 가능 (P31)
+        menteeInviteError = err instanceof Error ? err.message : '멘티 계정 발급 실패';
+        await logAudit(admin, { actorId: input.createdBy, programId: input.programId, action: 'mentee.invite_failed', entityType: 'cases', entityId: created.id, metadata: { email, error: menteeInviteError } });
       }
     }
   }
@@ -139,7 +144,7 @@ export async function createCase(input: CreateCaseInput): Promise<CreateCaseResu
       .upsert({ program_id: input.programId, user_id: menteeId, role: 'mentee', is_active: true }, { onConflict: 'program_id,user_id' });
   }
 
-  return { ok: true, caseId: created.id, menteeCredential, linkedExisting };
+  return { ok: true, caseId: created.id, menteeCredential, linkedExisting, menteeInviteError };
 }
 
 /** 이메일(정확히) 또는 휴대폰(숫자 정규화)으로 기존 계정 1건을 찾는다. 둘 이상이면 연결하지 않는다(null). */

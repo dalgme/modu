@@ -2,7 +2,7 @@ import 'server-only';
 
 import { computeProgramMetrics, type ReportPeriod } from '@/lib/reports/metrics';
 import { listCases, type CaseListItem } from '@/lib/data/cases';
-import { CASE_STATUSES, CASE_STEP_ORDER, type CaseStatus } from '@/types/case-status';
+import { CASE_STATUSES, CASE_STATUS_META, CASE_STEP_ORDER, type CaseStatus } from '@/types/case-status';
 import { listSettlements } from '@/lib/data/settlements';
 
 /** 리포트 페이지·엑셀이 같은 데이터를 쓴다. period = 기간 필터(회차 보고서 등록일·정산 확정일·케이스 등록/종결일, P30) */
@@ -46,6 +46,20 @@ export interface CaseListParams {
   mentor?: string;
   q?: string;
   sort?: string;
+  /** 진행현황 보기 (mentee|mentor) — 엑셀 라우트가 화면과 같은 시트를 고르는 데 쓴다 (P31) */
+  view?: string;
+}
+
+const SORT_LABELS: Record<string, string> = { name: '이름순', status: '단계순', rounds: '회차순', recent: '최신 등록순' };
+
+/** 필터 설명 문구 (엑셀 메타·캡션) — 화면과 엑셀이 같은 파라미터를 쓰므로 같은 문구가 나온다 (P31) */
+export function caseFilterLabel(p: CaseListParams, mentorName?: string | null): string | null {
+  const parts: string[] = [];
+  if (p.status && (CASE_STATUSES as readonly string[]).includes(p.status)) parts.push(`상태 ${CASE_STATUS_META[p.status as CaseStatus].short}`);
+  if (p.mentor) parts.push(`멘토 ${mentorName ?? p.mentor}`);
+  if ((p.q ?? '').trim()) parts.push(`검색 "${p.q!.trim()}"`);
+  if (p.sort && SORT_LABELS[p.sort]) parts.push(SORT_LABELS[p.sort]!);
+  return parts.length ? parts.join(' · ') : null;
 }
 
 /** 진행현황 표 필터·정렬 (URL 파라미터, P30) — 리포트 페이지(운영사·발주처)와 엑셀이 같은 함수를 쓴다 */

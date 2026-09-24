@@ -101,6 +101,8 @@ export function SettlementsTable({
           query={query}
           onQuery={setQuery}
           placeholder="멘토명 · 멘티 검색"
+          exportHref="/api/nextlab/settlements-export"
+          exportLabel="정산 엑셀"
           filters={groups.length > 1 ? [{ key: 'all', label: '전체 그룹', count: items.length }, ...groups] : undefined}
           active={group}
           onFilter={setGroup}

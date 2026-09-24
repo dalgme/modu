@@ -4,6 +4,8 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import type { Tables } from '@/types/database';
 import type { UserRole } from '@/lib/auth/roles';
 import { mentorEligibleForGroup } from '@/lib/matching/eligibility';
+import { fetchAll, fetchAllIn } from '@/lib/supabase/paginate';
+import { normalizePhone } from '@/lib/utils/phone';
 
 export interface MentorLoad {
   id: string;
@@ -25,25 +27,29 @@ export interface MentorLoad {
 export async function listMentorsWithLoad(programId: string): Promise<MentorLoad[]> {
   const admin = createAdminClient();
   // 이 행사에서 역할이 멘토인 소속 (설계 B: program_members.role)
-  const { data: members } = await admin.from('program_members').select('user_id').eq('program_id', programId).eq('role', 'mentor').eq('is_active', true);
-  const ids = (members ?? []).map((m) => m.user_id);
+  const members = await fetchAll<{ user_id: string }>((from, to) => admin.from('program_members').select('user_id').eq('program_id', programId).eq('role', 'mentor').eq('is_active', true).range(from, to));
+  const ids = members.map((m) => m.user_id);
   if (ids.length === 0) return [];
-  const [{ data: mentors }, { data: assigns }, { data: docs }] = await Promise.all([
-    admin.from('users').select('id, name, email, phone').in('id', ids).eq('is_active', true).order('name'),
-    admin.from('mentor_assignments').select('mentor_id, case_id, cases!inner(program_id)').in('mentor_id', ids).eq('is_active', true),
-    admin.from('mentor_payment_docs').select('user_id, resume_uploaded_at, bankbook_uploaded_at, id_card_uploaded_at, resume_received_at, bankbook_received_at, id_card_received_at').eq('program_id', programId).in('user_id', ids),
+  // (P31) in() 200개 청크 + 1,000행 캡 안전
+  const [mentors, assigns, docs] = await Promise.all([
+    fetchAllIn<{ id: string; name: string; email: string | null; phone: string | null }>(ids, (chunk, from, to) => admin.from('users').select('id, name, email, phone').in('id', chunk).eq('is_active', true).order('name').range(from, to)),
+    fetchAllIn<{ mentor_id: string; case_id: string; cases: { program_id: string } | null }>(ids, (chunk, from, to) => admin.from('mentor_assignments').select('mentor_id, case_id, cases!inner(program_id)').in('mentor_id', chunk).eq('is_active', true).range(from, to)),
+    fetchAllIn<{ user_id: string; resume_uploaded_at: string | null; bankbook_uploaded_at: string | null; id_card_uploaded_at: string | null; resume_received_at: string | null; bankbook_received_at: string | null; id_card_received_at: string | null }>(ids, (chunk, from, to) =>
+      admin.from('mentor_payment_docs').select('user_id, resume_uploaded_at, bankbook_uploaded_at, id_card_uploaded_at, resume_received_at, bankbook_received_at, id_card_received_at').eq('program_id', programId).in('user_id', chunk).range(from, to),
+    ),
   ]);
+  mentors.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
 
   // 멘토별 이 행사 케이스의 활성 배정(중복 제외) 집계
   const casesByMentor = new Map<string, Set<string>>();
-  for (const a of assigns ?? []) {
-    if ((a.cases as unknown as { program_id: string } | null)?.program_id !== programId) continue;
+  for (const a of assigns) {
+    if (a.cases?.program_id !== programId) continue;
     if (!casesByMentor.has(a.mentor_id)) casesByMentor.set(a.mentor_id, new Set());
     casesByMentor.get(a.mentor_id)!.add(a.case_id);
   }
 
-  const docsByUser = new Map((docs ?? []).map((d) => [d.user_id, d]));
-  return (mentors ?? []).map((m) => {
+  const docsByUser = new Map(docs.map((d) => [d.user_id, d]));
+  return mentors.map((m) => {
     const d = docsByUser.get(m.id);
     return {
       id: m.id,
@@ -114,51 +120,52 @@ const ROLE_ORDER: Record<UserRole, number> = {
  */
 export async function listProgramMembers(programId: string, supportTypeId?: string | null): Promise<MemberRow[]> {
   const admin = createAdminClient();
-  const { data: memberships } = await admin
-    .from('program_members')
-    .select('user_id, role, is_active, joined_at, grade, duty, note')
-    .eq('program_id', programId)
-    .order('joined_at', { ascending: true });
-  const ids = (memberships ?? []).map((m) => m.user_id);
+  const memberships = await fetchAll<{ user_id: string; role: string; is_active: boolean; joined_at: string; grade: string | null; duty: string | null; note: string | null }>((from, to) =>
+    admin.from('program_members').select('user_id, role, is_active, joined_at, grade, duty, note').eq('program_id', programId).order('joined_at', { ascending: true }).range(from, to),
+  );
+  const ids = memberships.map((m) => m.user_id);
   if (ids.length === 0) return [];
-  const [{ data: users }, { data: assigns }, { data: guides }, { data: menteeCases }, { data: groupRoster }, { data: mentorNotes }] = await Promise.all([
-    admin
-      .from('users')
-      .select('id, email, name, phone, role, is_active, must_change_password, invited_at, activated_at, created_at, position, organization')
-      .in('id', ids),
-    admin.from('mentor_assignments').select('mentor_id, case_id, notice_sent_at, cases!inner(program_id, support_type_id)').in('mentor_id', ids).eq('is_active', true).eq('cases.program_id', programId),
-    admin.from('audit_logs').select('entity_id, created_at').eq('action', LOGIN_GUIDE_SMS_ACTION).eq('program_id', programId).eq('entity_type', 'users').in('entity_id', ids).order('created_at', { ascending: true }),
-    admin.from('cases').select('mentee_id, business_name, support_type_id, created_at').eq('program_id', programId).not('mentee_id', 'is', null).order('created_at', { ascending: false }),
+  // (P31) 전부 청크·페이지 안전 — 멘티 400명 규모에서 users/audit_logs 조회가 1,000행 캡·URL 길이에 잘리지 않게
+  type UserLite = Pick<Tables<'users'>, 'id' | 'email' | 'name' | 'phone' | 'role' | 'is_active' | 'must_change_password' | 'invited_at' | 'activated_at' | 'created_at' | 'position' | 'organization'>;
+  const [users, assigns, guides, menteeCases, groupRoster, mentorNotes] = await Promise.all([
+    fetchAllIn<UserLite>(ids, (chunk, from, to) => admin.from('users').select('id, email, name, phone, role, is_active, must_change_password, invited_at, activated_at, created_at, position, organization').in('id', chunk).range(from, to)),
+    fetchAllIn<{ mentor_id: string; case_id: string; notice_sent_at: string | null; cases: { program_id: string; support_type_id: string } | null }>(ids, (chunk, from, to) =>
+      admin.from('mentor_assignments').select('mentor_id, case_id, notice_sent_at, cases!inner(program_id, support_type_id)').in('mentor_id', chunk).eq('is_active', true).eq('cases.program_id', programId).range(from, to),
+    ),
+    fetchAllIn<{ entity_id: string | null; created_at: string }>(ids, (chunk, from, to) =>
+      admin.from('audit_logs').select('entity_id, created_at').eq('action', LOGIN_GUIDE_SMS_ACTION).eq('program_id', programId).eq('entity_type', 'users').in('entity_id', chunk).order('created_at', { ascending: true }).range(from, to),
+    ),
+    fetchAll<{ mentee_id: string | null; business_name: string; support_type_id: string; created_at: string }>((from, to) => admin.from('cases').select('mentee_id, business_name, support_type_id, created_at').eq('program_id', programId).not('mentee_id', 'is', null).order('created_at', { ascending: false }).range(from, to)),
     supportTypeId
-      ? admin.from('support_type_members').select('user_id, support_type_id, support_types!inner(program_id)').eq('is_active', true).eq('member_role', 'mentor').eq('support_types.program_id', programId)
-      : Promise.resolve({ data: [] as { user_id: string; support_type_id: string }[] }),
-    admin.from('mentor_profiles').select('user_id, note').eq('program_id', programId).in('user_id', ids),
+      ? fetchAll<{ user_id: string; support_type_id: string }>((from, to) => admin.from('support_type_members').select('user_id, support_type_id, support_types!inner(program_id)').eq('is_active', true).eq('member_role', 'mentor').eq('support_types.program_id', programId).range(from, to))
+      : Promise.resolve([] as { user_id: string; support_type_id: string }[]),
+    fetchAllIn<{ user_id: string; note: string | null }>(ids, (chunk, from, to) => admin.from('mentor_profiles').select('user_id, note').eq('program_id', programId).in('user_id', chunk).range(from, to)),
   ]);
-  const mentorNote = new Map((mentorNotes ?? []).map((p) => [p.user_id, p.note]));
-  const inScopeAssign = (a: { cases: unknown }) => !supportTypeId || (a.cases as { support_type_id: string } | null)?.support_type_id === supportTypeId;
+  const mentorNote = new Map(mentorNotes.map((p) => [p.user_id, p.note]));
+  const inScopeAssign = (a: { cases: { support_type_id: string } | null }) => !supportTypeId || a.cases?.support_type_id === supportTypeId;
   const assignedCount = new Map<string, number>();
-  for (const a of assigns ?? []) if (inScopeAssign(a)) assignedCount.set(a.mentor_id, (assignedCount.get(a.mentor_id) ?? 0) + 1);
-  const menteeInScope = new Set((menteeCases ?? []).filter((c) => !supportTypeId || c.support_type_id === supportTypeId).map((c) => c.mentee_id as string));
+  for (const a of assigns) if (inScopeAssign(a)) assignedCount.set(a.mentor_id, (assignedCount.get(a.mentor_id) ?? 0) + 1);
+  const menteeInScope = new Set(menteeCases.filter((c) => !supportTypeId || c.support_type_id === supportTypeId).map((c) => c.mentee_id as string));
   // 멘토 그룹 지정 규칙: 지정이 하나도 없으면 모든 그룹에서 사용(복제), 있으면 지정 그룹에서만
   const designated = new Map<string, Set<string>>();
-  for (const r of groupRoster ?? []) (designated.get(r.user_id) ?? designated.set(r.user_id, new Set()).get(r.user_id)!).add(r.support_type_id);
+  for (const r of groupRoster) (designated.get(r.user_id) ?? designated.set(r.user_id, new Set()).get(r.user_id)!).add(r.support_type_id);
   const mentorInScope = (id: string) => !supportTypeId || mentorEligibleForGroup(designated.get(id) ?? new Set(), supportTypeId) || assignedCount.has(id);
   const guideAt = new Map<string, string>();
-  for (const g of guides ?? []) {
+  for (const g of guides.sort((a, b) => a.created_at.localeCompare(b.created_at))) {
     if (g.entity_id && !guideAt.has(g.entity_id)) guideAt.set(g.entity_id, g.created_at);
   }
   // 전원 배정 시 자동 발송된 멘토 로그인 안내(mentor_assignments.notice_sent_at)도 "안내 발송"으로 친다 (P28)
-  for (const a of assigns ?? []) {
-    const at = (a as { notice_sent_at?: string | null }).notice_sent_at;
+  for (const a of assigns) {
+    const at = a.notice_sent_at;
     if (at && !guideAt.has(a.mentor_id)) guideAt.set(a.mentor_id, at);
   }
   const businessOf = new Map<string, string>();
-  for (const c of menteeCases ?? []) {
+  for (const c of menteeCases) {
     if (c.mentee_id && !businessOf.has(c.mentee_id)) businessOf.set(c.mentee_id, c.business_name);
   }
-  const byId = new Map((users ?? []).map((u) => [u.id, u]));
+  const byId = new Map(users.map((u) => [u.id, u]));
   const rows: MemberRow[] = [];
-  for (const m of memberships ?? []) {
+  for (const m of memberships) {
     const u = byId.get(m.user_id);
     if (!u) continue;
     const role = m.role as UserRole;
@@ -210,8 +217,8 @@ export interface SmsRecipient {
 export async function listSmsRecipients(programId: string, supportTypeId?: string | null): Promise<SmsRecipient[]> {
   const admin = createAdminClient();
   // 이 행사 소속만, 역할은 행사 안 역할 (설계 B). 그룹 범위(P25)면 멘티·멘토는 그 그룹 기준으로 좁힌다.
-  const { data: memberships } = await admin.from('program_members').select('user_id, role').eq('program_id', programId).eq('is_active', true);
-  const roleOf = new Map((memberships ?? []).map((m) => [m.user_id, m.role as UserRole]));
+  const memberships = await fetchAll<{ user_id: string; role: string }>((from, to) => admin.from('program_members').select('user_id, role').eq('program_id', programId).eq('is_active', true).range(from, to));
+  const roleOf = new Map(memberships.map((m) => [m.user_id, m.role as UserRole]));
   if (supportTypeId) {
     const scoped = await listProgramMembers(programId, supportTypeId);
     const allowed = new Set(scoped.map((m) => m.id));
@@ -220,23 +227,19 @@ export async function listSmsRecipients(programId: string, supportTypeId?: strin
     }
   }
   const ids = Array.from(roleOf.keys());
-  const { data } = ids.length
-    ? await admin.from('users').select('id, name, phone, is_active').in('id', ids).eq('is_active', true).not('phone', 'is', null)
-    : { data: [] as { id: string; name: string; phone: string | null; is_active: boolean }[] };
-  const rows = (data ?? [])
-    .filter((u) => (u.phone ?? '').replace(/\D/g, '').length >= 10)
+  const data = await fetchAllIn<{ id: string; name: string; phone: string | null; is_active: boolean }>(ids, (chunk, from, to) => admin.from('users').select('id, name, phone, is_active').in('id', chunk).eq('is_active', true).not('phone', 'is', null).range(from, to));
+  const rows = data
+    .filter((u) => !!normalizePhone(u.phone))
     .map((u) => ({ ...u, role: roleOf.get(u.id)! }));
 
-  // 멘티 소속 기업명 매핑 (mentee_id → business_name)
+  // 멘티 소속 기업명 매핑 (mentee_id → business_name) — 이 행사 케이스만
   const menteeIds = rows.filter((u) => u.role === 'mentee').map((u) => u.id);
   const businessByMentee = new Map<string, string>();
   if (menteeIds.length) {
-    const { data: cases } = await admin
-      .from('cases')
-      .select('mentee_id, business_name, created_at')
-      .in('mentee_id', menteeIds)
-      .order('created_at', { ascending: false });
-    for (const c of cases ?? []) {
+    const cases = await fetchAllIn<{ mentee_id: string | null; business_name: string; created_at: string }>(menteeIds, (chunk, from, to) =>
+      admin.from('cases').select('mentee_id, business_name, created_at').eq('program_id', programId).in('mentee_id', chunk).order('created_at', { ascending: false }).range(from, to),
+    );
+    for (const c of cases) {
       if (c.mentee_id && !businessByMentee.has(c.mentee_id)) {
         businessByMentee.set(c.mentee_id, c.business_name);
       }

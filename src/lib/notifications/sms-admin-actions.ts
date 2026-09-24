@@ -7,6 +7,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { sendSms } from '@/lib/notifications/provider';
 import { getSolapiBalance } from '@/lib/notifications/solapi';
 import { fetchAllIn } from '@/lib/supabase/paginate';
+import { normalizePhone } from '@/lib/utils/phone';
 
 const INSTITUTION_READ_ONLY = '발주처 계정은 문자 발송을 할 수 없습니다.';
 
@@ -55,7 +56,7 @@ import {
 export type TestSmsResult = { ok: true; providerId?: string } | { ok: false; error: string };
 
 export type BulkSmsResult =
-  | { ok: true; sent: number; failed: number; total: number }
+  | { ok: true; sent: number; failed: number; total: number; /** 실패 수신자 (P31 — [실패자만 다시 선택]) */ failedRecipients: { id: string; name: string; phone: string }[] }
   | { ok: false; error: string };
 export type BalanceResult =
   | { ok: true; balance: number; point: number }
@@ -68,17 +69,46 @@ export type ReminderSendResult =
   | ({ ok: true } & ReminderRunResult)
   | { ok: false; error: string };
 
-/** 관리자: 문자 테스트 발송 (행사별 문자 API → 플랫폼 폴백) */
-export async function sendTestSmsAction(input: { to: string; text: string }): Promise<TestSmsResult> {
+/** 테스트 문자 고정 문안 — 임의 문구를 임의 번호로 보내는 경로가 되지 않도록 본문은 고정 (P31) */
+const TEST_SMS_TEXT = '[문자 발송 테스트] 이 문자가 도착하면 플랫폼 문자 설정이 정상입니다.';
+
+/**
+ * 관리자: 문자 테스트 발송 (행사별 문자 API → 플랫폼 폴백).
+ * (P31) 수신번호는 **실행자 본인 휴대폰 또는 이 행사 소속 회원의 휴대폰**만 허용하고, 문안은 고정 템플릿(입력 text 무시). 감사 `sms.test`.
+ */
+export async function sendTestSmsAction(input: { to: string; text?: string }): Promise<TestSmsResult> {
   const g = await smsGate();
   if (!g.ok) return { ok: false, error: g.error };
-  const to = (input.to ?? '').trim();
-  const text = (input.text ?? '').trim();
-  if (!/^01[0-9]{7,9}$/.test(to.replace(/[^0-9]/g, ''))) {
-    return { ok: false, error: '올바른 휴대폰 번호를 입력하세요.' };
+  const to = normalizePhone(input.to ?? '');
+  if (!to) return { ok: false, error: '올바른 휴대폰 번호를 입력하세요.' };
+  const admin = createAdminClient();
+  const { data: me } = await admin.from('users').select('phone').eq('id', g.actorId).maybeSingle();
+  let allowed = normalizePhone(me?.phone) === to;
+  let targetUserId: string | null = allowed ? g.actorId : null;
+  if (!allowed) {
+    // 행사 소속 회원의 번호인지 — 뒷 4자리로 좁혀 읽고 정규화 비교 (전체 스캔 금지)
+    const { data: candidates } = await admin.from('users').select('id, phone').ilike('phone', `%${to.slice(-4)}`).limit(500);
+    const hits = (candidates ?? []).filter((u) => normalizePhone(u.phone) === to).map((u) => u.id);
+    if (hits.length) {
+      const rows = await fetchAllIn(hits, (chunk, from, to2) => admin.from('program_members').select('user_id').eq('program_id', g.ctx.programId).eq('is_active', true).in('user_id', chunk).range(from, to2));
+      if (rows.length) {
+        allowed = true;
+        targetUserId = rows[0]!.user_id;
+      }
+    }
   }
-  if (text.length < 1) return { ok: false, error: '메시지 내용을 입력하세요.' };
-  return sendSms(to, text, g.ctx.programId);
+  if (!allowed) return { ok: false, error: '테스트 문자는 본인 휴대폰 또는 이 행사 소속 회원의 휴대폰으로만 보낼 수 있습니다.' };
+  const r = await sendSms(to, TEST_SMS_TEXT, g.ctx.programId);
+  const { error: auditError } = await admin.from('audit_logs').insert({
+    actor_id: g.actorId,
+    program_id: g.ctx.programId,
+    action: 'sms.test',
+    entity_type: 'users',
+    entity_id: targetUserId ?? g.actorId,
+    metadata: { phone_last4: to.slice(-4), self: targetUserId === g.actorId, ok: r.ok, error: r.ok ? null : r.error },
+  });
+  if (auditError) console.error('sms test audit failed:', auditError.message);
+  return r;
 }
 
 /**
@@ -86,6 +116,7 @@ export async function sendTestSmsAction(input: { to: string; text: string }): Pr
  *  - 수신자는 현재 행사의 활성 소속으로 제한
  *  - 행사별 문자 API → 플랫폼 폴백 (`sendSms(to, text, programId)`)
  *  - 10명 단위 병렬 배치(Promise.allSettled). 발송사가 인증·잔액 오류를 돌려주면 그 배치에서 중단
+ *  - `{name}` 은 수신자 이름으로 치환 (서버, P31). 실패 수신자 목록을 돌려준다
  *  - 감사 'sms.bulk_send' (program_id, total/count, sent, failed, failed_ids)
  */
 export async function sendBulkSmsAction(input: {
@@ -103,11 +134,13 @@ export async function sendBulkSmsAction(input: {
   if (ids.length === 0) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
 
   const admin = createAdminClient();
-  const users = await fetchAllIn(ids, (chunk, from, to) => admin.from('users').select('id, phone, is_active').in('id', chunk).range(from, to));
+  const users = await fetchAllIn(ids, (chunk, from, to) => admin.from('users').select('id, name, phone, is_active').in('id', chunk).range(from, to));
   const targets = users
-    .filter((u) => u.is_active && (u.phone ?? '').replace(/\D/g, '').length >= 10)
-    .map((u) => ({ id: u.id, phone: u.phone as string }));
+    .filter((u) => u.is_active && normalizePhone(u.phone))
+    .map((u) => ({ id: u.id, name: u.name, phone: normalizePhone(u.phone)! }));
   if (targets.length === 0) return { ok: false, error: '발송 가능한 연락처가 없습니다.' };
+  const hasName = text.includes('{name}');
+  const textFor = (t: { name: string }) => (hasName ? text.replaceAll('{name}', t.name) : text);
 
   let sent = 0;
   let failed = 0;
@@ -117,7 +150,7 @@ export async function sendBulkSmsAction(input: {
   const BATCH = 10;
   for (let i = 0; i < targets.length && !fatal; i += BATCH) {
     const batch = targets.slice(i, i + BATCH);
-    const results = await Promise.allSettled(batch.map((t) => sendSms(t.phone, text, g.ctx.programId)));
+    const results = await Promise.allSettled(batch.map((t) => sendSms(t.phone, textFor(t), g.ctx.programId)));
     attempted += batch.length;
     results.forEach((r, idx) => {
       const id = batch[idx]!.id;
@@ -142,7 +175,7 @@ export async function sendBulkSmsAction(input: {
     action: 'sms.bulk_send',
     entity_type: 'users',
     entity_id: g.actorId,
-    metadata: { total: targets.length, count: targets.length, sent, failed, failed_ids: failedIds.slice(0, 200), dropped_out_of_scope: rawIds.length - ids.length, fatal_error: fatal, role: g.ctx.role },
+    metadata: { total: targets.length, count: targets.length, sent, failed, failed_ids: failedIds.slice(0, 200), dropped_out_of_scope: rawIds.length - ids.length, fatal_error: fatal, role: g.ctx.role, name_substituted: hasName },
   });
   if (auditError) console.error('bulk sms audit failed:', auditError.message);
 
@@ -152,7 +185,9 @@ export async function sendBulkSmsAction(input: {
   if (sent === 0) {
     return { ok: false, error: `발송에 모두 실패했습니다. (${failed}건)` };
   }
-  return { ok: true, sent, failed, total: targets.length };
+  const failedSet = new Set(failedIds);
+  const failedRecipients = targets.filter((t) => failedSet.has(t.id)).map((t) => ({ id: t.id, name: t.name, phone: t.phone }));
+  return { ok: true, sent, failed, total: targets.length, failedRecipients };
 }
 
 /** 관리자: 문자 잔액 조회 (플랫폼 계정) */

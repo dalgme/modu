@@ -31,6 +31,8 @@ export default async function Page({ searchParams }: { searchParams: SP }) {
   // 멘토 진행현황 = 그룹별(담당 인원)·담당 멘티명·회차·확정 실지급·만족도·운영사 평가 (P27-17)
   const mentorProgress = tab === 'cases' && searchParams.view === 'mentor' ? (await loadMatchingLists(ctx.programId, groupId)).mentorRows : undefined;
   const filtered = tab === 'cases' ? filterAndSortCases(cases, searchParams) : cases;
+  // 진행현황 표 필터가 엑셀에도 그대로 반영되도록 (P31)
+  const exportQs = new URLSearchParams(Object.entries({ status: searchParams.status, mentor: searchParams.mentor, q: searchParams.q, sort: searchParams.sort }).filter(([, v]) => !!v) as [string, string][]).toString();
   return (
     <main className="flex flex-col gap-5">
       <div>
@@ -45,7 +47,7 @@ export default async function Page({ searchParams }: { searchParams: SP }) {
         totalCases={cases.length}
         settlements={settlements}
         branding={ctx.branding}
-        exportHref="/api/reports/export"
+        exportHref={`/api/reports/export${exportQs ? `?${exportQs}` : ''}`}
         groupFilter={ctx.supportTypeId ? undefined : { current: groupId, options: groups.map((g) => ({ id: g.id, name: g.name })) }}
         casesView={searchParams.view === 'mentor' ? 'mentor' : 'mentee'}
         mentorProgress={mentorProgress}

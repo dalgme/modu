@@ -1,14 +1,15 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, X, Plus, Send, Users, Clock, CalendarClock } from 'lucide-react';
+import { Search, X, Plus, Send, Users, Clock, CalendarClock, ClipboardPaste, RotateCcw } from 'lucide-react';
 
 import { sendBulkSmsAction, scheduleBulkSmsAction } from '@/lib/notifications/sms-admin-actions';
 import type { SmsRecipient } from '@/lib/data/members';
 import { ROLE_LABELS } from '@/lib/auth/roles';
 import { estimateSmsCost } from '@/lib/notifications/sms-cost';
 import { formatKRW } from '@/lib/utils/format';
+import { normalizePhone } from '@/lib/utils/phone';
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -40,8 +41,11 @@ export function SmsComposer({
   programSmsActive = false,
   canSend = true,
   scopeLabel,
+  initialRecipientIds = [],
 }: {
   recipients: SmsRecipient[];
+  /** 미리 선택할 수신자 id (`?to=<userId>`, P31) */
+  initialRecipientIds?: string[];
   /** 플랫폼 공통 API 연동 여부 */
   configured: boolean;
   /** 행사별 문자 API 등록·활성 여부 — 있으면 그 발신번호가 우선 */
@@ -53,8 +57,23 @@ export function SmsComposer({
 }) {
   const router = useRouter();
   const { toast } = useToast();
-  const [selected, setSelected] = useState<SmsRecipient[]>([]);
+  const [selected, setSelected] = useState<SmsRecipient[]>(() => recipients.filter((r) => initialRecipientIds.includes(r.id)));
   const [query, setQuery] = useState('');
+  // 번호 붙여넣기 (P31): 줄·콤마로 구분된 번호 → 정규화 → 회원 매칭. 미소속 번호는 발송하지 않고 표시만
+  const [pasteOpen, setPasteOpen] = useState(false);
+  const [pasteText, setPasteText] = useState('');
+  const [unmatched, setUnmatched] = useState<string[]>([]);
+  // 직전 발송의 실패 수신자 — [실패자만 다시 선택]
+  const [lastFailed, setLastFailed] = useState<{ id: string; name: string; phone: string }[]>([]);
+  const initialKey = initialRecipientIds.join(',');
+  useEffect(() => {
+    if (!initialKey) return;
+    const ids = initialKey.split(',');
+    setSelected((prev) => {
+      const have = new Set(prev.map((r) => r.id));
+      return [...prev, ...recipients.filter((r) => ids.includes(r.id) && !have.has(r.id))];
+    });
+  }, [initialKey, recipients]);
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
@@ -94,6 +113,40 @@ export function SmsComposer({
   function addAll() {
     setSelected((prev) => [...prev, ...candidates]);
   }
+  function applyPaste() {
+    const tokens = pasteText.split(/[\n,;\t ]+/).map((t) => t.trim()).filter(Boolean);
+    const byPhone = new Map<string, SmsRecipient>();
+    for (const r of recipients) {
+      const p = normalizePhone(r.phone);
+      if (p) byPhone.set(p, r);
+    }
+    const found: SmsRecipient[] = [];
+    const miss: string[] = [];
+    const seen = new Set<string>();
+    for (const t of tokens) {
+      const p = normalizePhone(t);
+      if (!p) { miss.push(`${t} (형식 오류)`); continue; }
+      if (seen.has(p)) continue;
+      seen.add(p);
+      const r = byPhone.get(p);
+      if (r) found.push(r);
+      else miss.push(p);
+    }
+    setSelected((prev) => {
+      const have = new Set(prev.map((r) => r.id));
+      return [...prev, ...found.filter((r) => !have.has(r.id))];
+    });
+    setUnmatched(miss);
+    setPasteText('');
+    setPasteOpen(false);
+    toast({ title: `회원 ${found.length}명 추가${miss.length ? ` · 미소속 ${miss.length}건 제외` : ''}` });
+  }
+  function reselectFailed() {
+    const ids = new Set(lastFailed.map((f) => f.id));
+    setSelected(recipients.filter((r) => ids.has(r.id)));
+  }
+  /** 미리보기용 {name} 치환 샘플 */
+  const previewText = text.includes('{name}') ? text.replaceAll('{name}', selected[0]?.name ?? '홍길동') : text;
 
   // datetime-local 최소값 (지금부터 2분 뒤) — 과거 예약 방지
   const minScheduled = useMemo(() => {
@@ -136,9 +189,10 @@ export function SmsComposer({
     if (result.ok) {
       toast({
         title: `문자 발송 완료 (성공 ${result.sent}건${result.failed ? ` · 실패 ${result.failed}건` : ''})`,
-        description: '발송 현황에서 상태를 확인하세요.',
+        description: result.failed ? '실패 수신자는 아래 [실패자만 다시 선택]으로 재발송할 수 있습니다.' : '발송 현황에서 상태를 확인하세요.',
       });
-      setText('');
+      setLastFailed(result.failedRecipients ?? []);
+      if (!result.failed) setText('');
       setSelected([]);
       setTimeout(() => router.refresh(), 1500);
     } else {
@@ -188,6 +242,31 @@ export function SmsComposer({
             className="pl-8"
           />
         </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <button type="button" onClick={() => setPasteOpen((o) => !o)} className="inline-flex items-center gap-1 rounded-md border px-2 py-1 font-medium text-muted-foreground hover:bg-accent" aria-expanded={pasteOpen}>
+            <ClipboardPaste className="h-3.5 w-3.5" /> 번호 붙여넣기
+          </button>
+          {lastFailed.length > 0 && (
+            <button type="button" onClick={reselectFailed} className="inline-flex items-center gap-1 rounded-md border border-status-rejected/40 px-2 py-1 font-medium text-status-rejected hover:bg-status-rejected/10">
+              <RotateCcw className="h-3.5 w-3.5" /> 실패자만 다시 선택 ({lastFailed.length})
+            </button>
+          )}
+        </div>
+        {pasteOpen && (
+          <div className="flex flex-col gap-1.5 rounded-md border bg-muted/30 p-2">
+            <Textarea rows={3} value={pasteText} onChange={(e) => setPasteText(e.target.value)} placeholder={'010-1234-5678\n01098765432, +82 10 5555 1234 …'} aria-label="붙여넣을 번호" />
+            <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span>줄·콤마·공백으로 구분. 이 범위의 회원 번호만 추가되고 미소속 번호는 발송하지 않습니다.</span>
+              <Button type="button" size="sm" onClick={applyPaste} disabled={!pasteText.trim()}>추가</Button>
+            </div>
+          </div>
+        )}
+        {unmatched.length > 0 && (
+          <p className="rounded-md border border-amber-300 bg-amber-50/60 px-2 py-1.5 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+            미소속(발송 제외) {unmatched.length}건: {unmatched.slice(0, 20).join(', ')}{unmatched.length > 20 ? ' …' : ''}
+            <button type="button" className="ml-2 underline" onClick={() => setUnmatched([])}>지우기</button>
+          </p>
+        )}
         <div className="max-h-52 overflow-y-auto rounded-md border">
           {candidates.length === 0 ? (
             <p className="p-3 text-center text-sm text-muted-foreground">
@@ -287,13 +366,13 @@ export function SmsComposer({
 
       {/* 메시지 + 실시간 비용 */}
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="bulk-text">메시지 (90byte 초과 시 LMS 자동전환)</Label>
+        <Label htmlFor="bulk-text">메시지 (90byte 초과 시 LMS 자동전환) <span className="ml-1 text-xs font-normal text-muted-foreground">· <code>{'{name}'}</code> 은 수신자 이름으로 바뀝니다</span></Label>
         <Textarea
           id="bulk-text"
           rows={4}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="발송할 메시지를 입력하세요. 모든 수신자에게 같은 문안이 나갑니다."
+          placeholder="발송할 메시지를 입력하세요. {name} 을 쓰면 수신자 이름으로 치환됩니다."
         />
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm">
           <span className="text-muted-foreground">
@@ -388,8 +467,8 @@ export function SmsComposer({
         className="max-w-lg"
       >
         <div className="rounded-lg border bg-muted/30 p-3">
-          <p className="mb-1 text-[11px] text-muted-foreground">문안 미리보기 · {cost.bytes}byte</p>
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap font-sans text-xs leading-relaxed">{text}</pre>
+          <p className="mb-1 text-[11px] text-muted-foreground">문안 미리보기 · {cost.bytes}byte{text.includes('{name}') ? ' · {name} 치환 예시' : ''}</p>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap font-sans text-xs leading-relaxed">{previewText}</pre>
         </div>
       </ConfirmDialog>
     </div>

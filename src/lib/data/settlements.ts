@@ -4,6 +4,7 @@ import { createCaseScopedSignedUrl } from '@/lib/storage/files';
 import type { Tables } from '@/types/database';
 import type { SettlementLine } from '@/lib/settlement/compute';
 import { mentorsMissingPaymentDocs } from '@/lib/data/mentors';
+import { fetchAll, fetchAllIn } from '@/lib/supabase/paginate';
 
 export type SettlementRow = Tables<'settlements'>;
 export type BatchRow = Tables<'settlement_batches'>;
@@ -34,13 +35,16 @@ function parseLines(v: unknown): SettlementLine[] {
 /** 행사 범위 정산 건 목록 (스태프). 코드에서 program_id 로 강제. */
 export async function listSettlements(filters: { programId: string; supportTypeId?: string; status?: string[]; mentorId?: string; caseId?: string; batchId?: string }): Promise<SettlementItem[]> {
   const supabase = createClient();
-  let q = supabase.from('settlements').select('*').eq('program_id', filters.programId).order('confirmed_at', { ascending: false });
-  if (filters.status && filters.status.length) q = q.in('status', filters.status);
-  if (filters.mentorId) q = q.eq('mentor_id', filters.mentorId);
-  if (filters.caseId) q = q.eq('case_id', filters.caseId);
-  if (filters.batchId) q = q.eq('batch_id', filters.batchId);
-  const { data } = await q;
-  return enrich(data ?? [], filters.supportTypeId);
+  // (P31) 1,000행 캡 안전 — 행사 단위 정산 건이 캡을 넘어도 잘리지 않게
+  const data = await fetchAll<SettlementRow>((from, to) => {
+    let q = supabase.from('settlements').select('*').eq('program_id', filters.programId).order('confirmed_at', { ascending: false }).order('id');
+    if (filters.status && filters.status.length) q = q.in('status', filters.status);
+    if (filters.mentorId) q = q.eq('mentor_id', filters.mentorId);
+    if (filters.caseId) q = q.eq('case_id', filters.caseId);
+    if (filters.batchId) q = q.eq('batch_id', filters.batchId);
+    return q.range(from, to);
+  });
+  return enrich(data, filters.supportTypeId);
 }
 
 /** 멘토 본인 정산 목록 (RLS: mentor_id = auth.uid()) */
@@ -62,21 +66,23 @@ async function enrich(rows: SettlementRow[], supportTypeId?: string): Promise<Se
   const caseIds = Array.from(new Set(rows.map((r) => r.case_id)));
   const mentorIds = Array.from(new Set(rows.map((r) => r.mentor_id)));
   const batchIds = Array.from(new Set(rows.map((r) => r.batch_id).filter((x): x is string => !!x)));
-  const [{ data: cases }, { data: users }, { data: batches }] = await Promise.all([
-    admin.from('cases').select('id, business_name, owner_name, support_type_id, support_types(name)').in('id', caseIds),
-    admin.from('users').select('id, name').in('id', mentorIds),
-    batchIds.length ? admin.from('settlement_batches').select('id, title, status').in('id', batchIds) : Promise.resolve({ data: [] as { id: string; title: string; status: string }[] }),
+  // (P31) in() 청크 — 케이스·멘토 id 가 200개를 넘어도 조회가 잘리지 않는다. caseMap 이 비어도 행은 버리지 않는다(아래 필터 참고)
+  const [cases, users, batches] = await Promise.all([
+    fetchAllIn<{ id: string; business_name: string; owner_name: string; support_type_id: string; support_types: { name: string } | null }>(caseIds, (chunk, from, to) => admin.from('cases').select('id, business_name, owner_name, support_type_id, support_types(name)').in('id', chunk).range(from, to)),
+    fetchAllIn<{ id: string; name: string }>(mentorIds, (chunk, from, to) => admin.from('users').select('id, name').in('id', chunk).range(from, to)),
+    fetchAllIn<{ id: string; title: string; status: string }>(batchIds, (chunk, from, to) => admin.from('settlement_batches').select('id, title, status').in('id', chunk).range(from, to)),
   ]);
-  const caseMap = new Map((cases ?? []).map((c) => [c.id, c]));
-  const userMap = new Map((users ?? []).map((u) => [u.id, u.name]));
-  const batchMap = new Map((batches ?? []).map((b) => [b.id, b]));
+  const caseMap = new Map(cases.map((c) => [c.id, c]));
+  const userMap = new Map(users.map((u) => [u.id, u.name]));
+  const batchMap = new Map(batches.map((b) => [b.id, b]));
   const programId = rows[0]!.program_id;
   const missingDocs = await mentorsMissingPaymentDocs(programId, mentorIds);
   const out: SettlementItem[] = [];
   for (const r of rows) {
     const c = caseMap.get(r.case_id);
-    if (supportTypeId && c?.support_type_id !== supportTypeId) continue;
-    const st = (c?.support_types as unknown as { name: string } | null) ?? null;
+    // 그룹 범위 필터는 케이스 정보가 있을 때만 — 케이스 조회가 부분 실패해도 정산 행이 사라지지 않게 (P31)
+    if (supportTypeId && c && c.support_type_id !== supportTypeId) continue;
+    const st = c?.support_types ?? null;
     const b = r.batch_id ? batchMap.get(r.batch_id) : undefined;
     const lines = parseLines(r.lines);
     out.push({
@@ -105,13 +111,13 @@ export async function listBatches(programId: string, status?: string[]): Promise
   const admin = createAdminClient();
   const ids = rows.map((b) => b.id);
   const userIds = Array.from(new Set(rows.flatMap((b) => [b.created_by, b.confirmed_by]).filter((x): x is string => !!x)));
-  const [{ data: items }, { data: users }] = await Promise.all([
-    admin.from('settlements').select('batch_id').in('batch_id', ids).neq('status', 'canceled'),
-    userIds.length ? admin.from('users').select('id, name').in('id', userIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+  const [items, users] = await Promise.all([
+    fetchAllIn<{ batch_id: string | null }>(ids, (chunk, from, to) => admin.from('settlements').select('batch_id').in('batch_id', chunk).neq('status', 'canceled').range(from, to)),
+    fetchAllIn<{ id: string; name: string }>(userIds, (chunk, from, to) => admin.from('users').select('id, name').in('id', chunk).range(from, to)),
   ]);
   const counts = new Map<string, number>();
-  for (const s of items ?? []) if (s.batch_id) counts.set(s.batch_id, (counts.get(s.batch_id) ?? 0) + 1);
-  const names = new Map((users ?? []).map((u) => [u.id, u.name]));
+  for (const s of items) if (s.batch_id) counts.set(s.batch_id, (counts.get(s.batch_id) ?? 0) + 1);
+  const names = new Map(users.map((u) => [u.id, u.name]));
   return rows.map((b) => ({
     ...b,
     itemCount: counts.get(b.id) ?? 0,

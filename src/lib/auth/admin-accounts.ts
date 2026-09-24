@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { toStoredPhone } from '@/lib/auth/identifier';
+import { normalizeEmail } from '@/lib/utils/phone';
 import type { UserRole } from '@/lib/auth/roles';
 
 /** 영문 대/소문자·숫자를 각각 1개 이상 포함하는 임시 비밀번호 생성 (14자) */
@@ -46,6 +47,8 @@ interface CreateStaffOrMentorInput {
   organization?: string;
   /** 발급을 수행하는 관리자 (감사로그용) */
   actorId: string;
+  /** 발급 맥락의 행사 — 알면 감사로그 program_id 에 남긴다 (P31) */
+  programId?: string | null;
 }
 
 export interface AccountIssueResult {
@@ -64,9 +67,12 @@ export async function createStaffOrMentorAccount(
 ): Promise<AccountIssueResult> {
   const admin = createAdminClient();
   const tempPassword = phoneTempPassword(input.phone);
+  // (P31) 이메일은 항상 소문자·trim 으로 저장 — 조회(ilike/eq)와 어긋나 중복 계정이 생기는 것을 막는다
+  const email = normalizeEmail(input.email);
+  if (!email) throw new Error('이메일이 비어 있습니다.');
 
   const { data, error } = await admin.auth.admin.createUser({
-    email: input.email,
+    email,
     password: tempPassword,
     email_confirm: true,
     user_metadata: { name: input.name },
@@ -78,9 +84,9 @@ export async function createStaffOrMentorAccount(
   const { error: profileError } = await admin.from('users').insert({
     id: data.user.id,
     role: input.role,
-    name: input.name,
+    name: input.name.trim(),
     phone: toStoredPhone(input.phone),
-    email: input.email,
+    email,
     position: input.position?.trim() || null,
     organization: input.organization?.trim() || null,
     must_change_password: true,
@@ -91,15 +97,17 @@ export async function createStaffOrMentorAccount(
     throw new Error(profileError.message);
   }
 
-  await admin.from('audit_logs').insert({
+  const { error: auditError } = await admin.from('audit_logs').insert({
     actor_id: input.actorId,
+    program_id: input.programId ?? null,
     action: 'account.create',
     entity_type: 'users',
     entity_id: data.user.id,
-    metadata: { role: input.role, email: input.email },
+    metadata: { role: input.role, email },
   });
+  if (auditError) console.error('[admin-accounts] audit insert failed: account.create', auditError.message);
 
-  return { userId: data.user.id, email: input.email, tempPassword };
+  return { userId: data.user.id, email, tempPassword };
 }
 
 interface InviteMenteeInput {
@@ -108,6 +116,8 @@ interface InviteMenteeInput {
   name: string;
   phone?: string;
   actorId: string;
+  /** 감사로그 행사 범위 (P31) */
+  programId?: string | null;
 }
 
 /**
@@ -119,9 +129,11 @@ export async function inviteMentee(input: InviteMenteeInput): Promise<AccountIss
   const admin = createAdminClient();
   const tempPassword = phoneTempPassword(input.phone);
   const now = new Date().toISOString();
+  const email = normalizeEmail(input.email);
+  if (!email) throw new Error('이메일이 비어 있습니다.');
 
   const { data, error } = await admin.auth.admin.createUser({
-    email: input.email,
+    email,
     password: tempPassword,
     email_confirm: true,
     user_metadata: { name: input.name },
@@ -133,9 +145,9 @@ export async function inviteMentee(input: InviteMenteeInput): Promise<AccountIss
   const { error: profileError } = await admin.from('users').insert({
     id: data.user.id,
     role: 'mentee',
-    name: input.name,
+    name: input.name.trim(),
     phone: toStoredPhone(input.phone),
-    email: input.email,
+    email,
     must_change_password: true,
     invited_at: now,
   });
@@ -152,13 +164,15 @@ export async function inviteMentee(input: InviteMenteeInput): Promise<AccountIss
     throw new Error(linkError.message);
   }
 
-  await admin.from('audit_logs').insert({
+  const { error: auditError } = await admin.from('audit_logs').insert({
     actor_id: input.actorId,
+    program_id: input.programId ?? null,
     action: 'mentee.invite',
     entity_type: 'cases',
     entity_id: input.caseId,
-    metadata: { mentee_id: data.user.id, email: input.email },
+    metadata: { mentee_id: data.user.id, email },
   });
+  if (auditError) console.error('[admin-accounts] audit insert failed: mentee.invite', auditError.message);
 
-  return { userId: data.user.id, email: input.email, tempPassword };
+  return { userId: data.user.id, email, tempPassword };
 }

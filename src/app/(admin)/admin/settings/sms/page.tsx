@@ -44,7 +44,7 @@ const TABS = [
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
-export default async function Page({ searchParams }: { searchParams: { tab?: string } }) {
+export default async function Page({ searchParams }: { searchParams: { tab?: string; to?: string } }) {
   const profile = await requireStaff();
   const ctx = await requireContext(profile);
   const configured = solapiConfigured();
@@ -104,8 +104,12 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
 
       {tab === 'send' && (
         <>
-          {/* 상태·잔액 카드 */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {/* 상태·잔액 요약 — 모바일은 한 줄, sm 이상은 카드 4개 (P31) */}
+          <p className="rounded-lg border bg-card px-3 py-2 text-xs text-muted-foreground sm:hidden">
+            <span className={cn('font-semibold', configured ? 'text-status-approved' : 'text-status-rejected')}>{configured ? '플랫폼 연동됨' : '플랫폼 미설정'}</span>
+            {programSmsActive ? ' · 행사별 문자 API 사용' : ''} · 잔액 {balanceText} · 발신 {solapiSender(1) ?? '-'}
+          </p>
+          <div className="hidden gap-3 sm:grid sm:grid-cols-4">
             <div className="rounded-lg border bg-card p-4">
               <p className="text-xs text-muted-foreground">플랫폼 공통 연동</p>
               <p className={cn('mt-1 text-xl font-semibold', configured ? 'text-status-approved' : 'text-status-rejected')}>{configured ? '연동됨' : '미설정'}</p>
@@ -133,7 +137,14 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
               </p>
             </CardHeader>
             <CardContent>
-              <SmsComposer recipients={recipients} configured={configured} programSmsActive={programSmsActive} canSend={canSend} scopeLabel={ctx.group ? ctx.group.name : '행사 전체'} />
+              <SmsComposer
+                recipients={recipients}
+                configured={configured}
+                programSmsActive={programSmsActive}
+                canSend={canSend}
+                scopeLabel={ctx.group ? ctx.group.name : '행사 전체'}
+                initialRecipientIds={searchParams.to ? searchParams.to.split(',').filter((id) => /^[0-9a-f-]{36}$/i.test(id)) : []}
+              />
             </CardContent>
           </Card>
         </>

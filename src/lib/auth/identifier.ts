@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { normalizePhone as normalizeMobile } from '@/lib/utils/phone';
 
 /** 문자열에서 숫자만 남긴다 (휴대폰 번호 비교용). */
 export function normalizePhone(v: string | null | undefined): string {
@@ -15,9 +16,10 @@ export function normalizePhone(v: string | null | undefined): string {
 export function toStoredPhone(v: string | null | undefined): string | null {
   const raw = (v ?? '').trim();
   if (!raw) return null;
-  const d = raw.replace(/\D/g, '');
-  if (d.length === 11 && d.startsWith('01')) return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
-  if (d.length === 10 && d.startsWith('01')) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+  // (P31) +82·앞자리 0 유실·괄호 등 표기 편차를 utils/phone 으로 흡수 — 휴대폰 패턴이면 하이픈 형식으로 저장
+  const d = normalizeMobile(raw);
+  if (d && d.length === 11) return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+  if (d && d.length === 10) return `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
   return raw;
 }
 
