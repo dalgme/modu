@@ -30,12 +30,17 @@ export default async function HubPage({
   const imp = await getImpersonation();
   const isAdmin = real.is_platform_admin && !imp;
   if (isAdmin) redirect('/platform');
+  // 운영사 대행은 발급된 행사에 묶인다 — 허브에서 다른 행사를 고를 수 없고, 바로 그 행사로 진입한다 (P31)
+  if (imp?.programId && !searchParams.denied && !searchParams.error) {
+    redirect(`/hub/enter?program=${imp.programId}`);
+  }
   if (!searchParams.pick && !searchParams.program && !searchParams.denied && !searchParams.error) {
     const target = await autoEnterTarget(real, profile);
     if (target) redirect(`/hub/enter?program=${target}`);
   }
 
-  const programs = await listMyPrograms(profile.id, isAdmin, profile.role);
+  const programsAll = await listMyPrograms(profile.id, isAdmin, profile.role);
+  const programs = imp?.programId ? programsAll.filter((p) => p.program.id === imp.programId) : programsAll;
   const selected = searchParams.program ? await getProgram(searchParams.program) : null;
   const groups = selected
     ? await listMyGroups(selected.id, { id: profile.id, role: profile.role, isPlatformAdmin: isAdmin })

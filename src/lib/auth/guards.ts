@@ -107,6 +107,14 @@ export const mentorOrNull = () => roleOrNull(['mentor']);
 export async function realRoleOrNull(allowed: UserRole[]): Promise<Profile | null> {
   const real = await getRealSessionProfile();
   if (!real || !real.is_active || real.must_change_password) return null;
+  // 플랫폼 관리자가 대행 중이면 페이지 가드(requireRealRole)와 같은 규칙으로 대상 명의 판정 (P31 — 화면은 열리는데 액션만 실패하던 불일치 제거)
+  if (real.is_platform_admin) {
+    const imp = await getImpersonation();
+    if (imp) {
+      const target = await withProgramRole(imp.target);
+      return allowed.includes(target.role) ? target : null;
+    }
+  }
   if (!allowed.includes(real.role)) return null;
   return real;
 }

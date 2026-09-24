@@ -4,6 +4,7 @@ import { ChevronRight, Repeat, ShieldCheck } from 'lucide-react';
 
 import { signOut } from '@/lib/auth/actions';
 import { getRealSessionProfile } from '@/lib/auth/guards';
+import { getImpersonation } from '@/lib/auth/impersonation';
 import { leaveContextAction } from '@/lib/programs/actions';
 import { type UserRole } from '@/lib/auth/roles';
 import { PLATFORM_BRANDING, roleLabel, type Branding } from '@/lib/programs/branding';
@@ -29,6 +30,8 @@ interface AppHeaderProps {
  */
 export async function AppHeader({ name, role, branding = PLATFORM_BRANDING, context = null, platformMode = false, gradeLabel = null }: AppHeaderProps) {
   const real = await getRealSessionProfile();
+  // 대행 중에는 [전환]·[로그아웃]을 숨긴다 — 전환은 다른 행사로 새는 경로, 로그아웃은 실행자 세션 전체 종료 (P31)
+  const impersonating = (await getImpersonation()) !== null;
   const isPlatformAdmin = !!real?.is_platform_admin;
   const platformBadge = real?.platform_role === 'admin' ? '플랫폼 부관리자' : '플랫폼 통합관리자';
   const initial = platformMode ? 'P' : (branding.programName || branding.appTitle).slice(0, 1);
@@ -80,7 +83,7 @@ export async function AppHeader({ name, role, branding = PLATFORM_BRANDING, cont
               {platformBadge}
             </Link>
           )}
-          {context && (
+          {context && !impersonating && (
             <form action={leaveContextAction}>
               <Button
                 type="submit"
@@ -95,6 +98,7 @@ export async function AppHeader({ name, role, branding = PLATFORM_BRANDING, cont
             </form>
           )}
           <span className="hidden max-w-[8rem] truncate text-sm text-midnight-foreground/70 sm:inline">{name}</span>
+          {!impersonating && (
           <form action={signOut}>
             <Button
               type="submit"
@@ -105,6 +109,7 @@ export async function AppHeader({ name, role, branding = PLATFORM_BRANDING, cont
               로그아웃
             </Button>
           </form>
+          )}
         </div>
       </div>
     </header>

@@ -49,6 +49,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   const ctx = await requireContext(profile);
   const item = await getCaseById(params.id);
   if (!item || item.program_id !== ctx.programId) notFound();
+  const canViewAs = hasCapability(ctx, 'members.view_as');
 
   const [history, predecessors, successors, mentors, rounds, obsFile, requests, docs, settlements, statements, estimates, slots, survey, changeReqs, recs, menteeProfile, tags, myGroupIds, caseAudit] = await Promise.all([
     getCaseStatusHistory(item.id),
@@ -131,6 +132,12 @@ export default async function Page({ params }: { params: { id: string } }) {
       <CaseDetailShell item={item} history={history} predecessors={predecessors} successors={successors} branding={ctx.branding} basePath="/nextlab/cases" showLoginId>
         <div id="invite" className="scroll-mt-40" />
         <MenteeInvitePanel caseId={item.id} menteeLinked={!!item.mentee_id} defaultName={item.owner_name} defaultPhone={item.phone} defaultEmail={item.email} />
+        {canViewAs && item.mentee_id && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span>멘티 대신 필수서류 제출·만족도 응답을 처리해야 하면 멘티 대행으로 들어갑니다 (동의·서명은 본인만 가능).</span>
+            <ViewAsStartButton targetUserId={item.mentee_id} targetName={item.owner_name} caseId={item.id} returnTo={`/nextlab/cases/${item.id}#invite`} size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" label={`${item.owner_name} 멘티 대행으로 열기`} />
+          </div>
+        )}
         <div id="assign" className="scroll-mt-40" />
         <MentorAssignPanel
           caseId={item.id}
@@ -204,7 +211,7 @@ export default async function Page({ params }: { params: { id: string } }) {
             </CardTitle>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span>회차 등록·보고서·관찰의견서는 담당 멘토가 합니다. 멘토를 대신해 처리해야 하면 대행 로그인으로 그 화면에서 등록하세요.</span>
-              {item.mentorId && item.mentorName && <ViewAsStartButton targetUserId={item.mentorId} targetName={item.mentorName} size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" />}
+              {canViewAs && item.mentorId && item.mentorName && <ViewAsStartButton targetUserId={item.mentorId} targetName={item.mentorName} caseId={item.id} returnTo={`/nextlab/cases/${item.id}#rounds`} size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" label={`${item.mentorName} 멘토 대행으로 이 케이스 열기`} />}
             </div>
           </CardHeader>
           <CardContent>

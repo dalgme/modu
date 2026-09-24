@@ -27,6 +27,7 @@ export type CapabilityKey =
   | 'members'
   | 'members.staff'
   | 'members.sensitive'
+  | 'members.view_as'
   | 'mentors.docs'
   | 'settings'
   | 'settings.money'
@@ -43,7 +44,8 @@ export const CAPABILITIES: { key: CapabilityKey; label: string; desc: string }[]
   { key: 'settlement.submit', label: '품의 제출·지급 완료', desc: '발주처 제출·철회, 지급 완료 표시' },
   { key: 'members', label: '회원 발급·소속·정보', desc: '계정 발급, 엑셀 일괄 등록, 기존 계정 추가, 멘토·멘티·발주처 역할 변경·소속 해제, 정보 수정' },
   { key: 'members.staff', label: '운영사 담당자 등급·역할·소속', desc: '운영사 담당자의 등급·역할 변경, 소속 해제·비활성, 담당 그룹 지정. 메인 담당(PL) 지정은 PL 만 가능' },
-  { key: 'members.sensitive', label: '계정 비활성·삭제·비밀번호·대행', desc: '비활성화, 삭제, 임시 비밀번호 재발급, 회원 화면 대행' },
+  { key: 'members.sensitive', label: '계정 비활성·삭제·비밀번호', desc: '비활성화, 삭제, 임시 비밀번호 재발급, 민감정보 원문 열람' },
+  { key: 'members.view_as', label: '회원 화면 대행', desc: '멘토·멘티 계정으로 대행 로그인해 회차·보고서·서류를 대신 처리 (P31: 삭제·비밀번호 권한과 분리)' },
   { key: 'mentors.docs', label: '멘토 지급서류·평가', desc: '지급서류 수령 체크, 그룹별 원천징수, 멘토 평가·메모' },
   { key: 'settings', label: '운영 설정(일반)', desc: '행사 기본·그룹·필수서류·정책·양식·키워드' },
   { key: 'settings.money', label: '운영 설정(금액)', desc: '단가·한도·원천징수 방식' },
@@ -59,7 +61,8 @@ const PL_ONLY: CapabilityKey[] = ['members.staff', 'case.delete'];
 export const DEFAULT_GRANTS: Record<StaffGrade, CapabilityKey[]> = {
   pl: ALL,
   pm: ALL.filter((k) => k !== 'settings.money' && k !== 'members.sensitive' && !PL_ONLY.includes(k)),
-  deputy_pm: ALL.filter((k) => !['settings.money', 'members.sensitive', 'settlement.submit', 'settings'].includes(k) && !PL_ONLY.includes(k)),
+  // 부PM 은 대행 불가(기본) — 행사별 override 로 열 수 있다
+  deputy_pm: ALL.filter((k) => !['settings.money', 'members.sensitive', 'members.view_as', 'settlement.submit', 'settings'].includes(k) && !PL_ONLY.includes(k)),
   observer: ['reports'],
 };
 

@@ -8,6 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import type { Tables } from '@/types/database';
 import type { UserRole } from '@/lib/auth/roles';
+import { readContextPayload } from '@/lib/programs/context-cookie';
 
 type Profile = Tables<'users'>;
 
@@ -28,7 +29,7 @@ export function allowedTargetRoles(real: { role: UserRole; is_platform_admin: bo
   return [];
 }
 
-/** 근무 단위 TTL — 작성 중 만료로 입력이 날아가지 않도록 8시간. 종료는 '대행 종료' 버튼. */
+/** 근무 단위 TTL — 작성 중 만료로 입력이 날아가지 않도록 8시간. 종료는 '대행 종료' 버튼. (쿠키 자체는 세션 쿠키, P31) */
 export const VIEW_AS_TTL_SEC = 8 * 60 * 60;
 
 export interface ImpersonationContext {
@@ -36,17 +37,29 @@ export interface ImpersonationContext {
   actorId: string;
   /** 실행자가 플랫폼 관리자인지 (배너 문구·종료 후 복귀 위치용) */
   actorIsPlatformAdmin: boolean;
-  /** 대행 대상 프로필 */
+  /** 대행 대상 프로필 (role 은 대행 행사 안의 역할로 치환됨) */
   target: Profile;
   /** 만료 시각(ISO) */
   expiresAt: string;
+  /** 대행이 묶인 행사 (운영사 실행자는 필수 — 다른 행사로 새지 않는다, P31). 관리자는 null */
+  programId: string | null;
+  /** 운영사 실행자의 대행 전 그룹 범위 (종료 시 복원) */
+  actorGroupId: string | null;
+  /** 대행 시작 시 지정한 케이스 (배너·복귀 링크용) */
+  caseId: string | null;
+  /** 종료 후 돌아갈 실행자 콘솔 경로 (앱 내부 경로만) */
+  returnTo: string | null;
 }
 
 interface Payload {
-  v: 1;
+  v: 2;
   a: string; // actor(운영사) auth uid
   t: string; // target(멘토) uid
-  r: UserRole; // target role
+  r: UserRole; // target role (행사 안 역할)
+  p: string | null; // 대행 행사 id (운영사 실행자는 필수)
+  g: string | null; // 실행자의 대행 전 그룹 범위
+  c: string | null; // 케이스 id
+  ret: string | null; // 복귀 경로
   iat: number;
   exp: number;
 }
@@ -81,20 +94,35 @@ function safeEqualStr(a: string, b: string): boolean {
   return timingSafeEqual(ba, bb);
 }
 
+/** 앱 내부 경로만 허용 (`/nextlab/...` 등). 외부 URL·프로토콜 상대 경로는 null */
+export function safeInternalPath(raw: string | null | undefined): string | null {
+  if (!raw || typeof raw !== 'string') return null;
+  if (!raw.startsWith('/') || raw.startsWith('//') || raw.includes('\\') || raw.length > 512) return null;
+  return raw;
+}
+
 /** 대행 쿠키 값 생성 (서버 액션에서 cookies().set 으로 심는다) */
 export function buildViewAsCookie(input: {
   actorId: string;
   targetId: string;
   targetRole: UserRole;
+  programId: string | null;
+  actorGroupId?: string | null;
+  caseId?: string | null;
+  returnTo?: string | null;
   nowSec: number;
 }): string | null {
   const key = signingKey();
   if (!key) return null;
   const payload: Payload = {
-    v: 1,
+    v: 2,
     a: input.actorId,
     t: input.targetId,
     r: input.targetRole,
+    p: input.programId,
+    g: input.actorGroupId ?? null,
+    c: input.caseId ?? null,
+    ret: safeInternalPath(input.returnTo),
     iat: input.nowSec,
     exp: input.nowSec + VIEW_AS_TTL_SEC,
   };
@@ -122,9 +150,19 @@ function parseCookie(raw: string): Payload | null {
   } catch {
     return null;
   }
-  if (payload.v !== 1) return null;
+  // v1 쿠키(행사 범위 없음)는 더 이상 인정하지 않는다 — 다시 대행 시작 (P31)
+  if (payload.v !== 2) return null;
   if (typeof payload.exp !== 'number' || payload.exp * 1000 <= Date.now()) return null;
   return payload;
+}
+
+/** 대행 쿠키의 원본 payload (종료 액션이 복원 정보를 읽는 용도) */
+export function readViewAsPayload(): { programId: string | null; actorGroupId: string | null; returnTo: string | null; caseId: string | null } | null {
+  const raw = cookies().get(VIEW_AS_COOKIE)?.value;
+  if (!raw) return null;
+  const p = parseCookie(raw);
+  if (!p) return null;
+  return { programId: p.p, actorGroupId: p.g, returnTo: p.ret, caseId: p.c };
 }
 
 /**
@@ -133,7 +171,8 @@ function parseCookie(raw: string): Payload | null {
  *  1) 서명 키 존재 + 쿠키 HMAC 일치 + 미만료
  *  2) payload.a === 현재 로그인 auth uid  ← 쿠키 탈취·타 계정 재사용 차단
  *  3) 실제 프로필 is_active && (플랫폼 관리자 ‖ role === 'nextlab')
- *  4) 대상 프로필 is_active && 비(非)플랫폼관리자 && role === payload.r && role ∈ 실행자별 허용 역할
+ *  4) 대상 프로필 is_active && 비(非)플랫폼관리자 && 행사 안 역할 === payload.r && role ∈ 실행자별 허용 역할
+ *  5) 운영사 실행자: 현재 컨텍스트 쿠키의 행사 === payload.p  ← 다른 행사로 대행이 새지 않는다 (P31)
  */
 export const getImpersonation = cache(async (): Promise<ImpersonationContext | null> => {
   const raw = cookies().get(VIEW_AS_COOKIE)?.value;
@@ -160,18 +199,38 @@ export const getImpersonation = cache(async (): Promise<ImpersonationContext | n
   const allowed = allowedTargetRoles(real);
   if (allowed.length === 0) return null;
 
+  // (5) 운영사 실행자는 발급 당시 행사 안에서만 유효 — 컨텍스트 쿠키가 다른 행사를 가리키면 대행 무효
+  if (!real.is_platform_admin) {
+    if (!payload.p) return null;
+    const ctxProgram = readContextPayload()?.p ?? null;
+    if (ctxProgram && ctxProgram !== payload.p) return null;
+    // 실행자가 그 행사의 활성 운영사인지 (설계 B: 행사별 역할)
+    const { data: actorMem } = await admin.from('program_members').select('role, is_active').eq('program_id', payload.p).eq('user_id', real.id).maybeSingle();
+    if (!actorMem || !actorMem.is_active || actorMem.role !== 'nextlab') return null;
+  }
+
   const { data: target } = await admin.from('users').select('*').eq('id', payload.t).maybeSingle();
   // (4) 대상은 활성 + 비플랫폼관리자 + 발급 당시 역할 그대로 + 실행자별 허용 역할
   if (!target || !target.is_active) return null;
   if (target.is_platform_admin) return null;
-  if (target.role !== payload.r) return null;
-  if (!allowed.includes(target.role)) return null;
+  let role: UserRole = target.role;
+  if (payload.p) {
+    const { data: mem } = await admin.from('program_members').select('role, is_active').eq('program_id', payload.p).eq('user_id', target.id).maybeSingle();
+    if (!mem || !mem.is_active) return null;
+    role = mem.role;
+  }
+  if (role !== payload.r) return null;
+  if (!allowed.includes(role)) return null;
 
   return {
     actorId: payload.a,
     actorIsPlatformAdmin: real.is_platform_admin,
-    target,
+    target: { ...target, role },
     expiresAt: new Date(payload.exp * 1000).toISOString(),
+    programId: payload.p,
+    actorGroupId: payload.g,
+    caseId: payload.c,
+    returnTo: payload.ret,
   };
 });
 
