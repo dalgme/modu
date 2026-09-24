@@ -120,7 +120,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         <div>
           <h2 className="text-base font-semibold">① 검수 승인 완료 — 지급 품의 대기</h2>
           <p className="mb-2 text-xs text-muted-foreground">{fmt('{operator}가 검수를 승인해 정산이 확정된 건입니다. 다음 품의에 편성되면 [품의 도착] 탭으로 넘어옵니다.', ctx.branding)}</p>
-          <SettlementsTable items={pending} caseHrefBase="/institution/cases" batchHrefBase="/institution/settlements" />
+          <SettlementsTable items={pending} caseHrefBase="/institution/cases" batchHrefBase="/institution/settlements" exportHref="/api/nextlab/settlements-export" />
         </div>
 
         <div>

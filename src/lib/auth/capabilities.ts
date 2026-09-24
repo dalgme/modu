@@ -85,12 +85,14 @@ export function resolveGrants(grade: StaffGrade | null | undefined, override: un
   const g: StaffGrade = grade ?? 'pl';
   const o = override && typeof override === 'object' && !Array.isArray(override) ? (override as Record<string, unknown>) : {};
   const clean = (list: unknown[]) => list.filter((k): k is CapabilityKey => (ALL as string[]).includes(String(k)));
+  // P31 이전 저장된 override 는 대행이 members.sensitive 에 묶여 있었다 — 그 권한이 있으면 members.view_as 도 포함 (P32 리뷰 #2)
+  const legacy = (l: CapabilityKey[]) => (l.includes('members.sensitive') && !l.includes('members.view_as') ? [...l, 'members.view_as' as CapabilityKey] : l);
   if (userId) {
     const per = o[userOverrideKey(userId)];
-    if (Array.isArray(per)) return clean(per);
+    if (Array.isArray(per)) return legacy(clean(per));
   }
   const custom = o[g];
-  if (Array.isArray(custom)) return clean(custom);
+  if (Array.isArray(custom)) return legacy(clean(custom));
   return DEFAULT_GRANTS[g];
 }
 

@@ -21,6 +21,8 @@ export interface ApprovalReadiness {
   reported: number;
   required: number;
   hasObservation: boolean;
+  /** 이미 확정(취소 아님) 정산이 있어, 미정산 회차가 0건이어도 승인(종결)만 진행할 수 있는 케이스 (P32 리뷰 #7) */
+  settledAlready?: boolean;
 }
 
 /**
@@ -33,18 +35,19 @@ export async function canApproveClosure(caseId: string): Promise<ApprovalReadine
   const admin = createAdminClient();
   const { data: c } = await admin.from('cases').select('id, status, program_id, support_type_id').eq('id', caseId).maybeSingle();
   if (!c) return { ok: false, reason: '케이스를 찾을 수 없습니다.', reported: 0, required: 0, hasObservation: false };
-  const [{ data: group }, { data: program }, { data: logs }, { data: obs }, { data: obsFile }] = await Promise.all([
+  const [{ data: group }, { data: program }, { data: logs }, { data: obs }, { data: obsFile }, { count: settledCount }] = await Promise.all([
     admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle(),
     admin.from('programs').select('closure_policy').eq('id', c.program_id).maybeSingle(),
     admin.from('mentoring_logs').select('round_no, mentee_signed_at, report_registered_at').eq('case_id', caseId).order('round_no'),
     admin.from('observation_reports').select('content').eq('case_id', caseId).maybeSingle(),
     admin.from('documents').select('id').eq('case_id', caseId).eq('doc_key', 'observation_report').maybeSingle(),
+    admin.from('settlements').select('id', { count: 'exact', head: true }).eq('case_id', caseId).neq('status', 'canceled'),
   ]);
   const rounds = logs ?? [];
   const required = group?.required_rounds ?? 0;
   const reported = rounds.filter((r) => r.report_registered_at).length;
   const hasObservation = (obs ? normalizeObservation(obs.content).summary.trim().length > 0 : false) || !!obsFile;
-  const base = { reported, required, hasObservation };
+  const base = { reported, required, hasObservation, settledAlready: (settledCount ?? 0) > 0 };
   const denied = assertTransition('review_approve', c.status);
   if (denied) return { ok: false, reason: denied, ...base };
   if (rounds.length < required) return { ok: false, reason: `필수 회차 ${required}회 중 ${rounds.length}회만 등록되어 있습니다.`, ...base };

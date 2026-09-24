@@ -186,6 +186,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
           <Tabs tab={tab} pendingN={pendingN} />
         </div>
         <SettlementsTable
+          exportHref="/api/nextlab/settlements-export"
           items={settlements}
           selectable={tab === 'pending'}
           draftBatches={drafts.map((b) => ({ id: b.id, title: b.title }))}

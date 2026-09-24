@@ -10,7 +10,6 @@ const TABS = [
   { href: '/mentor/dashboard', label: '대시보드' },
   { href: '/mentor/schedule', label: '스케줄' },
   { href: '/mentor/settlements', label: '정산 내역' },
-  { href: '/mentor/forms', label: '위촉 서류', feature: 'forms' },
   { href: '/mentor/profile', label: '내 프로필' },
   { href: '/mentor/signature', label: '내 서명' },
   { href: '/mentor/qna', label: '문의·멘티 메시지' },
@@ -18,11 +17,11 @@ const TABS = [
   { href: '/mentor/install', label: '📱 휴대폰 설치', tone: 'purple' as const },
 ];
 
-/** 멘토 상단 탭 내비게이션 (운영사 내비와 동일한 pill·sticky 스타일). showForms = 위촉 서식 기능 플래그 */
-export function MentorNav({ showForms = false }: { showForms?: boolean }) {
+/** 멘토 상단 탭 내비게이션 (운영사 내비와 동일한 pill·sticky 스타일). (P32) 위촉 서류 탭 제거 — 서류 수령은 운영사가 체크 */
+export function MentorNav() {
   const pathname = usePathname();
   useScrollActiveTab(pathname);
-  const tabs = TABS.filter((t) => !('feature' in t && t.feature === 'forms') || showForms);
+  const tabs = TABS;
   return (
     <nav className="sticky top-14 z-30 border-b bg-background/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/75">
       <div className="mx-auto flex max-w-6xl no-scrollbar gap-1.5 overflow-x-auto px-4 py-2">

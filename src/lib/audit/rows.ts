@@ -58,7 +58,8 @@ function applyFilters<T extends { gte: (c: string, v: string) => T; lte: (c: str
   if (p.entityId) out = out.eq('entity_id', p.entityId);
   if (p.q) {
     const needle = p.q.replace(/[%_,()]/g, ' ').trim();
-    if (needle) out = out.or(`action.ilike.%${needle}%,metadata::text.ilike.%${needle}%`);
+    // PostgREST 필터에는 `::text` 캐스트를 쓸 수 없다 → 액션 코드·대상 id 로만 검색 (P32 리뷰 #3)
+    if (needle) out = out.or(`action.ilike.%${needle}%,entity_id.ilike.%${needle}%`);
   }
   return out;
 }
@@ -93,7 +94,8 @@ export async function loadProgramAuditRows(programId: string, opts: AuditQuery |
     admin.from('audit_logs').select('id, actor_id, action, entity_type, entity_id, created_at, metadata, program_id').eq('program_id', programId),
     params,
   );
-  const { data: logs } = await q.order('created_at', { ascending: false }).range(offset, offset + limit - 1);
+  const { data: logs, error } = await q.order('created_at', { ascending: false }).range(offset, offset + limit - 1);
+  if (error) console.error('[audit] list failed', error.message);
 
   const ids = new Set<string>();
   for (const l of logs ?? []) {

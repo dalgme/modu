@@ -53,7 +53,11 @@ function loadPersisted(kind: ImportKind): Persisted | null {
 }
 function savePersisted(kind: ImportKind, p: Persisted) {
   try {
-    sessionStorage.setItem(storageKey(kind), JSON.stringify(p));
+    // 임시 비밀번호는 브라우저 저장소에 남기지 않는다 — 화면에서 즉시 엑셀로 받게 한다 (P32 리뷰 #13)
+    const safe: Persisted = p.result
+      ? { ...p, result: { ...p.result, credentials: [], rows: p.result.rows.map((r) => ({ ...r, tempPassword: undefined })) } }
+      : p;
+    sessionStorage.setItem(storageKey(kind), JSON.stringify(safe));
   } catch {
     /* 저장 불가(사파리 프라이빗 등)는 무시 */
   }

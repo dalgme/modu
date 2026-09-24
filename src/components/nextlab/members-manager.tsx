@@ -480,7 +480,7 @@ function RowSubmit({ children, variant }: { children: string; variant?: 'outline
 
 /** 행사 범위 활성/비활성 (program_members.is_active) — 계정 잠금은 LockAccountForm (P31: 다른 행사 로그인은 막지 않는다) */
 function ToggleActiveForm({ member }: { member: MemberItem }) {
-  const [, action] = useFormState<MemberActionState, FormData>(setMemberActiveAction, undefined);
+  const [state, action] = useFormState<MemberActionState, FormData>(setMemberActiveAction, undefined);
   return (
     <form
       action={action}
@@ -493,13 +493,14 @@ function ToggleActiveForm({ member }: { member: MemberItem }) {
       <RowSubmit variant={member.memberActive ? 'destructive' : 'outline'}>
         {member.memberActive ? '이 행사에서 비활성화' : '이 행사에서 활성화'}
       </RowSubmit>
+      {state && 'error' in state && state.error && <p role="alert" className="mt-1 text-xs text-destructive">{state.error}</p>}
     </form>
   );
 }
 
 /** 계정 잠금(users.is_active) — 모든 행사 로그인 차단. 테스트 계정 정리·퇴사 등 (P31) */
 function LockAccountForm({ member }: { member: MemberItem }) {
-  const [, action] = useFormState<MemberActionState, FormData>(lockMemberAccountAction, undefined);
+  const [state, action] = useFormState<MemberActionState, FormData>(lockMemberAccountAction, undefined);
   return (
     <form
       action={action}
@@ -510,6 +511,7 @@ function LockAccountForm({ member }: { member: MemberItem }) {
       <input type="hidden" name="userId" value={member.id} />
       <input type="hidden" name="locked" value={member.is_active ? 'true' : 'false'} />
       <RowSubmit variant={member.is_active ? 'destructive' : 'outline'}>{member.is_active ? '계정 잠금' : '계정 잠금 해제'}</RowSubmit>
+      {state && 'error' in state && state.error && <p role="alert" className="mt-1 text-xs text-destructive">{state.error}</p>}
     </form>
   );
 }
@@ -931,7 +933,7 @@ export function MembersManager({
                           {!m.memberActive && <span className="text-[10px] text-muted-foreground">소속 해제됨</span>}
                         </div>
                         <div className="mt-1.5 flex gap-1.5 md:hidden">
-                          {(m.role === 'mentor' || m.role === 'mentee') && m.is_active ? (
+                          {(m.role === 'mentor' || m.role === 'mentee') && m.is_active && m.memberActive ? (
                             <ViewAsStartButton targetUserId={m.id} targetName={m.name} size="sm" variant="outline" label="화면 보기" />
                           ) : (
                             <Button asChild size="sm" variant="outline" className="h-9">
@@ -1027,7 +1029,7 @@ export function MembersManager({
                         <div className="flex flex-wrap items-start justify-end gap-2">
                           {/* 멘토·멘티는 '화면 보기' 가 곧 대행 시작 — 들어가서 바로 업무를 처리할 수 있어야 한다.
                               (열람만 하려면 대행 배너의 [대행 종료] 를 누르면 된다) */}
-                          {(m.role === 'mentor' || m.role === 'mentee') && m.is_active ? (
+                          {(m.role === 'mentor' || m.role === 'mentee') && m.is_active && m.memberActive ? (
                             <ViewAsStartButton
                               targetUserId={m.id}
                               targetName={m.name}

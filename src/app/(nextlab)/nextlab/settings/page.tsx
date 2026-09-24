@@ -13,11 +13,10 @@ import { ReportTemplatesManager } from '@/components/settings/report-templates-m
 import { SurveyTemplatesManager } from '@/components/settings/survey-templates-manager';
 import { TagsManager } from '@/components/settings/tags-manager';
 import { StaffPermissionsForm } from '@/components/settings/staff-permissions-form';
-import { MentorFormsManager, type MentorFormScope } from '@/components/settings/mentor-forms-manager';
-import { getMentorFormSettings, templateSignedUrl } from '@/lib/mentor-forms/data';
+import { MentorDocChecklistManager, type MentorDocChecklistScope } from '@/components/settings/mentor-doc-checklist-manager';
+import { NotificationSettings } from '@/components/settings/notification-settings';
+import { getChecklistForScope } from '@/lib/mentor-docs/data';
 import { listSupportTypes } from '@/lib/programs/data';
-import { featureEnabled } from '@/lib/platform/features';
-import { createAdminClient } from '@/lib/supabase/admin';
 import { listCases, mapSuccessors } from '@/lib/data/cases';
 import { AUDIT_PAGE_SIZE, countProgramAuditRows, listAuditActors, loadProgramAuditRows, parseAuditQuery } from '@/lib/audit/rows';
 import { SUCCESSION_FILTERS, SuccessionPanel, type SuccessionFilter, type SuccessionMode, type SuccessorInfo } from '@/components/nextlab/succession-panel';
@@ -38,7 +37,8 @@ const TABS = [
   { key: 'gates', label: '종결 게이트·서명 정책' },
   { key: 'reports', label: '보고서 양식' },
   { key: 'survey', label: '만족도 양식' },
-  { key: 'mentor-forms', label: '위촉 서식' },
+  { key: 'mentor-docs', label: '멘토 서류 수령' },
+  { key: 'notifications', label: '알림' },
   { key: 'tags', label: '키워드 사전' },
   { key: 'permissions', label: '담당 권한' },
   { key: 'succession', label: '승계 개설' },
@@ -49,7 +49,7 @@ type TabKey = (typeof TABS)[number]['key'];
 /** 설정 탭 묶음 — 필수 준비(운영 시작 전) / 운영 정책 / 관리 */
 const SETTING_GROUPS: { label: string; keys: string[]; extra?: { href: string; label: string } }[] = [
   { label: '필수 준비', keys: ['program', 'groups', 'rates', 'matching'] },
-  { label: '운영 정책', keys: ['withholding', 'budget', 'gates', 'reports', 'survey', 'mentor-forms', 'tags'] },
+  { label: '운영 정책', keys: ['withholding', 'budget', 'gates', 'reports', 'survey', 'mentor-docs', 'notifications', 'tags'] },
   { label: '관리', keys: ['permissions', 'succession', 'audit'], extra: { href: '/nextlab/settings/sms-api', label: '문자 API' } },
 ];
 
@@ -57,9 +57,7 @@ const SETTING_GROUPS: { label: string; keys: string[]; extra?: { href: string; l
 export default async function Page({ searchParams }: { searchParams: { tab?: string; source?: string; mode?: string; filter?: string; [k: string]: string | undefined } }) {
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
-  // 플랫폼 기능 플래그 (P15) — 비활성 기능의 탭은 노출하지 않는다
-  const mentorFormsOn = featureEnabled(ctx.program.features, 'mentor_forms');
-  const visibleTabs = TABS.filter((t) => t.key !== 'mentor-forms' || mentorFormsOn);
+  const visibleTabs = TABS;
   const tab = (visibleTabs.find((t) => t.key === searchParams.tab)?.key ?? 'program') as TabKey;
   const program = await getProgramSettings(ctx.programId);
   if (!program) notFound();
@@ -116,33 +114,19 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     const [templates, groups] = await Promise.all([listSurveyTemplates(ctx.programId), listGroupsWithDocs(ctx.programId)]);
     body = <SurveyTemplatesManager templates={templates} groups={groups.map((g) => ({ id: g.id, name: g.name }))} />;
   }
-  if (tab === 'mentor-forms' && mentorFormsOn) {
-    const [groups, { data: subs }] = await Promise.all([
-      listSupportTypes(ctx.programId),
-      createAdminClient().from('mentor_form_submissions').select('form_key').eq('program_id', ctx.programId),
-    ]);
-    const countOf = new Map<string, number>();
-    for (const s of subs ?? []) countOf.set(s.form_key, (countOf.get(s.form_key) ?? 0) + 1);
-    const scopes: MentorFormScope[] = [];
+  if (tab === 'mentor-docs') {
+    // (P32) 멘토 서류 수령 체크 — 행사 공통 + 그룹별 서류명 목록·사용 여부
+    const groups = await listSupportTypes(ctx.programId);
+    const scopes: MentorDocChecklistScope[] = [];
     for (const sc of [{ id: null as string | null, name: '행사 공통' }, ...groups.map((g) => ({ id: g.id as string | null, name: g.name }))]) {
-      const settings = await getMentorFormSettings(ctx.programId, sc.id);
-      const items = [];
-      for (const s of settings) {
-        items.push({
-          formKey: s.formKey,
-          enabled: s.enabled,
-          method: s.method,
-          title: s.title,
-          content: s.content,
-          defined: s.defined,
-          templateName: s.templateName,
-          templateUrl: s.templatePath ? await templateSignedUrl(s.templatePath, s.templateName) : null,
-          submittedCount: countOf.get(s.formKey) ?? 0,
-        });
-      }
-      scopes.push({ id: sc.id, name: sc.name, items });
+      const c = await getChecklistForScope(ctx.programId, sc.id);
+      scopes.push({ id: sc.id, name: sc.name, enabled: c?.enabled ?? false, items: c?.items ?? [], defined: c ? c.defined : false });
     }
-    body = <MentorFormsManager scopes={scopes} />;
+    body = <MentorDocChecklistManager scopes={scopes} />;
+  }
+  if (tab === 'notifications') {
+    // (P32) 알림 이벤트별 문자·알림톡 on/off — programs.notification_settings ({ event: false } 만 저장)
+    body = <NotificationSettings settings={(program.notification_settings ?? {}) as Record<string, boolean>} />;
   }
   if (tab === 'tags') body = <TagsManager tags={await listTags(ctx.programId)} />;
   if (tab === 'permissions') body = <StaffPermissionsForm override={ctx.program.staff_permissions} canEdit={!ctx.grade || ctx.grade === 'pl'} />;

@@ -7,7 +7,7 @@ import { loadMentorDashboard } from '@/lib/data/role-dashboard';
 import { MentorDashboardV2 } from '@/components/mentor/mentor-dashboard-v2';
 import { listMyOpenSurveys } from '@/lib/surveys/campaigns';
 import { OpenSurveysCard } from '@/components/surveys/open-surveys-card';
-import { getMentorFormsForMentor } from '@/lib/mentor-forms/data';
+import { getMentorDocStatusForMentor } from '@/lib/mentor-docs/data';
 import { countUnreadMessages } from '@/lib/messages/data';
 import Link from 'next/link';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -26,9 +26,10 @@ export default async function Page() {
     listMentorEndedCases(profile.id, ctx.programId),
   ]);
   const openSurveys = await listMyOpenSurveys(profile.id, ctx.programId);
-  const pendingForms = (await getMentorFormsForMentor(ctx.programId, profile.id)).filter((f) => !f.submittedAt);
+  // (P32) 운영사가 오프라인 수령을 체크하는 서류 — 멘토는 열람만 (유효 체크리스트가 꺼져 있으면 null)
+  const docStatus = await getMentorDocStatusForMentor(ctx.programId, profile.id);
   const unreadMessages = await countUnreadMessages(profile.id, ctx.programId);
-  // 시작 전 준비 체크리스트 — 분야(프로필)·서명·(플래그) 지급서류·(플래그) 위촉 서류 (P28)
+  // 시작 전 준비 체크리스트 — 분야(프로필)·서명·(플래그) 지급서류·제출 서류 수령 확인 (P28·P32)
   const adminDb = createAdminClient();
   const [{ data: mp }, { data: sig }, { data: pdoc }] = await Promise.all([
     adminDb.from('mentor_profiles').select('expertise').eq('program_id', ctx.programId).eq('user_id', profile.id).maybeSingle(),
@@ -41,7 +42,16 @@ export default async function Page() {
     ...(featureEnabled(ctx.program.features, 'mentor_doc_upload')
       ? [{ done: !!(pdoc?.resume_path && pdoc?.bankbook_path && pdoc?.id_card_path), label: '지급서류 업로드', desc: '이력서·통장사본·신분증사본 — 정산 지급에 필요합니다.', href: '/mentor/profile#payment-docs' }]
       : []),
-    ...(featureEnabled(ctx.program.features, 'mentor_forms') ? [{ done: pendingForms.length === 0, label: '위촉 서류 제출', desc: '위촉 동의서 등 서식을 제출합니다.', href: '/mentor/forms' }] : []),
+    ...(docStatus
+      ? [{
+          done: docStatus.receivedCount === docStatus.total,
+          label: `제출 서류 수령 확인 ${docStatus.receivedCount}/${docStatus.total}`,
+          desc: docStatus.receivedCount === docStatus.total
+            ? '운영사가 모든 서류의 수령을 확인했습니다.'
+            : `미수령: ${docStatus.items.filter((i) => !i.received).map((i) => i.name).join(', ')} — 운영사에 제출해 주세요. 수령 확인은 운영사가 체크합니다.`,
+          href: null,
+        }]
+      : []),
   ];
   return (
     <main className="flex flex-col gap-6">
@@ -50,14 +60,6 @@ export default async function Page() {
           <span>🔔 멘티가 보낸 새 메시지 {unreadMessages}건</span>
           <span className="underline-offset-4">메시지 확인 →</span>
         </Link>
-      )}
-      {pendingForms.length > 0 && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
-          <p>
-            <b>위촉 서류 {pendingForms.length}건</b>이 미제출 상태입니다: {pendingForms.map((f) => f.title).join(' · ')}
-          </p>
-          <Link href="/mentor/forms" className="font-semibold text-primary underline">제출하러 가기</Link>
-        </div>
       )}
       <OpenSurveysCard surveys={openSurveys} />
       <MentorOnboarding items={onboarding} />

@@ -30,8 +30,7 @@ export function SettlementsTable({
   batchHrefBase,
   batchQuery = '',
   showToolbar = true,
-  emptyHint,
-}: {
+  emptyHint, exportHref = null }: { /** 정산 엑셀 라우트 — 운영사·발주처 페이지만 넘긴다 (멘토 화면은 403, P32 리뷰 #4) */ exportHref?: string | null;
   items: SettlementItem[];
   selectable?: boolean;
   draftBatches?: { id: string; title: string }[];
@@ -101,7 +100,7 @@ export function SettlementsTable({
           query={query}
           onQuery={setQuery}
           placeholder="멘토명 · 멘티 검색"
-          exportHref="/api/nextlab/settlements-export"
+          exportHref={exportHref ?? undefined}
           exportLabel="정산 엑셀"
           filters={groups.length > 1 ? [{ key: 'all', label: '전체 그룹', count: items.length }, ...groups] : undefined}
           active={group}

@@ -21,6 +21,8 @@ export async function GET(request: Request, { params }: { params: { id: string }
   if (!spec) return NextResponse.json({ error: 'bad_format' }, { status: 400 });
   const snap = await getSummarySnapshot(params.id);
   if (!snap || snap.programId !== ctx.programId) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  // 발주처는 발주처판(client)·숨김 아님만 (P32 리뷰 #6)
+  if (ctx.role === 'institution' && (snap.audience !== 'client' || snap.hidden)) return NextResponse.json({ error: 'not_found' }, { status: 404 });
 
   const buf = await exportSummary(snap, format);
   const inline = url.searchParams.get('inline') === '1' && (format === 'html' || format === 'pdf');

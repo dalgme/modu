@@ -14,7 +14,7 @@ const TABS: { href: string; label: string; match?: string[]; external?: boolean 
   { href: '/nextlab/board', label: '게시판', match: ['/nextlab/requests'] },
   { href: '/nextlab/settlements', label: '정산·품의' },
   { href: '/nextlab/surveys', label: '조사' },
-  { href: '/nextlab/settings', label: '운영 설정', match: ['/admin/settings/features', '/admin/audit-logs'] },
+  { href: '/nextlab/settings', label: '운영 설정', match: ['/admin/audit-logs'] },
   { href: '/admin/settings/sms', label: '문자 발송' },
   // 사용 안내서(정적 HTML) — 처음 쓰는 담당자가 메뉴에서 바로 찾도록 상시 노출 (P28)
   { href: '/guide.html#tab-op', label: '이용안내', external: true },

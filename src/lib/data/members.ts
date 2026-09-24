@@ -5,6 +5,7 @@ import type { Tables } from '@/types/database';
 import type { UserRole } from '@/lib/auth/roles';
 import { mentorEligibleForGroup } from '@/lib/matching/eligibility';
 import { fetchAll, fetchAllIn } from '@/lib/supabase/paginate';
+import { listMentorDocStatus } from '@/lib/mentor-docs/data';
 import { normalizePhone } from '@/lib/utils/phone';
 
 export interface MentorLoad {
@@ -18,6 +19,8 @@ export interface MentorLoad {
   docsSubmitted: number;
   /** 지급서류 수령 확인(운영사 체크) 수 0~3 */
   docsReceived: number;
+  /** (P32) 멘토 서류 수령 체크 — 유효 체크리스트가 사용 중일 때만 { received, total }, 아니면 null */
+  checklist: { received: number; total: number } | null;
 }
 
 /**
@@ -49,6 +52,13 @@ export async function listMentorsWithLoad(programId: string): Promise<MentorLoad
   }
 
   const docsByUser = new Map(docs.map((d) => [d.user_id, d]));
+  // (P32) 서류 수령 체크 현황 (행사 전체 범위 — 멘토별 유효 체크리스트 기준)
+  const docStatus = await listMentorDocStatus(programId, null);
+  const checklistByMentor = new Map<string, { received: number; total: number }>();
+  for (const s of docStatus.sections) {
+    if (!s.enabled) continue;
+    for (const r of s.mentors) checklistByMentor.set(r.mentorId, { received: r.receivedCount, total: r.total });
+  }
   return mentors.map((m) => {
     const d = docsByUser.get(m.id);
     return {
@@ -59,6 +69,7 @@ export async function listMentorsWithLoad(programId: string): Promise<MentorLoad
       menteeCount: casesByMentor.get(m.id)?.size ?? 0,
       docsSubmitted: d ? [d.resume_uploaded_at, d.bankbook_uploaded_at, d.id_card_uploaded_at].filter(Boolean).length : 0,
       docsReceived: d ? [d.resume_received_at, d.bankbook_received_at, d.id_card_received_at].filter(Boolean).length : 0,
+      checklist: checklistByMentor.get(m.id) ?? null,
     };
   });
 }

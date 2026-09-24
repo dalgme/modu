@@ -4,7 +4,6 @@ import { AppHeader } from '@/components/common/app-header';
 import { MentorNav } from '@/components/mentor/mentor-nav';
 import { MobileTabBar } from '@/components/common/mobile-tab-bar';
 import { CalendarDays, Coins, LayoutDashboard, MessageSquare, UserCircle } from 'lucide-react';
-import { featureEnabled } from '@/lib/platform/features';
 
 export default async function MentorLayout({ children }: { children: React.ReactNode }) {
   const profile = await requireMentor();
@@ -17,7 +16,7 @@ export default async function MentorLayout({ children }: { children: React.React
         branding={ctx.branding}
         context={{ programName: ctx.program.name, groupName: ctx.group?.name ?? null }}
       />
-      <MentorNav showForms={featureEnabled(ctx.program.features, 'mentor_forms')} />
+      <MentorNav />
       <div className="mx-auto max-w-5xl px-4 py-6 pb-24 md:pb-6">{children}</div>
       <MobileTabBar
         tabs={[

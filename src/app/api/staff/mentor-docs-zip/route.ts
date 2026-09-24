@@ -18,8 +18,8 @@ const extOf = (name: string | null, path: string) => {
 
 /**
  * 멘토 서류 일괄 다운로드 (P22) — 발주처·운영사 공용.
- * 멘토별 폴더( 멘토명_뒷4자리/ )로 지급서류(이력서·통장사본·신분증사본)와
- * 위촉 서식 제출 파일을 정리해 ZIP 으로 내려준다. 파일이 없는 멘토는 폴더를 만들지 않는다.
+ * 멘토별 폴더( 멘토명_뒷4자리/ )로 멘토가 올린 지급서류(이력서·통장사본·신분증사본)를 정리해 ZIP 으로 내려준다.
+ * 파일이 없는 멘토는 폴더를 만들지 않는다. (P32) 위촉 서식 제출 파일은 폐지 — 오프라인 수령 체크로 대체.
  */
 export async function GET(): Promise<Response> {
   const profile = await realRoleOrNull(['nextlab', 'institution']);
@@ -46,10 +46,9 @@ export async function GET(): Promise<Response> {
   const ids = (members ?? []).map((m) => m.user_id);
   if (ids.length === 0) return NextResponse.json({ error: '멘토가 없습니다.' }, { status: 404 });
 
-  const [{ data: users }, { data: payDocs }, { data: formSubs }] = await Promise.all([
+  const [{ data: users }, { data: payDocs }] = await Promise.all([
     admin.from('users').select('id, name, phone').in('id', ids),
     admin.from('mentor_payment_docs').select('*').eq('program_id', ctx.programId).in('user_id', ids),
-    admin.from('mentor_form_submissions').select('user_id, form_key, file_path, file_name').eq('program_id', ctx.programId).in('user_id', ids).not('file_path', 'is', null),
   ]);
   const userById = new Map((users ?? []).map((u) => [u.id, u]));
   const folderOf = (userId: string) => {
@@ -73,10 +72,6 @@ export async function GET(): Promise<Response> {
     await put(d.user_id, '이력서', d.resume_path, d.resume_file_name);
     await put(d.user_id, '통장사본', d.bankbook_path, d.bankbook_file_name);
     await put(d.user_id, '신분증사본', d.id_card_path, d.id_card_file_name);
-  }
-  const FORM_LABEL: Record<string, string> = { appointment: '위촉동의서', privacy: '개인정보동의서', pledge: '서약서', precheck: '사전확인서' };
-  for (const s of formSubs ?? []) {
-    await put(s.user_id, FORM_LABEL[s.form_key] ?? s.form_key, s.file_path, s.file_name);
   }
 
   if (added === 0) {

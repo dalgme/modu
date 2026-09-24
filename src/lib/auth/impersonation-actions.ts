@@ -129,7 +129,8 @@ export async function startViewAsAction(targetUserId: string, opts: ViewAsOption
 
   // 운영사: 대상 명의 컨텍스트 쿠키를 바로 써서 허브 왕복 없이 대상 화면으로 (P31). 케이스가 있으면 그 그룹 범위.
   const entered = await enterProgram(real, target, programId!, groupId, false);
-  if (!entered.ok) redirect('/hub?pick=1');
+  // 대상이 그룹 2개 이상이면 허브의 그룹 목록으로 (→ /hub/enter 왕복 루프 방지, P32 리뷰 #1)
+  if (!entered.ok) redirect(entered.redirectTo);
   if (caseId) redirect(target.role === 'mentor' ? `/mentor/cases/${caseId}` : '/mentee/rounds');
   redirect(roleHome(target.role));
 }

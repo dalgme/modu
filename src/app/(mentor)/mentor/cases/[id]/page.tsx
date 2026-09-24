@@ -163,7 +163,7 @@ export default async function Page({ params }: { params: { id: string } }) {
             )}
           </CardHeader>
           <CardContent>
-            <RoundsList caseId={item.id} rounds={rounds} editable={roundsEditable} signEnabled={reportPolicy.menteeConfirmSignature} />
+            <RoundsList caseId={item.id} rounds={rounds} editable={roundsEditable} signEnabled={reportPolicy.menteeConfirmSignature} viewerMentorId={profile.id} />
           </CardContent>
         </Card>
 

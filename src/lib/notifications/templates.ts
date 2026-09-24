@@ -87,3 +87,53 @@ export const NOTIFICATION_TEMPLATES: Record<string, { code: string; text: string
 export function templateFor(triggerEvent: string): { code: string; text: string } {
   return NOTIFICATION_TEMPLATES[triggerEvent] ?? { code: 'GENERIC', text: '[{program}] 알림이 있습니다.' };
 }
+
+/** 알림 이벤트 정의 (P32) — 운영 설정 [알림] 탭의 on/off 목록. 키 = NOTIFICATION_TEMPLATES 의 trigger_event 전부. */
+export interface NotificationEventDef {
+  key: string;
+  label: string;
+  /** 주 수신자(설정 화면의 묶음). 둘 이상이면 desc 에 병기 */
+  audience: '멘토' | '멘티' | '운영사' | '발주처';
+  desc: string;
+  /** 정산·품의 게이트 알림 — 끄면 지급 흐름이 멈출 수 있어 화면에서 잠그고(항상 켬) 액션도 false 저장을 거부한다 */
+  lockable?: boolean;
+}
+
+export const NOTIFICATION_EVENT_DEFS: NotificationEventDef[] = [
+  // ---- 멘티
+  { key: 'mentor_assigned', label: '멘토 배정', audience: '멘티', desc: '멘토 배정·재배정 시 (멘토·멘티 모두에게)' },
+  { key: 'round_registered', label: '회차 보고서 확인·서명 안내', audience: '멘티', desc: '보고서(2단계) 등록 시 — 멘티 확인 서명 정책이 켜진 그룹만' },
+  { key: 'mentor_change_decided', label: '멘토 변경 요청 처리 결과', audience: '멘티', desc: '멘티의 멘토 변경 요청을 수락·반려했을 때' },
+  { key: 'mentor_ended', label: '담당 멘토 종료(재배정 대기)', audience: '멘티', desc: '멘토 중도 종료 승인·운영사 강제 종료·중도 종료 복귀 시 (멘토·멘티 모두에게)' },
+  { key: 'survey_opened', label: '만족도 조사 안내', audience: '멘티', desc: '종결 요청 시 활성 양식이 있고 미응답이면' },
+  { key: 'survey_reminder', label: '만족도 조사 독려', audience: '멘티', desc: '발주처 정산 확인(종결) 시 미응답 멘티에게' },
+  { key: 'case_closed', label: '케이스 종결', audience: '멘티', desc: '발주처 정산 확인으로 종결 확정 시 (멘토·멘티 모두에게)' },
+  { key: 'case_withdrawn', label: '케이스 중도 종료', audience: '멘티', desc: '중도 종료 시 (멘토·멘티 모두에게, 발주처가 종료하면 운영사에도)' },
+  // ---- 멘토
+  { key: 'round_signed', label: '멘티 회차 서명 완료', audience: '멘토', desc: '멘티가 회차 보고서에 서명했을 때 (현장 서명 제외)' },
+  { key: 'extension_decided', label: '추가 회차 요청 처리 결과', audience: '멘토', desc: '추가 회차 요청을 승인·반려했을 때' },
+  { key: 'revision_requested', label: '검수 보완 요청', audience: '멘토', desc: '운영사가 종결 검수에서 보완을 요청했을 때' },
+  { key: 'settlement_confirmed', label: '정산 확정', audience: '멘토', desc: '검수 승인·부분 정산으로 정산이 확정됐을 때' },
+  { key: 'settlement_canceled', label: '정산 취소', audience: '멘토', desc: '확정됐던 정산을 취소했을 때' },
+  { key: 'settlement_paid', label: '정산금 지급 완료', audience: '멘토', desc: '품의 지급 완료 표시 시 멘토별 실지급액 통보' },
+  // ---- 운영사
+  { key: 'closure_requested', label: '종결 요청 접수', audience: '운영사', desc: '멘토가 관찰의견서를 제출하고 종결을 요청했을 때 (검수 권한 담당자)' },
+  { key: 'extension_requested', label: '추가 회차 요청 접수', audience: '운영사', desc: '멘토의 추가 회차 요청 (검수 권한 담당자)' },
+  { key: 'mentor_change_requested', label: '멘토 변경 요청 접수', audience: '운영사', desc: '멘티의 멘토 변경 요청 (검수 권한 담당자)' },
+  { key: 'mentor_withdrawal_requested', label: '멘토 중도 종료 요청 접수', audience: '운영사', desc: '멘토의 자진 중도 종료 요청 (검수 권한 담당자)' },
+  { key: 'closure_overdue', label: '검수 지연 알림', audience: '운영사', desc: '종결 요청 후 3일 지난 검수 대기 건 (Cron · 검수 권한 담당자, 7일 중복 방지)' },
+  { key: 'batch_returned', label: '품의 반려 통보', audience: '운영사', desc: '발주처가 지급 품의를 반려했을 때 (품의 권한 담당자)' },
+  { key: 'batch_confirmed', label: '품의 정산 확인 통보', audience: '운영사', desc: '발주처가 지급 품의의 정산을 확인했을 때 (품의 권한 담당자)' },
+  // ---- 발주처
+  { key: 'batch_submitted', label: '지급 품의 제출', audience: '발주처', desc: '운영사가 지급 품의를 제출했을 때' },
+  { key: 'batch_unsubmitted', label: '지급 품의 철회', audience: '발주처', desc: '운영사가 제출했던 품의를 철회했을 때' },
+];
+
+/**
+ * 행사 설정(programs.notification_settings)에서 이벤트 발송 여부 해석 (P32).
+ * 키 없음 = 발송, 정확히 `false` 만 미발송. 잘못된 값(비객체)은 전부 발송.
+ */
+export function notificationEnabled(settings: unknown, event: string): boolean {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return true;
+  return (settings as Record<string, unknown>)[event] !== false;
+}

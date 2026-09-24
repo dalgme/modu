@@ -1,6 +1,8 @@
 import type { Json } from '@/types/database';
 import type { DB } from '@/lib/workflow/audit';
 import { getImpersonation } from '@/lib/auth/impersonation';
+import { loadNotificationSettings } from '@/lib/notifications/settings';
+import { notificationEnabled } from '@/lib/notifications/templates';
 
 interface QueueNotificationInput {
   caseId?: string | null;
@@ -30,6 +32,12 @@ export async function queueNotification(
     imp = null;
   }
   if (imp && input.recipientId && input.recipientId === imp.actorId) return;
+  // 행사별 알림 이벤트 on/off (P32): 설정에서 끈 이벤트는 큐에 넣지 않는다(문자·알림톡 미발송). 조용히 건너뛴다.
+  // 로그인 안내 등 직발송 문자는 이 큐를 거치지 않으므로 여기 영향이 없다.
+  if (input.programId) {
+    const settings = await loadNotificationSettings(input.programId);
+    if (!notificationEnabled(settings, input.triggerEvent)) return;
+  }
   const base = input.payload ?? null;
   const payload = (
     imp

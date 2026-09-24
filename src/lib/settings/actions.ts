@@ -237,11 +237,12 @@ async function copyGroupSettings(fromId: string, toId: string, programId: string
     }
     return n;
   });
-  await step('mentor_form_settings', async () => {
-    const { data: rows } = await admin.from('mentor_form_settings').select('*').eq('program_id', programId).eq('support_type_id', fromId);
+  // (P32) 멘토 서류 수령 체크리스트(그룹 override) 복사 — 수령 기록은 복사하지 않는다
+  await step('mentor_doc_checklists', async () => {
+    const { data: rows } = await admin.from('mentor_doc_checklists').select('*').eq('program_id', programId).eq('support_type_id', fromId);
     let n = 0;
     for (const r of rows ?? []) {
-      const { error } = await admin.from('mentor_form_settings').insert({ program_id: programId, support_type_id: toId, form_key: r.form_key, enabled: r.enabled, method: r.method, title: r.title, content: r.content, template_path: r.template_path, template_name: r.template_name, updated_by: actorId });
+      const { error } = await admin.from('mentor_doc_checklists').insert({ program_id: programId, support_type_id: toId, enabled: r.enabled, items: r.items });
       if (error) throw new Error(error.message);
       n += 1;
     }
@@ -369,7 +370,7 @@ export async function deleteGroupAction(groupId: string): Promise<Result> {
   if ((count ?? 0) > 0) return { ok: false, error: `케이스가 ${count}건 있는 그룹은 삭제할 수 없습니다. 대신 상태를 '종료'로 바꾸세요.` };
   // 이 그룹을 승계 원천으로 가리키는 그룹은 링크 해제
   await admin.from('support_types').update({ predecessor_support_type_id: null }).eq('predecessor_support_type_id', groupId);
-  const children: { table: 'support_type_documents' | 'support_type_members' | 'consulting_rates' | 'operating_limits' | 'document_templates' | 'survey_templates' | 'mentor_reminder_settings' | 'mentor_form_settings' | 'report_snapshots'; col: string }[] = [
+  const children: { table: 'support_type_documents' | 'support_type_members' | 'consulting_rates' | 'operating_limits' | 'document_templates' | 'survey_templates' | 'mentor_reminder_settings' | 'mentor_doc_checklists' | 'mentor_doc_receipts' | 'report_snapshots'; col: string }[] = [
     { table: 'support_type_documents', col: 'support_type_id' },
     { table: 'support_type_members', col: 'support_type_id' },
     { table: 'consulting_rates', col: 'support_type_id' },
@@ -377,7 +378,8 @@ export async function deleteGroupAction(groupId: string): Promise<Result> {
     { table: 'document_templates', col: 'support_type_id' },
     { table: 'survey_templates', col: 'support_type_id' },
     { table: 'mentor_reminder_settings', col: 'support_type_id' },
-    { table: 'mentor_form_settings', col: 'support_type_id' },
+    { table: 'mentor_doc_checklists', col: 'support_type_id' },
+    { table: 'mentor_doc_receipts', col: 'support_type_id' },
     { table: 'report_snapshots', col: 'support_type_id' },
   ];
   const removed: Record<string, number> = {};

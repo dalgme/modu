@@ -25,6 +25,8 @@ export interface ReviewQueueItem {
   enteredAt: string;
   reportedRounds: number;
   requiredRounds: number;
+  /** 승인된 추가 회차 (칩에 별도 표시, P32) */
+  extraRounds: number;
   hasObservation: boolean;
   /** 그룹 서명 정책이 켜진 경우만 {signed, total}, 아니면 null */
   signatures: { signed: number; total: number } | null;
@@ -109,7 +111,8 @@ export async function listReviewQueue(programId: string, groupId: string | null)
       waitingDays: daysSince(enteredAt),
       enteredAt,
       reportedRounds: reported.length,
-      requiredRounds: (st?.required_rounds ?? 0) + (extraOf.get(c.id) ?? 0),
+      requiredRounds: st?.required_rounds ?? 0, // 승인 게이트(canApproveClosure)와 같은 기준 — 추가 회차는 별도 (P32 리뷰 #9)
+      extraRounds: extraOf.get(c.id) ?? 0,
       hasObservation: obsSummary.has(c.id) || obsFile.has(c.id),
       signatures: signOn.get(c.support_type_id) ? { signed: reported.filter((r) => r.mentee_signed_at).length, total: reported.length } : null,
       surveyAnswered: surveyed.has(c.id),

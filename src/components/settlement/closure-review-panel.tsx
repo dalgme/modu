@@ -38,7 +38,7 @@ export function ClosureReviewPanel({
   caseId: string;
   estimates: ClosureEstimateProp[];
   observationUrl: string | null;
-  canApprove?: { ok: boolean; reason: string };
+  canApprove?: { ok: boolean; reason: string; settledAlready?: boolean };
   /** 'review' 권한 — 없으면 버튼을 숨긴다 (페이지가 hasCapability(ctx,'review') 로 계산) */
   canReview?: boolean;
 }) {
@@ -50,7 +50,8 @@ export function ClosureReviewPanel({
   const totalNet = estimates.reduce((s, e) => s + e.figures.net, 0);
   const hasRoundIds = estimates.length > 0 && estimates.every((e) => Array.isArray(e.roundIds));
   const roundIds = hasRoundIds ? estimates.flatMap((e) => e.roundIds ?? []) : [];
-  const approveEnabled = canApprove.ok && estimates.length > 0;
+  // 서버(reviewClosure)와 동일: 미정산 회차 0건이어도 이미 확정된 정산이 있으면 종결 승인 가능 (P32 리뷰 #7)
+  const approveEnabled = canApprove.ok && (estimates.length > 0 || !!canApprove.settledAlready);
 
   const run = async (result: 'approved' | 'revision_requested') => {
     if (result === 'revision_requested' && !comment.trim()) {

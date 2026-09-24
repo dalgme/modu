@@ -8,8 +8,7 @@ import { listRosterColumns } from '@/lib/data/roster-columns';
 import { listCases } from '@/lib/data/cases';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { listSupportTypes } from '@/lib/programs/data';
-import { getMentorFormStatus } from '@/lib/mentor-forms/data';
-import { featureEnabled } from '@/lib/platform/features';
+import { listMentorDocStatus } from '@/lib/mentor-docs/data';
 import { denyUnless } from '@/lib/auth/capabilities';
 import { CASE_STATUSES, CASE_STATUS_META } from '@/types/case-status';
 import { SubTabs } from '@/components/common/sub-tabs';
@@ -18,7 +17,7 @@ import { RosterValuesUploadButton } from '@/components/nextlab/roster-bulk-actio
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import type { MentorGroupInfo, Withholding } from '@/components/nextlab/mentor-group-controls';
 import { MembersManager, type MenteeProgressItem } from '@/components/nextlab/members-manager';
-import { MentorFormsStatus } from '@/components/nextlab/mentor-forms-status';
+import { MentorDocReceiptsPanel } from '@/components/nextlab/mentor-doc-receipts-panel';
 import { RegisterPanel } from '@/components/nextlab/register-panel';
 import { REG_ROLES, type RegKey } from '@/lib/roster/register-roles';
 import { ExcelButton } from '@/components/common/excel-button';
@@ -143,12 +142,8 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   }
 
   if (tab === 'mentor') {
-    const [groups, formStatus] = await Promise.all([
-      listSupportTypes(ctx.programId),
-      featureEnabled(ctx.program.features, 'mentor_forms')
-        ? getMentorFormStatus(ctx.programId, denyUnless(ctx, 'members.sensitive') === null)
-        : Promise.resolve([]),
-    ]);
+    // (P32) 서류 수령 현황 — 현재 범위(행사 전체 | 그룹)에 적용된 체크리스트가 사용 중일 때만 카드가 보인다
+    const [groups, docStatus] = await Promise.all([listSupportTypes(ctx.programId), listMentorDocStatus(ctx.programId, ctx.supportTypeId ?? null)]);
     const groupList = groups.map((g) => ({ id: g.id, name: g.name }));
     // 그룹 지정·원천징수 override 는 범위(그룹)와 무관하게 행사 전체 그룹 기준으로 보여준다 —
     // listProgramMentors 는 범위 그룹만 남기므로 명부 행을 직접 조회 (P28)
@@ -170,26 +165,12 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     body = (
       <>
         <ActiveHelp />
-        {formStatus.length > 0 && (
-          <MentorFormsStatus
-            items={formStatus.map((f) => ({
-              formKey: f.formKey,
-              method: f.method,
-              title: f.title,
-              submitted: f.submitted.map((s) => ({
-                id: s.id,
-                mentorName: s.mentorName,
-                method: s.method,
-                submittedAt: s.submittedAt,
-                signedName: s.signedName,
-                answers: s.answers,
-                contentSnapshot: s.contentSnapshot,
-                fileName: s.fileName,
-                fileUrl: s.fileUrl,
-                rrn: s.rrn,
-              })),
-              missing: f.missing,
-            }))}
+        {docStatus.anyEnabled && (
+          <MentorDocReceiptsPanel
+            sections={docStatus.sections}
+            mixed={docStatus.mixed}
+            canEdit={denyUnless(ctx, 'mentors.docs') === null}
+            exportHref="/api/nextlab/mentor-docs-export"
           />
         )}
         <div className="flex flex-wrap items-end justify-between gap-2">
@@ -201,7 +182,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             <RosterValuesUploadButton target="mentor" />
             <ExcelButton href="/api/nextlab/rounds-export" label="회차 엑셀" title="현재 범위의 멘토별 회차(일자·시간·방법·참가자·보고서·단가·정산 상태)" />
             <Button asChild variant="outline" size="sm" className="gap-1">
-              <a href="/api/staff/mentor-docs-zip" title="멘토별 폴더로 정리된 ZIP — 지급서류(이력서·통장·신분증)와 위촉 서식 제출 파일">
+              <a href="/api/staff/mentor-docs-zip" title="멘토별 폴더로 정리된 ZIP — 멘토가 올린 지급서류(이력서·통장·신분증) 파일">
                 <Download className="h-4 w-4" /> 멘토 서류 일괄 다운로드 (ZIP)
               </a>
             </Button>

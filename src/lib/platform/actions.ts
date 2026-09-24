@@ -130,7 +130,7 @@ export async function createProgramAction(input: unknown): Promise<Result<{ prog
 /**
  * 설정 복제 — 케이스·회차·정산은 제외. 그룹 id 매핑을 유지해 그룹 스코프 설정을 옮긴다.
  * P30: 정원(max_mentees_per_mentor) 복제 · 예산/일정은 비움 · 종료 그룹 포함 옵션 · 필수서류는 원천 그룹 범위로 조회 ·
- *      단가/한도 적용일 = 새 행사 시작일(없으면 오늘) · 리마인더·위촉 서식·임의 컬럼·담당 권한·기능 플래그 · 멘토 풀(옵션).
+ *      단가/한도 적용일 = 새 행사 시작일(없으면 오늘) · 리마인더·멘토 서류 수령 체크리스트(P32)·임의 컬럼·담당 권한·기능 플래그 · 멘토 풀(옵션).
  */
 async function cloneProgramSettings(fromId: string, toId: string, actorId: string, opts: { includeEndedGroups?: boolean; mentorPool?: boolean; effectiveFrom?: string | null } = {}): Promise<Result> {
   const admin = createAdminClient();
@@ -140,7 +140,7 @@ async function cloneProgramSettings(fromId: string, toId: string, actorId: strin
   if (!opts.includeEndedGroups) groupsQ = groupsQ.eq('status', 'active');
   const { data: groups } = await groupsQ;
   const sourceGroupIds = (groups ?? []).map((g) => g.id);
-  const [{ data: docs }, { data: rates }, { data: limits }, { data: tags }, { data: templates }, { data: surveys }, { data: reminders }, { data: mentorForms }, { data: rosterCols }] = await Promise.all([
+  const [{ data: docs }, { data: rates }, { data: limits }, { data: tags }, { data: templates }, { data: surveys }, { data: reminders }, { data: docChecklists }, { data: rosterCols }] = await Promise.all([
     sourceGroupIds.length ? admin.from('support_type_documents').select('*').in('support_type_id', sourceGroupIds) : Promise.resolve({ data: [] as Tables<'support_type_documents'>[] }),
     admin.from('consulting_rates').select('*').eq('program_id', fromId),
     admin.from('operating_limits').select('*').eq('program_id', fromId),
@@ -148,7 +148,7 @@ async function cloneProgramSettings(fromId: string, toId: string, actorId: strin
     admin.from('document_templates').select('*').eq('program_id', fromId).eq('template_key', ROUND_REPORT_TEMPLATE_KEY),
     admin.from('survey_templates').select('*').eq('program_id', fromId).eq('is_active', true),
     admin.from('mentor_reminder_settings').select('*').eq('program_id', fromId),
-    admin.from('mentor_form_settings').select('*').eq('program_id', fromId),
+    admin.from('mentor_doc_checklists').select('*').eq('program_id', fromId),
     admin.from('roster_columns').select('*').eq('program_id', fromId),
   ]);
   const groupMap = new Map<string, string>();
@@ -204,8 +204,8 @@ async function cloneProgramSettings(fromId: string, toId: string, actorId: strin
     const { data: qs } = await admin.from('survey_questions').select('*').eq('template_id', s.id).order('sort_order');
     if ((qs ?? []).length) await admin.from('survey_questions').insert((qs ?? []).map((q) => ({ template_id: nt.id, sort_order: q.sort_order, qtype: q.qtype, label: q.label, help: q.help, options: q.options, required: q.required })));
   }
-  // 7) 멘토 리마인더 · 위촉 서식 (행사 공통 + 매핑된 그룹 행) — 표별 try/catch
-  const counts: Record<string, number> = { reminders: 0, mentor_forms: 0, roster_columns: 0, mentors: 0 };
+  // 7) 멘토 리마인더 · 멘토 서류 수령 체크리스트 (행사 공통 + 매핑된 그룹 행) — 표별 try/catch
+  const counts: Record<string, number> = { reminders: 0, mentor_doc_checklists: 0, roster_columns: 0, mentors: 0 };
   try {
     for (const r of reminders ?? []) {
       if (r.support_type_id && !groupMap.has(r.support_type_id)) continue;
@@ -216,13 +216,14 @@ async function cloneProgramSettings(fromId: string, toId: string, actorId: strin
     console.error('clone reminders failed:', err);
   }
   try {
-    for (const r of mentorForms ?? []) {
+    // (P32) 서류명 목록·사용 여부만 복제 — 수령 기록(mentor_doc_receipts)은 행사별 사실이라 옮기지 않는다
+    for (const r of docChecklists ?? []) {
       if (r.support_type_id && !groupMap.has(r.support_type_id)) continue;
-      const { error } = await admin.from('mentor_form_settings').insert({ program_id: toId, support_type_id: r.support_type_id ? groupMap.get(r.support_type_id)! : null, form_key: r.form_key, enabled: r.enabled, method: r.method, title: r.title, content: r.content, template_path: r.template_path, template_name: r.template_name, updated_by: actorId });
-      if (!error) counts.mentor_forms! += 1;
+      const { error } = await admin.from('mentor_doc_checklists').insert({ program_id: toId, support_type_id: r.support_type_id ? groupMap.get(r.support_type_id)! : null, enabled: r.enabled, items: r.items });
+      if (!error) counts.mentor_doc_checklists! += 1;
     }
   } catch (err) {
-    console.error('clone mentor forms failed:', err);
+    console.error('clone mentor doc checklists failed:', err);
   }
   // 8) 임의 컬럼(명단 카테고리 마크 정의 — 값은 제외)
   try {

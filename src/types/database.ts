@@ -1064,108 +1064,118 @@ export type Database = {
           },
         ];
       };
-      mentor_form_settings: {
+      mentor_doc_checklists: {
         Row: {
-          content: string;
+          created_at: string;
           enabled: boolean;
-          form_key: string;
           id: string;
-          method: string;
+          items: Json;
           program_id: string;
           support_type_id: string | null;
-          template_name: string | null;
-          template_path: string | null;
-          title: string;
           updated_at: string;
-          updated_by: string | null;
         };
         Insert: {
-          content: string;
+          created_at?: string;
           enabled?: boolean;
-          form_key: string;
           id?: string;
-          method?: string;
+          items?: Json;
           program_id: string;
           support_type_id?: string | null;
-          template_name?: string | null;
-          template_path?: string | null;
-          title: string;
           updated_at?: string;
-          updated_by?: string | null;
         };
         Update: {
-          content?: string;
+          created_at?: string;
           enabled?: boolean;
-          form_key?: string;
           id?: string;
-          method?: string;
+          items?: Json;
           program_id?: string;
           support_type_id?: string | null;
-          template_name?: string | null;
-          template_path?: string | null;
-          title?: string;
           updated_at?: string;
-          updated_by?: string | null;
         };
         Relationships: [
           {
-            foreignKeyName: 'mentor_form_settings_program_id_fkey';
+            foreignKeyName: 'mentor_doc_checklists_program_id_fkey';
             columns: ['program_id'];
             isOneToOne: false;
             referencedRelation: 'programs';
             referencedColumns: ['id'];
           },
+          {
+            foreignKeyName: 'mentor_doc_checklists_support_type_id_fkey';
+            columns: ['support_type_id'];
+            isOneToOne: false;
+            referencedRelation: 'support_types';
+            referencedColumns: ['id'];
+          },
         ];
       };
-      mentor_form_submissions: {
+      mentor_doc_receipts: {
         Row: {
-          answers: Json;
-          content_snapshot: string | null;
-          file_name: string | null;
-          file_path: string | null;
-          form_key: string;
+          created_at: string;
           id: string;
-          method: string;
+          item_key: string;
+          mentor_id: string;
+          note: string | null;
           program_id: string;
-          rrn_sealed: string | null;
-          signed_name: string | null;
-          submitted_at: string;
-          user_id: string;
+          received: boolean;
+          received_at: string | null;
+          received_by: string | null;
+          support_type_id: string | null;
+          updated_at: string;
         };
         Insert: {
-          answers?: Json;
-          content_snapshot?: string | null;
-          file_name?: string | null;
-          file_path?: string | null;
-          form_key: string;
+          created_at?: string;
           id?: string;
-          method: string;
+          item_key: string;
+          mentor_id: string;
+          note?: string | null;
           program_id: string;
-          rrn_sealed?: string | null;
-          signed_name?: string | null;
-          submitted_at?: string;
-          user_id: string;
+          received?: boolean;
+          received_at?: string | null;
+          received_by?: string | null;
+          support_type_id?: string | null;
+          updated_at?: string;
         };
         Update: {
-          answers?: Json;
-          content_snapshot?: string | null;
-          file_name?: string | null;
-          file_path?: string | null;
-          form_key?: string;
+          created_at?: string;
           id?: string;
-          method?: string;
+          item_key?: string;
+          mentor_id?: string;
+          note?: string | null;
           program_id?: string;
-          rrn_sealed?: string | null;
-          signed_name?: string | null;
-          submitted_at?: string;
-          user_id?: string;
+          received?: boolean;
+          received_at?: string | null;
+          received_by?: string | null;
+          support_type_id?: string | null;
+          updated_at?: string;
         };
         Relationships: [
           {
-            foreignKeyName: 'mentor_form_submissions_program_id_fkey';
+            foreignKeyName: 'mentor_doc_receipts_mentor_id_fkey';
+            columns: ['mentor_id'];
+            isOneToOne: false;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'mentor_doc_receipts_program_id_fkey';
             columns: ['program_id'];
             isOneToOne: false;
             referencedRelation: 'programs';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'mentor_doc_receipts_received_by_fkey';
+            columns: ['received_by'];
+            isOneToOne: false;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'mentor_doc_receipts_support_type_id_fkey';
+            columns: ['support_type_id'];
+            isOneToOne: false;
+            referencedRelation: 'support_types';
             referencedColumns: ['id'];
           },
         ];
@@ -2169,6 +2179,7 @@ export type Database = {
           name: string;
           operator_contact: string | null;
           operator_name: string;
+          notification_settings: Json;
           operator_signup_code: string | null;
           operator_short: string | null;
           round_report_policy: Json;
@@ -2200,6 +2211,7 @@ export type Database = {
           name: string;
           operator_contact?: string | null;
           operator_name: string;
+          notification_settings?: Json;
           operator_signup_code?: string | null;
           operator_short?: string | null;
           round_report_policy?: Json;
@@ -2231,6 +2243,7 @@ export type Database = {
           name?: string;
           operator_contact?: string | null;
           operator_name?: string;
+          notification_settings?: Json;
           operator_signup_code?: string | null;
           operator_short?: string | null;
           round_report_policy?: Json;

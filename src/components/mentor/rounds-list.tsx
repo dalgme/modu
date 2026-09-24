@@ -231,10 +231,13 @@ export function RoundsList({
   editable,
   signEnabled = true,
   operatorCorrect = false,
+  viewerMentorId = null,
 }: {
   caseId: string;
   rounds: RoundItem[];
   editable: boolean;
+  /** 보는 멘토 id — 다른 멘토(교체 전)가 진행한 회차의 수정·삭제 버튼을 숨긴다 (P32 리뷰 #8) */
+  viewerMentorId?: string | null;
   /** 그룹 서명 정책이 꺼져 있으면 서명 배지·현장 서명 버튼을 숨긴다 (P28) */
   signEnabled?: boolean;
   /** 운영사 케이스 상세에서 true — 정산 전 회차에 [정정] 버튼 (P30, case.manage 권한은 서버가 검사) */
@@ -289,7 +292,7 @@ export function RoundsList({
                   일정 수정
                 </Button>
               )}
-              {editable && !r.locked && (r.id === last.id || !r.report_registered_at) && (
+              {editable && !r.locked && (r.id === last.id || !r.report_registered_at) && (!viewerMentorId || r.mentor_id === viewerMentorId) && (
                 <Button
                   size="sm"
                   variant="ghost"
@@ -345,7 +348,7 @@ export function RoundsList({
             </div>
           )}
           {/* 등록본 내용·사진 추가 (P31) — 멘티 서명 전·정산 전 회차만 (updateRoundAction) */}
-          {editable && r.report_registered_at && !r.mentee_signed_at && !r.locked && (
+          {editable && r.report_registered_at && !r.mentee_signed_at && !r.locked && (!viewerMentorId || r.mentor_id === viewerMentorId) && (
             <div className="mt-2">
               <RoundReportForm
                 caseId={caseId}

@@ -364,17 +364,13 @@ export async function deleteMemberAction(
     .eq('id', userId)
     .maybeSingle();
 
-  // 회원 소유 스토리지 파일 정리 (지급서류 업로드 · 멘토 서명 · 위촉 서식 제출) — 실패해도 삭제는 진행 (P21)
+  // 회원 소유 스토리지 파일 정리 (지급서류 업로드 · 멘토 서명) — 실패해도 삭제는 진행 (P21). (P32) 위촉 서식 제출 파일은 폐지, 수령 기록은 FK cascade
   try {
-    const [{ data: payDocs }, { data: sigs }, { data: forms }] = await Promise.all([
+    const [{ data: payDocs }, { data: sigs }] = await Promise.all([
       admin.from('mentor_payment_docs').select('resume_path, bankbook_path, id_card_path').eq('user_id', userId),
       admin.from('mentor_signatures').select('storage_path').eq('user_id', userId),
-      admin.from('mentor_form_submissions').select('file_path').eq('user_id', userId),
     ]);
-    const docPaths = [
-      ...(payDocs ?? []).flatMap((d) => [d.resume_path, d.bankbook_path, d.id_card_path]),
-      ...(forms ?? []).map((f) => f.file_path),
-    ].filter((p): p is string => !!p);
+    const docPaths = (payDocs ?? []).flatMap((d) => [d.resume_path, d.bankbook_path, d.id_card_path]).filter((p): p is string => !!p);
     if (docPaths.length) await admin.storage.from('documents').remove(docPaths);
     const sigPaths = (sigs ?? []).map((s) => s.storage_path).filter(Boolean);
     if (sigPaths.length) await admin.storage.from('signatures').remove(sigPaths);

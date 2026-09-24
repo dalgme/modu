@@ -31,8 +31,9 @@ export default async function HubPage({
   const isAdmin = real.is_platform_admin && !imp;
   if (isAdmin) redirect('/platform');
   // 운영사 대행은 발급된 행사에 묶인다 — 허브에서 다른 행사를 고를 수 없고, 바로 그 행사로 진입한다 (P31)
-  if (imp?.programId && !searchParams.denied && !searchParams.error) {
-    redirect(`/hub/enter?program=${imp.programId}`);
+  if (imp?.programId && !searchParams.denied && !searchParams.error && searchParams.program !== imp.programId) {
+    // 그룹 선택이 필요한 대상(그룹 2개 이상)은 /hub?program= 에서 그룹 목록을 보여야 하므로 /hub/enter 로 바로 보내지 않는다 (P32 리뷰 #1)
+    redirect(`/hub?program=${imp.programId}`);
   }
   if (!searchParams.pick && !searchParams.program && !searchParams.denied && !searchParams.error) {
     const target = await autoEnterTarget(real, profile);

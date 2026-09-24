@@ -58,7 +58,7 @@ const ACTION_PREFIXES: { value: string; label: string }[] = [
   { value: 'batch.', label: '품의' },
   { value: 'settings.', label: '설정' },
   { value: 'account.', label: '계정' },
-  { value: 'member.', label: '회원' },
+  { value: 'membership.', label: '회원' },
   { value: 'mentor.', label: '멘토' },
   { value: 'match.', label: '매칭' },
   { value: 'sms.', label: '문자' },

@@ -10,6 +10,8 @@ export default async function Page() {
   // (P31) 서류 일괄 ZIP 은 행사 설정 staff_permissions.institution_docs_zip 이 켜진 발주처만 — 라우트(/api/staff/mentor-docs-zip)와 같은 판정
   const perms = ctx.program.staff_permissions;
   const zipAllowed = !!perms && typeof perms === 'object' && !Array.isArray(perms) && (perms as Record<string, unknown>).institution_docs_zip === true;
+  // (P32) 멘토 서류 수령 체크(읽기 전용) — 한 명이라도 체크리스트가 적용되면 컬럼 표시
+  const showChecklist = mentors.some((m) => m.checklist !== null);
 
   return (
     <main className="flex flex-col gap-5">
@@ -23,7 +25,7 @@ export default async function Page() {
         {zipAllowed ? (
           <a
             href="/api/staff/mentor-docs-zip"
-            title="멘토별 폴더로 정리된 ZIP — 지급서류(이력서·통장·신분증)와 위촉 서식 제출 파일"
+            title="멘토별 폴더로 정리된 ZIP — 멘토가 올린 지급서류(이력서·통장·신분증) 파일"
             className="inline-flex items-center gap-1 rounded-lg border bg-background px-3 py-2 text-sm font-semibold hover:bg-accent"
           >
             멘토 서류 일괄 다운로드 (ZIP)
@@ -57,6 +59,7 @@ export default async function Page() {
                     <th className="px-4 py-2.5 text-right font-medium">배정 멘티 수</th>
                     <th className="px-4 py-2.5 text-right font-medium" title="이력서·통장사본·신분증사본 3종">지급서류 제출</th>
                     <th className="px-4 py-2.5 text-right font-medium">수령 확인</th>
+                    {showChecklist && <th className="px-4 py-2.5 text-right font-medium" title="운영사가 오프라인으로 받은 서류(동의서·서약서 등)의 수령 체크">서류 수령</th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -78,6 +81,11 @@ export default async function Page() {
                       <td className="px-4 py-2.5 text-right tabular-nums">
                         <span className={m.docsReceived === 3 ? 'font-semibold text-emerald-700' : 'text-muted-foreground'}>{m.docsReceived}/3</span>
                       </td>
+                      {showChecklist && (
+                        <td className="px-4 py-2.5 text-right tabular-nums">
+                          {m.checklist ? <span className={m.checklist.received === m.checklist.total ? 'font-semibold text-emerald-700' : 'text-muted-foreground'}>{m.checklist.received}/{m.checklist.total}</span> : <span className="text-muted-foreground">-</span>}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
