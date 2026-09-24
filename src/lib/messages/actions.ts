@@ -3,7 +3,9 @@
 import { revalidatePath } from 'next/cache';
 
 import { roleOrNull, mentorOfCaseOrNull } from '@/lib/auth/guards';
+import { getImpersonation } from '@/lib/auth/impersonation';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { logAudit } from '@/lib/workflow/audit';
 
 export type MessageActionResult = { ok: true } | { ok: false; error: string };
 
@@ -46,14 +48,31 @@ export async function sendCaseMessageAction(caseId: string, body: string): Promi
     if (!recipientId) return { ok: false, error: '멘티 계정이 아직 연결되지 않았습니다.' };
   }
 
-  const { error } = await admin.from('direct_messages').insert({
-    program_id: caseRow.program_id,
-    case_id: caseId,
-    sender_id: profile.id,
-    recipient_id: recipientId,
-    body: text,
-  });
-  if (error) return { ok: false, error: '전송에 실패했습니다. 잠시 후 다시 시도하세요.' };
+  const { data: inserted, error } = await admin
+    .from('direct_messages')
+    .insert({
+      program_id: caseRow.program_id,
+      case_id: caseId,
+      sender_id: profile.id,
+      recipient_id: recipientId,
+      body: text,
+    })
+    .select('id')
+    .single();
+  if (error || !inserted) return { ok: false, error: '전송에 실패했습니다. 잠시 후 다시 시도하세요.' };
+
+  // 대행 중 발송은 감사로그에 남긴다 — logAudit 이 실행자를 실제 담당자로 바꾸고 on_behalf_of(발신 명의)·via 를 붙인다 (P31)
+  const imp = await getImpersonation();
+  if (imp && imp.target.id === profile.id) {
+    await logAudit(admin, {
+      actorId: profile.id,
+      programId: caseRow.program_id,
+      action: 'message.send',
+      entityType: 'direct_messages',
+      entityId: inserted.id,
+      metadata: { case_id: caseId, recipient_id: recipientId, sender_role: profile.role, length: text.length },
+    });
+  }
 
   revalidatePath('/mentor/qna');
   revalidatePath('/mentee/inquiries');

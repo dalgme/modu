@@ -14,6 +14,10 @@ export interface CaseNextStepInput {
   pendingRequests: number;
   pendingChangeRequests: number;
   menteeLinked: boolean;
+  /** 멘토 입력 대기 요약 (P31, 선택) — 보고서 없는 지난 회차 수·관찰의견서 유무 */
+  mentorInput?: { plannedWithoutReport: number; hasObservation: boolean } | null;
+  /** 페이지에 실제로 있는 섹션 앵커('#rounds' 등). 생략하면 전부 표시 (P31) */
+  sections?: string[];
 }
 
 function describe(i: CaseNextStepInput): { title: string; desc: string; anchor?: string; href?: string; hrefLabel?: string; tone: 'action' | 'wait' | 'done' } {
@@ -58,8 +62,12 @@ const SECTIONS: { anchor: string; label: string }[] = [
   { anchor: '#docs', label: '서류' },
 ];
 
+const MENTOR_INPUT_STATUSES: CaseStatus[] = ['mentor_assigned', 'in_progress', 'revision_requested'];
+
 export function CaseNextStep(props: CaseNextStepInput) {
   const d = describe(props);
+  const sections = props.sections ? SECTIONS.filter((s) => props.sections!.includes(s.anchor)) : SECTIONS;
+  const showMentorInput = !!props.mentorInput && MENTOR_INPUT_STATUSES.includes(props.status);
   const toneCls = d.tone === 'action' ? 'border-brand-coral bg-orange-50/70 dark:bg-orange-950/20' : d.tone === 'done' ? 'border-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/20' : 'border-sky-300 bg-sky-50/60 dark:bg-sky-950/20';
   return (
     <div className="flex flex-col gap-2">
@@ -72,6 +80,11 @@ export function CaseNextStep(props: CaseNextStepInput) {
               {d.title}
             </p>
             {d.desc && <p className="mt-1 text-xs text-muted-foreground">{d.desc}</p>}
+            {showMentorInput && (
+              <p className="mt-1 text-xs font-medium text-amber-800 dark:text-amber-200">
+                멘토 입력 대기: 보고서 {props.mentorInput!.plannedWithoutReport}회차 · 관찰의견서 {props.mentorInput!.hasObservation ? '있음' : '없음'}
+              </p>
+            )}
           </div>
         </div>
         {(d.anchor || d.href) && (
@@ -89,9 +102,10 @@ export function CaseNextStep(props: CaseNextStepInput) {
           </div>
         )}
       </div>
-      <nav aria-label="케이스 섹션" className="flex gap-1 overflow-x-auto rounded-lg border bg-background px-2 py-1.5 text-xs">
-        {SECTIONS.map((s) => (
-          <a key={s.anchor} href={s.anchor} className="whitespace-nowrap rounded-md px-2 py-1 font-medium text-muted-foreground hover:bg-accent hover:text-foreground">
+      {/* 섹션 바로가기 — 폰에서는 헤더 아래 고정(sticky), 가로 스크롤 (P31) */}
+      <nav aria-label="케이스 섹션" className="no-scrollbar sticky top-14 z-20 flex gap-1 overflow-x-auto rounded-lg border bg-background px-2 py-1.5 text-xs shadow-sm md:top-[6.75rem]">
+        {sections.map((s) => (
+          <a key={s.anchor} href={s.anchor} className="whitespace-nowrap rounded-md px-2 py-2 font-medium text-muted-foreground hover:bg-accent hover:text-foreground">
             {s.label}
           </a>
         ))}

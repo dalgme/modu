@@ -2,6 +2,8 @@ import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { moveFile, sha256Hex } from '@/lib/storage/files';
+import { actingNote } from '@/lib/auth/impersonation';
+import { logAudit } from '@/lib/workflow/audit';
 import { queueNotification } from '@/lib/workflow/notifications';
 import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
 import { resolveLimits, resolveRate, kstDate, type ConsultingMode } from '@/lib/settlement/rates';
@@ -44,6 +46,62 @@ function normalizeParticipants(raw: RoundParticipant[]): RoundParticipant[] {
 /** 사전(계획) 등록 허용 범위 — 오늘부터 최대 60일 뒤까지 */
 const PLAN_MAX_FUTURE_MS = 60 * 24 * 60 * 60 * 1000;
 
+/** 첨부 상한 (P31) — 클라이언트 사전 검증과 같은 값을 서버에서 강제한다 */
+const MAX_PHOTOS = 10;
+const PHOTO_MAX_BYTES = 10 * 1024 * 1024;
+const REPORT_MAX_BYTES = 20 * 1024 * 1024;
+const ALLOWED_EXT = new Set(['pdf', 'hwp', 'hwpx', 'doc', 'docx', 'xlsx', 'pptx', 'jpg', 'jpeg', 'png', 'webp', 'heic']);
+const ALLOWED_MIME = new Set([
+  'application/pdf',
+  'application/x-hwp',
+  'application/haansofthwp',
+  'application/vnd.hancom.hwp',
+  'application/hwp+zip',
+  'application/vnd.hancom.hwpx',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+]);
+
+/** 보고서 파일 형식 검증 (P31) — 확장자 허용목록 + MIME(브라우저가 hwp 등을 빈값/octet-stream 으로 보내는 경우 허용) */
+function validateReportFile(fileName: string, mimeType: string): string | null {
+  const ext = (fileName.split('.').pop() ?? '').toLowerCase();
+  if (!ALLOWED_EXT.has(ext)) return '보고서 파일은 PDF·HWP·HWPX·DOC·DOCX·XLSX·PPTX·JPG·PNG·WEBP·HEIC 형식만 올릴 수 있습니다.';
+  const mime = (mimeType || '').toLowerCase();
+  if (mime && mime !== 'application/octet-stream' && !ALLOWED_MIME.has(mime)) return `허용되지 않는 파일 형식입니다 (${mime}).`;
+  return null;
+}
+
+/**
+ * 회차 일자 하한 (P31) — 케이스 등록일과 (그 멘토의) 배정일 중 늦은 날짜. 그 이전 일자로는 회차를 등록·수정할 수 없다.
+ * 대행 중 담당자가 과거 일자를 잘못 입력하거나 이전 멘토 기간을 침범하는 것을 막는다.
+ */
+async function roundDayLowerBound(caseId: string, mentorId: string): Promise<string | null> {
+  const admin = createAdminClient();
+  const [{ data: c }, { data: a }] = await Promise.all([
+    admin.from('cases').select('created_at').eq('id', caseId).maybeSingle(),
+    admin.from('mentor_assignments').select('assigned_at').eq('case_id', caseId).eq('mentor_id', mentorId).order('assigned_at', { ascending: false }).limit(1).maybeSingle(),
+  ]);
+  const days = [c?.created_at, a?.assigned_at].filter((d): d is string => !!d).map((d) => kstDate(d));
+  if (days.length === 0) return null;
+  return days.sort()[days.length - 1] ?? null;
+}
+
+function lowerBoundError(minDay: string): string {
+  const [, m, d] = minDay.split('-');
+  return `배정일(${Number(m)}/${Number(d)}) 이전 일자는 등록할 수 없습니다.`;
+}
+
+function noRateError(day: string): string {
+  return `해당 일자(${day})에 적용되는 단가가 없습니다. 운영 설정의 단가 적용 시작일을 확인하세요.`;
+}
+
 /**
  * 회차 1단계 등록 (계획 또는 실행) — docs/MODU-DESIGN.md §4-3 검증 7항목 전부 서버 코드에서 직접.
  *  1 담당 멘토(호출부 mentorOfCaseOrNull) 2 상태 3 회차 상한 4 같은 멘티·같은 날 합산 상한
@@ -69,6 +127,9 @@ export async function submitRound(input: RoundInput): Promise<RoundResult> {
   if (started.getTime() > Date.now() + PLAN_MAX_FUTURE_MS) return { ok: false, error: '60일 이후의 일정은 미리 등록할 수 없습니다.' };
   if (kstDate(started) !== kstDate(ended)) return { ok: false, error: '한 회차는 같은 날 안에서 끝나야 합니다.' };
   const day = kstDate(started);
+  // 배정일(케이스 등록일·멘토 배정일) 이전 일자 차단 (P31)
+  const minDay = await roundDayLowerBound(c.id, input.mentorId);
+  if (minDay && day < minDay) return { ok: false, error: lowerBoundError(minDay) };
 
   const participants = normalizeParticipants(input.participants);
   if (participants.length === 0) return { ok: false, error: '참가자를 1명 이상 선택하세요.' };
@@ -93,7 +154,7 @@ export async function submitRound(input: RoundInput): Promise<RoundResult> {
     resolveRate(c.program_id, c.support_type_id, input.mode, day),
     resolveLimits(c.program_id, c.support_type_id, day),
   ]);
-  if (!rate) return { ok: false, error: '이 유형의 단가가 설정되지 않았습니다. 운영사 설정을 확인하세요.' };
+  if (!rate) return { ok: false, error: noRateError(day) };
   if (!limits) return { ok: false, error: '운영 한도가 설정되지 않았습니다. 운영사 설정을 확인하세요.' };
 
   // 4) 같은 멘티·같은 날 합산 (회차 수 + 유형별 금액)
@@ -168,17 +229,17 @@ export async function submitRound(input: RoundInput): Promise<RoundResult> {
         from_status: 'mentor_assigned',
         to_status: 'in_progress',
         changed_by: input.mentorId,
-        note: '1회차 등록 → 컨설팅 진행 중',
+        note: await actingNote('1회차 등록 → 컨설팅 진행 중', input.mentorId), // 대행 중이면 표기 (P31)
       });
     }
   }
 
-  await admin.from('audit_logs').insert({
-    actor_id: input.mentorId,
-    program_id: c.program_id,
+  await logAudit(admin, {
+    actorId: input.mentorId,
+    programId: c.program_id,
     action: 'round.create',
-    entity_type: 'mentoring_logs',
-    entity_id: log.id,
+    entityType: 'mentoring_logs',
+    entityId: log.id,
     metadata: {
       case_id: c.id,
       round_no: roundNo,
@@ -208,7 +269,7 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
   const admin = createAdminClient();
   const { data: log } = await admin
     .from('mentoring_logs')
-    .select('id, case_id, mentor_id, round_no, settlement_id, report_registered_at, started_at, cases!inner(status, program_id, support_type_id, mentee_id)')
+    .select('id, case_id, mentor_id, round_no, mode, started_at, ended_at, settlement_id, report_registered_at, cases!inner(status, program_id, support_type_id, mentee_id)')
     .eq('id', input.logId)
     .maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
@@ -225,25 +286,55 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
   const reportKind: 'web' | 'file' = input.reportFile ? 'file' : 'web';
   if (reportKind === 'web' && !(input.content ?? '').trim()) return { ok: false, error: '컨설팅 내용을 입력하거나 보고서 파일을 첨부하세요.' };
   if (reportKind === 'file' && !isStaging(input.reportFile!.stagingPath)) return { ok: false, error: '잘못된 업로드 경로입니다.' };
-
-  const { error: upErr } = await admin
-    .from('mentoring_logs')
-    .update({
-      topic: input.topic?.trim() || null,
-      content: reportKind === 'web' ? input.content!.trim() : null,
-      result: input.result?.trim() || null,
-      report_kind: reportKind,
-      report_registered_at: new Date().toISOString(),
-    })
-    .eq('id', log.id)
-    .is('report_registered_at', null);
-  if (upErr) return { ok: false, error: upErr.message };
-
-  // 첨부: 보고서 파일 · 사진 (스테이징 → 케이스 폴더)
+  // 첨부 서버 검증 (P31) — 사진 장수·형식, 보고서 형식. 크기는 스테이징 파일을 내려받아 확인한다(moveStaging).
+  const photoPaths = Array.isArray(input.photoPaths) ? input.photoPaths : [];
+  if (photoPaths.length > MAX_PHOTOS) return { ok: false, error: `사진은 최대 ${MAX_PHOTOS}장까지 첨부할 수 있습니다.` };
   if (input.reportFile) {
-    const moved = await moveStaging('documents', log.case_id, input.reportFile.stagingPath);
-    if (moved) {
-      await admin.from('documents').insert({
+    const bad = validateReportFile(input.reportFile.fileName, input.reportFile.mimeType);
+    if (bad) return { ok: false, error: bad };
+  }
+
+  // (P31) 단가·추가 회차 판정은 보고서 등록 시점(수행일 기준)으로 재확정 — 계획 등록 뒤 단가 적용일·필수 회차·추가 승인이 바뀌었을 수 있다.
+  // 같은 날 합산 상한·멘토 1일 건수·시간 겹침도 등록과 같은 규칙으로 다시 통과해야 한다. 정산에 포함된 회차는 위에서 이미 차단.
+  const [{ data: group }, allowance] = await Promise.all([
+    admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle(),
+    getRoundAllowance(log.case_id),
+  ]);
+  if (!group) return { ok: false, error: '사업그룹을 찾을 수 없습니다.' };
+  const v = await validateRoundSchedule({
+    caseId: log.case_id,
+    mentorId: log.mentor_id,
+    programId: c.program_id,
+    supportTypeId: c.support_type_id,
+    mode: log.mode,
+    started: new Date(log.started_at),
+    ended: new Date(log.ended_at),
+    excludeLogId: log.id,
+    enforceLowerBound: false,
+  });
+  if (!v.ok) return v;
+  const isExtra = log.round_no > group.required_rounds;
+  const allowanceExceeded = log.round_no > group.required_rounds + allowance.approvedExtra;
+
+  // 첨부를 먼저 옮기고 documents 행을 만든다 — 전부 성공했을 때만 report_registered_at 을 기록한다 (P31).
+  // 실패하면 옮긴 파일·만든 행을 되돌린다(등록됐는데 첨부가 없는 반쪽 상태 방지).
+  const movedFiles: { bucket: 'documents' | 'photos'; path: string }[] = [];
+  const insertedDocIds: string[] = [];
+  const rollback = async () => {
+    const byBucket = { documents: [] as string[], photos: [] as string[] };
+    for (const f of movedFiles) byBucket[f.bucket].push(f.path);
+    if (byBucket.documents.length) await admin.storage.from('documents').remove(byBucket.documents);
+    if (byBucket.photos.length) await admin.storage.from('photos').remove(byBucket.photos);
+    if (insertedDocIds.length) await admin.from('documents').delete().in('id', insertedDocIds);
+  };
+
+  if (input.reportFile) {
+    const moved = await moveStaging('documents', log.case_id, input.reportFile.stagingPath, REPORT_MAX_BYTES);
+    if (!moved.ok) return { ok: false, error: moved.error };
+    movedFiles.push({ bucket: 'documents', path: moved.dest });
+    const { data: doc, error: docErr } = await admin
+      .from('documents')
+      .insert({
         case_id: log.case_id,
         doc_key: reportDocKey(log.id),
         doc_name: input.reportFile.fileName || `${log.round_no}회차 보고서`,
@@ -252,34 +343,66 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
         uploaded_by: input.mentorId,
         uploaded_role: 'mentor',
         file_size: moved.size,
-        mime_type: input.reportFile.mimeType || 'application/octet-stream',
-      });
+        mime_type: input.reportFile.mimeType || moved.mime || 'application/octet-stream',
+      })
+      .select('id')
+      .single();
+    if (docErr || !doc) {
+      await rollback();
+      return { ok: false, error: `보고서 파일 등록에 실패했습니다: ${docErr?.message ?? '알 수 없는 오류'}` };
     }
+    insertedDocIds.push(doc.id);
   }
-  await attachPhotos(log.case_id, log.id, input.mentorId, input.photoPaths);
+  const photos = await attachPhotos(log.case_id, log.id, input.mentorId, photoPaths);
+  movedFiles.push(...photos.moved.map((path) => ({ bucket: 'photos' as const, path })));
+  insertedDocIds.push(...photos.docIds);
+  if (!photos.ok) {
+    await rollback();
+    return { ok: false, error: photos.error };
+  }
+
+  const { data: registered, error: upErr } = await admin
+    .from('mentoring_logs')
+    .update({
+      topic: input.topic?.trim() || null,
+      content: reportKind === 'web' ? input.content!.trim() : null,
+      result: input.result?.trim() || null,
+      report_kind: reportKind,
+      report_registered_at: new Date().toISOString(),
+      unit_price_snapshot: v.rate.unitPrice,
+      amount_snapshot: v.rate.unitPrice,
+      rate_id: v.rate.rateId,
+      is_extra: isExtra,
+    })
+    .eq('id', log.id)
+    .is('report_registered_at', null)
+    .is('settlement_id', null)
+    .select('id');
+  if (upErr || !registered || registered.length === 0) {
+    await rollback();
+    return { ok: false, error: upErr?.message ?? '이미 보고서가 등록된 회차입니다. 새로고침 후 확인하세요.' };
+  }
+
   // 웹 작성 보고서 → 행사/그룹 양식 PDF (멘토 자동 서명 정책 반영). 실패해도 등록은 유지(감사로그).
   if (reportKind === 'web') await renderRoundReport(log.id);
 
   // 멘티 확인 서명 정책이 켜져 있을 때만 "확인·서명" 안내 발송 — 서명 대상(보고서)이 생긴 지금 보낸다
   const reportPolicy = await resolveRoundReportPolicy(c.program_id, c.support_type_id);
   if (c.mentee_id && reportPolicy.menteeConfirmSignature) {
-    await queueNotification(admin, { caseId: log.case_id, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'round_registered' });
+    await queueNotification(admin, { caseId: log.case_id, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'round_registered', payload: { log_id: log.id, round_no: log.round_no } });
   }
-  await admin.from('audit_logs').insert({
-    actor_id: input.mentorId,
-    program_id: c.program_id,
+  await logAudit(admin, {
+    actorId: input.mentorId,
+    programId: c.program_id,
     action: 'round.report',
-    entity_type: 'mentoring_logs',
-    entity_id: log.id,
-    metadata: { case_id: log.case_id, round_no: log.round_no, report_kind: reportKind, photos: input.photoPaths.length },
+    entityType: 'mentoring_logs',
+    entityId: log.id,
+    metadata: { case_id: log.case_id, round_no: log.round_no, report_kind: reportKind, photos: photoPaths.length, amount: v.rate.unitPrice, is_extra: isExtra, ...(allowanceExceeded ? { allowance_exceeded: true } : {}) },
   });
 
   // 목표 회차(그룹 required_rounds) 보고서 등록 완료 → 멘티 만족도 조사 자동 개시 (P20)
-  const [{ count: reported }, { data: g }] = await Promise.all([
-    admin.from('mentoring_logs').select('id', { count: 'exact', head: true }).eq('case_id', log.case_id).not('report_registered_at', 'is', null),
-    admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle(),
-  ]);
-  if (g && (reported ?? 0) >= g.required_rounds) {
+  const { count: reported } = await admin.from('mentoring_logs').select('id', { count: 'exact', head: true }).eq('case_id', log.case_id).not('report_registered_at', 'is', null);
+  if ((reported ?? 0) >= group.required_rounds) {
     await admin.from('cases').update({ survey_opened_at: new Date().toISOString() }).eq('id', log.case_id).is('survey_opened_at', null);
   }
 
@@ -321,15 +444,19 @@ export async function updateRound(input: {
     })
     .eq('id', input.logId);
   if (error) return { ok: false, error: error.message };
-  await attachPhotos(log.case_id, log.id, input.mentorId, input.photoPaths);
+  const photos = await attachPhotos(log.case_id, log.id, input.mentorId, Array.isArray(input.photoPaths) ? input.photoPaths : []);
+  if (!photos.ok) {
+    if (photos.moved.length) await admin.storage.from('photos').remove(photos.moved);
+    return { ok: false, error: photos.error };
+  }
   if (log.report_kind === 'web') await renderRoundReport(log.id);
-  await admin.from('audit_logs').insert({
-    actor_id: input.mentorId,
-    program_id: c.program_id,
+  await logAudit(admin, {
+    actorId: input.mentorId,
+    programId: c.program_id,
     action: 'round.update',
-    entity_type: 'mentoring_logs',
-    entity_id: log.id,
-    metadata: { photos_added: input.photoPaths.length },
+    entityType: 'mentoring_logs',
+    entityId: log.id,
+    metadata: { case_id: log.case_id, photos_added: input.photoPaths.length },
   });
   return { ok: true, caseId: log.case_id };
 }
@@ -369,12 +496,14 @@ export async function updatePlannedRound(input: {
   if (started.getTime() > Date.now() + PLAN_MAX_FUTURE_MS) return { ok: false, error: '60일 이후의 일정으로는 변경할 수 없습니다.' };
   if (kstDate(started) !== kstDate(ended)) return { ok: false, error: '한 회차는 같은 날 안에서 끝나야 합니다.' };
   const day = kstDate(started);
+  const minDay = await roundDayLowerBound(log.case_id, input.mentorId);
+  if (minDay && day < minDay) return { ok: false, error: lowerBoundError(minDay) };
 
   const [rate, limits] = await Promise.all([
     resolveRate(c.program_id, c.support_type_id, input.mode, day),
     resolveLimits(c.program_id, c.support_type_id, day),
   ]);
-  if (!rate) return { ok: false, error: '이 유형의 단가가 설정되지 않았습니다. 운영사 설정을 확인하세요.' };
+  if (!rate) return { ok: false, error: noRateError(day) };
   if (!limits) return { ok: false, error: '운영 한도가 설정되지 않았습니다. 운영사 설정을 확인하세요.' };
 
   const dayStart = new Date(`${day}T00:00:00+09:00`).toISOString();
@@ -421,12 +550,12 @@ export async function updatePlannedRound(input: {
     })
     .eq('id', log.id);
   if (error) return { ok: false, error: error.message };
-  await admin.from('audit_logs').insert({
-    actor_id: input.mentorId,
-    program_id: c.program_id,
+  await logAudit(admin, {
+    actorId: input.mentorId,
+    programId: c.program_id,
     action: 'round.plan_update',
-    entity_type: 'mentoring_logs',
-    entity_id: log.id,
+    entityType: 'mentoring_logs',
+    entityId: log.id,
     metadata: { case_id: log.case_id, round_no: log.round_no, mode: input.mode, day },
   });
   return { ok: true, caseId: log.case_id };
@@ -470,12 +599,12 @@ export async function deletePlannedRound(logId: string, mentorId: string, caseId
     const newNo = r.round_no - 1;
     await admin.from('mentoring_logs').update({ round_no: newNo, is_extra: newNo > required }).eq('id', r.id);
   }
-  await admin.from('audit_logs').insert({
-    actor_id: mentorId,
-    program_id: c.program_id,
+  await logAudit(admin, {
+    actorId: mentorId,
+    programId: c.program_id,
     action: 'round.plan_delete',
-    entity_type: 'mentoring_logs',
-    entity_id: logId,
+    entityType: 'mentoring_logs',
+    entityId: logId,
     metadata: { case_id: log.case_id, round_no: log.round_no, renumbered: (after ?? []).length },
   });
   return { ok: true, caseId: log.case_id };
@@ -504,12 +633,12 @@ export async function deleteRound(logId: string, mentorId: string, caseId?: stri
   if ((docs ?? []).length > 0) await admin.from('documents').delete().in('id', (docs ?? []).map((d) => d.id));
   const { error } = await admin.from('mentoring_logs').delete().eq('id', logId);
   if (error) return { ok: false, error: error.message };
-  await admin.from('audit_logs').insert({
-    actor_id: mentorId,
-    program_id: c.program_id,
+  await logAudit(admin, {
+    actorId: mentorId,
+    programId: c.program_id,
     action: 'round.delete',
-    entity_type: 'mentoring_logs',
-    entity_id: logId,
+    entityType: 'mentoring_logs',
+    entityId: logId,
     metadata: { case_id: log.case_id, round_no: log.round_no },
   });
   return { ok: true, caseId: log.case_id };
@@ -529,6 +658,8 @@ export async function validateRoundSchedule(input: {
   started: Date;
   ended: Date;
   excludeLogId?: string | null;
+  /** 배정일 이전 일자 차단 (P31). 보고서 등록처럼 이미 확정된 일자를 재검증할 때는 false */
+  enforceLowerBound?: boolean;
 }): Promise<{ ok: true; day: string; rate: NonNullable<Awaited<ReturnType<typeof resolveRate>>> } | { ok: false; error: string }> {
   const admin = createAdminClient();
   const { started, ended } = input;
@@ -536,8 +667,12 @@ export async function validateRoundSchedule(input: {
   if (ended <= started) return { ok: false, error: '종료 시각은 시작 시각보다 늦어야 합니다.' };
   if (kstDate(started) !== kstDate(ended)) return { ok: false, error: '한 회차는 같은 날 안에서 끝나야 합니다.' };
   const day = kstDate(started);
+  if (input.enforceLowerBound !== false) {
+    const minDay = await roundDayLowerBound(input.caseId, input.mentorId);
+    if (minDay && day < minDay) return { ok: false, error: lowerBoundError(minDay) };
+  }
   const [rate, limits] = await Promise.all([resolveRate(input.programId, input.supportTypeId, input.mode, day), resolveLimits(input.programId, input.supportTypeId, day)]);
-  if (!rate) return { ok: false, error: '이 유형의 단가가 설정되지 않았습니다. 운영사 설정을 확인하세요.' };
+  if (!rate) return { ok: false, error: noRateError(day) };
   if (!limits) return { ok: false, error: '운영 한도가 설정되지 않았습니다. 운영사 설정을 확인하세요.' };
   const dayStart = new Date(`${day}T00:00:00+09:00`).toISOString();
   const dayEnd = new Date(`${day}T23:59:59.999+09:00`).toISOString();
@@ -602,52 +737,79 @@ export async function correctRound(input: {
     const r = await renderRoundReport(log.id);
     if (!r.ok) console.error('round PDF regenerate after correction failed:', r.error);
   }
-  const { error: auditError } = await admin.from('audit_logs').insert({
-    actor_id: input.actorId,
-    program_id: c.program_id,
+  await logAudit(admin, {
+    actorId: input.actorId,
+    programId: c.program_id,
     action: 'round.corrected',
-    entity_type: 'mentoring_logs',
-    entity_id: log.id,
+    entityType: 'mentoring_logs',
+    entityId: log.id,
     metadata: { case_id: log.case_id, round_no: log.round_no, mentor_id: log.mentor_id, reason: input.reason.trim(), before, after, signature_kept: !!log.mentee_signed_at, report_registered: !!log.report_registered_at },
   });
-  if (auditError) console.error('round.corrected audit insert failed:', auditError.message);
   return { ok: true, caseId: log.case_id };
 }
 
-async function moveStaging(bucket: 'documents' | 'photos', caseId: string, stagingPath: string): Promise<{ dest: string; sha256: string; size: number; mime: string } | null> {
-  if (!isStaging(stagingPath)) return null;
+type MovedFile = { ok: true; dest: string; sha256: string; size: number; mime: string } | { ok: false; error: string };
+
+/** 스테이징 파일을 케이스 폴더로 옮긴다. 크기 상한을 넘으면 옮기지 않고 거부한다 (P31). */
+async function moveStaging(bucket: 'documents' | 'photos', caseId: string, stagingPath: string, maxBytes: number): Promise<MovedFile> {
+  if (!isStaging(stagingPath)) return { ok: false, error: '잘못된 업로드 경로입니다.' };
   const admin = createAdminClient();
   const basename = stagingPath.split('/').pop();
-  if (!basename) return null;
+  if (!basename) return { ok: false, error: '잘못된 업로드 경로입니다.' };
   const { data: blob } = await admin.storage.from(bucket).download(stagingPath);
-  if (!blob) return null;
+  if (!blob) return { ok: false, error: '업로드된 파일을 확인할 수 없습니다. 다시 첨부해 주세요.' };
   const buffer = Buffer.from(await blob.arrayBuffer());
+  if (buffer.byteLength > maxBytes) {
+    await admin.storage.from(bucket).remove([stagingPath]);
+    const mb = Math.round(maxBytes / 1024 / 1024);
+    return { ok: false, error: bucket === 'photos' ? `사진 한 장은 ${mb}MB 이하여야 합니다.` : `보고서 파일은 ${mb}MB 이하만 올릴 수 있습니다.` };
+  }
   const dest = `${caseId}/${basename}`;
   try {
     await moveFile(bucket, stagingPath, dest);
   } catch {
-    return null;
+    return { ok: false, error: '파일 이동에 실패했습니다. 다시 첨부해 주세요.' };
   }
-  return { dest, sha256: sha256Hex(buffer), size: buffer.byteLength, mime: blob.type || 'application/octet-stream' };
+  return { ok: true, dest, sha256: sha256Hex(buffer), size: buffer.byteLength, mime: blob.type || 'application/octet-stream' };
 }
 
-async function attachPhotos(caseId: string, logId: string, uploadedBy: string, stagingPaths: string[]): Promise<void> {
+/**
+ * 사진 첨부 (P31) — 장수·크기·형식(image/*) 서버 검증, 병렬 이동. 실패하면 호출부가 moved·docIds 로 되돌린다.
+ */
+async function attachPhotos(
+  caseId: string,
+  logId: string,
+  uploadedBy: string,
+  stagingPaths: string[],
+): Promise<{ ok: true; moved: string[]; docIds: string[] } | { ok: false; error: string; moved: string[]; docIds: string[] }> {
   const admin = createAdminClient();
-  for (const p of stagingPaths.slice(0, 20)) {
-    const moved = await moveStaging('photos', caseId, p);
-    if (!moved) continue;
-    await admin.from('documents').insert({
-      case_id: caseId,
-      doc_key: photoDocKey(logId),
-      doc_name: '컨설팅 사진',
-      storage_path: moved.dest,
-      sha256: moved.sha256,
-      uploaded_by: uploadedBy,
-      uploaded_role: 'mentor',
-      file_size: moved.size,
-      mime_type: moved.mime.startsWith('image/') ? moved.mime : 'image/jpeg',
-    });
-  }
+  if (stagingPaths.length > MAX_PHOTOS) return { ok: false, error: `사진은 최대 ${MAX_PHOTOS}장까지 첨부할 수 있습니다.`, moved: [], docIds: [] };
+  const results = await Promise.all(stagingPaths.map((p) => moveStaging('photos', caseId, p, PHOTO_MAX_BYTES)));
+  const moved = results.filter((r): r is Extract<MovedFile, { ok: true }> => r.ok).map((r) => r.dest);
+  const failed = results.find((r) => !r.ok);
+  if (failed && !failed.ok) return { ok: false, error: failed.error, moved, docIds: [] };
+  const okResults = results as Extract<MovedFile, { ok: true }>[];
+  const notImage = okResults.find((r) => !r.mime.startsWith('image/'));
+  if (notImage) return { ok: false, error: '사진은 이미지 파일(JPG·PNG·WEBP·HEIC)만 첨부할 수 있습니다.', moved, docIds: [] };
+  if (okResults.length === 0) return { ok: true, moved, docIds: [] };
+  const { data: docs, error } = await admin
+    .from('documents')
+    .insert(
+      okResults.map((m) => ({
+        case_id: caseId,
+        doc_key: photoDocKey(logId),
+        doc_name: '컨설팅 사진',
+        storage_path: m.dest,
+        sha256: m.sha256,
+        uploaded_by: uploadedBy,
+        uploaded_role: 'mentor' as const,
+        file_size: m.size,
+        mime_type: m.mime,
+      })),
+    )
+    .select('id');
+  if (error) return { ok: false, error: `사진 등록에 실패했습니다: ${error.message}`, moved, docIds: [] };
+  return { ok: true, moved, docIds: (docs ?? []).map((d) => d.id) };
 }
 
 /**
@@ -673,6 +835,6 @@ export async function dropPlannedRoundsOfMentor(caseId: string, mentorId: string
     no += 1;
     if (r.round_no !== no) await admin.from('mentoring_logs').update({ round_no: no, is_extra: no > required }).eq('id', r.id);
   }
-  await admin.from('audit_logs').insert({ actor_id: actorId, program_id: c?.program_id ?? null, action: 'round.plan_dropped', entity_type: 'cases', entity_id: caseId, metadata: { mentor_id: mentorId, dropped: planned.length } });
+  await logAudit(admin, { actorId, programId: c?.program_id ?? null, action: 'round.plan_dropped', entityType: 'cases', entityId: caseId, metadata: { case_id: caseId, mentor_id: mentorId, dropped: planned.length } });
   return planned.length;
 }

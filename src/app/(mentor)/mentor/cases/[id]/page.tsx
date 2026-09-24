@@ -1,8 +1,11 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 import { requireMentor } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
-import { getCaseById, getCaseStatusHistory, listPredecessorCases } from '@/lib/data/cases';
+import { getCaseById, getCaseStatusHistory, listMentorCases, listPredecessorCases } from '@/lib/data/cases';
+import { menteeLabel } from '@/lib/utils/labels';
 import { getObservationReport, getObservationReportFile, getRoundAllowance, listPendingRequestsForCase, listRounds } from '@/lib/data/rounds';
 import { listTeamMembers } from '@/lib/data/team-members';
 import { listCaseDocuments, listRequiredDocSlots } from '@/lib/workflow/case-documents';
@@ -35,7 +38,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   if (!item || item.program_id !== ctx.programId || item.mentorId !== profile.id) notFound();
 
   const today = kstDate(new Date());
-  const [history, predecessors, rounds, allowance, obs, obsFile, requests, docs, online, offline, settlements, statements, estimates, slots, readiness, reportPolicy, lastReview] = await Promise.all([
+  const [history, predecessors, rounds, allowance, obs, obsFile, requests, docs, online, offline, settlements, statements, estimates, slots, readiness, reportPolicy, lastReview, siblings] = await Promise.all([
     getCaseStatusHistory(item.id),
     // 이전 단계 케이스는 다른 배정이라 RLS 로 못 읽는다 — 요약(그룹·멘토·회차)만 service_role 로 읽어 링크 없이 표시 (P30). 접근 근거 = 이 케이스의 담당 멘토(위 notFound 가드)
     listPredecessorCases(item.id, { admin: true }),
@@ -55,7 +58,16 @@ export default async function Page({ params }: { params: { id: string } }) {
     resolveRoundReportPolicy(item.program_id, item.support_type_id),
     // 보완 요청 사유 — 운영사 검수 기록(reviews) 최신 1건
     createAdminClient().from('reviews').select('result, comment, created_at').eq('case_id', item.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
+    // 이 멘토의 다른 담당 멘티(같은 행사, 활성 배정) — 이전/다음 이동 (P31)
+    listMentorCases(profile.id, { programId: ctx.programId }),
   ]);
+  const ordered = siblings.filter((c) => !c.mentorEnded).sort((a, b) => a.owner_name.localeCompare(b.owner_name, 'ko'));
+  const idx = ordered.findIndex((c) => c.id === item.id);
+  const prevCase = idx > 0 ? ordered[idx - 1]! : null;
+  const nextCase = idx >= 0 && idx < ordered.length - 1 ? ordered[idx + 1]! : null;
+  // 직전 회차 — 다음 회차 등록 폼의 방법·시간·장소 기본값 (P31)
+  const lastRoundRow = rounds.length > 0 ? rounds[rounds.length - 1]! : null;
+  const lastRound = lastRoundRow ? { mode: lastRoundRow.mode === 'online' ? ('online' as const) : ('offline' as const), startedAt: lastRoundRow.started_at, endedAt: lastRoundRow.ended_at, place: lastRoundRow.place } : null;
   const teamMembers = await listTeamMembers(item.id);
   // 참가자 선택지 — 멘티 본인(대표)이 항상 첫 항목. 팀원 명단에 대표 표시가 있으면 함께 노출
   const participantOptions = [
@@ -84,6 +96,25 @@ export default async function Page({ params }: { params: { id: string } }) {
   return (
     <main className="flex flex-col gap-5">
       <CaseDetailBackNav dashboardHref="/mentor/dashboard" />
+      {ordered.length > 1 && (
+        <nav aria-label="담당 멘티 이동" className="flex items-center justify-between gap-2 text-xs">
+          {prevCase ? (
+            <Link href={`/mentor/cases/${prevCase.id}`} className="inline-flex items-center gap-1 rounded-md border bg-background px-2.5 py-1.5 font-medium hover:bg-accent">
+              <ChevronLeft className="h-3.5 w-3.5" /> 이전 멘티 · {menteeLabel(prevCase.owner_name, prevCase.business_name)}
+            </Link>
+          ) : (
+            <span />
+          )}
+          <span className="text-muted-foreground">{idx + 1} / {ordered.length}</span>
+          {nextCase ? (
+            <Link href={`/mentor/cases/${nextCase.id}`} className="inline-flex items-center gap-1 rounded-md border bg-background px-2.5 py-1.5 font-medium hover:bg-accent">
+              이 멘토의 다음 멘티 · {menteeLabel(nextCase.owner_name, nextCase.business_name)} <ChevronRight className="h-3.5 w-3.5" />
+            </Link>
+          ) : (
+            <span />
+          )}
+        </nav>
+      )}
       <MentorCaseNextStep
         status={item.status}
         reported={reported}
@@ -127,6 +158,7 @@ export default async function Page({ params }: { params: { id: string } }) {
                 maxRounds={maxRounds}
                 rates={{ online: online?.unitPrice ?? null, offline: offline?.unitPrice ?? null }}
                 participantOptions={participantOptions}
+                lastRound={lastRound}
               />
             )}
           </CardHeader>

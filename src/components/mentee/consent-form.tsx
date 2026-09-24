@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useFormStatus } from 'react-dom';
+import { useFormState, useFormStatus } from 'react-dom';
 
 import { agreePrivacy } from '@/lib/auth/actions';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,8 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
 /** 멘티 개인정보 동의 폼 (P28 — 멘토링 운영 기준 문안, 기관명은 행사 설정에서) */
 export function ConsentForm({ programName, clientName, operatorName }: { programName: string; clientName: string; operatorName: string }) {
   const [agreed, setAgreed] = useState(false);
+  // 대행 중 제출 등 서버가 돌려준 오류를 폼 아래에 표시 (P31)
+  const [state, formAction] = useFormState(agreePrivacy, undefined);
   return (
     <Card className="w-full max-w-lg">
       <CardHeader className="space-y-1">
@@ -43,7 +45,8 @@ export function ConsentForm({ programName, clientName, operatorName }: { program
           <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} className="h-5 w-5 rounded border-input" />
           위 개인정보 수집·이용에 동의합니다.
         </label>
-        <form action={agreePrivacy}>
+        <form action={formAction} className="flex flex-col gap-2">
+          {state?.error && <p className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{state.error}</p>}
           <SubmitButton disabled={!agreed} />
         </form>
       </CardContent>

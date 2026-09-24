@@ -3,6 +3,7 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { createCaseScopedSignedUrl, moveFile, sha256Hex } from '@/lib/storage/files';
+import { logAudit } from '@/lib/workflow/audit';
 import type { Tables } from '@/types/database';
 import type { UserRole } from '@/lib/auth/roles';
 
@@ -94,12 +95,12 @@ export async function attachCaseDocument(input: {
   });
   if (error) return { ok: false, error: error.message };
   const { data: c } = await admin.from('cases').select('program_id').eq('id', input.caseId).maybeSingle();
-  await admin.from('audit_logs').insert({
-    actor_id: input.actor.id,
-    program_id: c?.program_id ?? null,
+  await logAudit(admin, {
+    actorId: input.actor.id,
+    programId: c?.program_id ?? null,
     action: 'document.attach',
-    entity_type: 'cases',
-    entity_id: input.caseId,
+    entityType: 'cases',
+    entityId: input.caseId,
     metadata: { doc_key: docKey, mentor_visible: mentorVisible, name: input.staging.fileName },
   });
   return { ok: true };
@@ -110,7 +111,8 @@ export async function setCaseDocumentVisibility(docId: string, caseId: string, a
   const admin = createAdminClient();
   const { error } = await admin.from('documents').update({ mentor_visible: mentorVisible }).eq('id', docId).eq('case_id', caseId).or(`doc_key.eq.${CASE_DOC_KEY},doc_key.like.req%`);
   if (error) return { ok: false, error: error.message };
-  await admin.from('audit_logs').insert({ actor_id: actorId, action: 'document.visibility', entity_type: 'documents', entity_id: docId, metadata: { mentor_visible: mentorVisible } });
+  const { data: c } = await admin.from('cases').select('program_id').eq('id', caseId).maybeSingle();
+  await logAudit(admin, { actorId, programId: c?.program_id ?? null, action: 'document.visibility', entityType: 'documents', entityId: docId, metadata: { case_id: caseId, mentor_visible: mentorVisible } });
   return { ok: true };
 }
 
@@ -121,7 +123,8 @@ export async function deleteCaseDocument(docId: string, caseId: string, actor: P
   if (actor.role !== 'nextlab' && doc.uploaded_by !== actor.id) return { ok: false, error: '본인이 올린 파일만 삭제할 수 있습니다.' };
   await admin.storage.from('documents').remove([doc.storage_path]);
   await admin.from('documents').delete().eq('id', docId);
-  await admin.from('audit_logs').insert({ actor_id: actor.id, action: 'document.delete', entity_type: 'documents', entity_id: docId, metadata: { case_id: caseId } });
+  const { data: c } = await admin.from('cases').select('program_id').eq('id', caseId).maybeSingle();
+  await logAudit(admin, { actorId: actor.id, programId: c?.program_id ?? null, action: 'document.delete', entityType: 'documents', entityId: docId, metadata: { case_id: caseId } });
   return { ok: true };
 }
 

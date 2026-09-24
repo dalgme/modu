@@ -2,9 +2,9 @@
 
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileUp } from 'lucide-react';
+import { FileUp, ImagePlus } from 'lucide-react';
 
-import { registerRoundReportAction } from '@/lib/workflow/mentor-actions';
+import { registerRoundReportAction, updateRoundAction } from '@/lib/workflow/mentor-actions';
 import { stageUpload, type StagedFile } from '@/lib/storage/browser-upload';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,19 +12,28 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 
-/** 회차 2단계 — 실서류(멘토링 보고서) 등록. 웹 작성 또는 파일 업로드 + 사진 */
-export function RoundReportForm({ caseId, logId, roundNo }: { caseId: string; logId: string; roundNo: number }) {
+/** 등록된 보고서의 내용·사진 추가 편집 (P31) — 일시·유형·보고서 파일은 바꾸지 않는다(updateRound) */
+export interface RoundReportEdit {
+  kind: 'web' | 'file';
+  topic: string;
+  content: string;
+  result: string;
+  place: string;
+}
+
+/** 회차 2단계 — 실서류(멘토링 보고서) 등록. 웹 작성 또는 파일 업로드 + 사진. `edit` 가 있으면 등록본 내용·사진 추가 모드 */
+export function RoundReportForm({ caseId, logId, roundNo, edit = null }: { caseId: string; logId: string; roundNo: number; edit?: RoundReportEdit | null }) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
-  // 기본은 파일 업로드 (P20 결정 — 웹 작성은 보조 수단)
-  const [kind, setKind] = useState<'web' | 'file'>('file');
+  // 기본은 파일 업로드 (P20 결정 — 웹 작성은 보조 수단). 편집 모드는 등록된 방식 고정
+  const [kind, setKind] = useState<'web' | 'file'>(edit?.kind ?? 'file');
   const [fileName, setFileName] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  const [topic, setTopic] = useState('');
-  const [content, setContent] = useState('');
-  const [result, setResult] = useState('');
+  const [topic, setTopic] = useState(edit?.topic ?? '');
+  const [content, setContent] = useState(edit?.content ?? '');
+  const [result, setResult] = useState(edit?.result ?? '');
   const reportRef = useRef<HTMLInputElement>(null);
   const photosRef = useRef<HTMLInputElement>(null);
 
@@ -33,7 +42,7 @@ export function RoundReportForm({ caseId, logId, roundNo }: { caseId: string; lo
       try {
         let reportFile: StagedFile | null = null;
         const MB = 1024 * 1024;
-        if (kind === 'file') {
+        if (kind === 'file' && !edit) {
           const f = reportRef.current?.files?.[0];
           if (!f) {
             toast({ title: '보고서 파일을 선택하세요.', variant: 'destructive' });
@@ -55,24 +64,23 @@ export function RoundReportForm({ caseId, logId, roundNo }: { caseId: string; lo
           toast({ title: '사진 한 장은 10MB 이하여야 합니다.', description: `${tooBig.name} (${(tooBig.size / MB).toFixed(1)}MB)`, variant: 'destructive' });
           return;
         }
-        const photos: string[] = [];
-        for (const f of picked) {
-          photos.push((await stageUpload(f, 'photos')).stagingPath);
-        }
-        const r = await registerRoundReportAction({
-          caseId,
-          logId,
-          topic,
-          content: kind === 'web' ? content : undefined,
-          result,
-          reportFile,
-          photoPaths: photos,
-        });
+        const photos = (await Promise.all(picked.map((f) => stageUpload(f, 'photos')))).map((s) => s.stagingPath);
+        const r = edit
+          ? await updateRoundAction({ caseId, logId, place: edit.place, topic, content: kind === 'web' ? content : undefined, result, photoPaths: photos })
+          : await registerRoundReportAction({
+              caseId,
+              logId,
+              topic,
+              content: kind === 'web' ? content : undefined,
+              result,
+              reportFile,
+              photoPaths: photos,
+            });
         if (!r.ok) {
           toast({ title: r.error, variant: 'destructive' });
           return;
         }
-        toast({ title: `${roundNo}회차 보고서를 등록했습니다.` });
+        toast({ title: edit ? `${roundNo}회차 보고서 내용을 수정했습니다.` : `${roundNo}회차 보고서를 등록했습니다.` });
         setOpen(false);
         router.refresh();
       } catch (err) {
@@ -83,7 +91,11 @@ export function RoundReportForm({ caseId, logId, roundNo }: { caseId: string; lo
   };
 
   if (!open) {
-    return (
+    return edit ? (
+      <Button size="sm" variant="outline" onClick={() => setOpen(true)} className="gap-1">
+        <ImagePlus className="h-4 w-4" /> 내용·사진 추가
+      </Button>
+    ) : (
       <Button size="sm" onClick={() => setOpen(true)} className="gap-1">
         <FileUp className="h-4 w-4" /> 보고서 등록 (2단계)
       </Button>
@@ -92,7 +104,10 @@ export function RoundReportForm({ caseId, logId, roundNo }: { caseId: string; lo
 
   return (
     <div className="mt-2 flex flex-col gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
-      <p className="text-sm font-semibold">{roundNo}회차 — 2단계 · 실서류(보고서) 등록</p>
+      <p className="text-sm font-semibold">{edit ? `${roundNo}회차 — 보고서 내용·사진 추가` : `${roundNo}회차 — 2단계 · 실서류(보고서) 등록`}</p>
+      {edit ? (
+        <p className="text-[11px] text-muted-foreground">주제·{edit.kind === 'web' ? '내용·' : ''}결과를 고치고 사진을 더 올릴 수 있습니다. 일시·방법·보고서 파일은 바꿀 수 없습니다(멘티 서명·정산 전까지).</p>
+      ) : (
       <div className="flex gap-2 text-sm">
         <button type="button" onClick={() => setKind('file')} className={`rounded-lg border px-3 py-1.5 ${kind === 'file' ? 'border-primary bg-background font-semibold' : ''}`}>
           보고서 파일 업로드 <span className="text-[10px] text-primary">(기본)</span>
@@ -101,6 +116,7 @@ export function RoundReportForm({ caseId, logId, roundNo }: { caseId: string; lo
           보고서 웹 작성
         </button>
       </div>
+      )}
       <div className="flex flex-col gap-1">
         <Label htmlFor={`rr-topic-${logId}`}>주제</Label>
         <Input id={`rr-topic-${logId}`} value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="이번 회차 주제" />
@@ -110,7 +126,7 @@ export function RoundReportForm({ caseId, logId, roundNo }: { caseId: string; lo
           <Label htmlFor={`rr-content-${logId}`}>컨설팅 내용 *</Label>
           <Textarea id={`rr-content-${logId}`} rows={6} value={content} onChange={(e) => setContent(e.target.value)} placeholder="진행 내용, 논의 사항, 멘티 상황" />
         </div>
-      ) : (
+      ) : edit ? null : (
         <div className="flex flex-col gap-1">
           <Label>보고서 파일 *</Label>
           {/* 첨부 버튼 + 파일 드래그 공용 드롭존 (P20 — 파일 등록 우선) */}
@@ -167,7 +183,7 @@ export function RoundReportForm({ caseId, logId, roundNo }: { caseId: string; lo
           취소
         </Button>
         <Button size="sm" onClick={submit} disabled={pending}>
-          {pending ? '등록 중…' : '보고서 등록'}
+          {pending ? (edit ? '저장 중…' : '등록 중…') : edit ? '저장' : '보고서 등록'}
         </Button>
       </div>
     </div>

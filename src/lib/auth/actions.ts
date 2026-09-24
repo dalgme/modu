@@ -176,8 +176,10 @@ export async function changePassword(_prev: ActionState, formData: FormData): Pr
 
 /**
  * 멘티 개인정보 수집·이용 동의. 동의 시 privacy_agreed_at·activated_at 기록.
+ * useFormState 시그니처 (P31) — 대행 중에는 조용히 튕기지 않고 오류 문구를 돌려준다.
  */
-export async function agreePrivacy(): Promise<void> {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- useFormState 시그니처 (이전 상태·폼 데이터는 쓰지 않는다)
+export async function agreePrivacy(_prev: ActionState, _formData?: FormData): Promise<ActionState> {
   const supabase = createClient();
   const {
     data: { user },
@@ -186,10 +188,9 @@ export async function agreePrivacy(): Promise<void> {
     redirect('/login');
   }
 
-  // 동의는 멘티 본인만 — 대행 중 제출하면 auth.uid()=실행자라 실행자 행이 오염된다 (P19)
-  const { getImpersonation } = await import('@/lib/auth/impersonation');
+  // 동의는 멘티 본인만 — 대행 중 제출하면 auth.uid()=실행자라 실행자 행이 오염된다 (P19). 화면에 사유를 보여준다 (P31)
   if (await getImpersonation()) {
-    redirect('/hub');
+    return { error: '개인정보 동의는 멘티 본인만 할 수 있습니다.' };
   }
 
   const admin = createAdminClient();

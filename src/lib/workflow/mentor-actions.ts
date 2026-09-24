@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 
-import { mentorOrNull, mentorOfCaseOrNull, MENTOR_ONLY_ERROR, NOT_ASSIGNED_ERROR } from '@/lib/auth/guards';
+import { mentorOrNull, mentorOfCaseOrNull, getRealSessionProfile, MENTOR_ONLY_ERROR, NOT_ASSIGNED_ERROR } from '@/lib/auth/guards';
 import { getImpersonation } from '@/lib/auth/impersonation';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { submitRound, updateRound, deleteRound, updatePlannedRound, deletePlannedRound, registerRoundReport, type RoundInput, type RoundReportInput, type RoundResult } from '@/lib/workflow/rounds';
@@ -26,28 +26,12 @@ function revalidate(caseId: string) {
   revalidatePath(`/institution/cases/${caseId}`);
 }
 
-/** 대행 중 감사 기록의 실행자를 실제 신원으로 남긴다 */
-async function auditOnBehalf(action: string, caseId: string, mentorId: string, metadata: Record<string, unknown>): Promise<void> {
-  const imp = await getImpersonation();
-  if (!imp || imp.target.id !== mentorId) return;
-  await createAdminClient().from('audit_logs').insert({
-    actor_id: imp.actorId,
-    action: `${action}.on_behalf`,
-    entity_type: 'cases',
-    entity_id: caseId,
-    metadata: { on_behalf_of: mentorId, via: 'view-as', ...metadata } as never,
-  });
-}
-
 /** 멘토: 회차 1단계 등록 (계획/실행 — 일시·유형·참가자·장소) */
 export async function submitRoundAction(input: Omit<RoundInput, 'mentorId'>): Promise<RoundResult> {
   const profile = await mentorOfCaseOrNull(input.caseId);
   if (!profile) return { ok: false, error: (await mentorOrNull()) ? NOT_ASSIGNED_ERROR : MENTOR_ONLY_ERROR };
   const result = await submitRound({ ...input, mentorId: profile.id });
-  if (result.ok) {
-    await auditOnBehalf('round.create', input.caseId, profile.id, { round_no: result.roundNo });
-    revalidate(input.caseId);
-  }
+  if (result.ok) revalidate(input.caseId);
   return result;
 }
 
@@ -56,10 +40,7 @@ export async function registerRoundReportAction(input: { caseId: string } & Omit
   const profile = await mentorOfCaseOrNull(input.caseId);
   if (!profile) return { ok: false, error: (await mentorOrNull()) ? NOT_ASSIGNED_ERROR : MENTOR_ONLY_ERROR };
   const result = await registerRoundReport({ ...input, mentorId: profile.id });
-  if (result.ok) {
-    await auditOnBehalf('round.report', input.caseId, profile.id, { log_id: input.logId });
-    revalidate(input.caseId);
-  }
+  if (result.ok) revalidate(input.caseId);
   return result;
 }
 
@@ -122,10 +103,7 @@ export async function requestClosureAction(caseId: string): Promise<WorkflowResu
   const profile = await mentorOfCaseOrNull(caseId);
   if (!profile) return { ok: false, error: NOT_ASSIGNED_ERROR };
   const result = await requestClosure(caseId, profile.id);
-  if (result.ok) {
-    await auditOnBehalf('case.closure_requested', caseId, profile.id, {});
-    revalidate(caseId);
-  }
+  if (result.ok) revalidate(caseId);
   return result;
 }
 
@@ -161,17 +139,20 @@ export async function saveMentorSignatureAction(dataUrl: string): Promise<{ ok: 
 /**
  * 멘토: 멘티 현장 서명 수집 (P20) — 멘토 단말(스마트폰) 터치로 멘티가 직접 서명한다.
  * 서명 자체는 멘티 명의(signatures.signer_type = mentee), 감사 실행자는 멘토로 남는다.
+ * 운영사가 멘토 대행 중이면 허용하되 감사 실행자는 **실제 담당자**(getRealSessionProfile)로, metadata 에 on_behalf_of·collected_by_operator·via 를 남긴다 (P31).
  */
 export async function collectRoundSignatureAction(caseId: string, logId: string, dataUrl: string): Promise<WorkflowResult> {
   const profile = await mentorOfCaseOrNull(caseId);
   if (!profile) return { ok: false, error: NOT_ASSIGNED_ERROR };
+  const imp = await getImpersonation();
+  const real = imp && imp.target.id === profile.id ? await getRealSessionProfile() : null;
   const admin = createAdminClient();
   const { data: c } = await admin.from('cases').select('mentee_id').eq('id', caseId).maybeSingle();
   if (!c?.mentee_id) return { ok: false, error: '멘티 계정이 아직 연결되지 않았습니다.' };
   const { data: mentee } = await admin.from('users').select('id, name').eq('id', c.mentee_id).maybeSingle();
   if (!mentee) return { ok: false, error: '멘티 계정을 찾을 수 없습니다.' };
   const { signRound } = await import('@/lib/workflow/mentee');
-  const result = await signRound(caseId, logId, mentee, dataUrl, { collectedBy: { id: profile.id } });
+  const result = await signRound(caseId, logId, mentee, dataUrl, { collectedBy: { id: profile.id, operatorActorId: real?.id ?? null } });
   if (result.ok) revalidate(caseId);
   return result;
 }

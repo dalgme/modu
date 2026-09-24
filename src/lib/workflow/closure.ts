@@ -2,6 +2,9 @@ import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { isPL, isStaffGrade, resolveGrants, type CapabilityKey } from '@/lib/auth/capabilities';
+import { getRealSessionProfile } from '@/lib/auth/guards';
+import { actingNote } from '@/lib/auth/impersonation';
+import { logAudit } from '@/lib/workflow/audit';
 import { htmlToPdf, renderTemplate } from '@/lib/documents/render';
 import { uploadFile, moveFile, sha256Hex } from '@/lib/storage/files';
 import { queueNotification } from '@/lib/workflow/notifications';
@@ -60,6 +63,12 @@ export async function uploadObservationFile(
 ): Promise<WorkflowResult> {
   if (!staging.stagingPath.startsWith('_staging/') || staging.stagingPath.includes('..')) return { ok: false, error: '잘못된 업로드 경로입니다.' };
   const admin = createAdminClient();
+  // 상태 게이트 (P31) — 웹 작성본(saveObservationDraft)과 같은 조건: 종결 요청 가능 단계(진행 중·보완 요청) + 멘토 배정 단계
+  const { data: c } = await admin.from('cases').select('id, status').eq('id', caseId).maybeSingle();
+  if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
+  if (!TRANSITIONS.request_closure.from.includes(c.status) && c.status !== 'mentor_assigned') {
+    return { ok: false, error: '컨설팅 진행 중(또는 보완 요청) 단계에서만 관찰의견서를 올릴 수 있습니다.' };
+  }
   const basename = staging.stagingPath.split('/').pop();
   if (!basename) return { ok: false, error: '잘못된 업로드 경로입니다.' };
   const { data: blob } = await admin.storage.from('documents').download(staging.stagingPath);
@@ -71,7 +80,7 @@ export async function uploadObservationFile(
   } catch {
     return { ok: false, error: '파일 이동에 실패했습니다.' };
   }
-  await replaceObservationDocument(caseId, {
+  const replaced = await replaceObservationDocument(caseId, {
     doc_name: staging.fileName || '관찰의견서',
     storage_path: dest,
     sha256: sha256Hex(buffer),
@@ -79,20 +88,36 @@ export async function uploadObservationFile(
     mime_type: staging.mimeType || 'application/octet-stream',
     uploaded_by: mentorId,
   });
+  if (!replaced.ok) {
+    await admin.storage.from('documents').remove([dest]);
+    return replaced;
+  }
   return { ok: true, caseId };
 }
 
+/**
+ * 관찰의견서 단일본 교체 (P31) — 새 파일 정보를 **먼저 저장**하고 성공했을 때만 이전 파일을 지운다.
+ * doc_key 'observation_report' 는 DB 유니크 인덱스(0052)라 새 행을 먼저 insert 할 수 없으므로,
+ * 기존 행이 있으면 그 행을 update(경로·해시 교체)하고 없으면 insert 한다. 실패하면 기존 파일·행은 그대로 남는다.
+ */
 async function replaceObservationDocument(
   caseId: string,
   doc: { doc_name: string; storage_path: string; sha256: string; file_size: number; mime_type: string; uploaded_by: string },
-): Promise<void> {
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const admin = createAdminClient();
-  const { data: old } = await admin.from('documents').select('id, storage_path').eq('case_id', caseId).eq('doc_key', 'observation_report');
-  for (const d of old ?? []) {
-    if (d.storage_path !== doc.storage_path) await admin.storage.from('documents').remove([d.storage_path]);
-  }
-  if ((old ?? []).length > 0) await admin.from('documents').delete().in('id', (old ?? []).map((d) => d.id));
-  await admin.from('documents').insert({ case_id: caseId, doc_key: 'observation_report', uploaded_role: 'mentor', ...doc });
+  const { data: old } = await admin.from('documents').select('id, storage_path').eq('case_id', caseId).eq('doc_key', 'observation_report').order('created_at');
+  const rows = old ?? [];
+  const keep = rows[0] ?? null;
+  const { error } = keep
+    ? await admin.from('documents').update({ ...doc, uploaded_role: 'mentor', updated_at: new Date().toISOString() }).eq('id', keep.id)
+    : await admin.from('documents').insert({ case_id: caseId, doc_key: 'observation_report', uploaded_role: 'mentor', ...doc });
+  if (error) return { ok: false, error: `관찰의견서 저장에 실패했습니다: ${error.message}` };
+  // 저장 성공 후에만 이전 파일·중복 행 정리
+  const stalePaths = rows.map((d) => d.storage_path).filter((p) => p !== doc.storage_path);
+  if (stalePaths.length > 0) await admin.storage.from('documents').remove(stalePaths);
+  const extraIds = rows.slice(1).map((d) => d.id);
+  if (extraIds.length > 0) await admin.from('documents').delete().in('id', extraIds);
+  return { ok: true };
 }
 
 /**
@@ -149,7 +174,7 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
     admin.from('programs').select('closure_policy').eq('id', c.program_id).maybeSingle(),
     admin.from('mentoring_logs').select('id, round_no, mode, started_at, ended_at, place, mentee_signed_at, report_registered_at').eq('case_id', caseId).order('round_no'),
     admin.from('observation_reports').select('*').eq('case_id', caseId).maybeSingle(),
-    admin.from('documents').select('id').eq('case_id', caseId).eq('doc_key', 'observation_report').maybeSingle(),
+    admin.from('documents').select('id, created_at, updated_at').eq('case_id', caseId).eq('doc_key', 'observation_report').maybeSingle(),
     getRoundAllowance(caseId),
   ]);
   if (!group) return { ok: false, error: '사업그룹을 찾을 수 없습니다.' };
@@ -175,9 +200,14 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
   const content = obs ? normalizeObservation(obs.content) : EMPTY;
   const hasWeb = content.summary.trim().length > 0;
   if (!hasWeb && !obsFile) return { ok: false, error: '관찰의견서를 작성(총평 필수)하거나 완성본 파일을 올린 뒤 종결을 요청하세요.' };
+  // 우선순위 (P31): 업로드된 완성본이 웹 작성본(updated_at)보다 나중에 올라왔으면 그 파일을 유지하고 PDF 를 다시 만들지 않는다.
+  // 반대(웹 작성본이 더 최신)면 기존처럼 웹 작성본으로 PDF 를 생성해 단일본을 교체한다.
+  const fileAt = obsFile ? Math.max(new Date(obsFile.created_at).getTime(), new Date(obsFile.updated_at).getTime()) : 0;
+  const webAt = obs ? new Date(obs.updated_at).getTime() : 0;
+  const useUploadedFile = !!obsFile && (!hasWeb || fileAt > webAt);
 
   // 웹 작성본 → PDF 단일본
-  if (hasWeb) {
+  if (hasWeb && !useUploadedFile) {
     try {
       const branding = await getBranding(c.program_id);
       const mentor = await admin.from('users').select('name').eq('id', mentorId).maybeSingle();
@@ -203,7 +233,7 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
       });
       const pdf = await htmlToPdf(html);
       const meta = await uploadFile('documents', caseId, pdf, 'application/pdf', 'pdf');
-      await replaceObservationDocument(caseId, {
+      const replaced = await replaceObservationDocument(caseId, {
         doc_name: `관찰의견서_${c.business_name}.pdf`,
         storage_path: meta.storagePath,
         sha256: meta.sha256,
@@ -211,6 +241,10 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
         mime_type: 'application/pdf',
         uploaded_by: mentorId,
       });
+      if (!replaced.ok) {
+        await admin.storage.from('documents').remove([meta.storagePath]);
+        return replaced;
+      }
     } catch (err) {
       return { ok: false, error: `관찰의견서 PDF 생성에 실패했습니다: ${err instanceof Error ? err.message : '알 수 없는 오류'}` };
     }
@@ -230,19 +264,35 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
     from_status: c.status,
     to_status: 'closure_requested',
     changed_by: mentorId,
-    note: '관찰의견서 제출 · 종결 요청',
+    note: await actingNote('관찰의견서 제출 · 종결 요청', mentorId), // 대행 중이면 표기 (P31)
   });
   await notifyProgramStaff(c.program_id, caseId, 'closure_requested');
-  if (c.mentee_id) await queueNotification(admin, { caseId, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'survey_reminder' });
-  await admin.from('audit_logs').insert({
-    actor_id: mentorId,
-    program_id: c.program_id,
+  // 멘티 만족도 안내 (P31) — 활성 양식이 있고 아직 응답이 없을 때만, 중립 문구('열렸습니다')로. 문구 자체는 템플릿(survey_opened)+payload.message.
+  if (c.mentee_id && (await surveyOpenNudgeNeeded(caseId))) {
+    await queueNotification(admin, { caseId, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'survey_opened', payload: { message: '만족도 조사가 열렸습니다. 마이페이지에서 참여해 주세요.' } });
+  }
+  await logAudit(admin, {
+    actorId: mentorId,
+    programId: c.program_id,
     action: 'case.closure_requested',
-    entity_type: 'cases',
-    entity_id: caseId,
-    metadata: { rounds: rounds.length, required, observation: hasWeb ? 'web' : 'file' },
+    entityType: 'cases',
+    entityId: caseId,
+    metadata: { rounds: rounds.length, required, observation: useUploadedFile ? 'file' : 'web' },
   });
   return { ok: true, caseId };
+}
+
+/** 만족도 안내 필요 여부 (P31): 케이스 그룹/행사에 활성 만족도 양식이 있고 응답이 아직 없을 때 */
+async function surveyOpenNudgeNeeded(caseId: string): Promise<boolean> {
+  const admin = createAdminClient();
+  const { data: c } = await admin.from('cases').select('program_id, support_type_id').eq('id', caseId).maybeSingle();
+  if (!c) return false;
+  const [{ data: response }, { data: templates }] = await Promise.all([
+    admin.from('survey_responses').select('id').eq('case_id', caseId).maybeSingle(),
+    admin.from('survey_templates').select('id, support_type_id').eq('program_id', c.program_id).eq('is_active', true),
+  ]);
+  if (response) return false;
+  return (templates ?? []).some((t) => t.support_type_id === c.support_type_id || t.support_type_id === null);
 }
 
 /** 추가 회차 요청 (멘토 → 운영사 승인) */
@@ -258,7 +308,7 @@ export async function requestRoundExtension(caseId: string, mentorId: string, re
   const { error } = await admin.from('round_extension_requests').insert({ case_id: caseId, requested_by: mentorId, reason: reason.trim(), extra_rounds: extra });
   if (error) return { ok: false, error: error.message };
   await notifyProgramStaff(c.program_id, caseId, 'extension_requested');
-  await admin.from('audit_logs').insert({ actor_id: mentorId, program_id: c.program_id, action: 'round.extension_requested', entity_type: 'cases', entity_id: caseId, metadata: { extra_rounds: extra } });
+  await logAudit(admin, { actorId: mentorId, programId: c.program_id, action: 'round.extension_requested', entityType: 'cases', entityId: caseId, metadata: { extra_rounds: extra } });
   return { ok: true, caseId };
 }
 
@@ -279,7 +329,7 @@ export async function decideRoundExtension(requestId: string, actorId: string, d
     .select('id');
   if (!upd || upd.length === 0) return { ok: false, error: '이미 처리된 요청입니다.' };
   await queueNotification(admin, { caseId: c.id, programId: c.program_id, recipientId: req.requested_by, triggerEvent: 'extension_decided', payload: { decision, message: decision === 'approved' ? `추가 ${req.extra_rounds}회가 승인되었습니다.` : `추가 회차 요청이 반려되었습니다. ${note.trim().slice(0, 60)}` } });
-  await admin.from('audit_logs').insert({ actor_id: actorId, program_id: c.program_id, action: `round.extension_${decision}`, entity_type: 'cases', entity_id: c.id, metadata: { request_id: requestId, extra_rounds: req.extra_rounds, note: note.trim() } });
+  await logAudit(admin, { actorId, programId: c.program_id, action: `round.extension_${decision}`, entityType: 'cases', entityId: c.id, metadata: { request_id: requestId, extra_rounds: req.extra_rounds, note: note.trim() } });
   return { ok: true, caseId: c.id };
 }
 
@@ -298,7 +348,7 @@ export async function requestMentorWithdrawal(caseId: string, mentorId: string, 
   const { error } = await admin.from('mentor_withdrawal_requests').insert({ case_id: caseId, assignment_id: assign.id, mentor_id: mentorId, reason: reason.trim() });
   if (error) return { ok: false, error: error.message };
   await notifyProgramStaff(c.program_id, caseId, 'mentor_withdrawal_requested');
-  await admin.from('audit_logs').insert({ actor_id: mentorId, program_id: c.program_id, action: 'mentor.withdrawal_requested', entity_type: 'cases', entity_id: caseId, metadata: null });
+  await logAudit(admin, { actorId: mentorId, programId: c.program_id, action: 'mentor.withdrawal_requested', entityType: 'cases', entityId: caseId, metadata: null });
   return { ok: true, caseId };
 }
 
@@ -308,6 +358,7 @@ const EVENT_CAPABILITY: Record<string, CapabilityKey> = {
   extension_requested: 'review',
   mentor_withdrawal_requested: 'review',
   mentor_change_requested: 'review',
+  closure_overdue: 'review',
 };
 
 /**
@@ -319,6 +370,14 @@ const EVENT_CAPABILITY: Record<string, CapabilityKey> = {
  */
 export async function notifyProgramStaff(programId: string, caseId: string | null, triggerEvent: string, roles: ('nextlab' | 'institution')[] = ['nextlab']): Promise<void> {
   const admin = createAdminClient();
+  // 방금 그 작업을 수행한 실제 실행자(대행 중이면 운영사 담당자 본인)는 수신자에서 뺀다 — 자기 작업 알림 방지 (P31).
+  // Cron 등 요청 컨텍스트 밖에서는 cookies() 가 없어 예외가 날 수 있으므로 격리한다.
+  let actingUserId: string | null = null;
+  try {
+    actingUserId = (await getRealSessionProfile())?.id ?? null;
+  } catch {
+    actingUserId = null;
+  }
   type StaffRow = { user_id: string; role: string; grade: string | null; duty_groups: string[] | null; users: { is_active: boolean } | null };
   const [{ data: memberRows }, { data: program }, caseGroup] = await Promise.all([
     admin
@@ -343,6 +402,7 @@ export async function notifyProgramStaff(programId: string, caseId: string | nul
   const inCharge = caseGroup ? capable.filter((m) => dutyGroups(m).length === 0 || dutyGroups(m).includes(caseGroup)) : capable;
   const chosen = inCharge.length > 0 ? inCharge : staff.filter((m) => isPL(gradeOf(m)));
   for (const m of chosen) recipients.add(m.user_id);
+  if (actingUserId) recipients.delete(actingUserId);
   for (const userId of Array.from(recipients)) {
     await queueNotification(admin, { caseId, programId, recipientId: userId, triggerEvent });
   }

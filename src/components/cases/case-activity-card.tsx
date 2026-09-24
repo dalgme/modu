@@ -16,6 +16,8 @@ export interface CaseActivityItem {
   actorName: string | null;
   category: string;
   text: string;
+  /** 대행(view-as) 중 남은 기록 — metadata.via === 'view-as' (P31) */
+  viaViewAs?: boolean;
 }
 
 /**
@@ -50,6 +52,7 @@ export function CaseActivityCard({ caseId, items, canMemo }: { caseId: string; i
                     <span className="tabular-nums">{formatDateTime(it.at)}</span>
                     <span className="rounded-full bg-muted px-1.5 py-0.5">{it.category}</span>
                     <span>{it.actorName ?? '시스템'}</span>
+                    {it.viaViewAs && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-200" title="운영사 담당자가 회원 화면을 대행하며 수행한 작업">대행</span>}
                   </div>
                   <p className={cn('whitespace-pre-wrap', it.kind === 'memo' && 'text-amber-900 dark:text-amber-100')}>{it.text}</p>
                 </li>

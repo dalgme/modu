@@ -38,7 +38,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/utils/format';
 import { listStaffGroupIds } from '@/lib/programs/data';
 import { hasCapability } from '@/lib/auth/capabilities';
-import { describeAudit } from '@/lib/audit/describe';
+import { describeAudit, isViaViewAs } from '@/lib/audit/describe';
+import { listCaseAuditRows } from '@/lib/audit/case-rows';
 import { CASE_STATUS_META } from '@/types/case-status';
 import { fmt } from '@/lib/programs/branding';
 
@@ -70,14 +71,15 @@ export default async function Page({ params }: { params: { id: string } }) {
     createAdminClient().from('mentee_profiles').select('*').eq('case_id', item.id).maybeSingle(),
     listTags(ctx.programId),
     listStaffGroupIds(ctx.programId, profile.id),
-    // [조치 이력] — 이 케이스를 대상으로 한 감사로그(내부 메모 case.memo 포함), 최근 50건
-    createAdminClient().from('audit_logs').select('id, actor_id, action, entity_type, entity_id, metadata, created_at').eq('entity_type', 'cases').eq('entity_id', params.id).order('created_at', { ascending: false }).limit(50),
+    // [조치 이력] — entity_type='cases' + metadata.case_id 로 남은 회차·서류·메시지·대행 기록까지, 최근 50건 (P31)
+    listCaseAuditRows(params.id, ctx.programId, 50),
   ]);
   const teamMembers = await listTeamMembers(item.id);
   // 담당 외 그룹 안내: 현재 범위 그룹이 있는데 다르면 'scope', 내 담당 그룹 지정이 있는데 포함되지 않으면 'duty'
   const scopeReason: 'scope' | 'duty' | null = ctx.supportTypeId && ctx.supportTypeId !== item.support_type_id ? 'scope' : myGroupIds.length > 0 && !myGroupIds.includes(item.support_type_id) ? 'duty' : null;
   // 조치 이력 = 상태 이력 + 감사로그(메모 포함) 시각 역순 병합, 최근 50건
-  const actorIds = Array.from(new Set([...history.map((h) => h.changed_by), ...(caseAudit.data ?? []).map((a) => a.actor_id)].filter((x): x is string => !!x)));
+  const behalfIds = caseAudit.map((a) => (a.metadata && typeof a.metadata === 'object' && !Array.isArray(a.metadata) ? (a.metadata as { on_behalf_of?: unknown }).on_behalf_of : null)).filter((x): x is string => typeof x === 'string');
+  const actorIds = Array.from(new Set([...history.map((h) => h.changed_by), ...caseAudit.map((a) => a.actor_id), ...behalfIds].filter((x): x is string => !!x)));
   const { data: actorRows } = actorIds.length ? await createAdminClient().from('users').select('id, name').in('id', actorIds) : { data: [] as { id: string; name: string }[] };
   const actorName = new Map((actorRows ?? []).map((u) => [u.id, u.name]));
   const statusLabel = (st: string) => fmt(CASE_STATUS_META[st as keyof typeof CASE_STATUS_META]?.label ?? st, ctx.branding);
@@ -90,9 +92,11 @@ export default async function Page({ params }: { params: { id: string } }) {
       category: '상태',
       text: `${h.from_status ? `${statusLabel(h.from_status)} → ` : ''}${statusLabel(h.to_status)}${h.note ? ` — ${h.note}` : ''}`,
     })),
-    ...(caseAudit.data ?? []).map((a) => {
-      const d = describeAudit({ action: a.action, entity_type: a.entity_type, entity_id: a.entity_id, metadata: a.metadata, actorName: a.actor_id ? (actorName.get(a.actor_id) ?? null) : null });
-      return { id: `a-${a.id}`, at: a.created_at, kind: a.action === 'case.memo' ? ('memo' as const) : ('audit' as const), actorName: a.actor_id ? (actorName.get(a.actor_id) ?? null) : null, category: d.category, text: d.text };
+    ...caseAudit.map((a) => {
+      const m = a.metadata && typeof a.metadata === 'object' && !Array.isArray(a.metadata) ? (a.metadata as Record<string, unknown>) : {};
+      const onBehalf = typeof m.on_behalf_of === 'string' ? m.on_behalf_of : null;
+      const d = describeAudit({ action: a.action, entity_type: a.entity_type, entity_id: a.entity_id, metadata: a.metadata, actorName: a.actor_id ? (actorName.get(a.actor_id) ?? null) : null, onBehalfOfName: onBehalf ? (actorName.get(onBehalf) ?? null) : null });
+      return { id: `a-${a.id}`, at: a.created_at, kind: a.action === 'case.memo' ? ('memo' as const) : ('audit' as const), actorName: a.actor_id ? (actorName.get(a.actor_id) ?? null) : null, category: d.category, text: d.text, viaViewAs: isViaViewAs(a.metadata) };
     }),
   ]
     .sort((x, y) => (x.at < y.at ? 1 : -1))
@@ -122,6 +126,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         pendingRequests={pendingExt.length + pendingWd.length}
         pendingChangeRequests={(changeReqs.data ?? []).length}
         menteeLinked={!!item.mentee_id}
+        mentorInput={{ plannedWithoutReport: rounds.filter((r) => !r.report_registered_at && new Date(r.started_at).getTime() <= Date.now()).length, hasObservation: !!obsFile }}
       />
       {/* 종결 요청 상태에서는 검수 패널을 "지금 할 일" 바로 아래에 — 스크롤 없이 승인/보완 (2026-09-24) */}
       {item.status === 'closure_requested' && canTransition('review_approve', item.status) && (

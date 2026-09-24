@@ -108,9 +108,16 @@ const RULES: { test: (a: string) => boolean; category: string; text: (a: string,
   { test: (a) => a === 'match.recommend', category: '매칭', text: (_a, m) => `AI 멘토 매칭 추천을 생성했습니다${m.used_model ? ' (모델 근거 포함)' : ' (객관 점수만)'}` },
   { test: (a) => a === 'match.adoption', category: '매칭', text: (_a, m) => (num(m.recommended_rank) ? `추천 ${num(m.recommended_rank)}순위 멘토를 채택해 배정했습니다` : '추천과 무관하게 멘토를 배정했습니다') },
   { test: (a) => a === 'round.create', category: '회차', text: (_a, m) => `컨설팅 회차(1단계 계획/실행)를 등록했습니다${num(m.round_no) ? ` (${num(m.round_no)}회차)` : ''}${str(m.mode) ? ` · ${str(m.mode) === 'online' ? '온라인' : '오프라인'}` : ''}${m.planned === true ? ' · 사전 계획' : ''}` },
-  { test: (a) => a === 'round.update', category: '회차', text: () => '컨설팅 회차 내용을 수정했습니다' },
-  { test: (a) => a === 'round.delete', category: '회차', text: () => '컨설팅 회차를 삭제했습니다' },
-  { test: (a) => a === 'round.mentee_signed', category: '회차', text: () => '멘티가 회차 보고서를 확인 서명했습니다' },
+  { test: (a) => a === 'round.update', category: '회차', text: (_a, m) => `컨설팅 회차 내용을 수정했습니다${num(m.photos_added) ? ` (사진 ${num(m.photos_added)}장 추가)` : ''}` },
+  { test: (a) => a === 'round.delete', category: '회차', text: (_a, m) => `컨설팅 회차를 삭제했습니다${num(m.round_no) ? ` (${num(m.round_no)}회차)` : ''}` },
+  // (P31) 계획 회차 일정 수정·삭제·정리, 운영사 정정, 메시지, 현장 서명
+  { test: (a) => a === 'round.plan_update', category: '회차', text: (_a, m) => `${num(m.round_no) ?? ''}회차(계획) 일정을 수정했습니다${str(m.day) ? ` → ${str(m.day)}` : ''}${str(m.mode) ? ` · ${str(m.mode) === 'online' ? '온라인' : '오프라인'}` : ''}` },
+  { test: (a) => a === 'round.plan_delete', category: '회차', text: (_a, m) => `${num(m.round_no) ?? ''}회차(계획)를 삭제했습니다${num(m.renumbered) ? ` (뒤 ${num(m.renumbered)}회차 번호 당김)` : ''}` },
+  { test: (a) => a === 'round.plan_dropped', category: '회차', text: (_a, m) => `배정이 끝난 멘토의 계획 회차 ${num(m.dropped) ?? 0}건을 정리했습니다` },
+  { test: (a) => a === 'round.corrected', category: '회차', text: (_a, m) => `운영사가 ${num(m.round_no) ?? ''}회차 일시·방법·장소를 정정했습니다${str(m.reason) ? ` — ${str(m.reason)}` : ''}${m.signature_kept ? ' (멘티 서명 유지)' : ''}` },
+  { test: (a) => a === 'message.send', category: '메시지', text: (_a, m) => `${ROLE[str(m.sender_role) ?? ''] ?? ''} 명의로 1:1 메시지를 보냈습니다` },
+  { test: (a) => a === 'signature.collect', category: '회차', text: () => '멘티 확인 서명을 현장에서 수집했습니다' },
+  { test: (a) => a === 'round.mentee_signed', category: '회차', text: (_a, m) => (m.collected_by_operator ? '운영사 담당자가 멘토 대행 중 멘티 확인 서명을 현장 수집했습니다' : m.collected_on_device ? '멘토 단말에서 멘티 확인 서명을 현장 수집했습니다' : '멘티가 회차 보고서를 확인 서명했습니다') },
   { test: (a) => a === 'round.report_render_failed', category: '회차', text: () => '회차 보고서 PDF 생성에 실패했습니다 (회차 저장은 유지)' },
   { test: (a) => a === 'round.extension_requested', category: '요청', text: (_a, m) => `추가 회차 ${num(m.extra_rounds) ?? 1}회를 요청했습니다` },
   { test: (a) => a.startsWith('round.extension_'), category: '요청', text: (a) => (a.endsWith('approved') ? '추가 회차 요청을 승인했습니다' : '추가 회차 요청을 반려했습니다') },
@@ -170,9 +177,18 @@ const RULES: { test: (a: string) => boolean; category: string; text: (a: string,
 export function describeAudit(l: AuditLike): AuditDescription {
   const m = meta(l.metadata);
   const rule = RULES.find((r) => r.test(l.action));
-  if (rule) return { text: rule.text(l.action, m, l), category: rule.category };
-  const [head] = l.action.split('.');
-  return { text: `${l.action} 작업을 수행했습니다`, category: head ?? '기타' };
+  const base = rule ? { text: rule.text(l.action, m, l), category: rule.category } : { text: `${l.action} 작업을 수행했습니다`, category: l.action.split('.')[0] ?? '기타' };
+  // 대행(view-as) 기록: on_behalf_of 가 있으면 " · {명의} 대행" 을 붙인다 (P31). 이름을 못 받았으면 표기만.
+  if (str(m.on_behalf_of)) {
+    const who = l.onBehalfOfName ? `${l.onBehalfOfName} 대행` : '대행';
+    return { ...base, text: `${base.text} · ${who}` };
+  }
+  return base;
+}
+
+/** 대행으로 남은 기록인지 (metadata.via === 'view-as') — 화면 배지용 */
+export function isViaViewAs(metadata: unknown): boolean {
+  return meta(metadata).via === 'view-as';
 }
 
 /** 소스 팝업용: 사람이 보기 좋게 정리한 JSON 문자열 */

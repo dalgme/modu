@@ -3,6 +3,8 @@
 import { revalidatePath } from 'next/cache';
 
 import { requireNextlab, mentorOrNull, MENTOR_ONLY_ERROR } from '@/lib/auth/guards';
+import { getImpersonation } from '@/lib/auth/impersonation';
+import { logAudit } from '@/lib/workflow/audit';
 import { contextOrNull } from '@/lib/programs/context';
 import { denyUnless } from '@/lib/auth/capabilities';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -86,12 +88,12 @@ export async function saveMentorFormSettingAction(
     ? await admin.from('mentor_form_settings').update(fields).eq('id', existing.id)
     : await admin.from('mentor_form_settings').insert({ program_id: g.programId, support_type_id: g.supportTypeId, form_key: formKey, ...fields });
   if (error) return { ok: false, error: error.message };
-  await admin.from('audit_logs').insert({
-    actor_id: g.actorId,
-    program_id: g.programId,
+  await logAudit(admin, {
+    actorId: g.actorId,
+    programId: g.programId,
     action: 'mentor_form.setting',
-    entity_type: 'programs',
-    entity_id: g.programId,
+    entityType: 'programs',
+    entityId: g.programId,
     metadata: { form_key: formKey, enabled, method, support_type_id: g.supportTypeId },
   });
   revalidate();
@@ -114,12 +116,12 @@ export async function clearMentorFormOverrideAction(
   if (existing.template_path) await admin.storage.from('documents').remove([existing.template_path]);
   const { error } = await admin.from('mentor_form_settings').delete().eq('id', existing.id);
   if (error) return { ok: false, error: error.message };
-  await admin.from('audit_logs').insert({
-    actor_id: g.actorId,
-    program_id: g.programId,
+  await logAudit(admin, {
+    actorId: g.actorId,
+    programId: g.programId,
     action: 'mentor_form.setting',
-    entity_type: 'programs',
-    entity_id: g.programId,
+    entityType: 'programs',
+    entityId: g.programId,
     metadata: { form_key: formKey, support_type_id: g.supportTypeId, cleared: true },
   });
   revalidate();
@@ -168,12 +170,12 @@ export async function saveMentorFormTemplateAction(input: {
   if (existing?.template_path && existing.template_path !== dest) {
     await admin.storage.from('documents').remove([existing.template_path]);
   }
-  await admin.from('audit_logs').insert({
-    actor_id: g.actorId,
-    program_id: g.programId,
+  await logAudit(admin, {
+    actorId: g.actorId,
+    programId: g.programId,
     action: 'mentor_form.template',
-    entity_type: 'programs',
-    entity_id: g.programId,
+    entityType: 'programs',
+    entityId: g.programId,
     metadata: { form_key: input.formKey, support_type_id: g.supportTypeId, file_name: fileName },
   });
   revalidate();
@@ -234,12 +236,12 @@ async function insertSubmission(row: {
     if (error.code === '23505') return { ok: false, error: '이미 제출한 서식입니다. 재제출이 필요하면 운영사에 문의하세요.' };
     return { ok: false, error: error.message };
   }
-  await admin.from('audit_logs').insert({
-    actor_id: row.mentorId,
-    program_id: row.programId,
+  await logAudit(admin, {
+    actorId: row.mentorId,
+    programId: row.programId,
     action: 'mentor_form.submit',
-    entity_type: 'users',
-    entity_id: row.mentorId,
+    entityType: 'users',
+    entityId: row.mentorId,
     metadata: { form_key: row.formKey, method: row.method },
   });
   revalidate();
@@ -254,6 +256,8 @@ export async function submitMentorFormWebAction(
 ): Promise<MentorFormActionState> {
   const g = await mentorFormGuard(String(formData.get('formKey') ?? ''));
   if (!g.ok) return g;
+  // 웹 작성 제출은 멘토 본인의 동의·서약·주민등록번호 입력 — 대행 중 차단 (P31). 파일 첨부 제출은 허용(감사로그에 대행 표기).
+  if (await getImpersonation()) return { ok: false, error: '위촉 서식 웹 작성 제출은 멘토 본인만 할 수 있습니다. 담당자는 멘토에게 작성을 안내하거나 서명본 파일을 첨부해 주세요.' };
   if (g.setting.method !== 'web') return { ok: false, error: '이 서식은 파일 첨부 방식입니다. 파일로 제출하세요.' };
   const signedName = String(formData.get('signedName') ?? '').trim().slice(0, 40);
   if (!signedName) return { ok: false, error: '서명(성명)을 입력하세요.' };
@@ -367,12 +371,12 @@ export async function rejectMentorFormSubmissionAction(
   if (sub.file_path) await admin.storage.from('documents').remove([sub.file_path]);
   const { error } = await admin.from('mentor_form_submissions').delete().eq('id', submissionId);
   if (error) return { ok: false, error: error.message };
-  await admin.from('audit_logs').insert({
-    actor_id: actor.id,
-    program_id: ctx.programId,
+  await logAudit(admin, {
+    actorId: actor.id,
+    programId: ctx.programId,
     action: 'mentor_form.reject',
-    entity_type: 'users',
-    entity_id: sub.user_id,
+    entityType: 'users',
+    entityId: sub.user_id,
     metadata: { form_key: sub.form_key },
   });
   revalidate();

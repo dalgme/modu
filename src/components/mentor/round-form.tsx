@@ -11,10 +11,26 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 
-function todayLocal(): string {
-  const d = new Date();
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const pad = (n: number) => String(n).padStart(2, '0');
+
+/** ISO → KST 날짜·시각(10분 단위로 내림) — 회차는 항상 한국시간 기준으로 다룬다 (P31) */
+function kstParts(iso: string): { date: string; time: string } {
+  const d = new Date(new Date(iso).getTime() + KST_OFFSET_MS);
+  const minutes = Math.floor(d.getUTCMinutes() / 10) * 10;
+  return { date: d.toISOString().slice(0, 10), time: `${pad(d.getUTCHours())}:${pad(minutes)}` };
+}
+
+function todayKst(): string {
+  return kstParts(new Date().toISOString()).date;
+}
+
+/** 이전 회차 정보 — 방법·장소·시간을 기본값으로 이어받는다 (P31) */
+export interface LastRoundDefaults {
+  mode: 'online' | 'offline';
+  startedAt: string;
+  endedAt: string;
+  place: string | null;
 }
 
 function durationLabel(minutes: number): string {
@@ -67,28 +83,33 @@ function plusMinutes(hhmm: string, add: number): string {
  * 일자·시간(10분 단위)·방법·참가자는 전부 클릭 선택, 장소만 직접 입력.
  * 사전(계획)·사후(실행) 등록 모두 가능하고, 보고서(실서류)는 2단계에서 등록한다.
  */
-export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOptions }: {
+export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOptions, lastRound = null }: {
   caseId: string;
   nextRoundNo: number;
   maxRounds: number;
   rates: { online: number | null; offline: number | null };
   /** 멘티(대표) + 팀원 선택지 — 첫 항목이 멘티 본인 */
   participantOptions: ParticipantOption[];
+  /** 직전 회차 — 방법·장소·시간 기본값 (P31). 없으면 오프라인 14:00~15:00 */
+  lastRound?: LastRoundDefaults | null;
 }) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);
-  const [mode, setMode] = useState<'online' | 'offline'>('offline');
-  const [date, setDate] = useState(todayLocal());
-  const [startTime, setStartTime] = useState('14:00');
-  const [endTime, setEndTime] = useState('15:00');
-  const [place, setPlace] = useState('');
+  const lastStart = lastRound ? kstParts(lastRound.startedAt) : null;
+  const lastEnd = lastRound ? kstParts(lastRound.endedAt) : null;
+  const [mode, setMode] = useState<'online' | 'offline'>(lastRound?.mode ?? 'offline');
+  const [date, setDate] = useState(todayKst());
+  const [startTime, setStartTime] = useState(lastStart?.time ?? '14:00');
+  const [endTime, setEndTime] = useState(lastEnd && lastStart && lastEnd.time > lastStart.time ? lastEnd.time : plusMinutes(lastStart?.time ?? '14:00', 60));
+  const [place, setPlace] = useState(lastRound?.place ?? '');
   const [selected, setSelected] = useState<Set<string>>(() => new Set(participantOptions.length ? [participantOptions[0]!.key] : []));
   const full = nextRoundNo > maxRounds;
 
-  const startDate = useMemo(() => new Date(`${date}T${startTime}:00`), [date, startTime]);
-  const endDate = useMemo(() => new Date(`${date}T${endTime}:00`), [date, endTime]);
+  // 일시는 항상 한국시간(+09:00)으로 해석 — 단말 시간대와 무관 (P31)
+  const startDate = useMemo(() => new Date(`${date}T${startTime}:00+09:00`), [date, startTime]);
+  const endDate = useMemo(() => new Date(`${date}T${endTime}:00+09:00`), [date, endTime]);
   const minutes = Math.round((endDate.getTime() - startDate.getTime()) / 60000);
   const isPlan = startDate.getTime() > Date.now();
   const chosen = participantOptions.filter((p) => selected.has(p.key));
@@ -135,8 +156,8 @@ export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOp
     );
   }
 
-  const d = new Date(`${date}T00:00:00`);
-  const dateLabel = Number.isNaN(d.getTime()) ? date : `${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAYS[d.getDay()]})`;
+  const d = new Date(`${date}T00:00:00+09:00`);
+  const dateLabel = Number.isNaN(d.getTime()) ? date : `${Number(date.slice(5, 7))}월 ${Number(date.slice(8, 10))}일 (${WEEKDAYS[new Date(d.getTime() + KST_OFFSET_MS).getUTCDay()]})`;
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border bg-background p-4 shadow-sm">
@@ -148,6 +169,7 @@ export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOp
       </div>
       <p className="text-xs text-muted-foreground">
         일시·방법·참가자는 통계와 지급액 정산의 기본데이터입니다. 실서류(멘토링 보고서)는 진행 후 2단계 [보고서 등록]에서 올립니다.
+        {lastRound && <span className="ml-1 text-primary">이전 회차의 방법·시간·장소를 기본값으로 채웠습니다.</span>}
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2">

@@ -344,6 +344,17 @@ export function RoundsList({
               <RoundReportForm caseId={caseId} logId={r.id} roundNo={r.round_no} />
             </div>
           )}
+          {/* 등록본 내용·사진 추가 (P31) — 멘티 서명 전·정산 전 회차만 (updateRoundAction) */}
+          {editable && r.report_registered_at && !r.mentee_signed_at && !r.locked && (
+            <div className="mt-2">
+              <RoundReportForm
+                caseId={caseId}
+                logId={r.id}
+                roundNo={r.round_no}
+                edit={{ kind: r.report_kind === 'file' ? 'file' : 'web', topic: r.topic ?? '', content: r.content ?? '', result: r.result ?? '', place: r.place ?? '' }}
+              />
+            </div>
+          )}
           {signEnabled && editable && r.report_registered_at && !r.mentee_signed_at && !r.locked && (
             <div className="mt-2">
               <CollectSignature caseId={caseId} logId={r.id} roundNo={r.round_no} />

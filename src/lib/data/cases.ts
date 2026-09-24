@@ -116,24 +116,23 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
   }
   const mentorIds = Array.from(new Set(Array.from(assignByCase.values()).map((a) => a.mentor_id)));
   const menteeIds = Array.from(new Set(cases.map((c) => c.mentee_id).filter(Boolean))) as string[];
-  const [{ data: mentors }, { data: mentees }] = await Promise.all([
-    mentorIds.length
-      ? supabase.from('users').select('id, name').in('id', mentorIds)
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
-    menteeIds.length
-      ? supabase.from('users').select('id, name, phone').in('id', menteeIds)
-      : Promise.resolve({ data: [] as { id: string; name: string | null; phone: string | null }[] }),
+  // 회원 id 는 수백 개가 될 수 있어 `in()` 을 200개 단위로 쪼개 읽는다 (P31, paginate.ts)
+  const [mentors, mentees] = await Promise.all([
+    fetchAllIn<{ id: string; name: string }>(mentorIds, (chunk, from, to) => supabase.from('users').select('id, name').in('id', chunk).range(from, to)),
+    fetchAllIn<{ id: string; name: string | null; phone: string | null }>(menteeIds, (chunk, from, to) => supabase.from('users').select('id, name, phone').in('id', chunk).range(from, to)),
   ]);
-  const mentorNameById = new Map((mentors ?? []).map((m) => [m.id, m.name]));
-  const menteeAccById = new Map((mentees ?? []).map((m) => [m.id, m]));
+  const mentorNameById = new Map(mentors.map((m) => [m.id, m.name]));
+  const menteeAccById = new Map(mentees.map((m) => [m.id, m]));
   // 멘토별 확정 배정 수 — 조회 범위(행사, 그룹이 있으면 그룹) 기준. 필터로 잘린 목록이 아니라 범위 전체를 센다.
   const mentorActive = new Map<string, number>();
   if (mentorIds.length) {
-    let q = supabase.from('mentor_assignments').select('mentor_id, cases!inner(program_id, support_type_id)').eq('is_active', true).in('mentor_id', mentorIds);
-    if (filters.programId) q = q.eq('cases.program_id', filters.programId);
-    if (filters.supportTypeId) q = q.eq('cases.support_type_id', filters.supportTypeId);
-    const { data: allActive } = await q;
-    for (const a of allActive ?? []) mentorActive.set(a.mentor_id, (mentorActive.get(a.mentor_id) ?? 0) + 1);
+    const allActive = await fetchAllIn<{ mentor_id: string }>(mentorIds, (chunk, from, to) => {
+      let q = supabase.from('mentor_assignments').select('mentor_id, cases!inner(program_id, support_type_id)').eq('is_active', true).in('mentor_id', chunk);
+      if (filters.programId) q = q.eq('cases.program_id', filters.programId);
+      if (filters.supportTypeId) q = q.eq('cases.support_type_id', filters.supportTypeId);
+      return q.range(from, to);
+    });
+    for (const a of allActive) mentorActive.set(a.mentor_id, (mentorActive.get(a.mentor_id) ?? 0) + 1);
   }
 
   return cases.map((c) => {

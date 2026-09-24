@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { requireMentee, requireNextlab } from '@/lib/auth/guards';
+import { getImpersonation } from '@/lib/auth/impersonation';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getMenteeCase } from '@/lib/data/cases';
@@ -21,6 +22,8 @@ export async function submitInquiryAction(input: {
   body: string;
 }): Promise<InquiryResult> {
   const profile = await requireMentee();
+  // 대행 중 차단 (P31) — inquiries RLS 는 mentee_id = auth.uid() 라 대행 중엔 실행자 명의로 새거나 거부된다. 문의는 멘티 본인만.
+  if (await getImpersonation()) return { ok: false, error: '문의 등록은 멘티 본인만 할 수 있습니다.' };
   const category = CATEGORIES.includes(input.category) ? input.category : 'other';
   const subject = input.subject?.trim() ?? '';
   const body = input.body?.trim() ?? '';
@@ -39,7 +42,11 @@ export async function submitInquiryAction(input: {
     body,
     program_id: programId,
   });
-  if (error) return { ok: false, error: error.message };
+  if (error) {
+    // RLS 위반(42501) 등은 원문 대신 한국어 안내 (P31)
+    if (error.code === '42501' || /row-level security/i.test(error.message)) return { ok: false, error: '문의를 등록할 권한이 없습니다. 멘티 본인 계정으로 로그인했는지 확인하세요.' };
+    return { ok: false, error: `문의 등록에 실패했습니다: ${error.message}` };
+  }
 
   await logAudit(supabase, {
     actorId: profile.id,

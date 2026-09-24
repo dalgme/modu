@@ -1,6 +1,7 @@
 import Link from 'next/link';
 
 import { requireMentor } from '@/lib/auth/guards';
+import { getImpersonation } from '@/lib/auth/impersonation';
 import { requireContext } from '@/lib/programs/context';
 import { listBoardPosts } from '@/lib/data/board';
 import { listMyThreads, listCaseThread, markThreadRead } from '@/lib/messages/data';
@@ -29,7 +30,8 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     const selected = threads.find((t) => t.caseId === searchParams.case) ?? threads[0] ?? null;
     let messages: Awaited<ReturnType<typeof listCaseThread>> = [];
     if (selected) {
-      await markThreadRead(selected.caseId, profile.id);
+      // 대행 열람은 읽음 처리하지 않는다 — 멘토 본인이 아직 못 본 메시지가 '읽음'으로 바뀌면 안 된다 (P31)
+      if (!(await getImpersonation())) await markThreadRead(selected.caseId, profile.id);
       messages = await listCaseThread(selected.caseId);
     }
     body = threads.length === 0 ? (

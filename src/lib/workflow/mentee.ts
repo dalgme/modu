@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { dataUrlToBuffer, sha256Hex } from '@/lib/storage/files';
+import { logAudit } from '@/lib/workflow/audit';
 import { queueNotification } from '@/lib/workflow/notifications';
 import { notifyProgramStaff } from '@/lib/workflow/closure';
 import { reassignMentor } from '@/lib/workflow/cases';
@@ -12,13 +13,14 @@ import type { WorkflowResult } from '@/lib/workflow/cases';
 import type { Json } from '@/types/database';
 
 /** 멘티 회차 서명 — signatures(log_id) + mentoring_logs.mentee_signed_at. 1회차 1서명(유니크 인덱스).
- *  opts.collectedBy = 멘토 현장 수집(멘토 단말 터치 서명, P20) — 감사 실행자를 멘토로 남긴다. */
+ *  opts.collectedBy = 멘토 현장 수집(멘토 단말 터치 서명, P20) — 감사 실행자를 멘토로 남긴다.
+ *  collectedBy.operatorActorId = 운영사가 멘토 대행 중 현장 수집(P31) — logAudit 이 실행자를 운영사 실명으로 바꾸고 on_behalf_of/via 를 붙인다. */
 export async function signRound(
   caseId: string,
   logId: string,
   mentee: { id: string; name: string },
   dataUrl: string,
-  opts?: { collectedBy?: { id: string } },
+  opts?: { collectedBy?: { id: string; operatorActorId?: string | null } },
 ): Promise<WorkflowResult> {
   const parsed = dataUrlToBuffer(dataUrl);
   if (!parsed || !parsed.mimeType.startsWith('image/')) return { ok: false, error: '서명 이미지가 올바르지 않습니다.' };
@@ -53,16 +55,20 @@ export async function signRound(
   if (!opts?.collectedBy) {
     await queueNotification(admin, { caseId, programId: c.program_id, recipientId: log.mentor_id, triggerEvent: 'round_signed', payload: { round_no: log.round_no } });
   }
-  await admin.from('audit_logs').insert({
-    actor_id: opts?.collectedBy?.id ?? mentee.id,
-    program_id: c.program_id,
+  const collected = opts?.collectedBy ?? null;
+  await logAudit(admin, {
+    actorId: collected?.id ?? mentee.id,
+    programId: c.program_id,
     action: 'round.mentee_signed',
-    entity_type: 'mentoring_logs',
-    entity_id: logId,
+    entityType: 'mentoring_logs',
+    entityId: logId,
     metadata: {
       case_id: caseId,
       round_no: log.round_no,
-      ...(opts?.collectedBy ? { collected_on_device: true, on_behalf_of: mentee.id } : {}),
+      signer_id: mentee.id,
+      ...(collected ? { collected_on_device: true } : {}),
+      // 운영사 대행 현장 수집: 실행자는 logAudit 이 실명으로 치환(on_behalf_of = 멘토), 여기서는 수집 주체만 표시 (P31)
+      ...(collected?.operatorActorId ? { collected_by_operator: true } : collected ? { on_behalf_of: mentee.id } : {}),
     },
   });
   return { ok: true, caseId };
@@ -128,7 +134,8 @@ export async function submitSurvey(caseId: string, menteeId: string, answers: Re
   const score = scaleValues.length ? Math.round((scaleValues.reduce((a, b) => a + b, 0) / scaleValues.length) * 100) / 100 : null;
   const { error } = await admin.from('survey_responses').insert({ case_id: caseId, template_id: survey.template.id, mentee_id: menteeId, answers: clean, score });
   if (error) return { ok: false, error: error.code === '23505' ? '이미 응답하셨습니다.' : error.message };
-  await admin.from('audit_logs').insert({ actor_id: menteeId, program_id: c.program_id, action: 'survey.submitted', entity_type: 'cases', entity_id: caseId, metadata: { template_id: survey.template.id, score } });
+  // survey_responses 에 메타 컬럼이 없어 대행 여부는 감사로그에만 남는다 (logAudit 이 via:'view-as' 를 붙인다, P31)
+  await logAudit(admin, { actorId: menteeId, programId: c.program_id, action: 'survey.submitted', entityType: 'cases', entityId: caseId, metadata: { case_id: caseId, template_id: survey.template.id, score } });
   return { ok: true, caseId };
 }
 
@@ -144,7 +151,7 @@ export async function requestMentorChange(caseId: string, menteeId: string, reas
   const { error } = await admin.from('mentor_change_requests').insert({ case_id: caseId, requested_by: menteeId, reason: reason.trim() });
   if (error) return { ok: false, error: error.message };
   await notifyProgramStaff(c.program_id, caseId, 'mentor_change_requested');
-  await admin.from('audit_logs').insert({ actor_id: menteeId, program_id: c.program_id, action: 'mentor.change_requested', entity_type: 'cases', entity_id: caseId, metadata: null });
+  await logAudit(admin, { actorId: menteeId, programId: c.program_id, action: 'mentor.change_requested', entityType: 'cases', entityId: caseId, metadata: null });
   return { ok: true, caseId };
 }
 
@@ -166,6 +173,6 @@ export async function decideMentorChange(requestId: string, actorId: string, dec
   const now = new Date().toISOString();
   await admin.from('mentor_change_requests').update({ status: decision, handled_by: actorId, handled_at: now, handling_note: note.trim() || null }).eq('id', requestId).eq('status', 'pending');
   await queueNotification(admin, { caseId: req.case_id, programId: c.program_id, recipientId: req.requested_by, triggerEvent: 'mentor_change_decided', payload: { decision, message: decision === 'accepted' ? '요청이 수락되어 새 멘토가 배정되었습니다.' : `요청이 반려되었습니다. ${note.trim().slice(0, 60)}` } });
-  await admin.from('audit_logs').insert({ actor_id: actorId, program_id: c.program_id, action: `mentor.change_${decision}`, entity_type: 'cases', entity_id: req.case_id, metadata: { request_id: requestId, new_mentor_id: newMentorId ?? null, note: note.trim() } });
+  await logAudit(admin, { actorId, programId: c.program_id, action: `mentor.change_${decision}`, entityType: 'cases', entityId: req.case_id, metadata: { request_id: requestId, new_mentor_id: newMentorId ?? null, note: note.trim() } });
   return { ok: true, caseId: req.case_id };
 }
