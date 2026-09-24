@@ -411,6 +411,10 @@ UX/UI보완을 진행하세요</code></pre>
 1~6번 잔여작업을 진행하세요</code></pre>
 <p>→ 0083·0084 · 위촉 서식 웹 수집 삭제 → <code>mentor_doc_checklists/receipts</code>(행사 공통·그룹 override, 설정 탭·명단 수령 현황 카드·멘토 대시보드 표시·엑셀) · 알림 이벤트별 on/off 탭 · 검수 [멘토 입력 대기] 탭 · 레거시 features 페이지 폐지 · P31 코드 리뷰 13건 수정. xlsx 는 npm 재배포 패키지 별칭(<code>npm:@e965/xlsx@0.20.3</code>)으로 0.20.3 업그레이드. 상세는 CLAUDE.md P32.</p>
 <hr>
+<h3 id="51-p33-다운로드-파일명-한글-인코딩-통일-2026-09-24">#51 — P33 다운로드 파일명 한글·인코딩 통일 (2026-09-24)</h3>
+<pre><code>엑셀파일 등을 다운로드 받을 때, 파일명은 깨지지 않는 한글로 생성하고, 파일 내에서도 한글/영어/숫자 등이 제대로 표시되도록 설정하세요.</code></pre>
+<p>→ 공용 <code>contentDisposition()</code>(ASCII 폴백 + RFC 5987 한글 파일명)·<code>safeFileName()</code> 을 모든 다운로드 라우트·서명 URL·클라이언트 저장에 적용, vitest 추가. 상세는 CLAUDE.md P33.</p>
+<hr>
 <h2 id="4-다음-세션에서-쓸-시작-프롬프트-템플릿">4. 다음 세션에서 쓸 시작 프롬프트 (템플릿)</h2>
 <pre><code>이 리포(dalgme/modu)는 &quot;모두의창업&quot; 멘토링 운영관리 플랫폼입니다. 배포·부트스트랩까지 끝났습니다.
 먼저 CLAUDE.md 와 docs/handbook/ (01 기획 · 02 구조 · 03 프롬프트) 를 읽고 시작하세요.

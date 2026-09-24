@@ -10,6 +10,7 @@ import { listDelayedCases } from '@/lib/reports/delays';
 import { computeBudgetOverview } from '@/lib/reports/budget';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllIn } from '@/lib/supabase/paginate';
+import { contentDisposition } from '@/lib/http/download';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -57,11 +58,11 @@ export async function GET(request: Request): Promise<Response> {
     filterLabel: tab === 'cases' ? [view === 'mentor' ? '멘토 진행현황' : null, caseFilterLabel(params, mentorName)].filter(Boolean).join(' · ') || null : null,
     caseExtras,
   });
-  const filename = encodeURIComponent(reportFileName(ctx.program.name, tab, m, scopeName));
+  const filename = reportFileName(ctx.program.name, tab, m, scopeName);
   return new Response(new Uint8Array(buf), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename*=UTF-8''${filename}`,
+      'Content-Disposition': contentDisposition(filename),
     },
   });
 }

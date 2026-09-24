@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { contentDisposition } from '@/lib/http/download';
 
 /**
  * 엑셀 내보내기 공통 (P31) — 모든 다운로드가 같은 품질을 갖도록 한 곳에서:
@@ -108,7 +109,8 @@ export function xlsxResponse(buf: Buffer, filename: string): Response {
   return new Response(new Uint8Array(buf), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+      'Content-Disposition': contentDisposition(filename),
+      'Cache-Control': 'private, no-store',
     },
   });
 }

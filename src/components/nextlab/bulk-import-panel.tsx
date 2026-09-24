@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { safeFileName } from '@/lib/http/download';
 
 const KIND_LABELS: Record<ImportKind, string> = {
   mentee: '멘티 등록',
@@ -70,7 +71,7 @@ async function downloadXlsx(fileName: string, header: string[], rows: unknown[][
   ws['!cols'] = header.map((h, i) => ({ wch: Math.min(48, Math.max(8, ...[h, ...rows.slice(0, 200).map((r) => String(r[i] ?? ''))].map((s) => s.length * 1.6 + 2))) }));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheet.slice(0, 31));
-  XLSX.writeFile(wb, fileName);
+  XLSX.writeFile(wb, safeFileName(fileName)); // 한글 파일명 유지 + 금지 문자 정리 (P33)
 }
 
 const mergeResult = (a: ImportResult | null, b: ImportResult): ImportResult =>

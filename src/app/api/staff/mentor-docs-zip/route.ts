@@ -5,6 +5,7 @@ import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
 import { denyUnless } from '@/lib/auth/capabilities';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { contentDisposition } from '@/lib/http/download';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -89,11 +90,11 @@ export async function GET(): Promise<Response> {
   if (auditError) console.error('docs zip audit failed:', auditError.message);
 
   const buf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
-  const filename = encodeURIComponent(`${ctx.program.name}_멘토서류_${new Date().toISOString().slice(0, 10)}.zip`);
+  const filename = `${ctx.program.name}_멘토서류_${new Date().toISOString().slice(0, 10)}.zip`;
   return new Response(new Uint8Array(buf), {
     headers: {
       'Content-Type': 'application/zip',
-      'Content-Disposition': `attachment; filename*=UTF-8''${filename}`,
+      'Content-Disposition': contentDisposition(filename),
     },
   });
 }

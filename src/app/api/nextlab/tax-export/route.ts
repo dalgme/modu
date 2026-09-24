@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
 import { buildTaxWorkbook, computeTaxSummary } from '@/lib/settlement/tax';
+import { contentDisposition } from '@/lib/http/download';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,11 +17,11 @@ export async function GET(request: Request): Promise<Response> {
   const year = y && /^\d{4}$/.test(y) ? Number(y) : null;
   const t = await computeTaxSummary(ctx.programId, ctx.supportTypeId ?? null, year);
   const buf = buildTaxWorkbook(t, ctx.program.name, ctx.group?.name ?? null);
-  const filename = encodeURIComponent(`${ctx.program.name}_원천세집계${year ? `_${year}` : ''}.xlsx`);
+  const filename = `${ctx.program.name}_원천세집계${year ? `_${year}` : ''}.xlsx`;
   return new Response(new Uint8Array(buf), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename*=UTF-8''${filename}`,
+      'Content-Disposition': contentDisposition(filename),
     },
   });
 }

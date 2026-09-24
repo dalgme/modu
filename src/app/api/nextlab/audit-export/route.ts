@@ -5,6 +5,7 @@ import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
 import { AUDIT_MAX_LIMIT, loadProgramAuditRows, parseAuditQuery } from '@/lib/audit/rows';
 import { describeAudit, auditTargetLabel } from '@/lib/audit/describe';
+import { contentDisposition } from '@/lib/http/download';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,11 +33,11 @@ export async function GET(request: Request): Promise<Response> {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, sheet, '감사로그');
   const buf = Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as ArrayBuffer);
-  const filename = encodeURIComponent(`${ctx.program.name}_감사로그.xlsx`);
+  const filename = `${ctx.program.name}_감사로그.xlsx`;
   return new Response(new Uint8Array(buf), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename*=UTF-8''${filename}`,
+      'Content-Disposition': contentDisposition(filename),
     },
   });
 }

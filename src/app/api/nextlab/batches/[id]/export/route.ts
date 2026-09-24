@@ -4,6 +4,7 @@ import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
 import { getBatch } from '@/lib/data/settlements';
 import { buildBatchWorkbook } from '@/lib/settlement/export';
+import { contentDisposition } from '@/lib/http/download';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,11 +18,11 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   if (!found) return NextResponse.json({ error: 'not_found' }, { status: 404 });
   if (ctx.role === 'institution' && found.batch.status === 'draft') return NextResponse.json({ error: 'not_found' }, { status: 404 });
   const buf = buildBatchWorkbook(found.batch, found.items, ctx.program.name);
-  const filename = encodeURIComponent(`${ctx.program.name}_${found.batch.title}_지급품의.xlsx`);
+  const filename = `${ctx.program.name}_${found.batch.title}_지급품의.xlsx`;
   return new Response(new Uint8Array(buf), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename*=UTF-8''${filename}`,
+      'Content-Disposition': contentDisposition(filename),
     },
   });
 }

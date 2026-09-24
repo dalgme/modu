@@ -5,6 +5,7 @@ import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { getSummarySnapshot } from '@/lib/reports/summary';
 import { exportSummary, SUMMARY_FORMATS, type SummaryFormat } from '@/lib/reports/summary-export';
+import { contentDisposition } from '@/lib/http/download';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60; // PDF (서버리스 Chromium)
@@ -29,11 +30,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
   if (!inline) {
     await createAdminClient().from('audit_logs').insert({ actor_id: profile.id, program_id: ctx.programId, action: 'report.export', entity_type: 'report_snapshots', entity_id: snap.id, metadata: { format, title: snap.title } });
   }
-  const filename = encodeURIComponent(`${snap.title}.${spec.ext}`);
+  const filename = `${snap.title}.${spec.ext}`;
   return new Response(new Uint8Array(buf), {
     headers: {
       'Content-Type': spec.mime,
-      'Content-Disposition': `${inline ? 'inline' : 'attachment'}; filename*=UTF-8''${filename}`,
+      'Content-Disposition': contentDisposition(filename, { inline }),
       'Cache-Control': 'private, no-store',
     },
   });

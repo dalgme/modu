@@ -3,6 +3,7 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { Tables } from '@/types/database';
 import { mentorEligibleForGroup } from '@/lib/matching/eligibility';
+import { safeFileName } from '@/lib/http/download';
 
 export interface PaymentDocUpload {
   name: string;
@@ -80,7 +81,7 @@ export async function listProgramMentors(programId: string, supportTypeId?: stri
   const uploadsByUser = new Map<string, { resume: PaymentDocUpload | null; bankbook: PaymentDocUpload | null; idCard: PaymentDocUpload | null }>();
   const signed = async (path: string | null, name: string | null, at: string | null): Promise<PaymentDocUpload | null> => {
     if (!path) return null;
-    const { data } = await admin.storage.from('documents').createSignedUrl(path, 600, { download: name ?? undefined });
+    const { data } = await admin.storage.from('documents').createSignedUrl(path, 600, { download: name ? safeFileName(name) : undefined });
     return { name: name ?? '파일', at, url: data?.signedUrl ?? null };
   };
   for (const d of docs ?? []) {

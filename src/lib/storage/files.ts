@@ -2,6 +2,7 @@ import 'server-only';
 import { createHash, randomUUID } from 'node:crypto';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { safeFileName } from '@/lib/http/download';
 
 export type BucketId = 'documents' | 'signatures' | 'photos';
 
@@ -95,7 +96,7 @@ export async function createSignedUrl(
 ): Promise<string | null> {
   const opts =
     typeof download === 'string' && download.trim()
-      ? { download: download.trim() }
+      ? { download: safeFileName(download) } // 원본 파일명 유지 + 금지 문자 정리 (P33)
       : download
         ? { download: true }
         : undefined;

@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { contentDisposition } from '@/lib/http/download';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -73,11 +74,11 @@ export async function GET(request: Request): Promise<Response> {
   });
 
   const buf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
-  const filename = encodeURIComponent(`${safe(c.owner_name)}_${safe(c.business_name)}_서류일체_${new Date().toISOString().slice(0, 10)}.zip`);
+  const filename = `${safe(c.owner_name)}_${safe(c.business_name)}_서류일체_${new Date().toISOString().slice(0, 10)}.zip`;
   return new Response(new Uint8Array(buf), {
     headers: {
       'Content-Type': 'application/zip',
-      'Content-Disposition': `attachment; filename*=UTF-8''${filename}`,
+      'Content-Disposition': contentDisposition(filename),
     },
   });
 }

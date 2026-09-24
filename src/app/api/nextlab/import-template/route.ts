@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
 import { buildTemplate, isImportKind, IMPORT_KIND_LABELS } from '@/lib/import/bulk-import';
+import { contentDisposition } from '@/lib/http/download';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,11 +16,11 @@ export async function GET(request: Request): Promise<Response> {
   const kindRaw = new URL(request.url).searchParams.get('kind');
   const kind = isImportKind(kindRaw) ? kindRaw : 'mentee';
   const buf = buildTemplate(kind);
-  const filename = encodeURIComponent(`${ctx.program.name}_${IMPORT_KIND_LABELS[kind]}_일괄등록_템플릿.xlsx`);
+  const filename = `${ctx.program.name}_${IMPORT_KIND_LABELS[kind]}_일괄등록_템플릿.xlsx`;
   return new Response(new Uint8Array(buf), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename*=UTF-8''${filename}`,
+      'Content-Disposition': contentDisposition(filename),
     },
   });
 }
