@@ -4,7 +4,8 @@ import type { LucideIcon } from 'lucide-react';
 
 import { ExcelButton } from '@/components/common/excel-button';
 
-import type { ProgramMetrics } from '@/lib/reports/metrics';
+import { periodLabel, type ProgramMetrics, type ReportPeriod } from '@/lib/reports/metrics';
+import { CaseFilters } from '@/components/cases/case-filters';
 import type { BudgetOverview } from '@/lib/reports/budget';
 import { BudgetCard } from '@/components/reports/budget-card';
 import type { DelayedCase } from '@/lib/reports/delays';
@@ -52,12 +53,20 @@ export function ReportsBody({
   mentorProgress,
   budget,
   delays,
+  lastNudges,
   trend,
+  period = null,
+  periodPresets = [],
+  trendYear = null,
+  caseFilterMentors,
+  totalCases,
 }: {
   m: ProgramMetrics;
   tab: ReportTab;
   base: '/nextlab' | '/institution';
   cases: CaseListItem[];
+  /** 필터 전 케이스 수 (진행현황 캡션) */
+  totalCases?: number;
   settlements: SettlementItem[];
   branding: Branding;
   exportHref: string;
@@ -69,11 +78,22 @@ export function ReportsBody({
   budget?: BudgetOverview;
   /** 지연 케이스 목록 (개요 탭, P22·P26-03) */
   delays?: DelayedCase[];
+  lastNudges?: Record<string, string>;
   /** 월별 추이 (월별 추이 탭, P22) */
   trend?: TrendMonth[];
+  /** 기간 필터 (P30) — 칩은 페이지가 KST 로 계산해 내려준다 */
+  period?: ReportPeriod | null;
+  periodPresets?: { key: string; label: string; from: string | null; to: string | null }[];
+  /** 월별 추이 연도 (null = 최근 12개월) */
+  trendYear?: number | null;
+  /** 진행현황 탭 필터의 멘토 선택지 (있으면 CaseFilters 를 그린다) */
+  caseFilterMentors?: { id: string; name: string }[];
 }) {
   const reportsHref = `${base}/reports`;
-  const groupQs = groupFilter?.current ? `&group=${groupFilter.current}` : '';
+  const periodQs = period?.from || period?.to ? `${period.from ? `&from=${period.from}` : ''}${period.to ? `&to=${period.to}` : ''}` : '';
+  const groupQs = `${groupFilter?.current ? `&group=${groupFilter.current}` : ''}${periodQs}`;
+  const hasPeriod = !!(period && (period.from || period.to));
+  const thisYear = new Date(Date.now() + 9 * 3600 * 1000).getUTCFullYear();
   return (
     <div className="flex flex-col gap-5">
       {/* 라운드(그룹) 칩은 상단 [범위] 스위처로 통합 (P28) — groupFilter 는 링크 쿼리 유지용 */}
@@ -86,20 +106,46 @@ export function ReportsBody({
               종합결과리포트 →
             </Link>
           )}
-          <ExcelButton href={`${exportHref}?tab=${tab}`} />
+          <ExcelButton href={`${exportHref}?tab=${tab}${periodQs}${trendYear ? `&year=${trendYear}` : ''}`} />
         </div>
       </div>
+
+      {/* 기간 칩 (P30) — 회차 = 보고서 등록일 · 정산 = 확정일 · 케이스 신규/종결 = 등록일/종결일 */}
+      {periodPresets.length > 0 && tab !== 'trend' && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-semibold text-muted-foreground">기간</span>
+          {periodPresets.map((pp) => {
+            const active = (pp.from ?? null) === (period?.from ?? null) && (pp.to ?? null) === (period?.to ?? null);
+            const qs = `${reportsHref}?tab=${tab}${groupFilter?.current ? `&group=${groupFilter.current}` : ''}${casesView === 'mentor' ? '&view=mentor' : ''}${pp.from ? `&from=${pp.from}` : ''}${pp.to ? `&to=${pp.to}` : ''}`;
+            return (
+              <Link key={pp.key} href={qs} className={`rounded-full px-3 py-1 font-semibold ${active ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}>
+                {pp.label}
+              </Link>
+            );
+          })}
+          <span className="text-muted-foreground">{hasPeriod ? `${periodLabel(period)} — 이행 회차 ${m.performance.roundsDone} · 신규 ${m.performance.newCases} · 종결 ${m.performance.closedCases}` : '전체 기간'}</span>
+        </div>
+      )}
+      {tab === 'trend' && (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-semibold text-muted-foreground">기준</span>
+          <Link href={`${reportsHref}?tab=trend${groupFilter?.current ? `&group=${groupFilter.current}` : ''}`} className={`rounded-full px-3 py-1 font-semibold ${!trendYear ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}>최근 12개월</Link>
+          {[thisYear, thisYear - 1].map((y) => (
+            <Link key={y} href={`${reportsHref}?tab=trend${groupFilter?.current ? `&group=${groupFilter.current}` : ''}&year=${y}`} className={`rounded-full px-3 py-1 font-semibold ${trendYear === y ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}>{y}년</Link>
+          ))}
+        </div>
+      )}
 
       {tab === 'overview' && (
         <div className="flex flex-col gap-4">
           {budget && <BudgetCard overview={budget} settingsHint={base === '/nextlab'} />}
           <MetricsTiles m={m} base={base} reportsHref={reportsHref} />
           {delays && (
-            <section className={`flex flex-col gap-2 rounded-xl border p-4 ${delays.length > 0 ? 'border-status-rejected/40 bg-status-rejected/5' : 'bg-background'}`}>
+            <section id="delays" className={`scroll-mt-40 flex flex-col gap-2 rounded-xl border p-4 ${delays.length > 0 ? 'border-status-rejected/40 bg-status-rejected/5' : 'bg-background'}`}>
               <h3 className="flex items-center gap-2 text-base font-bold">
                 <AlertTriangle className={`h-5 w-5 ${delays.length > 0 ? 'text-status-rejected' : 'text-muted-foreground'}`} /> 지연 케이스 {delays.length}건
               </h3>
-              <DelayList items={delays} caseHrefBase={`${base}/cases`} canNudge={base === '/nextlab'} />
+              <DelayList items={delays} caseHrefBase={`${base}/cases`} canNudge={base === '/nextlab'} lastNudges={lastNudges} />
             </section>
           )}
         </div>
@@ -152,7 +198,8 @@ export function ReportsBody({
                   </tbody>
                 </table>
               </div>
-              <CaseTable items={cases} basePath={`${base}/cases`} branding={branding} showGroup showLegend />
+              {caseFilterMentors && <CaseFilters mentors={caseFilterMentors} />}
+              <CaseTable items={cases} basePath={`${base}/cases`} branding={branding} showGroup showLegend caption={totalCases !== undefined && totalCases !== cases.length ? `필터 결과 ${cases.length}건 / 전체 ${totalCases}건` : undefined} />
             </div>
           ) : mentorProgress ? (
             <MentorProgressTable rows={mentorProgress} caseHrefBase={`${base}/cases`} showReview={base === '/nextlab'} />
@@ -169,7 +216,7 @@ export function ReportsBody({
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-                <th className="px-3 py-2">그룹</th><th className="px-3 py-2">상태</th><th className="px-3 py-2 text-right">케이스</th><th className="px-3 py-2 text-right">회차(이행/계획)</th><th className="px-3 py-2 text-right">종결</th><th className="px-3 py-2 text-right">승계 유입/유출</th><th className="px-3 py-2 text-right">만족도</th><th className="px-3 py-2 text-right">확정 실지급</th>
+                <th className="px-3 py-2">그룹</th><th className="px-3 py-2">상태</th><th className="px-3 py-2 text-right">케이스</th><th className="px-3 py-2 text-right">회차(이행/계획)</th><th className="px-3 py-2 text-right">종결</th><th className="px-3 py-2 text-right">승계 유입/유출</th><th className="px-3 py-2 text-right" title="이전 케이스가 중도 종료(탈락)였던 재배치">재배치 유입/유출</th><th className="px-3 py-2 text-right">만족도</th><th className="px-3 py-2 text-right">확정 실지급</th>
               </tr>
             </thead>
             <tbody>
@@ -181,6 +228,7 @@ export function ReportsBody({
                   <td className="px-3 py-2 text-right tabular-nums">{g.roundsDone}/{g.roundsPlanned}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{g.closed}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{g.succeededFrom}/{g.succeededTo}</td>
+                  <td className="px-3 py-2 text-right tabular-nums">{g.relocatedFrom ?? 0}/{g.relocatedTo ?? 0}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{g.surveyAvg ?? '-'}</td>
                   <td className="px-3 py-2 text-right tabular-nums">{formatKRW(g.settledNet)}</td>
                 </tr>

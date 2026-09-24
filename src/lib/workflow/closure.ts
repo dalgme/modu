@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { isPL, isStaffGrade, resolveGrants, type CapabilityKey } from '@/lib/auth/capabilities';
 import { htmlToPdf, renderTemplate } from '@/lib/documents/render';
 import { uploadFile, moveFile, sha256Hex } from '@/lib/storage/files';
 import { queueNotification } from '@/lib/workflow/notifications';
@@ -301,19 +302,49 @@ export async function requestMentorWithdrawal(caseId: string, mentorId: string, 
   return { ok: true, caseId };
 }
 
-/** 행사의 운영사 담당자 전원에게 알림 큐 */
+/** 알림 이벤트 → 처리에 필요한 권한 키 (그 권한이 없는 등급(옵저버 등)에게는 보내지 않는다) */
+const EVENT_CAPABILITY: Record<string, CapabilityKey> = {
+  closure_requested: 'review',
+  extension_requested: 'review',
+  mentor_withdrawal_requested: 'review',
+  mentor_change_requested: 'review',
+};
+
+/**
+ * 행사의 담당자에게 알림 큐 (2026-09-24 개정).
+ *  - 운영사(nextlab): 등급 권한(resolveGrants, 행사별·회원별 override 반영)이 이벤트에 필요한 키를 포함하는 활성 담당자.
+ *    케이스가 있으면 그 케이스 그룹의 **담당자(program_members.duty_groups)** 만 — 담당 지정이 없는 담당자는 전체 그룹 담당으로 본다.
+ *    한 명도 남지 않으면 PL 전원에게 폴백.
+ *  - 발주처(institution): roles 에 포함된 경우 활성 담당자 전원(권한표 대상 아님).
+ */
 export async function notifyProgramStaff(programId: string, caseId: string | null, triggerEvent: string, roles: ('nextlab' | 'institution')[] = ['nextlab']): Promise<void> {
   const admin = createAdminClient();
-  const { data: members } = await admin
-    .from('program_members')
-    .select('user_id, role, users!inner(is_active)')
-    .eq('program_id', programId)
-    .in('role', roles)
-    .eq('is_active', true);
-  for (const m of members ?? []) {
-    const u = m.users as unknown as { is_active: boolean } | null;
-    if (!u || !u.is_active) continue;
-    await queueNotification(admin, { caseId, programId, recipientId: m.user_id, triggerEvent });
+  type StaffRow = { user_id: string; role: string; grade: string | null; duty_groups: string[] | null; users: { is_active: boolean } | null };
+  const [{ data: memberRows }, { data: program }, caseGroup] = await Promise.all([
+    admin
+      .from('program_members')
+      // duty_groups 는 0080 컬럼 — database.ts 재생성 전까지 로컬 캐스트
+      .select('user_id, role, grade, duty_groups, users!inner(is_active)' as 'user_id, role, grade, users!inner(is_active)')
+      .eq('program_id', programId)
+      .in('role', roles)
+      .eq('is_active', true),
+    admin.from('programs').select('staff_permissions').eq('id', programId).maybeSingle(),
+    caseId ? admin.from('cases').select('support_type_id').eq('id', caseId).maybeSingle().then((r) => r.data?.support_type_id ?? null) : Promise.resolve(null),
+  ]);
+  const members = (memberRows ?? []) as unknown as StaffRow[];
+  const needKey = EVENT_CAPABILITY[triggerEvent] ?? null;
+  const active = members.filter((m) => m.users?.is_active);
+  const recipients = new Set<string>();
+  for (const m of active) if (m.role === 'institution') recipients.add(m.user_id);
+  const staff = active.filter((m) => m.role === 'nextlab');
+  const dutyGroups = (m: StaffRow) => m.duty_groups ?? [];
+  const gradeOf = (m: StaffRow) => (isStaffGrade(m.grade) ? m.grade : null);
+  const capable = staff.filter((m) => !needKey || resolveGrants(gradeOf(m), program?.staff_permissions, m.user_id).includes(needKey));
+  const inCharge = caseGroup ? capable.filter((m) => dutyGroups(m).length === 0 || dutyGroups(m).includes(caseGroup)) : capable;
+  const chosen = inCharge.length > 0 ? inCharge : staff.filter((m) => isPL(gradeOf(m)));
+  for (const m of chosen) recipients.add(m.user_id);
+  for (const userId of Array.from(recipients)) {
+    await queueNotification(admin, { caseId, programId, recipientId: userId, triggerEvent });
   }
 }
 

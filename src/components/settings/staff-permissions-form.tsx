@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react';
 
-import { CAPABILITIES, DEFAULT_GRANTS, GRADE_HINTS, GRADE_LABELS, STAFF_GRADES, resolveGrants, type CapabilityKey, type StaffGrade } from '@/lib/auth/capabilities';
+import { CAPABILITIES, DEFAULT_GRANTS, GRADE_HINTS, GRADE_LABELS, INTERN_PRESET, STAFF_GRADES, resolveGrants, type CapabilityKey, type StaffGrade } from '@/lib/auth/capabilities';
 import { updateStaffPermissionsAction } from '@/lib/settings/actions';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -30,12 +30,15 @@ export function StaffPermissionsForm({ override, canEdit }: { override: unknown;
       for (const g of editable) n[g] = new Set(DEFAULT_GRANTS[g]);
       return n;
     });
+  // 인턴 프리셋 — 부PM 등급을 데이터 입력·문자 보조 최소 권한(회원 발급·엑셀 / 지급서류 체크 / 문자)으로 맞춘다. 저장은 별도.
+  const internPreset = () => setGrants((prev) => ({ ...prev, deputy_pm: new Set(INTERN_PRESET) }));
   return (
     <div className="flex flex-col gap-3 rounded-xl border bg-background p-4">
       <div>
         <p className="text-sm font-semibold">담당 등급별 권한</p>
         <p className="text-xs text-muted-foreground">
           메인 담당자(PL)는 항상 전체 권한입니다. PM·부PM·옵저버는 이 행사에서 허용할 권한을 체크합니다. 옵저버는 현황 확인·자문 계층이라 기본은 리포트만 허용됩니다.
+          <b className="ml-1">운영사 담당자 등급·역할·소속</b>과 <b>케이스 완전 삭제</b>는 기본 PL 전용입니다.
           {!canEdit && <b className="ml-1 text-amber-700">변경은 메인 담당자(PL)만 할 수 있습니다.</b>}
         </p>
       </div>
@@ -68,6 +71,9 @@ export function StaffPermissionsForm({ override, canEdit }: { override: unknown;
       </div>
       {canEdit && (
         <div className="flex justify-end gap-2">
+          <Button type="button" variant="outline" size="sm" disabled={pending} onClick={internPreset} title="부PM 등급을 데이터 입력·문자 보조(회원 발급·엑셀, 지급서류 체크, 문자)만 가능한 최소 권한으로 맞춥니다. 저장을 눌러야 반영됩니다.">
+            인턴 프리셋(부PM)
+          </Button>
           <Button type="button" variant="outline" size="sm" disabled={pending} onClick={reset}>기본값으로</Button>
           <Button
             type="button"

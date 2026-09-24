@@ -24,7 +24,8 @@ export type TransitionKey =
   | 'withdraw_case' // T10 비종결 → withdrawn
   | 'request_mentor_withdrawal' // T11a 멘토 자진 중도 종료 요청 (상태 유지)
   | 'approve_mentor_withdrawal' // T11a in_progress | mentor_assigned → reassignment_pending
-  | 'force_end_mentor'; // T11b in_progress | mentor_assigned → reassignment_pending (운영사 강제)
+  | 'force_end_mentor' // T11b in_progress | mentor_assigned → reassignment_pending (운영사 강제)
+  | 'reinstate_case'; // T13 withdrawn → reassignment_pending (중도 종료 복귀, 운영사 PL — P30)
 
 export interface Transition {
   /** 허용 출발 상태 */
@@ -129,6 +130,12 @@ export const TRANSITIONS: Record<TransitionKey, Transition> = {
     to: 'reassignment_pending',
     who: ['nextlab'],
     denied: '활성 멘토가 있는 진행 중 케이스에서만 강제 종료할 수 있습니다.',
+  },
+  reinstate_case: {
+    from: ['withdrawn'],
+    to: 'reassignment_pending',
+    who: ['nextlab'],
+    denied: '중도 종료된 케이스만 복귀시킬 수 있습니다.',
   },
 };
 

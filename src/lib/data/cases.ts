@@ -48,6 +48,13 @@ export interface CaseFilters {
   to?: string;
   /** mentorId 필터에서 종결·중도 종료된(비활성) 배정 케이스도 포함 (멘토 '완료 멘티', P30) */
   includeEnded?: boolean;
+  /** 여러 상태 (status 와 함께 쓰면 status 우선) */
+  statuses?: CaseStatus[];
+  /**
+   * service_role 로 읽는다 — RLS 범위 밖 케이스(멘토의 이전 단계 케이스, 승계 조회 등)를 코드 필터로만 좁혀 읽을 때.
+   * 호출부가 반드시 programId(+접근 근거)를 확인한다 (CLAUDE.md §6-2).
+   */
+  admin?: boolean;
 }
 
 /**
@@ -55,7 +62,7 @@ export interface CaseFilters {
  * 임베디드 조인 대신 분리 조회 후 메모리 조인 (행사당 수백 건 규모).
  */
 export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem[]> {
-  const supabase = createClient();
+  const supabase = filters.admin ? createAdminClient() : createClient();
 
   let caseIdsByMentor: string[] | null = null;
   if (filters.mentorId) {
@@ -70,6 +77,7 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
   if (filters.programId) query = query.eq('program_id', filters.programId);
   if (filters.supportTypeId) query = query.eq('support_type_id', filters.supportTypeId);
   if (filters.status) query = query.eq('status', filters.status);
+  else if (filters.statuses && filters.statuses.length > 0) query = query.in('status', filters.statuses);
   if (filters.menteeId) query = query.eq('mentee_id', filters.menteeId);
   if (filters.from) query = query.gte('created_at', filters.from);
   if (filters.to) query = query.lte('created_at', filters.to);
@@ -210,12 +218,12 @@ export async function listMenteeCases(
   return listCases({ menteeId, ...scope });
 }
 
-/** 단일 케이스 상세. 접근 불가/없으면 null. */
-export async function getCaseById(caseId: string): Promise<CaseListItem | null> {
-  const supabase = createClient();
+/** 단일 케이스 상세. 접근 불가/없으면 null. admin 이면 RLS 밖(service_role) — 호출부가 접근 근거를 확인한다. */
+export async function getCaseById(caseId: string, opts: { admin?: boolean } = {}): Promise<CaseListItem | null> {
+  const supabase = opts.admin ? createAdminClient() : createClient();
   const { data: c } = await supabase.from('cases').select('*').eq('id', caseId).maybeSingle();
   if (!c) return null;
-  const [item] = await listCases({ programId: c.program_id, supportTypeId: c.support_type_id }).then((rows) =>
+  const [item] = await listCases({ programId: c.program_id, supportTypeId: c.support_type_id, admin: opts.admin }).then((rows) =>
     rows.filter((r) => r.id === caseId),
   );
   return item ?? null;
@@ -232,9 +240,12 @@ export async function getCaseStatusHistory(caseId: string) {
   return data ?? [];
 }
 
-/** 승계 체인: 이 케이스의 이전 단계 케이스들 (가장 가까운 것부터) */
-export async function listPredecessorCases(caseId: string): Promise<CaseListItem[]> {
-  const supabase = createClient();
+/**
+ * 승계 체인: 이 케이스의 이전 단계 케이스들 (가장 가까운 것부터).
+ * admin 이면 service_role — 멘토는 이전 단계 케이스(다른 배정)를 RLS 로 못 읽으므로 화면이 요약만 보여줄 때 쓴다 (P30).
+ */
+export async function listPredecessorCases(caseId: string, opts: { admin?: boolean } = {}): Promise<CaseListItem[]> {
+  const supabase = opts.admin ? createAdminClient() : createClient();
   const out: CaseListItem[] = [];
   let cursor: string | null = caseId;
   for (let i = 0; i < 10 && cursor; i += 1) {
@@ -245,10 +256,43 @@ export async function listPredecessorCases(caseId: string): Promise<CaseListItem
       .maybeSingle();
     const prevId: string | null = data?.predecessor_case_id ?? null;
     if (!prevId) break;
-    const prev = await getCaseById(prevId);
+    const prev = await getCaseById(prevId, { admin: opts.admin });
     if (!prev) break;
     out.push(prev);
     cursor = prevId;
+  }
+  return out;
+}
+
+/** 승계 다음 단계: predecessor_case_id = 이 케이스인 케이스들 (service_role, 스태프 화면 전용 — P30) */
+export async function listSuccessorCases(caseId: string): Promise<CaseListItem[]> {
+  const admin = createAdminClient();
+  const { data: rows } = await admin.from('cases').select('id, program_id').eq('predecessor_case_id', caseId).order('created_at');
+  const out: CaseListItem[] = [];
+  for (const r of rows ?? []) {
+    const item = await getCaseById(r.id, { admin: true });
+    if (item) out.push(item);
+  }
+  return out;
+}
+
+/** 여러 케이스의 승계 케이스 맵 (원천 케이스 id → 승계 케이스 요약) — 승계 개설 화면의 "승계됨" 배지 */
+export async function mapSuccessors(sourceCaseIds: string[]): Promise<Map<string, { caseId: string; supportTypeId: string; supportTypeName: string | null; status: CaseStatus }>> {
+  const admin = createAdminClient();
+  const rows = await fetchAllIn<{ id: string; predecessor_case_id: string | null; support_type_id: string; status: CaseStatus }>(sourceCaseIds, (chunk, from, to) =>
+    admin.from('cases').select('id, predecessor_case_id, support_type_id, status').in('predecessor_case_id', chunk).range(from, to),
+  );
+  const typeIds = Array.from(new Set(rows.map((r) => r.support_type_id)));
+  const { data: types } = typeIds.length ? await admin.from('support_types').select('id, name').in('id', typeIds) : { data: [] as { id: string; name: string }[] };
+  const nameOf = new Map((types ?? []).map((t) => [t.id, t.name]));
+  const out = new Map<string, { caseId: string; supportTypeId: string; supportTypeName: string | null; status: CaseStatus }>();
+  for (const r of rows) {
+    if (!r.predecessor_case_id) continue;
+    // 중도 종료된 승계 케이스는 "승계됨"으로 치지 않는다(재승계 가능)
+    if (r.status === 'withdrawn' && out.has(r.predecessor_case_id)) continue;
+    const prev = out.get(r.predecessor_case_id);
+    if (prev && prev.status !== 'withdrawn') continue;
+    out.set(r.predecessor_case_id, { caseId: r.id, supportTypeId: r.support_type_id, supportTypeName: nameOf.get(r.support_type_id) ?? null, status: r.status });
   }
   return out;
 }
@@ -280,7 +324,7 @@ export async function listMentorsForProgram(
   const [{ data: users }, { data: roster }] = await Promise.all([
     supabase.from('users').select('id, name').in('id', ids).eq('is_active', true).order('name'),
     supportTypeId
-      ? supabase.from('support_type_members').select('user_id').eq('support_type_id', supportTypeId).eq('is_active', true)
+      ? supabase.from('support_type_members').select('user_id').eq('support_type_id', supportTypeId).eq('member_role', 'mentor').eq('is_active', true)
       : Promise.resolve({ data: [] as { user_id: string }[] }),
   ]);
   const inGroup = new Set((roster ?? []).map((r) => r.user_id));

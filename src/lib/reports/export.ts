@@ -2,15 +2,25 @@ import 'server-only';
 
 import * as XLSX from 'xlsx';
 
-import type { ProgramMetrics } from '@/lib/reports/metrics';
+import { periodLabel, type ProgramMetrics } from '@/lib/reports/metrics';
+import type { TrendMonth } from '@/lib/reports/trend';
+import type { MentorMatchRow } from '@/lib/data/matching-lists';
 import type { CaseListItem } from '@/lib/data/cases';
 import type { SettlementItem } from '@/lib/data/settlements';
 import { CASE_STATUSES, CASE_STATUS_META } from '@/types/case-status';
 import { WITHHOLDING_LABELS } from '@/lib/settlement/compute';
 
-/** 리포트 엑셀 — 탭별 시트 (수치는 metrics 한 곳에서) */
-export function buildReportWorkbook(tab: string, m: ProgramMetrics, cases: CaseListItem[], settlements: SettlementItem[], programName: string): Buffer {
+/** 엑셀 파일명 — 기간이 있으면 붙인다 (라우트가 사용) */
+export function reportFileName(programName: string, tab: string, m: ProgramMetrics): string {
+  const p = m.scope.period;
+  const period = p && (p.from || p.to) ? `_${p.from ?? ''}~${p.to ?? ''}` : '';
+  return `${programName}_리포트_${tab}${period}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+}
+
+/** 리포트 엑셀 — 탭별 시트 (수치는 metrics 한 곳에서). extra 로 월별 추이·멘토 진행현황 시트를 덧붙인다 (P30) */
+export function buildReportWorkbook(tab: string, m: ProgramMetrics, cases: CaseListItem[], settlements: SettlementItem[], programName: string, extra: { trend?: TrendMonth[]; mentorProgress?: MentorMatchRow[] } = {}): Buffer {
   const wb = XLSX.utils.book_new();
+  const period = periodLabel(m.scope.period);
   const add = (name: string, rows: unknown[][]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), name.slice(0, 31));
 
   if (tab === 'overview') {
@@ -19,9 +29,10 @@ export function buildReportWorkbook(tab: string, m: ProgramMetrics, cases: CaseL
     const s = m.settlement;
     add('개요', [
       [`${programName} 리포트`, m.scope.generatedAt],
+      ['기간', period],
       [],
       ['수행 성과'],
-      ['케이스', p.cases], ['이행 회차', p.roundsDone], ['계획 회차', p.roundsPlanned], ['완료 회차(정산 확정)', p.roundsCompleted], ['종결', p.closed], ['종결률', p.closureRate], ['온라인 회차', p.onlineRounds], ['오프라인 회차', p.offlineRounds],
+      ['케이스', p.cases], ['기간 내 신규', p.newCases], ['기간 내 종결', p.closedCases], ['이행 회차', p.roundsDone], ['계획 회차', p.roundsPlanned], ['완료 회차(정산 확정)', p.roundsCompleted], ['종결', p.closed], ['종결률', p.closureRate], ['온라인 회차', p.onlineRounds], ['오프라인 회차', p.offlineRounds],
       [],
       ['잔여 과업(지연·미처리)'],
       ['미배정', b.unassigned], ['잔여 회차', b.remainingRounds], [`정체(${b.stalledDays}일)`, b.stalled], ['검수 대기', b.reviewPending], ['보완 요청 중', b.revisionRequested], ['재배정 대기', b.reassignmentPending], ['미서명 회차', b.unsignedRounds], ['미응답 설문', b.unansweredSurveys], ['지급서류 미비 멘토', b.mentorsMissingDocs], ['미처리 요청', b.pendingRequests],
@@ -41,7 +52,7 @@ export function buildReportWorkbook(tab: string, m: ProgramMetrics, cases: CaseL
     add('멘토 실적', [['멘토', '담당', '활성', '이행 회차', '완료 회차', '온라인', '오프라인', '종결', '확정 실지급', '만족도', '운영사 평가'], ...m.mentors.map((x) => [x.name, x.cases, x.activeCases, x.roundsDone, x.roundsCompleted, x.online, x.offline, x.closed, x.settledNet, x.surveyAvg ?? '', x.reviewAvg ?? ''])]);
   }
   if (tab === 'overview' || tab === 'groups') {
-    add('그룹 실적', [['코드', '그룹', '상태', '케이스', '이행 회차', '계획 회차', '종결', '승계 유입', '승계 유출', '만족도', '확정 실지급'], ...m.groups.map((g) => [g.code, g.name, g.status, g.cases, g.roundsDone, g.roundsPlanned, g.closed, g.succeededFrom, g.succeededTo, g.surveyAvg ?? '', g.settledNet])]);
+    add('그룹 실적', [['코드', '그룹', '상태', '케이스', '이행 회차', '계획 회차', '종결', '승계 유입', '승계 유출', '재배치 유입', '재배치 유출', '만족도', '확정 실지급'], ...m.groups.map((g) => [g.code, g.name, g.status, g.cases, g.roundsDone, g.roundsPlanned, g.closed, g.succeededFrom, g.succeededTo, g.relocatedFrom, g.relocatedTo, g.surveyAvg ?? '', g.settledNet])]);
   }
   if (tab === 'overview' || tab === 'settlement') {
     add('정산 건', [
@@ -53,6 +64,15 @@ export function buildReportWorkbook(tab: string, m: ProgramMetrics, cases: CaseL
   if (tab === 'overview' || tab === 'survey') {
     add('만족도(그룹)', [['그룹', '평균', '응답 수'], ...m.evaluation.surveyByGroup.map((r) => [r.name, r.avg ?? '', r.n])]);
     add('만족도(멘토)', [['멘토', '평균', '응답 수'], ...m.evaluation.surveyByMentor.map((r) => [r.name, r.avg ?? '', r.n])]);
+  }
+  if ((tab === 'overview' || tab === 'trend') && extra.trend) {
+    add('월별 추이', [['월', '이행 회차', '확정 지급총액', '신규 케이스', '종결 케이스'], ...extra.trend.map((t) => [t.month, t.rounds, t.settledGross, t.newCases, t.closedCases])]);
+  }
+  if ((tab === 'overview' || tab === 'cases' || tab === 'mentors') && extra.mentorProgress) {
+    add('멘토 진행현황', [
+      ['멘토', '소속', '담당 멘티', '이행 회차', '만족도', '운영사 평가'],
+      ...extra.mentorProgress.map((r) => [r.mentorName, r.organization ?? '', r.mentees.map((x) => x.label).join(', '), r.roundsDone, r.surveyAvg ?? '', r.reviewAvg ?? '']),
+    ]);
   }
   if (wb.SheetNames.length === 0) add('빈 시트', [['데이터 없음']]);
   return Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as ArrayBuffer);

@@ -21,7 +21,7 @@ export default async function InstitutionLayout({ children }: { children: React.
       />
       <InstitutionNav />
       <ScopeSwitcher
-        groups={groups.map((g) => ({ id: g.group.id, code: g.group.code, name: g.group.name, caseCount: g.caseCount, ended: g.group.status !== 'active' }))}
+        groups={groups.map((g) => ({ id: g.group.id, code: g.group.code, name: g.group.name, caseCount: g.caseCount, ended: g.group.status !== 'active', mine: g.mine }))}
         currentGroupId={ctx.supportTypeId}
       />
       <div className="mx-auto max-w-6xl px-4 py-6 pb-24 md:pb-6">{children}</div>

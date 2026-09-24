@@ -30,6 +30,9 @@ interface AmountInputProps {
   disabled?: boolean;
   className?: string;
   'aria-label'?: string;
+  'aria-describedby'?: string;
+  /** 오른쪽 단위 표시 (기본 '원'). 빈 문자열이면 표시하지 않음 */
+  suffix?: string;
 }
 
 /**
@@ -44,6 +47,7 @@ export function AmountInput({
   onValueChange,
   defaultValue,
   className,
+  suffix = '원',
   ...rest
 }: AmountInputProps) {
   const controlled = value !== undefined;
@@ -51,13 +55,13 @@ export function AmountInput({
   const current = controlled ? toDigits(value ?? '') : raw;
 
   return (
-    <>
+    <span className="relative block">
       <Input
         {...rest}
         type="text"
         inputMode="numeric"
         autoComplete="off"
-        className={cn('text-right tabular-nums', className)}
+        className={cn('text-right tabular-nums', suffix && 'pr-8', className)}
         value={withCommas(current)}
         onChange={(e) => {
           const digits = toDigits(e.target.value);
@@ -65,7 +69,8 @@ export function AmountInput({
           onValueChange?.(digits);
         }}
       />
+      {suffix && <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">{suffix}</span>}
       {name && <input type="hidden" name={name} value={current} />}
-    </>
+    </span>
   );
 }

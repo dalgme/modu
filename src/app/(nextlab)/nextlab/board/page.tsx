@@ -2,10 +2,13 @@ import Link from 'next/link';
 
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
-import { listInquiries, INQUIRY_CATEGORY_LABELS, INQUIRY_STATUS_LABELS } from '@/lib/data/inquiries';
+import { listInquiries, countOpenInquiries, INQUIRY_CATEGORY_LABELS, INQUIRY_STATUS_LABELS } from '@/lib/data/inquiries';
 import { listBoardPosts } from '@/lib/data/board';
 import { listInbox } from '@/lib/data/requests';
-import { listOperatorRequests } from '@/lib/data/operator-requests';
+import { listOperatorRequests, countUnreadOperatorRequests } from '@/lib/data/operator-requests';
+import { OperatorRequestsPanel } from '@/components/nextlab/operator-requests-panel';
+import { SubTabs } from '@/components/common/sub-tabs';
+import { hasCapability } from '@/lib/auth/capabilities';
 import { listAllFaqs } from '@/lib/data/faqs';
 import { listProgramMessages } from '@/lib/messages/data';
 import { InquiryAnswerForm } from '@/components/inquiries/inquiry-answer-form';
@@ -63,20 +66,28 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 /** 게시판 통합 탭 (P20) — 멘티 문의 · 멘토·운영 게시판 · 요청함 · 멘토·멘티 메시지 · 멘토 FAQ */
-export default async function Page({ searchParams }: { searchParams: { tab?: string; from?: string; sub?: string } }) {
+export default async function Page({ searchParams }: { searchParams: { tab?: string; from?: string; sub?: string; open?: string } }) {
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
   const tab = (TABS.find((t) => t.key === searchParams.tab)?.key ?? 'all') as TabKey;
   const from = SENDER_FILTERS.find((f) => f.key === searchParams.from)?.key ?? '';
+  const canReview = hasCapability(ctx, 'review');
+  // 탭 배지: 미답변 문의 · 처리 대기 요청(요청함 대기 + 발주처 요청 미확인)
+  const [openInquiryCount, unreadOpReqCount, pendingInbox] = await Promise.all([
+    countOpenInquiries(ctx.programId),
+    countUnreadOperatorRequests(ctx.programId),
+    listInbox(ctx.programId, ctx.supportTypeId ?? undefined, true),
+  ]);
+  const tabCounts: Partial<Record<TabKey, number>> = { inquiries: openInquiryCount, requests: pendingInbox.length + unreadOpReqCount };
 
   let body: React.ReactNode = null;
 
   if (tab === 'all') {
     const [inquiries, posts, inbox, opReqs, messages] = await Promise.all([
-      listInquiries(),
-      listBoardPosts(),
+      listInquiries(ctx.programId),
+      listBoardPosts(ctx.programId),
       listInbox(ctx.programId, ctx.supportTypeId ?? undefined, false),
-      listOperatorRequests(),
+      listOperatorRequests(ctx.programId),
       listProgramMessages(ctx.programId),
     ]);
     const rows: UnifiedRow[] = [
@@ -109,12 +120,12 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
       })),
       ...opReqs.map((r) => ({
         id: `opr-${r.id}`,
-        title: cut20(r.title || r.body),
-        senderRole: 'mentor',
+        title: cut20(`발주처 요청 — ${r.title || r.body}`),
+        senderRole: 'institution',
         senderName: r.createdByName ?? '-',
         at: r.created_at,
-        checked: !!r.read_at,
-        href: '/nextlab/dashboard',
+        checked: !!r.done_at || !!r.read_at,
+        href: '/nextlab/board?tab=requests',
       })),
       ...messages.map((m) => ({
         id: `msg-${m.id}`,
@@ -184,13 +195,20 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   }
 
   if (tab === 'inquiries') {
-    const inquiries = await listInquiries();
-    const openCount = inquiries.filter((q) => q.status === 'open').length;
+    const onlyOpen = searchParams.open === '1';
+    const inquiries = await listInquiries(ctx.programId, { onlyOpen });
+    const openCount = onlyOpen ? inquiries.length : inquiries.filter((q) => q.status === 'open').length;
     body = (
       <div className="flex flex-col gap-3">
-        <p className="text-sm text-muted-foreground">멘티 문의를 확인하고 답변합니다. 미답변 <span className="font-semibold text-status-progress">{openCount}건</span></p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-muted-foreground">멘티 문의를 확인하고 답변합니다. 미답변 <span className="font-semibold text-status-progress">{openCount}건</span></p>
+          <div className="flex gap-1">
+            <Link href="/nextlab/board?tab=inquiries" className={`rounded-full px-3 py-1 text-xs font-semibold ${!onlyOpen ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>전체</Link>
+            <Link href="/nextlab/board?tab=inquiries&open=1" className={`rounded-full px-3 py-1 text-xs font-semibold ${onlyOpen ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>미답변만</Link>
+          </div>
+        </div>
         {inquiries.length === 0 ? (
-          <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">접수된 문의가 없습니다.</div>
+          <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">{onlyOpen ? '미답변 문의가 없습니다.' : '접수된 문의가 없습니다.'}</div>
         ) : (
           inquiries.map((q) => {
             const answered = q.status !== 'open';
@@ -213,8 +231,13 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
                 <CardContent className="flex flex-col gap-3">
                   <p className="whitespace-pre-wrap text-sm">{q.body}</p>
                   <div className="rounded-md border bg-muted/30 p-3">
-                    <p className="mb-2 text-xs font-semibold text-muted-foreground">{q.answer ? '답변 (수정 가능)' : '답변 작성'}</p>
-                    <InquiryAnswerForm id={q.id} initialAnswer={q.answer ?? undefined} />
+                    <p className="mb-2 text-xs font-semibold text-muted-foreground">
+                      {q.answer ? '답변 (수정 가능)' : '답변 작성'}
+                      {q.answered_at && (
+                        <span className="ml-2 font-normal">— {q.answeredByName ?? '운영사'} · {formatDateTime(q.answered_at)}</span>
+                      )}
+                    </p>
+                    <InquiryAnswerForm id={q.id} initialAnswer={q.answer ?? undefined} updatedAt={q.updated_at} canAnswer={canReview} />
                   </div>
                 </CardContent>
               </Card>
@@ -226,7 +249,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   }
 
   if (tab === 'qna') {
-    const posts = await listBoardPosts();
+    const posts = await listBoardPosts(ctx.programId);
     body = (
       <div className="flex flex-col gap-3">
         <p className="text-sm text-muted-foreground">멘토단의 문의·요청을 확인하고 답변합니다. 운영사는 모든 글(운영사 전용 포함)을 볼 수 있습니다.</p>
@@ -237,7 +260,11 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
 
   if (tab === 'requests') {
     const all = searchParams.sub === 'all';
-    const items = await listInbox(ctx.programId, ctx.supportTypeId ?? undefined, !all);
+    const [items, opReqs] = await Promise.all([
+      all ? listInbox(ctx.programId, ctx.supportTypeId ?? undefined, false) : Promise.resolve(pendingInbox),
+      listOperatorRequests(ctx.programId),
+    ]);
+    const visibleOpReqs = all ? opReqs : opReqs.filter((r) => !r.done_at);
     body = (
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -248,6 +275,14 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
           </div>
         </div>
         <InboxList items={items} />
+        <div className="mt-2 flex flex-col gap-2">
+          <h2 className="flex items-center gap-2 text-base font-semibold">
+            발주처 요청
+            {unreadOpReqCount > 0 && <span className="rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground">NEW {unreadOpReqCount}</span>}
+            <span className="text-xs font-normal text-muted-foreground">{all ? '전체' : '미처리만'}</span>
+          </h2>
+          <OperatorRequestsPanel requests={visibleOpReqs} currentUserId={profile.id} canAct={canReview} />
+        </div>
       </div>
     );
   }
@@ -308,17 +343,11 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
           멘티 문의 · 멘토·운영 게시판 · 요청함 · 멘토·멘티 메시지 · 멘토 FAQ 를 한곳에서 봅니다. 새 글이 등록되면 대시보드에 알림이 표시됩니다.
         </p>
       </div>
-      <nav className="flex flex-wrap gap-1.5">
-        {TABS.map((t) => (
-          <Link
-            key={t.key}
-            href={`/nextlab/board?tab=${t.key}`}
-            className={`rounded-full px-3.5 py-1.5 text-sm font-semibold ${tab === t.key ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`}
-          >
-            {t.label}
-          </Link>
-        ))}
-      </nav>
+      <SubTabs
+        ariaLabel="게시판 탭"
+        active={tab}
+        items={TABS.map((t) => ({ key: t.key, label: t.label, href: `/nextlab/board?tab=${t.key}`, count: tabCounts[t.key] }))}
+      />
       {body}
     </main>
   );

@@ -6,6 +6,8 @@ import { requireContext } from '@/lib/programs/context';
 import { getCampaignDetail } from '@/lib/surveys/campaigns';
 import { CampaignActions } from '@/components/surveys/campaign-detail-panel';
 import { formatDateTime } from '@/lib/utils/format';
+import { ExcelButton } from '@/components/common/excel-button';
+import { StatusBadge } from '@/components/cases/status-badge';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,13 +24,16 @@ export default async function Page({ params }: { params: { id: string } }) {
 
   return (
     <main className="flex flex-col gap-5">
-      <div>
-        <Link href="/nextlab/surveys" className="text-sm text-muted-foreground hover:underline">← 조사 관리</Link>
-        <h1 className="mt-1 text-2xl font-semibold">{d.campaign.title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          {d.templateName} · {d.groupName ?? '행사 전체'} · {formatDateTime(d.campaign.starts_at)} ~ {d.campaign.ends_at ? formatDateTime(d.campaign.ends_at) : '수동 종료'} ·{' '}
-          <span className={d.campaign.status === 'open' ? 'font-semibold text-emerald-700' : 'text-muted-foreground'}>{d.campaign.status === 'open' ? '진행 중' : '종료'}</span>
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <Link href="/nextlab/surveys" className="text-sm text-muted-foreground hover:underline">← 조사 관리</Link>
+          <h1 className="mt-1 text-2xl font-semibold">{d.campaign.title}</h1>
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-muted-foreground">
+            <span>{d.templateName} · {d.groupName ?? '행사 전체'} · {formatDateTime(d.campaign.starts_at)} ~ {d.campaign.ends_at ? formatDateTime(d.campaign.ends_at) : '수동 종료'}</span>
+            <StatusBadge kind="survey" status={d.campaign.status} />
+          </p>
+        </div>
+        <ExcelButton href={`/api/nextlab/survey-export?id=${d.campaign.id}`} label="응답 엑셀" title="시트1 문항별 요약 · 시트2 대상자별 원자료" />
       </div>
 
       <section className="grid gap-3 sm:grid-cols-4">
@@ -38,7 +43,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         <div className="rounded-xl border bg-background p-4"><p className="text-xs text-muted-foreground">척도 평균</p><p className="mt-1 text-2xl font-semibold tabular-nums">{d.scoreAvg ?? '-'}</p></div>
       </section>
 
-      <CampaignActions campaignId={d.campaign.id} status={d.campaign.status} unresponded={unresponded.length} />
+      <CampaignActions campaignId={d.campaign.id} status={d.campaign.status} unresponded={unresponded.length} total={d.targets.length} programName={ctx.program.name} title={d.campaign.title} />
 
       <section className="flex flex-col gap-3">
         <h2 className="text-base font-semibold">문항별 실시간 분석</h2>

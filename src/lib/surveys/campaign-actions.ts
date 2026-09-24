@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
 import { denyUnless } from '@/lib/auth/capabilities';
-import { createCampaign, notifyCampaignTargets, setCampaignStatus, submitTokenResponse, type AudienceInput } from '@/lib/surveys/campaigns';
+import { createCampaign, duplicateCampaign, notifyCampaignTargets, setCampaignStatus, submitTokenResponse, type AudienceInput } from '@/lib/surveys/campaigns';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -72,6 +72,16 @@ export async function notifyCampaignAction(campaignId: string, onlyUnresponded: 
   if (!(await campaignInProgram(campaignId, op.programId))) return { ok: false, error: '이 행사의 조사가 아닙니다.' };
   const r = await notifyCampaignTargets(campaignId, op.id, { onlyUnresponded, message });
   if (r.ok) revalidatePath(`/nextlab/surveys/${campaignId}`);
+  return r;
+}
+
+/** 조사 복제 (P30) — 제목·양식·안내문·대상 규칙 복사, 대상자 새 스냅샷, 오늘~+14일, draft 로 생성 */
+export async function duplicateCampaignAction(campaignId: string): Promise<Result<{ id: string; targets: number }>> {
+  const op = await operator();
+  if ('error' in op) return { ok: false, error: op.error };
+  if (!(await campaignInProgram(campaignId, op.programId))) return { ok: false, error: '이 행사의 조사가 아닙니다.' };
+  const r = await duplicateCampaign(campaignId, op.programId, op.id);
+  if (r.ok) revalidatePath('/nextlab/surveys');
   return r;
 }
 

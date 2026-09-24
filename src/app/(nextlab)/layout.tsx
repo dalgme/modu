@@ -23,7 +23,7 @@ export default async function NextlabLayout({ children }: { children: React.Reac
       />
       <NextlabNav />
       <ScopeSwitcher
-        groups={groups.map((g) => ({ id: g.group.id, code: g.group.code, name: g.group.name, caseCount: g.caseCount, ended: g.group.status !== 'active' }))}
+        groups={groups.map((g) => ({ id: g.group.id, code: g.group.code, name: g.group.name, caseCount: g.caseCount, ended: g.group.status !== 'active', mine: g.mine }))}
         currentGroupId={ctx.supportTypeId}
         emptyHref="/nextlab/settings?tab=groups"
       />

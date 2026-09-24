@@ -18,9 +18,9 @@ import { getMentorFormSettings, templateSignedUrl } from '@/lib/mentor-forms/dat
 import { listSupportTypes } from '@/lib/programs/data';
 import { featureEnabled } from '@/lib/platform/features';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { listCases } from '@/lib/data/cases';
+import { listCases, mapSuccessors } from '@/lib/data/cases';
 import { loadProgramAuditRows } from '@/lib/audit/rows';
-import { SuccessionPanel } from '@/components/nextlab/succession-panel';
+import { SUCCESSION_FILTERS, SuccessionPanel, type SuccessionFilter, type SuccessionMode, type SuccessorInfo } from '@/components/nextlab/succession-panel';
 import { AuditTable } from '@/components/audit/audit-table';
 import { BudgetForm } from '@/components/settings/budget-form';
 import { MatchingRulesForm } from '@/components/settings/matching-rules-form';
@@ -53,7 +53,7 @@ const SETTING_GROUPS: { label: string; keys: string[]; extra?: { href: string; l
 ];
 
 /** 운영 설정 (docs/MODU-DESIGN.md §16) — 탭별 서버 렌더. 승계 개설·감사 로그도 미니탭 (P20) */
-export default async function Page({ searchParams }: { searchParams: { tab?: string; source?: string } }) {
+export default async function Page({ searchParams }: { searchParams: { tab?: string; source?: string; mode?: string; filter?: string } }) {
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
   // 플랫폼 기능 플래그 (P15) — 비활성 기능의 탭은 노출하지 않는다
@@ -70,11 +70,11 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     const groups = await listGroupsWithDocs(ctx.programId);
     const avail: Record<string, boolean> = {};
     for (const g of groups) avail[g.id] = (await resolveRoundReportTemplate(ctx.programId, g.id)).hasMentorSign;
-    body = <GroupsManager groups={groups} reportSignAvailable={avail} />;
+    body = <GroupsManager groups={groups} reportSignAvailable={avail} defaultRequiredRounds={program.default_required_rounds} canDelete={!ctx.grade || ctx.grade === 'pl'} />;
   }
   if (tab === 'rates') {
     const [rates, limits, groups] = await Promise.all([listRates(ctx.programId), listLimits(ctx.programId), listGroupsWithDocs(ctx.programId)]);
-    body = <RatesLimits rates={rates} limits={limits} groups={groups.map((g) => ({ id: g.id, name: g.name }))} today={today} />;
+    body = <RatesLimits defaultGroupId={ctx.supportTypeId ?? null} rates={rates} limits={limits} groups={groups.map((g) => ({ id: g.id, name: g.name }))} today={today} />;
   }
   if (tab === 'withholding') body = <WithholdingForm program={program} />;
   if (tab === 'budget') {
@@ -147,11 +147,20 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   if (tab === 'permissions') body = <StaffPermissionsForm override={ctx.program.staff_permissions} canEdit={!ctx.grade || ctx.grade === 'pl'} />;
   if (tab === 'succession') {
     const groups = await listSupportTypes(ctx.programId);
-    const source = groups.find((g) => g.id === searchParams.source)?.id ?? groups[0]?.id ?? '';
-    const cases = source ? await listCases({ programId: ctx.programId, supportTypeId: source }) : [];
+    const mode: SuccessionMode = searchParams.mode === 'relocation' ? 'relocation' : 'succession';
+    // 원천 그룹 기본값 = 현재 범위 그룹 (P30)
+    const source = groups.find((g) => g.id === searchParams.source)?.id ?? groups.find((g) => g.id === ctx.supportTypeId)?.id ?? groups[0]?.id ?? '';
+    const filterKey: SuccessionFilter = mode === 'relocation' ? 'withdrawn' : (SUCCESSION_FILTERS.find((f) => f.key === searchParams.filter)?.key ?? 'completed');
+    const statuses = SUCCESSION_FILTERS.find((f) => f.key === filterKey)?.statuses ?? null;
+    const cases = mode === 'relocation'
+      ? await listCases({ programId: ctx.programId, status: 'withdrawn' })
+      : source ? await listCases({ programId: ctx.programId, supportTypeId: source, statuses: statuses ?? undefined }) : [];
+    const succMap = await mapSuccessors(cases.map((c) => c.id));
+    const successors: Record<string, SuccessorInfo> = {};
+    succMap.forEach((v, k) => { successors[k] = { caseId: v.caseId, supportTypeName: v.supportTypeName, status: v.status }; });
     body = (
       <div className="flex flex-col gap-3">
-        <p className="text-sm text-muted-foreground">이전 단계 그룹의 멘티를 다음 그룹으로 승계합니다. 새 케이스를 만들고 이전 케이스를 연결(predecessor)하며, 이전 그룹의 회차·서류·정산은 그대로 보존됩니다.</p>
+        <p className="text-sm text-muted-foreground">이전 단계 그룹의 멘티를 다음 그룹으로 승계하거나, 중도 종료(탈락) 멘티를 새 그룹에 재배치합니다. 새 케이스를 만들고 이전 케이스를 연결(predecessor)하며, 이전 그룹의 회차·서류·정산은 그대로 보존됩니다.</p>
         {groups.length === 0 ? (
           <p className="text-sm text-muted-foreground">사업그룹이 없습니다.</p>
         ) : (
@@ -159,6 +168,9 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             groups={groups.map((g) => ({ id: g.id, name: g.name, code: g.code, status: g.status, predecessor_support_type_id: g.predecessor_support_type_id }))}
             sourceGroupId={source}
             cases={cases}
+            successors={successors}
+            mode={mode}
+            filter={filterKey}
           />
         )}
       </div>

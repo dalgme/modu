@@ -235,7 +235,7 @@ export async function assignMentor(caseId: string, mentorId: string, actorId: st
     .insert({ case_id: caseId, mentor_id: mentorId, assigned_by: actorId, is_active: true, match_method: method })
     .select('id')
     .single();
-  if (assignError || !assignment) return { ok: false, error: assignError?.message ?? '멘토 배정에 실패했습니다.' };
+  if (assignError || !assignment) return { ok: false, error: assignError?.code === '23505' ? ASSIGN_RACE_ERROR : (assignError?.message ?? '멘토 배정에 실패했습니다.') };
 
   const to = assignTarget(c.status);
   const { data: updated } = await admin
@@ -277,7 +277,16 @@ export async function assignMentor(caseId: string, mentorId: string, actorId: st
  * T3 멘토 교체(상태 유지). 현재 활성 배정을 종료(end_kind=reassigned)하고 새 배정을 만든다.
  * 회차는 케이스 누적이라 승계된다. 이미 이행한 회차의 정산은 P4(부분 정산)에서 처리.
  */
-export async function reassignMentor(caseId: string, newMentorId: string, actorId: string, reason?: string, method: MatchMethod = 'manual'): Promise<WorkflowResult> {
+const ASSIGN_RACE_ERROR = '다른 담당자가 방금 배정했습니다. 새로고침하세요.';
+
+export async function reassignMentor(
+  caseId: string,
+  newMentorId: string,
+  actorId: string,
+  reason?: string,
+  method: MatchMethod = 'manual',
+  opts: { /** 화면이 알고 있던 현재 멘토 — 다르면 동시 변경으로 보고 거부 */ expectedCurrentMentorId?: string } = {},
+): Promise<WorkflowResult> {
   const admin = createAdminClient();
   const { data: c } = await admin
     .from('cases')
@@ -297,6 +306,9 @@ export async function reassignMentor(caseId: string, newMentorId: string, actorI
     .eq('is_active', true)
     .maybeSingle();
   if (!current) return { ok: false, error: '활성 멘토 배정이 없습니다. 신규 배정을 사용하세요.' };
+  if (opts.expectedCurrentMentorId && current.mentor_id !== opts.expectedCurrentMentorId) {
+    return { ok: false, error: '다른 담당자가 방금 이 케이스의 멘토를 변경했습니다. 새로고침 후 다시 확인하세요.' };
+  }
   if (current.mentor_id === newMentorId) return { ok: false, error: '현재 멘토와 동일합니다. 다른 멘토를 선택하세요.' };
   const eligibleErr = await assertMentorEligible(newMentorId, c.support_type_id);
   if (eligibleErr) return { ok: false, error: eligibleErr };
@@ -318,7 +330,7 @@ export async function reassignMentor(caseId: string, newMentorId: string, actorI
       .from('mentor_assignments')
       .update({ is_active: true, ended_at: null, ended_by: null, end_kind: null, end_reason: null })
       .eq('id', current.id);
-    return { ok: false, error: insErr.message };
+    return { ok: false, error: insErr.code === '23505' ? ASSIGN_RACE_ERROR : insErr.message };
   }
 
   await ensureGroupRoster(c.support_type_id, newMentorId, c.program_id);

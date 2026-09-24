@@ -17,6 +17,8 @@ export interface BoardReplyItem {
 export interface BoardPostItem {
   id: string;
   author_id: string;
+  /** 행사 (0080) — 레거시 글은 null */
+  program_id?: string | null;
   title: string;
   body: string;
   visibility: 'all' | 'nextlab_only';
@@ -33,14 +35,16 @@ function loose() {
 
 /**
  * 문의·요청 게시판: 현재 사용자가 열람 가능한 글 + 답변 (RLS 로 가시성 자동 제한).
- * 최신 글 먼저, 답변은 오래된 순.
+ * 최신 글 먼저, 답변은 오래된 순. programId 를 주면 그 행사 글만 (0080) — 스태프 호출부는 ctx.programId 를 넘길 것.
  */
-export async function listBoardPosts(): Promise<BoardPostItem[]> {
+export async function listBoardPosts(programId?: string | null): Promise<BoardPostItem[]> {
   const board = loose();
-  const { data: postRows } = await board
+  let q = board
     .from('board_posts')
     .select('*')
     .order('created_at', { ascending: false });
+  if (programId) q = q.eq('program_id', programId);
+  const { data: postRows } = await q;
   const posts = (postRows ?? []) as Omit<BoardPostItem, 'authorName' | 'authorRole' | 'replies'>[];
   if (posts.length === 0) return [];
 

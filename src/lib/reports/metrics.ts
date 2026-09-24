@@ -9,10 +9,35 @@ import { SURVEY_OPEN_STATUSES } from '@/lib/workflow/mentee';
  * 리포트·대시보드 수치 — **한 곳**에서 계산 (docs/MODU-DESIGN.md §19).
  * 대시보드 타일, 리포트 화면, 엑셀 내보내기가 모두 이 함수를 쓴다. 행사(+그룹) 범위, service_role + 코드 필터.
  */
+/** 리포트 기간 (KST 날짜, 양끝 포함). 회차 = 보고서 등록일, 정산 = 확정일, 케이스 신규/종결 = 등록일/종결일 기준 (P30) */
+export interface ReportPeriod {
+  from?: string | null;
+  to?: string | null;
+}
+
+/** 기간 안인가 — from/to 가 없으면 항상 true. ISO 시각을 KST 날짜로 바꿔 비교 */
+export function inPeriod(iso: string | null | undefined, period?: ReportPeriod | null): boolean {
+  if (!period || (!period.from && !period.to)) return true;
+  if (!iso) return false;
+  const day = new Date(new Date(iso).getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  if (period.from && day < period.from) return false;
+  if (period.to && day > period.to) return false;
+  return true;
+}
+
+export function periodLabel(period?: ReportPeriod | null): string {
+  if (!period || (!period.from && !period.to)) return '전체 기간';
+  return `${period.from ?? '…'} ~ ${period.to ?? '…'}`;
+}
+
 export interface ProgramMetrics {
-  scope: { programId: string; supportTypeId: string | null; generatedAt: string };
+  scope: { programId: string; supportTypeId: string | null; generatedAt: string; period?: ReportPeriod | null };
   performance: {
     cases: number;
+    /** 기간 내 신규 등록 케이스 (기간 없으면 = cases) */
+    newCases: number;
+    /** 기간 내 종결(closed_at) 케이스 (기간 없으면 = closed) */
+    closedCases: number;
     byStatus: Record<CaseStatus, number>;
     roundsDone: number;
     roundsPlanned: number;
@@ -67,8 +92,10 @@ export interface GroupMetric {
   roundsDone: number;
   roundsPlanned: number;
   closed: number;
-  succeededFrom: number; // 승계로 들어온 케이스
+  succeededFrom: number; // 승계로 들어온 케이스 (이전 케이스가 수료·진행)
   succeededTo: number; // 다음 그룹으로 승계된 케이스
+  relocatedFrom: number; // 재배치로 들어온 케이스 (이전 케이스가 중도 종료)
+  relocatedTo: number; // 중도 종료 후 다른 그룹에 재배치된 케이스
   surveyAvg: number | null;
   settledNet: number;
 }
@@ -97,12 +124,13 @@ function avg(list: number[]): number | null {
   return list.length ? Math.round((list.reduce((a, b) => a + b, 0) / list.length) * 100) / 100 : null;
 }
 
-export async function computeProgramMetrics(programId: string, supportTypeId?: string | null): Promise<ProgramMetrics> {
+export async function computeProgramMetrics(programId: string, supportTypeId?: string | null, period?: ReportPeriod | null): Promise<ProgramMetrics> {
   const admin = createAdminClient();
+  const hasPeriod = !!(period && (period.from || period.to));
   const { data: groupsRaw } = await admin.from('support_types').select('id, code, name, status, required_rounds').eq('program_id', programId).order('sort_order');
   const groups = (groupsRaw ?? []).filter((g) => !supportTypeId || g.id === supportTypeId);
   const groupIds = groups.map((g) => g.id);
-  let casesQ = admin.from('cases').select('id, support_type_id, status, predecessor_case_id, created_at').eq('program_id', programId);
+  let casesQ = admin.from('cases').select('id, support_type_id, status, predecessor_case_id, created_at, closed_at').eq('program_id', programId);
   if (supportTypeId) casesQ = casesQ.eq('support_type_id', supportTypeId);
   const { data: casesRaw } = await casesQ;
   const cases = casesRaw ?? [];
@@ -115,8 +143,8 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
         fetchAllIn<{ id: string; case_id: string; mentor_id: string; mode: string; amount_snapshot: number; settlement_id: string | null; started_at: string; mentee_signed_at: string | null; report_registered_at: string | null }>(caseIds, (chunk, from, to) =>
           admin.from('mentoring_logs').select('id, case_id, mentor_id, mode, amount_snapshot, settlement_id, started_at, mentee_signed_at, report_registered_at').in('case_id', chunk).range(from, to),
         ),
-        fetchAllIn<{ case_id: string; mentor_id: string; status: string; net: number; withholding: number; withholding_method: string }>(caseIds, (chunk, from, to) =>
-          admin.from('settlements').select('case_id, mentor_id, status, net, withholding, withholding_method').in('case_id', chunk).neq('status', 'canceled').range(from, to),
+        fetchAllIn<{ case_id: string; mentor_id: string; status: string; net: number; withholding: number; withholding_method: string; confirmed_at: string | null; created_at: string }>(caseIds, (chunk, from, to) =>
+          admin.from('settlements').select('case_id, mentor_id, status, net, withholding, withholding_method, confirmed_at, created_at').in('case_id', chunk).neq('status', 'canceled').range(from, to),
         ),
         fetchAllIn<{ case_id: string; score: number | null }>(caseIds, (chunk, from, to) => admin.from('survey_responses').select('case_id, score').in('case_id', chunk).range(from, to)),
         fetchAllIn<{ case_id: string; mentor_id: string; is_active: boolean; assigned_at: string }>(caseIds, (chunk, from, to) =>
@@ -128,19 +156,25 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
         admin.from('mentor_payment_docs').select('user_id, resume_state, bankbook_state, id_card_state').eq('program_id', programId),
         admin.from('mentor_group_reviews').select('mentor_id, rating').eq('program_id', programId).is('deleted_at', null),
         admin.from('round_extension_requests').select('case_id, extra_rounds').in('case_id', caseIds).eq('status', 'approved'),
-        admin.from('cases').select('id, predecessor_case_id').eq('program_id', programId).in('predecessor_case_id', caseIds),
+        admin.from('cases').select('id, predecessor_case_id, status').eq('program_id', programId).in('predecessor_case_id', caseIds),
         admin.from('program_members').select('user_id').eq('program_id', programId).eq('is_active', true),
       ])
     : [[], [], [], [], { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }];
   // 이행 회차 = 보고서(2단계) 등록 회차만 (CLAUDE.md §3-1). 계획만 있는 회차는 roundsScheduled 로만 센다.
   const allLogs = logsAll as { id: string; case_id: string; mentor_id: string; mode: string; amount_snapshot: number; settlement_id: string | null; started_at: string; mentee_signed_at: string | null; report_registered_at: string | null }[];
-  const logs = allLogs.filter((l) => l.report_registered_at);
-  const settlements = settlementsAll as { case_id: string; mentor_id: string; status: string; net: number; withholding: number; withholding_method: string }[];
+  // 기간 필터 (P30): 회차 = 보고서 등록일, 정산 = 확정일(없으면 생성일)
+  const logs = allLogs.filter((l) => l.report_registered_at && inPeriod(l.report_registered_at, period));
+  const settlements = (settlementsAll as { case_id: string; mentor_id: string; status: string; net: number; withholding: number; withholding_method: string; confirmed_at: string | null; created_at: string }[]).filter((st) => inPeriod(st.confirmed_at ?? st.created_at, period));
   const responses = responsesAll as { case_id: string; score: number | null }[];
   // assigned_at 오름차순 — "마지막 배정" 판정이 순서에 의존한다
   const assigns = assignsAll as { case_id: string; mentor_id: string; is_active: boolean; assigned_at: string }[];
   const extras = (extraR.data ?? []) as { case_id: string; extra_rounds: number }[];
-  const succ = (succR.data ?? []) as { id: string; predecessor_case_id: string | null }[];
+  const succ = (succR.data ?? []) as { id: string; predecessor_case_id: string | null; status: string }[];
+  // 승계 vs 재배치: 이전 케이스가 중도 종료(withdrawn)면 재배치 (P30)
+  const predIds = Array.from(new Set(cases.map((c) => c.predecessor_case_id).filter((x): x is string => !!x)));
+  const { data: preds } = predIds.length ? await admin.from('cases').select('id, status').in('id', predIds) : { data: [] as { id: string; status: string }[] };
+  const predStatus = new Map((preds ?? []).map((p) => [p.id, p.status]));
+  const statusOf = new Map(cases.map((c) => [c.id, c.status]));
   const reviews = (reviewsR.data ?? []) as { mentor_id: string; rating: number | null }[];
 
   const groupOf = new Map(cases.map((c) => [c.id, c.support_type_id]));
@@ -157,6 +191,8 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
   for (const c of cases) byStatus[c.status as CaseStatus] += 1;
   const roundsPlanned = cases.filter((c) => c.status !== 'withdrawn').reduce((a, c) => a + plannedOf(c.id), 0);
   const closed = byStatus.closed;
+  const newCases = hasPeriod ? cases.filter((c) => inPeriod(c.created_at, period)).length : cases.length;
+  const closedCases = hasPeriod ? cases.filter((c) => c.status === 'closed' && inPeriod(c.closed_at, period)).length : closed;
 
   // ---- backlog
   const now = Date.now();
@@ -223,8 +259,10 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
       roundsDone: gLogs.length,
       roundsPlanned: gc.filter((c) => c.status !== 'withdrawn').reduce((a, c) => a + plannedOf(c.id), 0),
       closed: st.closed,
-      succeededFrom: gc.filter((c) => c.predecessor_case_id).length,
-      succeededTo: succ.filter((s) => s.predecessor_case_id && gcIds.has(s.predecessor_case_id)).length,
+      succeededFrom: gc.filter((c) => c.predecessor_case_id && predStatus.get(c.predecessor_case_id) !== 'withdrawn').length,
+      succeededTo: succ.filter((s) => s.predecessor_case_id && gcIds.has(s.predecessor_case_id) && statusOf.get(s.predecessor_case_id) !== 'withdrawn').length,
+      relocatedFrom: gc.filter((c) => c.predecessor_case_id && predStatus.get(c.predecessor_case_id) === 'withdrawn').length,
+      relocatedTo: succ.filter((s) => s.predecessor_case_id && gcIds.has(s.predecessor_case_id) && statusOf.get(s.predecessor_case_id) === 'withdrawn').length,
       surveyAvg: avg(gScores),
       settledNet: settlements.filter((s) => gcIds.has(s.case_id)).reduce((a, s) => a + Number(s.net), 0),
     };
@@ -257,9 +295,11 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
   void groupIds;
   void membersR;
   return {
-    scope: { programId, supportTypeId: supportTypeId ?? null, generatedAt: new Date().toISOString() },
+    scope: { programId, supportTypeId: supportTypeId ?? null, generatedAt: new Date().toISOString(), period: hasPeriod ? { from: period?.from ?? null, to: period?.to ?? null } : null },
     performance: {
       cases: cases.length,
+      newCases,
+      closedCases,
       byStatus,
       roundsDone: logs.length,
       roundsPlanned,

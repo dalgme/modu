@@ -21,7 +21,10 @@ import {
   deleteRosterColumnAction,
   setRosterValueAction,
   sendLoginGuideAction,
+  getStaffGroupsAction,
+  setStaffGroupsAction,
   type MemberActionState,
+  type StaffGroupsInfo,
 } from '@/lib/auth/member-actions';
 import { ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
 import { GRADE_LABELS, STAFF_GRADES, type StaffGrade } from '@/lib/auth/capabilities';
@@ -190,11 +193,12 @@ export function CreateMemberForm({ fixedRole }: { fixedRole?: UserRole }) {
             {showGrade && (
               <div className="flex flex-col gap-2">
                 <Label htmlFor="m-grade">운영사 등급 <span className="text-xs font-normal text-muted-foreground">(운영사 역할일 때)</span></Label>
-                <select id="m-grade" name="grade" defaultValue="pl" className="h-10 rounded-md border border-input bg-background px-3 text-sm">
+                <select id="m-grade" name="grade" defaultValue="observer" className="h-10 rounded-md border border-input bg-background px-3 text-sm">
                   {STAFF_GRADES.map((g) => (
                     <option key={g} value={g}>{GRADE_LABELS[g]}</option>
                   ))}
                 </select>
+                <span className="text-[11px] text-muted-foreground">기본 옵저버(열람 전용). 메인 담당(PL) 지정은 PL 만 가능합니다.</span>
               </div>
             )}
             {(!fixedRole || fixedRole === 'nextlab') && (
@@ -302,6 +306,12 @@ function MemberDetailsForm({ member }: { member: MemberItem }) {
   return (
     <form action={action} className="flex flex-col gap-3">
       <input type="hidden" name="userId" value={member.id} />
+      {/* 렌더 시점 값 — 서버가 "내가 안 고친 필드는 DB 값 유지 / 둘 다 고친 필드는 충돌" 로 병합한다 (동시 수정 보호) */}
+      <input type="hidden" name="orig_name" value={member.name} />
+      <input type="hidden" name="orig_phone" value={member.phone ?? ''} />
+      <input type="hidden" name="orig_email" value={member.email ?? ''} />
+      <input type="hidden" name="orig_organization" value={member.organization ?? ''} />
+      <input type="hidden" name="orig_position" value={member.position ?? ''} />
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="flex flex-col gap-1">
           <Label className="text-xs" htmlFor={`ed-name-${member.id}`}>이름</Label>
@@ -355,6 +365,58 @@ function MemberDetailsForm({ member }: { member: MemberItem }) {
         <MentorGroupControls userId={member.id} mentorName={member.name} groups={member.mentorGroups} />
       )}
     </form>
+  );
+}
+
+/**
+ * 담당 그룹 칩 (운영사·발주처 담당자) — program_members.duty_groups. 열 때 서버에서 그룹 목록·현재 지정을 읽는다.
+ * 지정이 없으면 모든 그룹 담당(전체). 지정된 그룹은 범위 스위처에 ★ 로 먼저 나오고, 그 그룹의 요청 알림 수신자가 된다.
+ */
+function StaffGroupChips({ member }: { member: MemberItem }) {
+  const [info, setInfo] = useState<StaffGroupsInfo | null>(null);
+  const [pending, start] = useTransition();
+  const { toast } = useToast();
+  const router = useRouter();
+  useEffect(() => {
+    let alive = true;
+    getStaffGroupsAction(member.id).then((r) => { if (alive) setInfo(r); });
+    return () => { alive = false; };
+  }, [member.id]);
+  if (!info) return <p className="text-xs text-muted-foreground">담당 그룹 불러오는 중…</p>;
+  if (!info.ok) return <p className="text-xs text-destructive">{info.error}</p>;
+  const toggle = (id: string) => {
+    if (!info.canEdit) return;
+    const next = info.selected.includes(id) ? info.selected.filter((g) => g !== id) : [...info.selected, id];
+    start(async () => {
+      const r = await setStaffGroupsAction(member.id, next);
+      if (r?.ok) {
+        setInfo({ ...info, selected: next });
+        toast({ title: r.message });
+        router.refresh();
+      } else toast({ title: r?.ok === false ? r.error : '저장 실패', variant: 'destructive' });
+    });
+  };
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span className="text-xs font-medium text-muted-foreground">담당 그룹</span>
+      {info.groups.length === 0 && <span className="text-xs text-muted-foreground">사업그룹이 없습니다.</span>}
+      {info.groups.map((g) => {
+        const on = info.selected.includes(g.id);
+        return (
+          <button
+            key={g.id}
+            type="button"
+            disabled={pending || !info.canEdit}
+            onClick={() => toggle(g.id)}
+            title={info.canEdit ? (on ? '담당 해제' : '담당 지정') : '담당 그룹 지정은 메인 담당자(PL)만 할 수 있습니다.'}
+            className={cn('rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors disabled:opacity-60', on ? 'border-primary bg-primary text-primary-foreground' : 'bg-background text-muted-foreground hover:bg-accent')}
+          >
+            {on ? '★ ' : ''}{g.name}
+          </button>
+        );
+      })}
+      <span className="text-[11px] text-muted-foreground">{info.selected.length === 0 ? '(지정 없음 = 전체 그룹)' : `${info.selected.length}개 담당`}</span>
+    </div>
   );
 }
 
@@ -887,6 +949,7 @@ export function MembersManager({
                         <TableCell colSpan={colSpan} className="p-4">
                           <div className="flex flex-col gap-4">
                             <MemberDetailsForm member={m} />
+                            {(m.role === 'nextlab' || m.role === 'institution') && <StaffGroupChips member={m} />}
                             <div className="flex flex-wrap items-start gap-2 border-t pt-3">
                               <RoleSelectForm member={m} />
                               {m.memberActive && <RemoveFromProgramForm member={m} />}

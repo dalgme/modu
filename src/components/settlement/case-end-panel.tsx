@@ -1,9 +1,10 @@
 'use client';
 
 import { useEffect, useState, useTransition } from 'react';
-import { AlertTriangle, Ban, UserX } from 'lucide-react';
+import { AlertTriangle, Ban, RotateCcw, UserX } from 'lucide-react';
 
 import { decideMentorWithdrawalAction, forceEndMentorAction, withdrawCaseAction } from '@/lib/settlement/actions';
+import { reinstateCaseAction } from '@/lib/workflow/reinstate-actions';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -27,6 +28,8 @@ export function CaseEndPanel({
   canForceEnd,
   canWithdrawCase,
   hasActiveMentor,
+  canReinstate = false,
+  withdrawnReason = null,
 }: {
   caseId: string;
   pendingWithdrawals: PendingWithdrawalRequest[];
@@ -34,11 +37,14 @@ export function CaseEndPanel({
   canForceEnd: boolean;
   canWithdrawCase: boolean;
   hasActiveMentor: boolean;
+  /** T13 중도 종료 복귀 (P30) — 페이지가 canTransition('reinstate_case', status) && 운영사 PL 로 계산해 내려준다 */
+  canReinstate?: boolean;
+  withdrawnReason?: string | null;
 }) {
   const { toast } = useToast();
   const [pending, start] = useTransition();
   const [note, setNote] = useState('');
-  const [mode, setMode] = useState<'none' | 'force' | 'withdraw'>('none');
+  const [mode, setMode] = useState<'none' | 'force' | 'withdraw' | 'reinstate'>('none');
   const [highlight, setHighlight] = useState(false);
 
   // 배정 관리 ③ 카드(멘토 배정 패널)에서 진입 — 강제 종료 폼을 열고 잠시 강조한다 (P22)
@@ -70,11 +76,16 @@ export function CaseEndPanel({
       toast({ title: '사유를 입력하세요.', variant: 'destructive' });
       return;
     }
-    const msg = mode === 'force' ? '멘토를 강제 종료할까요? 사유는 운영사·발주처만 열람하며, 이행 회차는 부분 정산됩니다.' : '멘티를 중도 종료할까요? 되돌릴 수 없으며 이행 회차는 부분 정산됩니다.';
+    const msg =
+      mode === 'force'
+        ? '멘토를 강제 종료할까요? 사유는 운영사·발주처만 열람하며, 이행 회차는 부분 정산됩니다.'
+        : mode === 'reinstate'
+          ? '중도 종료를 취소하고 재배정 대기로 복귀시킬까요? 이미 확정된 부분 정산은 유지되며, 새 멘토를 배정하면 잔여 회차를 이어갑니다.'
+          : '멘티를 중도 종료할까요? 이행 회차는 부분 정산됩니다. (복귀는 메인 담당자가 정산 품의 전까지 가능)';
     if (!confirm(msg)) return;
     start(async () => {
-      const r = mode === 'force' ? await forceEndMentorAction(caseId, note) : await withdrawCaseAction(caseId, note);
-      toast(r.ok ? { title: mode === 'force' ? '멘토를 종료했습니다. 재배정 대기.' : '중도 종료했습니다.' } : { title: r.error, variant: 'destructive' });
+      const r = mode === 'force' ? await forceEndMentorAction(caseId, note) : mode === 'reinstate' ? await reinstateCaseAction(caseId, note) : await withdrawCaseAction(caseId, note);
+      toast(r.ok ? { title: mode === 'force' ? '멘토를 종료했습니다. 재배정 대기.' : mode === 'reinstate' ? '복귀했습니다. 재배정 대기 상태입니다.' : '중도 종료했습니다.' } : { title: r.error, variant: 'destructive' });
       if (r.ok) {
         setNote('');
         setMode('none');
@@ -82,7 +93,7 @@ export function CaseEndPanel({
     });
   };
 
-  if (!canDecideWithdrawal && !canForceEnd && !canWithdrawCase) return null;
+  if (!canDecideWithdrawal && !canForceEnd && !canWithdrawCase && !canReinstate) return null;
 
   return (
     <Card
@@ -90,8 +101,12 @@ export function CaseEndPanel({
       className={`${pendingWithdrawals.length > 0 ? 'border-amber-300 ' : ''}${highlight ? 'ring-2 ring-primary ring-offset-2 transition-shadow' : ''}` || undefined}
     >
       <CardHeader>
-        <CardTitle className="text-base">중도 종료 처리</CardTitle>
-        <p className="text-xs text-muted-foreground">이행 회차는 종료 시점에 부분 정산(케이스 × 멘토)으로 확정됩니다. 회차가 없으면 정산 행을 만들지 않습니다.</p>
+        <CardTitle className="text-base">{canReinstate ? '중도 종료 복귀' : '중도 종료 처리'}</CardTitle>
+        <p className="text-xs text-muted-foreground">
+          {canReinstate
+            ? `중도 종료된 케이스입니다${withdrawnReason ? ` (사유: ${withdrawnReason})` : ''}. 복귀하면 재배정 대기로 돌아가며 이전 부분 정산은 유지됩니다. 품의 편성·확인된 정산이 있으면 복귀할 수 없습니다.`
+            : '이행 회차는 종료 시점에 부분 정산(케이스 × 멘토)으로 확정됩니다. 회차가 없으면 정산 행을 만들지 않습니다.'}
+        </p>
       </CardHeader>
       <CardContent className="flex flex-col gap-3 text-sm">
         {canDecideWithdrawal &&
@@ -123,6 +138,11 @@ export function CaseEndPanel({
               <Ban className="h-4 w-4" /> 멘티 중도 종료
             </Button>
           )}
+          {canReinstate && (
+            <Button size="sm" variant={mode === 'reinstate' ? 'default' : 'outline'} className="gap-1" disabled={pending} onClick={() => setMode(mode === 'reinstate' ? 'none' : 'reinstate')}>
+              <RotateCcw className="h-4 w-4" /> 중도 종료 복귀 (재배정 대기)
+            </Button>
+          )}
         </div>
         {(mode !== 'none' || (canDecideWithdrawal && pendingWithdrawals.length > 0)) && (
           <Textarea
@@ -130,13 +150,13 @@ export function CaseEndPanel({
             onChange={(e) => setNote(e.target.value)}
             rows={3}
             disabled={pending}
-            placeholder={mode === 'force' ? '강제 종료 사유 (운영사·발주처만 열람 — 멘토·멘티에게는 "운영사 결정으로 종료" 로만 표시)' : mode === 'withdraw' ? '멘티 중도 종료 사유' : '승인·반려 메모 (반려 시 필수)'}
+            placeholder={mode === 'force' ? '강제 종료 사유 (운영사·발주처만 열람 — 멘토·멘티에게는 "운영사 결정으로 종료" 로만 표시)' : mode === 'withdraw' ? '멘티 중도 종료 사유' : mode === 'reinstate' ? '복귀 사유 (감사 로그에 남습니다)' : '승인·반려 메모 (반려 시 필수)'}
           />
         )}
         {mode !== 'none' && (
           <div className="flex justify-end">
             <Button size="sm" variant={mode === 'withdraw' ? 'destructive' : 'default'} disabled={pending} onClick={submitMode}>
-              {mode === 'force' ? '강제 종료 확정' : '중도 종료 확정'}
+              {mode === 'force' ? '강제 종료 확정' : mode === 'reinstate' ? '복귀 확정' : '중도 종료 확정'}
             </Button>
           </div>
         )}

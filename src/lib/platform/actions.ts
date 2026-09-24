@@ -8,7 +8,7 @@ import { createStaffOrMentorAccount, phoneTempPassword } from '@/lib/auth/admin-
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ROUND_REPORT_TEMPLATE_KEY } from '@/lib/documents/round-report';
 import { FEATURE_KEYS } from '@/lib/platform/features';
-import type { Json } from '@/types/database';
+import type { Json, Tables } from '@/types/database';
 
 type Result<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -61,6 +61,9 @@ const programSchema = z.object({
   first_phone: z.string().trim().optional().transform((v) => v || null),
   // 복제 원천 (선택)
   clone_from: z.string().uuid().optional().or(z.literal('')).transform((v) => v || null),
+  /** 복제 옵션 (P30): 종료 그룹 포함(기본 off) · 멘토 풀 가져오기(기본 on) */
+  clone_ended_groups: z.string().optional().transform((v) => v === 'true' || v === 'on'),
+  clone_mentor_pool: z.string().optional().transform((v) => v === undefined ? true : v === 'true' || v === 'on'),
 });
 
 /**
@@ -77,7 +80,7 @@ export async function createProgramAction(input: unknown): Promise<Result<{ prog
 
   let base: Record<string, unknown> = {};
   if (d.clone_from) {
-    const { data: src } = await admin.from('programs').select('default_withholding_method, withholding_params, closure_policy, round_report_policy, sms_footer, email_subject_prefix').eq('id', d.clone_from).maybeSingle();
+    const { data: src } = await admin.from('programs').select('default_withholding_method, withholding_params, closure_policy, round_report_policy, sms_footer, email_subject_prefix, staff_permissions, features').eq('id', d.clone_from).maybeSingle();
     if (!src) return { ok: false, error: '복제 원천 행사를 찾을 수 없습니다.' };
     base = src;
   }
@@ -104,7 +107,7 @@ export async function createProgramAction(input: unknown): Promise<Result<{ prog
   if (error || !created) return { ok: false, error: error?.code === '23505' ? '관리코드 부여가 겹쳤습니다. 다시 시도하세요.' : (error?.message ?? '행사 생성 실패') };
 
   if (d.clone_from) {
-    const r = await cloneProgramSettings(d.clone_from, created.id, op.id);
+    const r = await cloneProgramSettings(d.clone_from, created.id, op.id, { includeEndedGroups: d.clone_ended_groups, mentorPool: d.clone_mentor_pool, effectiveFrom: d.starts_on });
     if (!r.ok) return { ok: false, error: `행사는 만들었지만 설정 복제에 실패했습니다: ${r.error}` };
   }
 
@@ -119,29 +122,41 @@ export async function createProgramAction(input: unknown): Promise<Result<{ prog
       warn = err instanceof Error ? err.message : '계정 발급 실패';
     }
   }
-  await audit(op.id, 'program.create', created.id, { slug, name: d.name, clone_from: d.clone_from, first_account: !!credential, first_account_error: warn ?? null });
+  await audit(op.id, 'program.create', created.id, { slug, name: d.name, clone_from: d.clone_from, clone_ended_groups: d.clone_ended_groups, clone_mentor_pool: d.clone_mentor_pool, first_account: !!credential, first_account_error: warn ?? null });
   revalidate();
   return { ok: true, programId: created.id, credential, warn };
 }
 
-/** 설정 복제 — 계정·케이스·회차·정산은 제외. 그룹 id 매핑을 유지해 그룹 스코프 설정을 옮긴다. */
-async function cloneProgramSettings(fromId: string, toId: string, actorId: string): Promise<Result> {
+/**
+ * 설정 복제 — 케이스·회차·정산은 제외. 그룹 id 매핑을 유지해 그룹 스코프 설정을 옮긴다.
+ * P30: 정원(max_mentees_per_mentor) 복제 · 예산/일정은 비움 · 종료 그룹 포함 옵션 · 필수서류는 원천 그룹 범위로 조회 ·
+ *      단가/한도 적용일 = 새 행사 시작일(없으면 오늘) · 리마인더·위촉 서식·임의 컬럼·담당 권한·기능 플래그 · 멘토 풀(옵션).
+ */
+async function cloneProgramSettings(fromId: string, toId: string, actorId: string, opts: { includeEndedGroups?: boolean; mentorPool?: boolean; effectiveFrom?: string | null } = {}): Promise<Result> {
   const admin = createAdminClient();
-  const [{ data: groups }, { data: docs }, { data: rates }, { data: limits }, { data: tags }, { data: templates }, { data: surveys }] = await Promise.all([
-    admin.from('support_types').select('*').eq('program_id', fromId).order('sort_order'),
-    admin.from('support_type_documents').select('*'),
+  const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  const effectiveFrom = opts.effectiveFrom ?? today;
+  let groupsQ = admin.from('support_types').select('*').eq('program_id', fromId).order('sort_order');
+  if (!opts.includeEndedGroups) groupsQ = groupsQ.eq('status', 'active');
+  const { data: groups } = await groupsQ;
+  const sourceGroupIds = (groups ?? []).map((g) => g.id);
+  const [{ data: docs }, { data: rates }, { data: limits }, { data: tags }, { data: templates }, { data: surveys }, { data: reminders }, { data: mentorForms }, { data: rosterCols }] = await Promise.all([
+    sourceGroupIds.length ? admin.from('support_type_documents').select('*').in('support_type_id', sourceGroupIds) : Promise.resolve({ data: [] as Tables<'support_type_documents'>[] }),
     admin.from('consulting_rates').select('*').eq('program_id', fromId),
     admin.from('operating_limits').select('*').eq('program_id', fromId),
     admin.from('tag_catalog').select('*').eq('program_id', fromId),
     admin.from('document_templates').select('*').eq('program_id', fromId).eq('template_key', ROUND_REPORT_TEMPLATE_KEY),
     admin.from('survey_templates').select('*').eq('program_id', fromId).eq('is_active', true),
+    admin.from('mentor_reminder_settings').select('*').eq('program_id', fromId),
+    admin.from('mentor_form_settings').select('*').eq('program_id', fromId),
+    admin.from('roster_columns').select('*').eq('program_id', fromId),
   ]);
   const groupMap = new Map<string, string>();
-  // 1) 그룹 (승계 원천은 2차 패스)
+  // 1) 그룹 (승계 원천은 2차 패스) — 예산·일정은 새 행사에서 다시 정한다
   for (const g of groups ?? []) {
     const { data: ng, error } = await admin
       .from('support_types')
-      .insert({ program_id: toId, code: g.code, name: g.name, description: g.description, status: 'active', required_rounds: g.required_rounds, round_label: g.round_label, withholding_method: g.withholding_method, sort_order: g.sort_order, round_report_policy: g.round_report_policy })
+      .insert({ program_id: toId, code: g.code, name: g.name, description: g.description, status: 'active', required_rounds: g.required_rounds, round_label: g.round_label, withholding_method: g.withholding_method, sort_order: g.sort_order, round_report_policy: g.round_report_policy, max_mentees_per_mentor: g.max_mentees_per_mentor, mentoring_budget: null, starts_on: null, ends_on: null })
       .select('id')
       .single();
     if (error || !ng) return { ok: false, error: error?.message ?? '그룹 복제 실패' };
@@ -155,8 +170,7 @@ async function cloneProgramSettings(fromId: string, toId: string, actorId: strin
   // 2) 필수서류
   const docRows = (docs ?? []).filter((x) => groupMap.has(x.support_type_id)).map((x) => ({ support_type_id: groupMap.get(x.support_type_id)!, doc_key: x.doc_key, doc_name: x.doc_name, is_required: x.is_required, multiple: x.multiple, for_role: x.for_role, condition: x.condition, attachment_no: x.attachment_no, sort_order: x.sort_order }));
   if (docRows.length) await admin.from('support_type_documents').insert(docRows);
-  // 3) 단가·한도 (그룹 override 는 매핑, 매핑 없는 그룹 행은 건너뜀)
-  const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+  // 3) 단가·한도 (그룹 override 는 매핑, 매핑 없는 그룹 행은 건너뜀) — 적용일 = 새 행사 시작일(없으면 오늘)
   const latest = <T extends { support_type_id: string | null; effective_from: string }>(rows: T[], key: (r: T) => string) => {
     const m = new Map<string, T>();
     for (const r of rows) {
@@ -169,11 +183,11 @@ async function cloneProgramSettings(fromId: string, toId: string, actorId: strin
   };
   const rateRows = latest(rates ?? [], (r) => `${r.support_type_id ?? ''}|${r.mode}`)
     .filter((r) => !r.support_type_id || groupMap.has(r.support_type_id))
-    .map((r) => ({ program_id: toId, support_type_id: r.support_type_id ? groupMap.get(r.support_type_id)! : null, mode: r.mode, unit_price: r.unit_price, daily_cap_amount: r.daily_cap_amount, effective_from: today, created_by: actorId }));
+    .map((r) => ({ program_id: toId, support_type_id: r.support_type_id ? groupMap.get(r.support_type_id)! : null, mode: r.mode, unit_price: r.unit_price, daily_cap_amount: r.daily_cap_amount, effective_from: effectiveFrom, created_by: actorId }));
   if (rateRows.length) await admin.from('consulting_rates').insert(rateRows);
   const limitRows = latest(limits ?? [], (r) => r.support_type_id ?? '')
     .filter((r) => !r.support_type_id || groupMap.has(r.support_type_id))
-    .map((r) => ({ program_id: toId, support_type_id: r.support_type_id ? groupMap.get(r.support_type_id)! : null, mentor_daily_case_limit: r.mentor_daily_case_limit, case_daily_round_limit: r.case_daily_round_limit, effective_from: today, created_by: actorId }));
+    .map((r) => ({ program_id: toId, support_type_id: r.support_type_id ? groupMap.get(r.support_type_id)! : null, mentor_daily_case_limit: r.mentor_daily_case_limit, case_daily_round_limit: r.case_daily_round_limit, effective_from: effectiveFrom, created_by: actorId }));
   if (limitRows.length) await admin.from('operating_limits').insert(limitRows);
   // 4) 키워드
   if ((tags ?? []).length) await admin.from('tag_catalog').insert((tags ?? []).map((t) => ({ program_id: toId, category: t.category, label: t.label, sort_order: t.sort_order })));
@@ -190,7 +204,58 @@ async function cloneProgramSettings(fromId: string, toId: string, actorId: strin
     const { data: qs } = await admin.from('survey_questions').select('*').eq('template_id', s.id).order('sort_order');
     if ((qs ?? []).length) await admin.from('survey_questions').insert((qs ?? []).map((q) => ({ template_id: nt.id, sort_order: q.sort_order, qtype: q.qtype, label: q.label, help: q.help, options: q.options, required: q.required })));
   }
-  await audit(actorId, 'program.clone_settings', toId, { from: fromId, groups: groupMap.size, docs: docRows.length, rates: rateRows.length, limits: limitRows.length, tags: (tags ?? []).length, templates: (templates ?? []).length, surveys: (surveys ?? []).length });
+  // 7) 멘토 리마인더 · 위촉 서식 (행사 공통 + 매핑된 그룹 행) — 표별 try/catch
+  const counts: Record<string, number> = { reminders: 0, mentor_forms: 0, roster_columns: 0, mentors: 0 };
+  try {
+    for (const r of reminders ?? []) {
+      if (r.support_type_id && !groupMap.has(r.support_type_id)) continue;
+      const { error } = await admin.from('mentor_reminder_settings').insert({ program_id: toId, support_type_id: r.support_type_id ? groupMap.get(r.support_type_id)! : null, enabled: r.enabled, weekday: r.weekday, send_hour: r.send_hour, send_minute: r.send_minute, template: r.template, updated_by: actorId });
+      if (!error) counts.reminders! += 1;
+    }
+  } catch (err) {
+    console.error('clone reminders failed:', err);
+  }
+  try {
+    for (const r of mentorForms ?? []) {
+      if (r.support_type_id && !groupMap.has(r.support_type_id)) continue;
+      const { error } = await admin.from('mentor_form_settings').insert({ program_id: toId, support_type_id: r.support_type_id ? groupMap.get(r.support_type_id)! : null, form_key: r.form_key, enabled: r.enabled, method: r.method, title: r.title, content: r.content, template_path: r.template_path, template_name: r.template_name, updated_by: actorId });
+      if (!error) counts.mentor_forms! += 1;
+    }
+  } catch (err) {
+    console.error('clone mentor forms failed:', err);
+  }
+  // 8) 임의 컬럼(명단 카테고리 마크 정의 — 값은 제외)
+  try {
+    if ((rosterCols ?? []).length) {
+      const { error } = await admin.from('roster_columns').insert((rosterCols ?? []).map((c) => ({ program_id: toId, target: c.target, name: c.name, sort_order: c.sort_order, created_by: actorId })));
+      if (!error) counts.roster_columns = (rosterCols ?? []).length;
+    }
+  } catch (err) {
+    console.error('clone roster columns failed:', err);
+  }
+  // 9) 멘토 풀 — 원천 행사의 활성 멘토 소속 + 프로필(분야·권역 등). 등급·담당은 비움, 그룹 지정·배정은 옮기지 않는다
+  if (opts.mentorPool) {
+    try {
+      const { data: mentors } = await admin.from('program_members').select('user_id').eq('program_id', fromId).eq('role', 'mentor').eq('is_active', true);
+      const ids = (mentors ?? []).map((m) => m.user_id);
+      if (ids.length) {
+        const { error: memErr } = await admin.from('program_members').upsert(ids.map((uid) => ({ program_id: toId, user_id: uid, role: 'mentor' as const, is_active: true, grade: null, left_at: null })), { onConflict: 'program_id,user_id' });
+        if (memErr) throw new Error(memErr.message);
+        const { data: profiles } = await admin.from('mentor_profiles').select('*').eq('program_id', fromId).in('user_id', ids);
+        if ((profiles ?? []).length) {
+          const { error: profErr } = await admin.from('mentor_profiles').upsert(
+            (profiles ?? []).map((p) => ({ program_id: toId, user_id: p.user_id, bio: p.bio, career: p.career, expertise: p.expertise, industries: p.industries, keywords: p.keywords, regions: p.regions, stages: p.stages, modes: p.modes, capacity: p.capacity, mentor_institution: p.mentor_institution, note: p.note })),
+            { onConflict: 'program_id,user_id' },
+          );
+          if (profErr) throw new Error(profErr.message);
+        }
+        counts.mentors = ids.length;
+      }
+    } catch (err) {
+      console.error('clone mentor pool failed:', err);
+    }
+  }
+  await audit(actorId, 'program.clone_settings', toId, { from: fromId, include_ended_groups: !!opts.includeEndedGroups, mentor_pool: !!opts.mentorPool, effective_from: effectiveFrom, groups: groupMap.size, docs: docRows.length, rates: rateRows.length, limits: limitRows.length, tags: (tags ?? []).length, templates: (templates ?? []).length, surveys: (surveys ?? []).length, ...counts });
   return { ok: true };
 }
 

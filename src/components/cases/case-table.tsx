@@ -35,6 +35,7 @@ export function CaseTable({
   showGroup = true,
   emptyText = '케이스가 없습니다.',
   showLegend = false,
+  caption,
 }: {
   items: CaseListItem[];
   basePath: string;
@@ -43,12 +44,20 @@ export function CaseTable({
   showGroup?: boolean;
   emptyText?: string;
   showLegend?: boolean;
+  /** 표 위 안내 (예: "필터 결과 12건 / 전체 80건", P30) */
+  caption?: string;
 }) {
   if (items.length === 0) {
-    return <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">{emptyText}</p>;
+    return (
+      <div className="flex flex-col gap-2">
+        {caption && <p className="text-xs text-muted-foreground">{caption}</p>}
+        <p className="rounded-lg border border-dashed px-4 py-8 text-center text-sm text-muted-foreground">{emptyText}</p>
+      </div>
+    );
   }
   return (
     <div className="flex flex-col gap-2">
+      {caption && <p className="text-xs text-muted-foreground">{caption}</p>}
       {showLegend && <CaseStepLegend />}
       <div className="overflow-x-auto rounded-lg border bg-background">
         <Table>

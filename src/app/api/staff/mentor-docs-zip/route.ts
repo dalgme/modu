@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 
 import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
+import { denyUnless } from '@/lib/auth/capabilities';
 import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
@@ -22,9 +23,18 @@ const extOf = (name: string | null, path: string) => {
  */
 export async function GET(): Promise<Response> {
   const profile = await realRoleOrNull(['nextlab', 'institution']);
-  if (!profile) return NextResponse.json({ error: 'forbidden' }, { status: 403 });
+  if (!profile) return NextResponse.json({ error: '발주처·운영사 담당자만 내려받을 수 있습니다.' }, { status: 403 });
   const ctx = await contextOrNull(profile);
-  if (!ctx) return NextResponse.json({ error: 'no_context' }, { status: 400 });
+  if (!ctx) return NextResponse.json({ error: '행사를 먼저 선택하세요.' }, { status: 400 });
+  // 운영사: 멘토 지급서류 권한(mentors.docs — 옵저버 차단). 발주처: 행사 설정 staff_permissions.institution_docs_zip=true 일 때만 (개인정보 서류 일괄 반출 통제)
+  if (ctx.role === 'nextlab') {
+    const denied = denyUnless(ctx, 'mentors.docs');
+    if (denied) return NextResponse.json({ error: denied }, { status: 403 });
+  } else {
+    const perms = ctx.program.staff_permissions;
+    const allowed = !!perms && typeof perms === 'object' && !Array.isArray(perms) && (perms as Record<string, unknown>).institution_docs_zip === true;
+    if (!allowed) return NextResponse.json({ error: '발주처 계정의 멘토 서류 일괄 다운로드는 이 행사에서 허용되지 않았습니다. 운영사(메인 담당자)에게 요청하세요.' }, { status: 403 });
+  }
 
   const admin = createAdminClient();
   const { data: members } = await admin
@@ -73,14 +83,15 @@ export async function GET(): Promise<Response> {
     return NextResponse.json({ error: '다운로드할 제출 파일이 없습니다. 멘토가 지급서류를 업로드하면 여기서 일괄 수령할 수 있습니다.' }, { status: 404 });
   }
 
-  await admin.from('audit_logs').insert({
+  const { error: auditError } = await admin.from('audit_logs').insert({
     actor_id: profile.id,
     program_id: ctx.programId,
     action: 'mentor.docs_zip_export',
     entity_type: 'programs',
     entity_id: ctx.programId,
-    metadata: { files: added, mentors: ids.length },
+    metadata: { files: added, mentors: ids.length, role: ctx.role },
   });
+  if (auditError) console.error('docs zip audit failed:', auditError.message);
 
   const buf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
   const filename = encodeURIComponent(`${ctx.program.name}_멘토서류_${new Date().toISOString().slice(0, 10)}.zip`);

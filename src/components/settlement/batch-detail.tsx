@@ -1,9 +1,9 @@
 import Link from 'next/link';
 
 import type { BatchItem, SettlementItem } from '@/lib/data/settlements';
-import { BATCH_STATUS_LABELS } from '@/lib/data/settlements';
 import { WITHHOLDING_LABELS } from '@/lib/settlement/compute';
-import { BatchActions, RemoveFromBatchButton } from '@/components/settlement/batch-actions';
+import { BatchActions, BatchBackLink, RemoveFromBatchButton } from '@/components/settlement/batch-actions';
+import { StatusBadge } from '@/components/cases/status-badge';
 import { formatDateTime, formatKRW } from '@/lib/utils/format';
 
 /** 품의 상세 (운영사·발주처 공용) */
@@ -13,12 +13,10 @@ export function BatchDetail({ batch, items, role, caseHrefBase, backHref }: { ba
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <Link href={backHref} className="text-sm text-muted-foreground hover:underline">
-            ← 정산 목록
-          </Link>
+          <BatchBackLink backHref={backHref} />
           <h1 className="mt-1 text-2xl font-semibold">{batch.title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-semibold">{BATCH_STATUS_LABELS[batch.status] ?? batch.status}</span>
+            <StatusBadge kind="batch" status={batch.status} />
             <span className="ml-2">작성 {batch.createdByName ?? '-'} · {formatDateTime(batch.created_at)}</span>
             {batch.submitted_at && <span className="ml-2">· 제출 {formatDateTime(batch.submitted_at)}</span>}
             {batch.confirmed_at && <span className="ml-2">· 정산 확인 {batch.confirmedByName ?? ''} {formatDateTime(batch.confirmed_at)}</span>}
@@ -26,7 +24,7 @@ export function BatchDetail({ batch, items, role, caseHrefBase, backHref }: { ba
           </p>
           {batch.note && <p className="mt-1 text-sm">{batch.note}</p>}
         </div>
-        <BatchActions batchId={batch.id} status={batch.status} role={role} exportHref={`/api/nextlab/batches/${batch.id}/export`} />
+        <BatchActions batchId={batch.id} status={batch.status} role={role} exportHref={`/api/nextlab/batches/${batch.id}/export`} itemCount={items.length} totalNet={formatKRW(Number(batch.total_net))} afterDeleteHref={backHref} />
       </div>
 
       <dl className="grid grid-cols-3 gap-3 rounded-xl border bg-background p-4 text-sm">
@@ -79,7 +77,7 @@ export function BatchDetail({ batch, items, role, caseHrefBase, backHref }: { ba
                 <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatKRW(Number(s.net))}</td>
                 {removable && (
                   <td className="px-3 py-2 text-right">
-                    <RemoveFromBatchButton batchId={batch.id} settlementId={s.id} />
+                    <RemoveFromBatchButton batchId={batch.id} settlementId={s.id} label={`${s.mentorName} · ${s.businessName}`} />
                   </td>
                 )}
               </tr>

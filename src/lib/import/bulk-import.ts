@@ -102,7 +102,7 @@ export function buildTemplate(kind: ImportKind): Buffer {
           ['· 재배치 희망여부: 재배치(배정)를 희망하는 멘토 이름을 적습니다. 비우면 희망 없음.'],
         ]
       : []),
-    ...(kind === 'nextlab' ? [['· 등급: pl(메인 담당) / pm / deputy_pm(부PM) / observer(옵저버). 비우면 pl.'], ['· 담당역할(운영사)은 운영사 담당자에게만 적용됩니다.']] : []),
+    ...(kind === 'nextlab' ? [['· 등급: pl(메인 담당) / pm / deputy_pm(부PM) / observer(옵저버). 비우면 observer. pl 지정은 메인 담당자(PL)만 가능합니다.'], ['· 이미 소속된 운영사 담당자의 등급은 재업로드로 바뀌지 않습니다(PL 이 값을 적은 경우만).'], ['· 담당역할(운영사)은 운영사 담당자에게만 적용됩니다.']] : []),
   ]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, IMPORT_KIND_LABELS[kind]);
@@ -178,10 +178,15 @@ export interface ImportResult {
   credentials: { line: number; name: string; email: string; tempPassword: string }[];
 }
 
-/** 확정 — 유효 행만 생성. 기존 계정은 멤버십·명부만 추가. groupId 는 액션이 검증해 넘긴다(멘티 필수, 멘토 선택). */
-export async function commitImport(programId: string, kind: ImportKind, rows: ImportRow[], actorId: string, groupId?: string | null): Promise<ImportResult> {
+/**
+ * 확정 — 유효 행만 생성. 기존 계정은 멤버십·명부만 추가. groupId 는 액션이 검증해 넘긴다(멘티 필수, 멘토 선택).
+ * 재업로드 보호: 기존 계정은 **값이 있는 셀만** 반영한다(빈 셀로 분야·권역·비고를 지우지 않음).
+ * 운영사 등급: 빈 셀 = observer(신규). 기존 운영사 담당자의 등급은 actor 가 PL 이고 셀에 값이 있을 때만 바뀐다. 'pl' 지정은 PL 만.
+ */
+export async function commitImport(programId: string, kind: ImportKind, rows: ImportRow[], actorId: string, groupId?: string | null, opts: { actorIsPL?: boolean } = {}): Promise<ImportResult> {
   const admin = createAdminClient();
   const result: ImportResult = { created: 0, linked: 0, failed: [], credentials: [] };
+  const actorIsPL = opts.actorIsPL === true;
 
   for (const row of rows) {
     if (row.errors.length > 0) continue;
@@ -208,17 +213,34 @@ export async function commitImport(programId: string, kind: ImportKind, rows: Im
         if (groupId) {
           await admin.from('support_type_members').upsert({ support_type_id: groupId, user_id: userId, member_role: 'mentor', is_active: true, left_at: null }, { onConflict: 'support_type_id,user_id' });
         }
-        await admin.from('mentor_profiles').upsert(
-          {
-            program_id: programId,
-            user_id: userId,
-            expertise: splitList(v['분야'] ?? '').slice(0, MAX_MENTOR_FIELDS),
-            regions: splitList(v['권역'] ?? ''),
-            mentor_institution: v['소속멘토기관'] || null,
-            note: v['비고'] || null,
-          },
-          { onConflict: 'program_id,user_id' },
-        );
+        if (row.existingUserId) {
+          // 기존 계정: 값이 있는 셀만 반영 (빈 셀로 기존 프로필을 지우지 않는다)
+          const profilePatch: { expertise?: string[]; regions?: string[]; mentor_institution?: string; note?: string } = {};
+          const expertise = splitList(v['분야'] ?? '').slice(0, MAX_MENTOR_FIELDS);
+          const regions = splitList(v['권역'] ?? '');
+          if (expertise.length) profilePatch.expertise = expertise;
+          if (regions.length) profilePatch.regions = regions;
+          if (v['소속멘토기관']) profilePatch.mentor_institution = v['소속멘토기관'];
+          if (v['비고']) profilePatch.note = v['비고'];
+          const { data: existingProfile } = await admin.from('mentor_profiles').select('user_id').eq('program_id', programId).eq('user_id', userId).maybeSingle();
+          if (existingProfile) {
+            if (Object.keys(profilePatch).length) await admin.from('mentor_profiles').update(profilePatch).eq('program_id', programId).eq('user_id', userId);
+          } else {
+            await admin.from('mentor_profiles').insert({ program_id: programId, user_id: userId, expertise, regions, mentor_institution: v['소속멘토기관'] || null, note: v['비고'] || null });
+          }
+        } else {
+          await admin.from('mentor_profiles').upsert(
+            {
+              program_id: programId,
+              user_id: userId,
+              expertise: splitList(v['분야'] ?? '').slice(0, MAX_MENTOR_FIELDS),
+              regions: splitList(v['권역'] ?? ''),
+              mentor_institution: v['소속멘토기관'] || null,
+              note: v['비고'] || null,
+            },
+            { onConflict: 'program_id,user_id' },
+          );
+        }
       } else if (kind === 'nextlab' || kind === 'institution') {
         let userId = row.existingUserId;
         const phone = toStoredPhone(v['휴대폰'] ?? '') ?? v['휴대폰']!;
@@ -230,12 +252,29 @@ export async function commitImport(programId: string, kind: ImportKind, rows: Im
           result.credentials.push({ line: row.line, name: v['이름']!, email: acc.email, tempPassword: acc.tempPassword });
         } else {
           result.linked += 1;
+          // 기존 계정: 소속·직위는 값이 있을 때만
+          const patch: { organization?: string; position?: string } = {};
+          if (v['소속']) patch.organization = v['소속'];
+          if (v['직위']) patch.position = v['직위'];
+          if (Object.keys(patch).length > 0) await admin.from('users').update(patch).eq('id', userId);
         }
         const gradeRaw = (v['등급(운영사)'] ?? '').trim().toLowerCase().replace('sub_pm', 'deputy_pm').replace('부pm', 'deputy_pm');
-        const grade = kind === 'nextlab' ? ((STAFF_GRADES as string[]).includes(gradeRaw) ? gradeRaw : 'pl') : null;
+        const gradeCell = (STAFF_GRADES as string[]).includes(gradeRaw) ? gradeRaw : null;
+        // pl 지정은 PL 만 — 아니면 옵저버로 낮춘다 (자기 승격·대량 PL 발급 차단)
+        const requestedGrade = gradeCell === 'pl' && !actorIsPL ? 'observer' : gradeCell;
+        const { data: existingMember } = await admin.from('program_members').select('role, grade, duty, note').eq('program_id', programId).eq('user_id', userId).maybeSingle();
+        let grade: string | null = null;
+        if (kind === 'nextlab') {
+          if (existingMember?.role === 'nextlab' && existingMember.grade) {
+            // 기존 운영사 담당자의 등급은 PL 이 값을 적은 경우에만 변경
+            grade = actorIsPL && requestedGrade ? requestedGrade : existingMember.grade;
+          } else grade = requestedGrade ?? 'observer';
+        }
+        const duty = kind === 'nextlab' ? (v['담당역할(운영사)'] || existingMember?.duty || null) : null;
+        const note = v['비고'] || existingMember?.note || null;
         const { error: memberError } = await admin
           .from('program_members')
-          .upsert({ program_id: programId, user_id: userId, role: kind, grade, duty: kind === 'nextlab' ? v['담당역할(운영사)'] || null : null, note: v['비고'] || null, is_active: true, left_at: null }, { onConflict: 'program_id,user_id' });
+          .upsert({ program_id: programId, user_id: userId, role: kind, grade, duty, note, is_active: true, left_at: null }, { onConflict: 'program_id,user_id' });
         if (memberError) throw new Error(`행사 소속 등록 실패: ${memberError.message}`);
       } else {
         if (!groupId) throw new Error('사업그룹을 선택하세요');

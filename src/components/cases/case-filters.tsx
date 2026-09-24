@@ -1,30 +1,40 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { CASE_STATUSES, CASE_STATUS_META } from '@/types/case-status';
 
 interface CaseFiltersProps {
-  supportTypes: { id: string; name: string }[];
   mentors: { id: string; name: string }[];
+  /** 초기화 시 남길 파라미터 (tab·group·from·to 등) */
+  keep?: string[];
 }
 
 const ALL = '__all__';
+export const CASE_SORTS = [
+  { key: 'recent', label: '최근 등록순' },
+  { key: 'name', label: '이름순' },
+  { key: 'status', label: '단계순' },
+  { key: 'rounds', label: '회차 적은 순' },
+] as const;
+export type CaseSortKey = (typeof CASE_SORTS)[number]['key'];
 
-export function CaseFilters({ supportTypes, mentors }: CaseFiltersProps) {
+/**
+ * 케이스 목록 필터 (리포트 › 진행현황, P30) — URL 파라미터 status / mentor / q / sort.
+ * 대시보드의 `?tab=cases&status=closure_requested` 링크와 호환. 범위(행사/그룹)는 상단 스위처, 기간은 기간 칩이 맡는다.
+ */
+export function CaseFilters({ mentors, keep = ['tab', 'group', 'view', 'from', 'to'] }: CaseFiltersProps) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
+  const [q, setQ] = useState(params.get('q') ?? '');
+
+  useEffect(() => setQ(params.get('q') ?? ''), [params]);
 
   function setParam(key: string, value: string | undefined) {
     const next = new URLSearchParams(params.toString());
@@ -32,30 +42,21 @@ export function CaseFilters({ supportTypes, mentors }: CaseFiltersProps) {
     else next.set(key, value);
     router.replace(`${pathname}?${next.toString()}`);
   }
+  function reset() {
+    const next = new URLSearchParams();
+    for (const k of keep) {
+      const v = params.get(k);
+      if (v) next.set(k, v);
+    }
+    router.replace(`${pathname}?${next.toString()}`);
+  }
 
   return (
-    <div className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-4 sm:grid-cols-2 lg:grid-cols-5">
-      <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">지원유형</Label>
-        <Select value={params.get('type') ?? ALL} onValueChange={(v) => setParam('type', v)}>
-          <SelectTrigger>
-            <SelectValue placeholder="전체" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>전체</SelectItem>
-            {supportTypes.map((t) => (
-              <SelectItem key={t.id} value={t.id}>
-                {t.name}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
+    <div className="grid grid-cols-1 gap-3 rounded-lg border bg-card p-3 sm:grid-cols-2 lg:grid-cols-5">
       <div className="flex flex-col gap-1.5">
         <Label className="text-xs">단계</Label>
         <Select value={params.get('status') ?? ALL} onValueChange={(v) => setParam('status', v)}>
-          <SelectTrigger>
+          <SelectTrigger className="h-9">
             <SelectValue placeholder="전체" />
           </SelectTrigger>
           <SelectContent>
@@ -72,7 +73,7 @@ export function CaseFilters({ supportTypes, mentors }: CaseFiltersProps) {
       <div className="flex flex-col gap-1.5">
         <Label className="text-xs">담당 멘토</Label>
         <Select value={params.get('mentor') ?? ALL} onValueChange={(v) => setParam('mentor', v)}>
-          <SelectTrigger>
+          <SelectTrigger className="h-9">
             <SelectValue placeholder="전체" />
           </SelectTrigger>
           <SelectContent>
@@ -87,26 +88,37 @@ export function CaseFilters({ supportTypes, mentors }: CaseFiltersProps) {
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">등록 시작</Label>
-        <Input
-          type="date"
-          value={params.get('from') ?? ''}
-          onChange={(e) => setParam('from', e.target.value || undefined)}
-        />
+        <Label className="text-xs">이름·기업(팀)·연락처 검색</Label>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            setParam('q', q.trim() || undefined);
+          }}
+        >
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="검색 후 Enter" className="h-9" />
+        </form>
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label className="text-xs">등록 종료</Label>
-        <div className="flex gap-2">
-          <Input
-            type="date"
-            value={params.get('to') ?? ''}
-            onChange={(e) => setParam('to', e.target.value || undefined)}
-          />
-          <Button variant="outline" size="sm" onClick={() => router.replace(pathname)}>
-            초기화
-          </Button>
-        </div>
+        <Label className="text-xs">정렬</Label>
+        <Select value={params.get('sort') ?? 'recent'} onValueChange={(v) => setParam('sort', v === 'recent' ? undefined : v)}>
+          <SelectTrigger className="h-9">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {CASE_SORTS.map((s) => (
+              <SelectItem key={s.key} value={s.key}>
+                {s.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="flex items-end">
+        <Button variant="outline" size="sm" className="h-9" onClick={reset}>
+          필터 초기화
+        </Button>
       </div>
     </div>
   );

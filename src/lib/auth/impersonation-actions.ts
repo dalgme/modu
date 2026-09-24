@@ -18,7 +18,7 @@ import { roleHome } from '@/lib/auth/roles';
 import { contextOrNull } from '@/lib/programs/context';
 import { denyUnless } from '@/lib/auth/capabilities';
 
-import { membershipRole } from '@/lib/auth/program-role';
+import { currentProgramIdFromCookie, membershipRole } from '@/lib/auth/program-role';
 
 export type ViewAsResult = { ok: true } | { ok: false; error: string };
 
@@ -54,9 +54,15 @@ export async function startViewAsAction(targetUserId: string): Promise<ViewAsRes
   if (!target.is_active) return { ok: false, error: '비활성 회원은 대행할 수 없습니다.' };
   if (target.is_platform_admin) return { ok: false, error: '플랫폼 관리자 계정은 대행할 수 없습니다.' };
   // 운영사 실행자는 이 행사 안에서의 역할로 판정 (설계 B). 관리자는 계정 기본 역할로 진입 후 허브가 라우팅.
+  let programId: string | null = null;
   if (!isAdmin) {
     const ctx = await contextOrNull(real);
-    if (ctx) target.role = (await membershipRole(target.id, ctx.programId)) ?? target.role;
+    if (!ctx) return { ok: false, error: '행사를 먼저 선택하세요.' };
+    programId = ctx.programId;
+    // 대상은 **현재 행사의 활성 멤버**(program_members)이고 그 행사 안 역할이 멘토·멘티여야 한다 — 다른 행사 회원 대행 차단
+    const { data: mem } = await admin.from('program_members').select('role, is_active').eq('program_id', ctx.programId).eq('user_id', target.id).maybeSingle();
+    if (!mem || !mem.is_active) return { ok: false, error: '이 행사 소속(활성) 회원만 대행할 수 있습니다.' };
+    target.role = (await membershipRole(target.id, ctx.programId)) ?? mem.role;
   }
   if (!allowed.includes(target.role)) {
     return { ok: false, error: isAdmin ? '이 계정은 대행할 수 없습니다.' : '멘토·멘티 계정만 대행할 수 있습니다.' };
@@ -82,6 +88,7 @@ export async function startViewAsAction(targetUserId: string): Promise<ViewAsRes
 
   await logAudit(admin, {
     actorId: real.id,
+    programId,
     action: 'impersonation.start',
     entityType: 'users',
     entityId: target.id,
@@ -96,10 +103,13 @@ export async function startViewAsAction(targetUserId: string): Promise<ViewAsRes
 export async function stopViewAsAction(): Promise<void> {
   const imp = await getImpersonation();
   const real = await getRealSessionProfile();
+  // 대행 중 컨텍스트 쿠키는 대상 명의라 contextOrNull(real) 이 null — 쿠키의 행사 id 만 읽어 감사 범위로 쓴다
+  const programId = currentProgramIdFromCookie();
   cookies().delete(VIEW_AS_COOKIE);
   if (imp && real) {
     await logAudit(createAdminClient(), {
       actorId: real.id,
+      programId,
       action: 'impersonation.stop',
       entityType: 'users',
       entityId: imp.target.id,

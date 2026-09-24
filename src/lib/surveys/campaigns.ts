@@ -5,7 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendSolapiSms } from '@/lib/notifications/solapi';
 import { resolveSmsCredentials } from '@/lib/sms/secrets';
-import { aggregateAnswers, validateAnswers, type QuestionAggregate, type SurveyQuestionRow } from '@/lib/surveys/validate';
+import { aggregateAnswers, parseChoices, validateAnswers, type QuestionAggregate, type SurveyQuestionRow } from '@/lib/surveys/validate';
 import type { Json, Tables } from '@/types/database';
 
 /**
@@ -36,7 +36,7 @@ async function resolveAudience(programId: string, input: AudienceInput): Promise
   if (groupId) {
     const [{ data: cases }, { data: roster }] = await Promise.all([
       admin.from('cases').select('mentee_id').eq('support_type_id', groupId).not('mentee_id', 'is', null),
-      admin.from('support_type_members').select('user_id').eq('support_type_id', groupId).eq('is_active', true),
+      admin.from('support_type_members').select('user_id').eq('support_type_id', groupId).eq('member_role', 'mentor').eq('is_active', true),
     ]);
     const inGroup = new Set<string>([...(cases ?? []).map((c) => c.mentee_id as string), ...(roster ?? []).map((r) => r.user_id)]);
     out = out.filter((m) => inGroup.has(m.userId)).map((m) => ({ ...m, supportTypeId: groupId }));
@@ -287,4 +287,108 @@ export async function setCampaignStatus(campaignId: string, status: 'open' | 'cl
   if (error) return { ok: false, error: error.message };
   await admin.from('audit_logs').insert({ actor_id: actorId, program_id: c.program_id, action: status === 'closed' ? 'survey.campaign_closed' : 'survey.campaign_reopened', entity_type: 'survey_campaigns', entity_id: campaignId, metadata: {} });
   return { ok: true };
+}
+
+// ── 복제 (P30) — 제목·양식·안내문·대상 규칙(역할·그룹)만 복사. 대상자는 현재 명단으로 새로 스냅샷, 기간은 오늘~+14일, 상태는 draft(상세에서 [다시 열기]로 시작).
+export async function duplicateCampaign(sourceId: string, programId: string, actorId: string): Promise<{ ok: true; id: string; targets: number } | { ok: false; error: string }> {
+  const admin = createAdminClient();
+  const { data: src } = await admin.from('survey_campaigns').select('*').eq('id', sourceId).maybeSingle();
+  if (!src || src.program_id !== programId) return { ok: false, error: '이 행사의 조사가 아닙니다.' };
+  const { data: srcTargets } = await admin.from('survey_campaign_targets').select('user_id, role').eq('campaign_id', sourceId);
+  const roles = Array.from(new Set((srcTargets ?? []).map((t) => t.role).filter((r): r is 'mentee' | 'mentor' => r === 'mentee' || r === 'mentor')));
+  // 원본 대상 규칙은 저장되지 않으므로 역할·그룹으로 재해석. 역할이 없으면(개별 지정 등) 같은 사람들로.
+  const audience: AudienceInput = roles.length ? { kind: 'role', roles, supportTypeId: src.support_type_id } : { kind: 'users', userIds: (srcTargets ?? []).map((t) => t.user_id) };
+  const resolved = await resolveAudience(programId, audience);
+  if (resolved.length === 0) return { ok: false, error: '복제할 대상자가 없습니다. 원본의 대상 범위에 현재 구성원이 없습니다.' };
+  const { data: users } = await admin.from('users').select('id, name, phone').in('id', resolved.map((a) => a.userId));
+  const uById = new Map((users ?? []).map((u) => [u.id, u]));
+  const now = new Date();
+  const ends = new Date(now.getTime() + 14 * 86400000);
+  const { data: created, error } = await admin
+    .from('survey_campaigns')
+    .insert({
+      program_id: programId,
+      support_type_id: src.support_type_id,
+      template_id: src.template_id,
+      title: `${src.title} (복사)`,
+      description: src.description,
+      starts_at: now.toISOString(),
+      ends_at: ends.toISOString(),
+      status: 'draft',
+      created_by: actorId,
+    })
+    .select('id')
+    .single();
+  if (error || !created) return { ok: false, error: error?.message ?? '복제 실패' };
+  const rows = resolved.map((a) => {
+    const u = uById.get(a.userId);
+    return { campaign_id: created.id, user_id: a.userId, name: u?.name ?? '', phone: u?.phone ?? null, role: a.role, support_type_id: a.supportTypeId, token: token() };
+  });
+  const { error: tErr } = await admin.from('survey_campaign_targets').insert(rows);
+  if (tErr) {
+    await admin.from('survey_campaigns').delete().eq('id', created.id);
+    return { ok: false, error: tErr.message };
+  }
+  const { error: aErr } = await admin.from('audit_logs').insert({ actor_id: actorId, program_id: programId, action: 'survey.campaign_duplicated', entity_type: 'survey_campaigns', entity_id: created.id, metadata: { source_id: sourceId, title: `${src.title} (복사)`, targets: rows.length } });
+  if (aErr) console.error('[survey] audit insert failed', aErr);
+  return { ok: true, id: created.id, targets: rows.length };
+}
+
+// ── 엑셀 내보내기 데이터 (P30) — 시트1 문항별 요약, 시트2 대상자별 원자료
+export interface CampaignExportData {
+  title: string;
+  summary: Record<string, string | number>[];
+  raw: Record<string, string | number>[];
+}
+
+function answerText(q: SurveyQuestionRow, v: unknown): string {
+  if (v === undefined || v === null || v === '') return '';
+  if (q.qtype === 'single') return parseChoices(q).find((c) => c.id === String(v))?.label ?? String(v);
+  if (q.qtype === 'multi' && Array.isArray(v)) {
+    const opts = parseChoices(q);
+    return v.map((x) => opts.find((c) => c.id === String(x))?.label ?? String(x)).join(', ');
+  }
+  if (q.qtype === 'rank' && Array.isArray(v)) {
+    const opts = parseChoices(q);
+    return v.map((x, i) => `${i + 1}위 ${opts.find((c) => c.id === String(x))?.label ?? String(x)}`).join(' / ');
+  }
+  return typeof v === 'object' ? JSON.stringify(v) : String(v);
+}
+
+export async function buildCampaignExportData(id: string, programId: string): Promise<CampaignExportData | null> {
+  const d = await getCampaignDetail(id);
+  if (!d || d.campaign.program_id !== programId) return null;
+  const roleLabel = (r: string) => (r === 'mentee' ? '멘티' : r === 'mentor' ? '멘토' : r);
+  const summary: Record<string, string | number>[] = d.aggregates.map((a, i) => {
+    const base: Record<string, string | number> = { 번호: i + 1, 문항: a.label, 유형: a.qtype, 응답수: a.n };
+    if (a.qtype === 'scale') {
+      base['평균'] = a.avg ?? '';
+      base['분포'] = (a.distribution ?? []).map((x) => `${x.value}:${x.count}`).join(' ');
+    } else if (a.qtype === 'single' || a.qtype === 'multi') {
+      base['보기별 응답'] = (a.choices ?? []).map((c) => `${c.label} ${c.count}`).join(' · ');
+    } else if (a.qtype === 'rank') {
+      base['보기별 1순위/가중'] = (a.choices ?? []).map((c) => `${c.label} ${c.count}/${c.weighted ?? 0}`).join(' · ');
+    } else if (a.qtype === 'text') {
+      base['주관식 응답수'] = a.texts?.length ?? 0;
+    }
+    return base;
+  });
+  const raw: Record<string, string | number>[] = d.targets.map((t) => {
+    const row: Record<string, string | number> = {
+      이름: t.name,
+      역할: roleLabel(t.role),
+      그룹: t.support_type_id ? (d.groupName ?? '') : '',
+      휴대폰: t.phone ?? '',
+      응답일시: t.responded_at ?? '',
+      경로: t.responded_at ? (t.channel === 'sms' ? '문자 링크' : '플랫폼') : '',
+      독려횟수: t.notify_count,
+      점수: t.score ?? '',
+    };
+    const answers = (t.answers && typeof t.answers === 'object' && !Array.isArray(t.answers) ? t.answers : {}) as Record<string, unknown>;
+    d.questions.forEach((q, i) => {
+      row[`Q${i + 1}. ${q.label}`] = answerText(q, answers[q.id]);
+    });
+    return row;
+  });
+  return { title: d.campaign.title, summary, raw };
 }

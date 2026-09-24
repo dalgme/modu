@@ -6,6 +6,7 @@ import { sendSolapiSms } from '@/lib/notifications/solapi';
 import { resolveSmsCredentials } from '@/lib/sms/secrets';
 import { fieldMatches, mentorEligibleForGroup } from '@/lib/matching/eligibility';
 import { DEFAULT_MAX_MENTEES_PER_MENTOR } from '@/lib/matching/capacity';
+import { fetchAllIn } from '@/lib/supabase/paginate';
 
 /**
  * P24 자동 매칭 (2026-09-22) · P25 그룹(라운드) 단위 개정 (2026-09-23).
@@ -219,7 +220,7 @@ export async function autoMatchMentee(caseId: string, actorId: string): Promise<
     const m = uniqueByName(pool, preferred);
     if (m && eligible(pool, m, c.support_type_id)) {
       if (await confirmAuto(pool, caseId, c.support_type_id, c.program_id, m, actorId, '재배치 희망 멘토 · 후보 자격(그룹 지정·정원)')) {
-        await afterAssignmentConfirmed(c.program_id, m.id, actorId);
+        await afterAssignmentConfirmed(c.program_id, m.id, actorId, c.support_type_id);
         return { assigned: true, mentorName: preferred, recommended: 0 };
       }
     }
@@ -236,6 +237,7 @@ export async function autoMatchNewMentor(programId: string, mentorId: string, ac
   if (!me) return { assigned: false, recommended: 0 };
 
   let assigned = false;
+  const assignedGroups = new Set<string>();
   if (uniqueByName(pool, me.name.trim())) {
     const { data: waiting } = await admin
       .from('cases')
@@ -246,11 +248,14 @@ export async function autoMatchNewMentor(programId: string, mentorId: string, ac
       .order('created_at');
     for (const w of waiting ?? []) {
       if (!eligible(pool, me, w.support_type_id)) continue;
-      if (await confirmAuto(pool, w.id, w.support_type_id, programId, me, actorId, '멘토 등록 시 재배치 희망 대기 멘티 자동 확정')) assigned = true;
+      if (await confirmAuto(pool, w.id, w.support_type_id, programId, me, actorId, '멘토 등록 시 재배치 희망 대기 멘티 자동 확정')) {
+        assigned = true;
+        assignedGroups.add(w.support_type_id);
+      }
     }
   }
   await rebalanceAllOpenRecommendations(programId, actorId, pool);
-  if (assigned) await notifyMentorsIfAllMatched(programId);
+  for (const gid of Array.from(assignedGroups)) await notifyMentorsIfAllMatched(programId, gid);
   return { assigned, recommended: 0 };
 }
 
@@ -301,6 +306,8 @@ export async function runProgramAutoMatch(programId: string, actorId: string): P
     .order('created_at');
 
   let assigned = 0;
+  // 전원 배정 판정·안내 문자는 그룹(라운드) 단위 (P30) — 배치가 건드린 그룹마다 1회
+  const touchedGroups = new Set<string>((waiting ?? []).map((w) => w.support_type_id));
   for (const row of waiting ?? []) {
     const prof = row.mentee_profiles as unknown as { preferred_mentor: string | null } | { preferred_mentor: string | null }[] | null;
     const preferred = (Array.isArray(prof) ? prof[0]?.preferred_mentor : prof?.preferred_mentor)?.trim() ?? '';
@@ -310,7 +317,7 @@ export async function runProgramAutoMatch(programId: string, actorId: string): P
     if (await confirmAuto(pool, row.id, row.support_type_id, programId, m, actorId, '일괄 등록 배치 — 재배치 희망 멘토 · 후보 자격')) assigned += 1;
   }
   await rebalanceAllOpenRecommendations(programId, actorId, pool);
-  await notifyMentorsIfAllMatched(programId);
+  for (const gid of Array.from(touchedGroups)) await notifyMentorsIfAllMatched(programId, gid);
   return { assigned };
 }
 
@@ -318,7 +325,7 @@ export async function runProgramAutoMatch(programId: string, actorId: string): P
  * 배정 확정 직후 호출(자동·수동·재배정 공통) — 확정된 멘토가 든 다른 멘티의 추천을 재계산하고,
  * 전원 배정 완료면 매칭 멘토에게 안내 문자. 실패가 배정을 되돌리면 안 되므로 throw 하지 않는다.
  */
-export async function afterAssignmentConfirmed(programId: string, mentorId: string, actorId: string | null): Promise<void> {
+export async function afterAssignmentConfirmed(programId: string, mentorId: string, actorId: string | null, supportTypeId?: string | null): Promise<void> {
   const admin = createAdminClient();
   try {
     const { data: stale } = await admin
@@ -333,26 +340,36 @@ export async function afterAssignmentConfirmed(programId: string, mentorId: stri
       const pool = await loadMentorPool(programId);
       for (const id of caseIds) await rebuildAutoRecommendations(id, actorId, pool);
     }
-    await notifyMentorsIfAllMatched(programId);
+    // 그룹(라운드)을 모르면 이 멘토의 활성 배정 그룹마다 판정 (P30)
+    let groups: string[] = supportTypeId ? [supportTypeId] : [];
+    if (groups.length === 0) {
+      const { data: mine } = await admin.from('mentor_assignments').select('cases!inner(program_id, support_type_id)').eq('mentor_id', mentorId).eq('is_active', true).eq('cases.program_id', programId);
+      groups = Array.from(new Set((mine ?? []).map((a) => (a.cases as unknown as { support_type_id: string } | null)?.support_type_id).filter((g): g is string => !!g)));
+    }
+    for (const gid of groups) await notifyMentorsIfAllMatched(programId, gid);
   } catch (err) {
     console.error('afterAssignmentConfirmed failed:', err instanceof Error ? err.message : err);
   }
 }
 
 /**
- * 등록된 멘티(중도 종료 제외) 전원이 배정 완료면, 매칭된 멘토에게만 로그인 안내 문자를 1회 발송.
- * 문자 실패는 본 작업을 막지 않는다(§6-5). 발송 여부는 mentor_assignments.notice_sent_at 로 기록.
+ * 그룹(라운드)의 등록 멘티(중도 종료 제외) 전원이 배정 완료면, 그 그룹에 배정된 멘토에게만 로그인 안내 문자를 1회 발송 (P30 그룹 단위).
+ * supportTypeId 를 생략하면 행사 전체 기준(구 동작). 문자 실패는 본 작업을 막지 않는다(§6-5). 발송 여부는 mentor_assignments.notice_sent_at(배정 행 단위).
  */
-export async function notifyMentorsIfAllMatched(programId: string): Promise<{ sent: number }> {
+export async function notifyMentorsIfAllMatched(programId: string, supportTypeId?: string | null): Promise<{ sent: number }> {
   const admin = createAdminClient();
-  const { data: open } = await admin.from('cases').select('id').eq('program_id', programId).in('status', [...OPEN_STATUSES]).limit(1);
+  let openQ = admin.from('cases').select('id').eq('program_id', programId).in('status', [...OPEN_STATUSES]).limit(1);
+  if (supportTypeId) openQ = openQ.eq('support_type_id', supportTypeId);
+  const { data: open } = await openQ;
   if ((open ?? []).length > 0) return { sent: 0 };
 
-  const { data: cases } = await admin.from('cases').select('id').eq('program_id', programId).neq('status', 'withdrawn');
+  let casesQ = admin.from('cases').select('id').eq('program_id', programId).neq('status', 'withdrawn');
+  if (supportTypeId) casesQ = casesQ.eq('support_type_id', supportTypeId);
+  const { data: cases } = await casesQ;
   const caseIds = (cases ?? []).map((c) => c.id);
   if (caseIds.length === 0) return { sent: 0 };
-  const { data: assigns } = await admin.from('mentor_assignments').select('id, mentor_id, notice_sent_at').eq('is_active', true).in('case_id', caseIds);
-  const pending = (assigns ?? []).filter((a) => !a.notice_sent_at);
+  const assigns = await fetchAllIn<{ id: string; mentor_id: string; notice_sent_at: string | null }>(caseIds, (chunk, from, to) => admin.from('mentor_assignments').select('id, mentor_id, notice_sent_at').eq('is_active', true).in('case_id', chunk).range(from, to));
+  const pending = assigns.filter((a) => !a.notice_sent_at);
   if (pending.length === 0) return { sent: 0 };
 
   const mentorIds = Array.from(new Set(pending.map((a) => a.mentor_id)));

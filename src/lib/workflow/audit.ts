@@ -12,6 +12,8 @@ interface AuditInput {
   entityType?: string;
   entityId?: string;
   metadata?: Json;
+  /** 행사 범위 (audit_logs.program_id) — 행사 감사로그 페이지는 이 값으로 필터하므로 행사 안의 작업은 반드시 넘긴다 */
+  programId?: string | null;
 }
 
 /**
@@ -44,6 +46,7 @@ export async function logAudit(supabase: DB, input: AuditInput): Promise<void> {
 
   const { error } = await client.from('audit_logs').insert({
     actor_id: actorId,
+    program_id: input.programId ?? null,
     action: input.action,
     entity_type: input.entityType ?? null,
     entity_id: input.entityId ?? null,

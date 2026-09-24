@@ -7,6 +7,7 @@ import {
   ArrowRight,
   BellRing,
   BookOpen,
+  Building2,
   ClipboardCheck,
   Coins,
   FileSpreadsheet,
@@ -67,6 +68,8 @@ export interface DashboardV2Props {
   /** 멘토가 아직 확인(로그인 열람)하지 않은 배정 수 */
   unconfirmedAssignments: number;
   operatorRequestsUnread: number;
+  /** 멘토별 최근 독려 문자 시각 (감사로그) — 지연 목록 "최근 독려" 표시 */
+  lastNudges?: Record<string, string>;
 }
 
 const KIND_LABELS: Record<InboxItem['kind'], string> = { extension: '추가 회차', mentor_change: '멘토 변경', mentor_withdrawal: '중도 종료' };
@@ -222,12 +225,48 @@ function SettlementPipeline({ m }: { m: ProgramMetrics }) {
   );
 }
 
-function MonthlyRounds({ months }: { months: TrendMonth[] }) {
+type Period = 'month' | 'all';
+
+/** 기간 세그먼트 — 월별 회차 차트와 이번 달 요약 띠에만 영향 (trend 는 월 단위라 '이번 주'는 만들 수 없다) */
+function PeriodSegment({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
+  const opts: { key: Period; label: string }[] = [
+    { key: 'month', label: '이번 달' },
+    { key: 'all', label: '전체(12개월)' },
+  ];
+  return (
+    <div className="inline-flex rounded-lg border bg-muted/40 p-0.5" role="group" aria-label="기간">
+      {opts.map((o) => (
+        <button key={o.key} type="button" aria-pressed={value === o.key} onClick={() => onChange(o.key)} className={cn('rounded-md px-2 py-0.5 text-[11px] font-semibold transition-colors', value === o.key ? 'bg-background text-primary shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
+          {o.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/** 이번 달 요약 띠 — 이행 회차 · 신규 케이스 · 종결 (전체 대비) */
+function PeriodStrip({ months, period }: { months: TrendMonth[]; period: Period }) {
+  const cur = months[months.length - 1];
+  const sum = (k: 'rounds' | 'newCases' | 'closedCases') => months.reduce((a, d) => a + d[k], 0);
+  const pick = (k: 'rounds' | 'newCases' | 'closedCases') => (period === 'month' ? (cur?.[k] ?? 0) : sum(k));
+  const label = period === 'month' ? `${cur ? Number(cur.month.slice(5, 7)) : '-'}월` : '최근 12개월';
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-muted/40 px-3 py-1.5 text-xs">
+      <span className="font-semibold">{label}</span>
+      <span>이행 회차 <b className="tabular-nums">{pick('rounds')}</b>{period === 'month' && <span className="text-muted-foreground"> / 12개월 {sum('rounds')}</span>}</span>
+      <span>신규 등록 <b className="tabular-nums">{pick('newCases')}</b></span>
+      <span>종결 <b className="tabular-nums">{pick('closedCases')}</b></span>
+    </div>
+  );
+}
+
+function MonthlyRounds({ months: all, period }: { months: TrendMonth[]; period: Period }) {
+  const months = period === 'month' ? all.slice(-1) : all;
   const max = Math.max(...months.map((d) => d.rounds), 1);
   const total = months.reduce((a, d) => a + d.rounds, 0);
-  if (total === 0) return <p className="py-6 text-center text-xs text-muted-foreground">아직 이행 회차가 없습니다.</p>;
+  if (total === 0) return <p className="py-6 text-center text-xs text-muted-foreground">{period === 'month' ? '이번 달 이행 회차가 아직 없습니다.' : '아직 이행 회차가 없습니다.'}</p>;
   return (
-    <div className="flex h-36 items-end gap-1">
+    <div className={cn('flex h-36 items-end gap-1', period === 'month' && 'mx-auto w-24')}>
       {months.map((d, i) => (
         <div key={d.month} className="group flex h-full flex-1 flex-col items-center justify-end gap-0.5" title={`${d.month} · 회차 ${d.rounds}건 · 신규 ${d.newCases} · 종결 ${d.closedCases}`}>
           <span className={cn('text-[9px] font-semibold tabular-nums leading-none text-muted-foreground', d.rounds === 0 && 'invisible', i !== months.length - 1 && 'invisible group-hover:visible')}>{d.rounds}</span>
@@ -282,6 +321,7 @@ const SHORTCUTS: { href: string; label: string; icon: LucideIcon; desc: string }
 
 export function DashboardV2(p: DashboardV2Props) {
   const [detail, setDetail] = useState<'assign' | 'delay' | 'closure' | 'inbox' | null>(null);
+  const [period, setPeriod] = useState<Period>('all');
   const m = p.metrics;
   const perf = m.performance;
   const active = perf.cases - perf.byStatus.withdrawn;
@@ -299,18 +339,19 @@ export function DashboardV2(p: DashboardV2Props) {
           <h2 className="text-base font-bold">지금 확인할 것</h2>
           <span className="text-xs text-muted-foreground">카드의 [상세 보기]로 목록을 열고, 바로가기로 처리 화면으로 이동합니다.</span>
         </div>
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-          <AlertCard icon={Users} label="멘토 배정 대기" value={p.assignQueue.length} sub="새로 등록됐거나 재배정이 필요한 멘티" tone="navy" href="/nextlab/roster?tab=mentee-match" hrefLabel="매칭 리스트" onDetail={() => setDetail('assign')} />
-          <AlertCard icon={AlertTriangle} label="지연 케이스" value={p.delays.length} sub="배정·첫 회차·장기 무진행·보완 지연 — 독려 문자 가능" tone="red" href="/nextlab/reports?tab=overview" hrefLabel="리포트 개요" onDetail={() => setDetail('delay')} />
-          <AlertCard icon={ClipboardCheck} label="종결 검수 대기" value={p.closureQueue.length} sub="관찰의견서 제출 · 승인 시 정산 확정" tone="violet" href="/nextlab/reports?tab=cases" hrefLabel="검수할 케이스" onDetail={() => setDetail('closure')} />
-          <AlertCard icon={Inbox} label="처리 대기 요청" value={p.inbox.length} sub={`추가 회차 · 멘토 변경 · 중도 종료${p.operatorRequestsUnread ? ` · 발주처 요청 미확인 ${p.operatorRequestsUnread}` : ''}`} tone="amber" href="/nextlab/board?tab=requests" hrefLabel="요청함" onDetail={() => setDetail('inbox')} />
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <AlertCard icon={Users} label="멘토 배정 대기" value={p.assignQueue.length} sub="새로 등록됐거나 재배정이 필요한 멘티" tone="navy" href="/nextlab/roster?tab=mentee-match&filter=unassigned" hrefLabel="미배정만 보기" onDetail={() => setDetail('assign')} />
+          <AlertCard icon={AlertTriangle} label="지연 케이스" value={p.delays.length} sub="배정·첫 회차·장기 무진행·보완 지연 — 독려 문자 가능" tone="red" href="/nextlab/reports?tab=overview#delays" hrefLabel="지연 목록" onDetail={() => setDetail('delay')} />
+          <AlertCard icon={ClipboardCheck} label="종결 검수 대기" value={p.closureQueue.length} sub="관찰의견서 제출 · 승인 시 정산 확정" tone="violet" href="/nextlab/reports?tab=cases&status=closure_requested" hrefLabel="검수할 케이스만" onDetail={() => setDetail('closure')} />
+          <AlertCard icon={Inbox} label="처리 대기 요청" value={p.inbox.length} sub="추가 회차 · 멘토 변경 · 중도 종료" tone="amber" href="/nextlab/board?tab=requests" hrefLabel="요청함" onDetail={() => setDetail('inbox')} />
+          <AlertCard icon={Building2} label="발주처 요청 미확인" value={p.operatorRequestsUnread} sub="발주처가 보낸 운영 요청 중 아직 읽지 않은 것" tone="amber" href="/nextlab/board?tab=requests" hrefLabel="요청함" />
           <AlertCard icon={MessageSquare} label="게시판 새 소식" value={boardTotal} sub={`문의 ${p.board.inquiries} · 게시글 ${p.board.posts} · 메시지 ${p.board.messages}`} tone="sky" href="/nextlab/board" hrefLabel="게시판" />
         </div>
         {missed > 0 && (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-dashed border-amber-400 bg-amber-50/50 px-4 py-2 text-xs dark:bg-amber-950/20">
             <span className="font-semibold text-amber-800 dark:text-amber-300">놓치기 쉬운 업무</span>
             {p.unconfirmedAssignments > 0 && <Link href="/nextlab/roster?tab=mentor-match" className="hover:underline">멘토 미확인 배정 <b>{p.unconfirmedAssignments}</b>건</Link>}
-            {m.backlog.unsignedRounds > 0 && <Link href="/nextlab/reports?tab=cases" className="hover:underline">멘티 미서명 회차 <b>{m.backlog.unsignedRounds}</b>건</Link>}
+            {m.backlog.unsignedRounds > 0 && <Link href="/nextlab/reports?tab=cases&status=in_progress" className="hover:underline">멘티 미서명 회차 <b>{m.backlog.unsignedRounds}</b>건</Link>}
             {m.backlog.unansweredSurveys > 0 && <Link href="/nextlab/surveys" className="hover:underline">미응답 만족도 <b>{m.backlog.unansweredSurveys}</b>건</Link>}
             {m.backlog.mentorsMissingDocs > 0 && <Link href="/nextlab/roster?tab=mentor-match" className="hover:underline">지급서류 미수령 멘토 <b>{m.backlog.mentorsMissingDocs}</b>명</Link>}
           </div>
@@ -360,8 +401,12 @@ export function DashboardV2(p: DashboardV2Props) {
         <Panel title="정산 파이프라인" sub="예상(미확정 이행 회차) → 지급 대기 → 품의 → 정산 확인 → 지급 완료">
           <SettlementPipeline m={m} />
         </Panel>
-        <Panel title="월별 이행 회차 (최근 12개월)" sub="막대에 마우스를 올리면 신규·종결도 함께 표시">
-          <MonthlyRounds months={p.trend} />
+        <Panel title={period === 'month' ? '이번 달 이행 회차' : '월별 이행 회차 (최근 12개월)'} sub="막대에 마우스를 올리면 신규·종결도 함께 표시 · 기간은 이 차트와 요약 띠에만 적용">
+          <div className="flex items-center justify-between gap-2">
+            <PeriodSegment value={period} onChange={setPeriod} />
+          </div>
+          <PeriodStrip months={p.trend} period={period} />
+          <MonthlyRounds months={p.trend} period={period} />
         </Panel>
       </div>
 
@@ -385,7 +430,7 @@ export function DashboardV2(p: DashboardV2Props) {
       <Dialog open={detail === 'delay'} onOpenChange={(o) => { if (!o) setDetail(null); }}>
         <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
           <DialogHeader><DialogTitle>지연 케이스 {p.delays.length}건</DialogTitle><DialogDescription>배정 지연 · 재배정 지연 · 첫 회차 없음 · 장기 무진행 · 보완 지연. 멘토별로 독려 문자를 보낼 수 있습니다.</DialogDescription></DialogHeader>
-          <DelayList items={p.delays} caseHrefBase="/nextlab/cases" canNudge />
+          <DelayList items={p.delays} caseHrefBase="/nextlab/cases" canNudge lastNudges={p.lastNudges} />
         </DialogContent>
       </Dialog>
       <Dialog open={detail === 'inbox'} onOpenChange={(o) => { if (!o) setDetail(null); }}>

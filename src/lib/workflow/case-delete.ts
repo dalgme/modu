@@ -15,7 +15,7 @@ export type CaseDeleteResult = { ok: true } | { ok: false; error: string };
  * 스토리지 파일(documents/photos/signatures)은 여기서 직접 정리한다.
  *
  * 안전장치:
- *  - 운영사 + case.manage 권한, 행사 컨텍스트 범위 안의 케이스만
+ *  - 운영사 + case.delete 권한(기본 PL 전용), 행사 컨텍스트 범위 안의 케이스만
  *  - 지급 품의에 편성된 정산(batch_id 있음)이 있으면 차단 — 품의 기록이 오염되지 않게
  *  - 감사기록에 삭제 요약(멘티·회차·정산 건수)을 남긴다 (INSERT-only 라 삭제 이력은 보존)
  */
@@ -24,7 +24,8 @@ export async function deleteCaseAction(caseId: string, confirmText: string): Pro
   if (!actor) return { ok: false, error: '운영사 담당자만 실행할 수 있습니다.' };
   const ctx = await contextOrNull(actor);
   if (!ctx) return { ok: false, error: '행사를 먼저 선택하세요.' };
-  const denied = denyUnless(ctx, 'case.manage');
+  // 완전 삭제는 별도 권한 키(case.delete, 기본 PL 전용) — 케이스 등록 권한(case.manage)만으로는 불가
+  const denied = denyUnless(ctx, 'case.delete');
   if (denied) return { ok: false, error: denied };
   if (confirmText.trim() !== '삭제') return { ok: false, error: '확인 문구가 일치하지 않습니다. "삭제" 를 입력하세요.' };
 
@@ -65,7 +66,7 @@ export async function deleteCaseAction(caseId: string, confirmText: string): Pro
   const { error } = await admin.from('cases').delete().eq('id', caseId);
   if (error) return { ok: false, error: `삭제 실패: ${error.message}` };
 
-  await admin.from('audit_logs').insert({
+  const { error: auditError } = await admin.from('audit_logs').insert({
     actor_id: actor.id,
     program_id: ctx.programId,
     action: 'case.delete',
@@ -81,6 +82,7 @@ export async function deleteCaseAction(caseId: string, confirmText: string): Pro
       files: (docRows ?? []).length + (sigRows ?? []).length,
     },
   });
+  if (auditError) console.error('case delete audit failed:', auditError.message);
 
   revalidatePath('/nextlab/dashboard');
   revalidatePath('/nextlab/roster');

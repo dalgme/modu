@@ -36,6 +36,11 @@ export async function enterProgram(
     const groups = await listMyGroups(programId, { id: effective.id, role, isPlatformAdmin: isAdmin });
     if (groups.length === 1) groupId = groups[0]!.group.id;
     else if (groups.length > 1 && !isStaff(role, isAdmin)) return { ok: false, redirectTo: `/hub?program=${programId}` };
+    else if (groups.length > 1 && isStaff(role, isAdmin)) {
+      // 스태프: 담당 그룹(program_members.duty_groups)이 정확히 1개면 그 그룹 범위로 자동 진입 — 아니면 행사 전체
+      const mine = groups.filter((g) => g.mine && g.group.status === 'active');
+      if (mine.length === 1) groupId = mine[0]!.group.id;
+    }
   }
 
   if (!writeContextCookie(effective.id, programId, groupId)) return { ok: false, redirectTo: '/hub?error=cookie' };

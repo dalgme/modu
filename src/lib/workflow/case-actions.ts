@@ -8,7 +8,6 @@ import { denyUnless } from '@/lib/auth/capabilities';
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { assignMentorSchema, caseFormSchema } from '@/lib/validations/case';
-import { succeedCases, type SuccessionResult } from '@/lib/workflow/succession';
 import { markRecommendationAdopted } from '@/lib/matching/recommend';
 import { afterAssignmentConfirmed, autoMatchMentee, rebalanceAllOpenRecommendations } from '@/lib/matching/auto-match';
 import {
@@ -116,8 +115,8 @@ export async function assignMentorAction(caseId: string, mentorId: string): Prom
   return result;
 }
 
-/** 운영사: 멘토 교체 (T3) */
-export async function reassignMentorAction(caseId: string, newMentorId: string, reason?: string): Promise<WorkflowResult> {
+/** 운영사: 멘토 교체 (T3). expectedCurrentMentorId = 화면이 알고 있던 현재 멘토(동시 변경 감지) */
+export async function reassignMentorAction(caseId: string, newMentorId: string, reason?: string, expectedCurrentMentorId?: string | null): Promise<WorkflowResult> {
   const profile = await realRoleOrNull(['nextlab']);
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
@@ -127,7 +126,7 @@ export async function reassignMentorAction(caseId: string, newMentorId: string, 
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? '입력값을 확인하세요.' };
   if (!(await caseInProgram(parsed.data.caseId, ctx.programId))) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
 
-  const result = await reassignMentor(parsed.data.caseId, parsed.data.mentorId, profile.id, reason);
+  const result = await reassignMentor(parsed.data.caseId, parsed.data.mentorId, profile.id, reason, 'manual', expectedCurrentMentorId ? { expectedCurrentMentorId } : {});
   if (result.ok) {
     await recordAdoption(parsed.data.caseId, parsed.data.mentorId, profile.id, ctx.programId);
     await afterAssignmentConfirmed(ctx.programId, parsed.data.mentorId, profile.id);
@@ -159,17 +158,31 @@ export async function recallMentorAction(caseId: string, reason?: string): Promi
   return result;
 }
 
-/** 운영사: 그룹 간 승계 개설 (docs §8) */
-export async function succeedCasesAction(input: { sourceCaseIds: string[]; targetGroupId: string; keepMentor: boolean }): Promise<{ ok: true; result: SuccessionResult } | { ok: false; error: string }> {
+/**
+ * 운영사: 케이스 내부 메모 (append-only) — audit_logs 행(action='case.memo')으로 저장한다. 케이스 상세 [조치 이력] 카드에 작성자·시각과 함께 나온다.
+ */
+export async function addCaseMemoAction(caseId: string, body: string): Promise<{ ok: true } | { ok: false; error: string }> {
   const profile = await realRoleOrNull(['nextlab']);
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
   { const denied = denyUnless(ctx, 'case.manage'); if (denied) return { ok: false, error: denied }; }
-  const r = await succeedCases({ programId: ctx.programId, actorId: profile.id, sourceCaseIds: input.sourceCaseIds ?? [], targetGroupId: input.targetGroupId, keepMentor: !!input.keepMentor });
-  if (r.ok) {
-    revalidatePath('/nextlab/dashboard');
-    revalidatePath('/nextlab/succession');
+  const text = (body ?? '').trim();
+  if (!text) return { ok: false, error: '메모 내용을 입력하세요.' };
+  if (text.length > 1000) return { ok: false, error: '메모는 1,000자 이내로 입력하세요.' };
+  if (!(await caseInProgram(caseId, ctx.programId))) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
+  const { error } = await createAdminClient().from('audit_logs').insert({
+    actor_id: profile.id,
+    program_id: ctx.programId,
+    action: 'case.memo',
+    entity_type: 'cases',
+    entity_id: caseId,
+    metadata: { body: text },
+  });
+  if (error) {
+    console.error('case memo insert failed:', error.message);
+    return { ok: false, error: `메모 저장 실패: ${error.message}` };
   }
-  return r;
+  revalidatePath(`/nextlab/cases/${caseId}`);
+  return { ok: true };
 }

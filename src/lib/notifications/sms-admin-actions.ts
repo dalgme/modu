@@ -1,19 +1,50 @@
 'use server';
 
 import { requireStaff } from '@/lib/auth/guards';
-import { contextOrNull } from '@/lib/programs/context';
+import { contextOrNull, type ProgramContext } from '@/lib/programs/context';
 import { denyUnless } from '@/lib/auth/capabilities';
-
-/** 운영사 담당 등급 권한(sms) — 발주처는 대상 아님 */
-async function smsDenied(): Promise<string | null> {
-  const profile = await requireStaff();
-  if (profile.role !== 'nextlab') return null;
-  const ctx = await contextOrNull(profile);
-  return ctx ? denyUnless(ctx, 'sms') : null;
-}
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendSms } from '@/lib/notifications/provider';
-import { sendSolapiSms, getSolapiBalance } from '@/lib/notifications/solapi';
+import { getSolapiBalance } from '@/lib/notifications/solapi';
+import { fetchAllIn } from '@/lib/supabase/paginate';
+
+const INSTITUTION_READ_ONLY = '발주처 계정은 문자 발송을 할 수 없습니다.';
+
+/**
+ * 문자 발송 게이트 (2026-09-24):
+ *  - 운영사: 담당 등급 권한 `sms` (옵저버 차단)
+ *  - 발주처: 기본 열람 전용. 행사 설정 staff_permissions.institution_sms === true 일 때만 발송 가능
+ * 반환: 컨텍스트(행사 범위) 또는 오류 문구
+ */
+async function smsGate(): Promise<{ ok: true; ctx: ProgramContext; actorId: string } | { ok: false; error: string }> {
+  const profile = await requireStaff();
+  const ctx = await contextOrNull(profile);
+  if (!ctx) return { ok: false, error: '행사를 먼저 선택하세요.' };
+  if (ctx.role === 'institution') {
+    const perms = ctx.program.staff_permissions;
+    const allowed = !!perms && typeof perms === 'object' && !Array.isArray(perms) && (perms as Record<string, unknown>).institution_sms === true;
+    if (!allowed) return { ok: false, error: INSTITUTION_READ_ONLY };
+    return { ok: true, ctx, actorId: profile.id };
+  }
+  const denied = denyUnless(ctx, 'sms');
+  if (denied) return { ok: false, error: denied };
+  return { ok: true, ctx, actorId: profile.id };
+}
+
+/** 수신자 id 를 현재 행사의 활성 소속(program_members)으로 제한 — 다른 행사 회원은 조용히 제외 */
+async function scopeRecipients(programId: string, ids: string[]): Promise<string[]> {
+  const rows = await fetchAllIn(ids, (chunk, from, to) =>
+    createAdminClient().from('program_members').select('user_id').eq('program_id', programId).eq('is_active', true).in('user_id', chunk).range(from, to),
+  );
+  const ok = new Set(rows.map((r) => r.user_id));
+  return ids.filter((id) => ok.has(id));
+}
+
+/** 발송사 응답이 인증·잔액 오류면 나머지 발송을 멈춘다 (전부 같은 이유로 실패하므로) */
+function isFatalProviderError(msg: string): boolean {
+  const m = msg.toLowerCase();
+  return ['balance', '잔액', '401', '403', 'auth', 'not_configured', 'credentials_unavailable', 'sender_missing'].some((k) => m.includes(k));
+}
 import {
   listReminderSettings,
   sendReminderForSetting,
@@ -37,68 +68,94 @@ export type ReminderSendResult =
   | ({ ok: true } & ReminderRunResult)
   | { ok: false; error: string };
 
-/** 관리자: 문자 테스트 발송 */
+/** 관리자: 문자 테스트 발송 (행사별 문자 API → 플랫폼 폴백) */
 export async function sendTestSmsAction(input: { to: string; text: string }): Promise<TestSmsResult> {
-  await requireStaff();
-  { const denied = await smsDenied(); if (denied) return { ok: false, error: denied }; }
+  const g = await smsGate();
+  if (!g.ok) return { ok: false, error: g.error };
   const to = (input.to ?? '').trim();
   const text = (input.text ?? '').trim();
   if (!/^01[0-9]{7,9}$/.test(to.replace(/[^0-9]/g, ''))) {
     return { ok: false, error: '올바른 휴대폰 번호를 입력하세요.' };
   }
   if (text.length < 1) return { ok: false, error: '메시지 내용을 입력하세요.' };
-  return sendSms(to, text);
+  return sendSms(to, text, g.ctx.programId);
 }
 
 /**
  * 관리자: 선택한 회원들에게 실제 문자 발송.
- * 수신자 id 목록으로 연락처를 조회해 순차 발송하고, 성공/실패 수를 집계한다.
+ *  - 수신자는 현재 행사의 활성 소속으로 제한
+ *  - 행사별 문자 API → 플랫폼 폴백 (`sendSms(to, text, programId)`)
+ *  - 10명 단위 병렬 배치(Promise.allSettled). 발송사가 인증·잔액 오류를 돌려주면 그 배치에서 중단
+ *  - 감사 'sms.bulk_send' (program_id, total/count, sent, failed, failed_ids)
  */
 export async function sendBulkSmsAction(input: {
   recipientIds: string[];
   text: string;
   senderIndex?: 1 | 2;
 }): Promise<BulkSmsResult> {
-  const actor = await requireStaff();
-  { const denied = await smsDenied(); if (denied) return { ok: false, error: denied }; }
+  const g = await smsGate();
+  if (!g.ok) return { ok: false, error: g.error };
   const text = (input.text ?? '').trim();
-  const ids = Array.from(new Set(input.recipientIds ?? [])).filter(Boolean);
+  const rawIds = Array.from(new Set(input.recipientIds ?? [])).filter(Boolean);
   if (!text) return { ok: false, error: '메시지 내용을 입력하세요.' };
-  if (ids.length === 0) return { ok: false, error: '수신자를 1명 이상 선택하세요.' };
+  if (rawIds.length === 0) return { ok: false, error: '수신자를 1명 이상 선택하세요.' };
+  const ids = await scopeRecipients(g.ctx.programId, rawIds);
+  if (ids.length === 0) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
 
   const admin = createAdminClient();
-  const { data: users } = await admin
-    .from('users')
-    .select('id, phone, is_active')
-    .in('id', ids);
-  const phones = (users ?? [])
+  const users = await fetchAllIn(ids, (chunk, from, to) => admin.from('users').select('id, phone, is_active').in('id', chunk).range(from, to));
+  const targets = users
     .filter((u) => u.is_active && (u.phone ?? '').replace(/\D/g, '').length >= 10)
-    .map((u) => u.phone as string);
-  if (phones.length === 0) return { ok: false, error: '발송 가능한 연락처가 없습니다.' };
+    .map((u) => ({ id: u.id, phone: u.phone as string }));
+  if (targets.length === 0) return { ok: false, error: '발송 가능한 연락처가 없습니다.' };
 
   let sent = 0;
   let failed = 0;
-  for (const phone of phones) {
-    const r = await sendSolapiSms(phone, text, { senderIndex: input.senderIndex ?? 1 });
-    if (r.ok) sent += 1;
-    else failed += 1;
+  const failedIds: string[] = [];
+  let fatal: string | null = null;
+  let attempted = 0;
+  const BATCH = 10;
+  for (let i = 0; i < targets.length && !fatal; i += BATCH) {
+    const batch = targets.slice(i, i + BATCH);
+    const results = await Promise.allSettled(batch.map((t) => sendSms(t.phone, text, g.ctx.programId)));
+    attempted += batch.length;
+    results.forEach((r, idx) => {
+      const id = batch[idx]!.id;
+      if (r.status === 'fulfilled' && r.value.ok) sent += 1;
+      else {
+        failed += 1;
+        failedIds.push(id);
+        const msg = r.status === 'fulfilled' ? (r.value.ok ? '' : r.value.error) : r.reason instanceof Error ? r.reason.message : String(r.reason);
+        if (!fatal && isFatalProviderError(msg)) fatal = msg;
+      }
+    });
+  }
+  // 발송사 오류로 중단된 경우 시도하지 못한 수신자도 실패로 집계
+  for (const t of targets.slice(attempted)) {
+    failed += 1;
+    failedIds.push(t.id);
   }
 
-  await admin.from('audit_logs').insert({
-    actor_id: actor.id,
+  const { error: auditError } = await admin.from('audit_logs').insert({
+    actor_id: g.actorId,
+    program_id: g.ctx.programId,
     action: 'sms.bulk_send',
     entity_type: 'users',
-    entity_id: actor.id,
-    metadata: { total: phones.length, sent, failed },
+    entity_id: g.actorId,
+    metadata: { total: targets.length, count: targets.length, sent, failed, failed_ids: failedIds.slice(0, 200), dropped_out_of_scope: rawIds.length - ids.length, fatal_error: fatal, role: g.ctx.role },
   });
+  if (auditError) console.error('bulk sms audit failed:', auditError.message);
 
+  if (fatal) {
+    return { ok: false, error: `발송사 오류로 중단했습니다 (${sent}건 발송 · ${failed}건 미발송): ${fatal}. 문자 API 자격증명·잔액을 확인하세요.` };
+  }
   if (sent === 0) {
     return { ok: false, error: `발송에 모두 실패했습니다. (${failed}건)` };
   }
-  return { ok: true, sent, failed, total: phones.length };
+  return { ok: true, sent, failed, total: targets.length };
 }
 
-/** 관리자: 문자 잔액 조회 */
+/** 관리자: 문자 잔액 조회 (플랫폼 계정) */
 export async function getSmsBalanceAction(): Promise<BalanceResult> {
   await requireStaff();
   return getSolapiBalance();
@@ -114,12 +171,15 @@ export async function scheduleBulkSmsAction(input: {
   scheduledAt: string;
   senderIndex?: 1 | 2;
 }): Promise<ScheduleSmsResult> {
-  const actor = await requireStaff();
-  { const denied = await smsDenied(); if (denied) return { ok: false, error: denied }; }
+  const g = await smsGate();
+  if (!g.ok) return { ok: false, error: g.error };
+  const actor = { id: g.actorId };
   const text = (input.text ?? '').trim();
-  const ids = Array.from(new Set(input.recipientIds ?? [])).filter(Boolean);
+  const rawIds = Array.from(new Set(input.recipientIds ?? [])).filter(Boolean);
   if (!text) return { ok: false, error: '메시지 내용을 입력하세요.' };
-  if (ids.length === 0) return { ok: false, error: '수신자를 1명 이상 선택하세요.' };
+  if (rawIds.length === 0) return { ok: false, error: '수신자를 1명 이상 선택하세요.' };
+  const ids = await scopeRecipients(g.ctx.programId, rawIds);
+  if (ids.length === 0) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
 
   const when = new Date(input.scheduledAt);
   if (Number.isNaN(when.getTime())) return { ok: false, error: '예약 일시가 올바르지 않습니다.' };
@@ -137,26 +197,32 @@ export async function scheduleBulkSmsAction(input: {
     scheduled_at: when.toISOString(),
     status: 'pending',
     created_by: actor.id,
-  });
+    program_id: g.ctx.programId,
+  } as never);
   if (error) return { ok: false, error: error.message };
 
-  await admin.from('audit_logs').insert({
+  const { error: auditError } = await admin.from('audit_logs').insert({
     actor_id: actor.id,
+    program_id: g.ctx.programId,
     action: 'sms.schedule',
     entity_type: 'scheduled_messages',
     entity_id: actor.id,
-    metadata: { total: ids.length, scheduled_at: when.toISOString() },
+    metadata: { total: ids.length, scheduled_at: when.toISOString(), dropped_out_of_scope: rawIds.length - ids.length },
   });
+  if (auditError) console.error('sms schedule audit failed:', auditError.message);
 
   return { ok: true, scheduledAt: when.toISOString(), total: ids.length };
 }
 
-/** 관리자: 예약 발송 취소 (pending 만 취소 가능) */
+/** 관리자: 예약 발송 취소 (pending · 이 행사의 예약만) */
 export async function cancelScheduledSmsAction(id: string): Promise<SimpleResult> {
-  await requireStaff();
-  { const denied = await smsDenied(); if (denied) return { ok: false, error: denied }; }
+  const g = await smsGate();
+  if (!g.ok) return { ok: false, error: g.error };
   if (!id) return { ok: false, error: '잘못된 요청입니다.' };
   const admin = createAdminClient();
+  const { data: row } = await admin.from('scheduled_messages').select('id, program_id').eq('id', id).maybeSingle();
+  const rowProgram = (row as unknown as { program_id?: string | null } | null)?.program_id ?? null;
+  if (!row || (rowProgram && rowProgram !== g.ctx.programId)) return { ok: false, error: '이 행사의 예약이 아닙니다.' };
   const { data, error } = await admin
     .from('scheduled_messages')
     .update({ status: 'canceled' })
@@ -167,6 +233,8 @@ export async function cancelScheduledSmsAction(id: string): Promise<SimpleResult
   if (!data || data.length === 0) {
     return { ok: false, error: '이미 발송되었거나 취소할 수 없는 예약입니다.' };
   }
+  const { error: auditError } = await admin.from('audit_logs').insert({ actor_id: g.actorId, program_id: g.ctx.programId, action: 'sms.schedule_cancel', entity_type: 'scheduled_messages', entity_id: id, metadata: {} });
+  if (auditError) console.error('sms cancel audit failed:', auditError.message);
   return { ok: true };
 }
 

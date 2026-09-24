@@ -7,6 +7,7 @@ import type { UserRole } from '@/lib/auth/roles';
 import type { ImportKind } from '@/lib/import/bulk-import';
 import { AddExistingMemberForm, CreateMemberForm } from '@/components/nextlab/members-manager';
 import { BulkImportPanel } from '@/components/nextlab/bulk-import-panel';
+import { ImportFromProgramPanel } from '@/components/nextlab/import-from-program-panel';
 import { Button } from '@/components/ui/button';
 
 import { REG_ROLES, type RegKey } from '@/lib/roster/register-roles';
@@ -28,9 +29,10 @@ export function RegisterPanel({
   /** 현재 범위 그룹 — 엑셀 업로드 그룹 기본값 (P28) */
   defaultGroupId?: string | null;
 }) {
-  const [reg, setReg] = useState<RegKey>(initialReg);
+  type PanelKey = RegKey | 'import';
+  const [reg, setReg] = useState<PanelKey>(initialReg);
 
-  const pick = (key: RegKey) => {
+  const pick = (key: PanelKey) => {
     setReg(key);
     if (typeof window !== 'undefined') {
       const url = new URL(window.location.href);
@@ -55,10 +57,21 @@ export function RegisterPanel({
             <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-bold tabular-nums ${reg === r.key ? 'bg-primary-foreground/20' : 'bg-muted'}`}>{counts[r.key]}</span>
           </button>
         ))}
+        {/* 다른 행사의 멘토 풀 일괄 소속 (P30) */}
+        <button
+          type="button"
+          onClick={() => pick('import')}
+          aria-current={reg === 'import' ? 'page' : undefined}
+          className={`flex items-center justify-between gap-2 whitespace-nowrap rounded-lg px-3 py-2 text-left text-sm font-semibold ${reg === 'import' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground'}`}
+        >
+          <span>다른 행사에서 가져오기</span>
+        </button>
       </nav>
       {/* key={reg}: 자격이 바뀌면 오른쪽 전체를 새로 마운트 — 이전 자격의 폼 상태·검증 미리보기가 남지 않는다 */}
       <div key={reg} className="flex flex-col gap-5">
-        {reg === 'mentee' ? (
+        {reg === 'import' ? (
+          <ImportFromProgramPanel />
+        ) : reg === 'mentee' ? (
           <div className="flex flex-col gap-3 rounded-xl border bg-background p-4">
             <p className="text-sm">
               멘티 개별 등록은 <b>멘티 등록 폼</b>(케이스 생성)에서 합니다 — 이름·닉네임·고유번호·권역·유형·아이디어·희망분야·희망 멘토·비고를 입력하고, 계정이 자동 발급·연결됩니다.
@@ -72,8 +85,12 @@ export function RegisterPanel({
         ) : (
           <CreateMemberForm fixedRole={reg as UserRole} />
         )}
-        <BulkImportPanel groups={groups} fixedKind={reg as ImportKind} defaultGroupId={defaultGroupId} />
-        <AddExistingMemberForm />
+        {reg !== 'import' && (
+          <>
+            <BulkImportPanel groups={groups} fixedKind={reg as ImportKind} defaultGroupId={defaultGroupId} />
+            <AddExistingMemberForm />
+          </>
+        )}
       </div>
     </div>
   );

@@ -9,6 +9,7 @@ import type { SmsRecipient } from '@/lib/data/members';
 import { ROLE_LABELS } from '@/lib/auth/roles';
 import { estimateSmsCost } from '@/lib/notifications/sms-cost';
 import { formatKRW } from '@/lib/utils/format';
+import { ConfirmDialog } from '@/components/common/confirm-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -24,12 +25,31 @@ const ROLE_FILTERS = [
   { key: 'institution', label: '발주처' },
 ] as const;
 
+/** 검색어 정규화 — 숫자는 하이픈·공백을 떼고 비교, 문자는 소문자 */
+const norm = (s: string) => s.trim().toLowerCase();
+const digitsOnly = (s: string) => s.replace(/\D/g, '');
+
+/**
+ * 문자 발송 작성 — 수신자 선택(역할 칩 · 이름/휴대폰 검색) → 문안 → 즉시/예약.
+ * 발송 전 ConfirmDialog 로 수신자 수 · 예상 비용 · 발신 경로 · 문안 미리보기를 보여준다.
+ * `canSend=false`(발주처 열람)면 발송·예약 버튼이 잠긴다.
+ */
 export function SmsComposer({
   recipients,
   configured,
+  programSmsActive = false,
+  canSend = true,
+  scopeLabel,
 }: {
   recipients: SmsRecipient[];
+  /** 플랫폼 공통 API 연동 여부 */
   configured: boolean;
+  /** 행사별 문자 API 등록·활성 여부 — 있으면 그 발신번호가 우선 */
+  programSmsActive?: boolean;
+  /** 운영사 문자 권한자만 true. 발주처는 열람 전용 */
+  canSend?: boolean;
+  /** 현재 범위 이름 (행사 전체 / 그룹명) — 확인창 안내 */
+  scopeLabel?: string;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -40,22 +60,28 @@ export function SmsComposer({
   const [sending, setSending] = useState(false);
   const [mode, setMode] = useState<'now' | 'scheduled'>('now');
   const [scheduledAt, setScheduledAt] = useState('');
+  const [confirmOpen, setConfirmOpen] = useState(false);
 
   const selectedIds = useMemo(() => new Set(selected.map((r) => r.id)), [selected]);
+  const sendable = configured || programSmsActive;
 
   const candidates = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = norm(query);
+    const qDigits = digitsOnly(query);
     return recipients.filter((r) => {
       if (selectedIds.has(r.id)) return false;
       if (roleFilter !== 'all' && r.role !== roleFilter) return false;
       if (!q) return true;
-      return (
-        r.name.toLowerCase().includes(q) ||
-        (r.phone ?? '').includes(q) ||
-        ROLE_LABELS[r.role].includes(q)
-      );
+      if (qDigits.length >= 3 && digitsOnly(r.phone ?? '').includes(qDigits)) return true;
+      return r.name.toLowerCase().includes(q) || (r.businessName ?? '').toLowerCase().includes(q) || ROLE_LABELS[r.role].includes(q);
     });
   }, [recipients, selectedIds, query, roleFilter]);
+
+  const roleCounts = useMemo(() => {
+    const m: Record<string, number> = { all: recipients.length };
+    for (const r of recipients) m[r.role] = (m[r.role] ?? 0) + 1;
+    return m;
+  }, [recipients]);
 
   const cost = estimateSmsCost(text, selected.length);
 
@@ -87,6 +113,7 @@ export function SmsComposer({
       const iso = new Date(scheduledAt).toISOString();
       const result = await scheduleBulkSmsAction({ recipientIds: ids, text, scheduledAt: iso });
       setSending(false);
+      setConfirmOpen(false);
       if (result.ok) {
         toast({
           title: `예약 완료 (${result.total}명)`,
@@ -105,10 +132,11 @@ export function SmsComposer({
 
     const result = await sendBulkSmsAction({ recipientIds: ids, text });
     setSending(false);
+    setConfirmOpen(false);
     if (result.ok) {
       toast({
         title: `문자 발송 완료 (성공 ${result.sent}건${result.failed ? ` · 실패 ${result.failed}건` : ''})`,
-        description: '발송 리스트에서 상태를 확인하세요.',
+        description: '발송 현황에서 상태를 확인하세요.',
       });
       setText('');
       setSelected([]);
@@ -118,16 +146,25 @@ export function SmsComposer({
     }
   }
 
+  const disabledReason = !canSend
+    ? '문자 발송은 운영사 문자 권한 담당자만 할 수 있습니다 (발주처는 열람 전용).'
+    : !sendable
+      ? '플랫폼 공통 또는 행사별 문자 API 가 설정되지 않았습니다.'
+      : undefined;
+  const ready = canSend && sendable && !sending && selected.length > 0 && text.trim().length > 0 && (mode !== 'scheduled' || !!scheduledAt);
+  const route = programSmsActive ? '행사별 문자 API (행사 발신번호)' : configured ? '플랫폼 공통 발신번호' : '미설정';
+
   return (
     <div className="flex flex-col gap-4">
       {/* 수신자 선택 */}
       <div className="flex flex-col gap-2">
-        <Label>수신자 선택 (회원 · 중복선택)</Label>
-        <div className="flex flex-wrap items-center gap-1.5">
+        <Label>수신자 선택 (회원 · 중복선택){scopeLabel ? <span className="ml-1 text-xs font-normal text-muted-foreground">· 범위: {scopeLabel}</span> : null}</Label>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="역할 필터">
           {ROLE_FILTERS.map((f) => (
             <button
               key={f.key}
               type="button"
+              aria-pressed={roleFilter === f.key}
               onClick={() => setRoleFilter(f.key)}
               className={cn(
                 'rounded-full px-2.5 py-1 text-xs font-medium transition-colors',
@@ -137,6 +174,7 @@ export function SmsComposer({
               )}
             >
               {f.label}
+              <span className="ml-1 tabular-nums opacity-70">{roleCounts[f.key] ?? 0}</span>
             </button>
           ))}
         </div>
@@ -145,7 +183,8 @@ export function SmsComposer({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="성명·연락처·소속 검색"
+            placeholder="이름 · 휴대폰 뒷자리 · 소속(멘티) 검색"
+            aria-label="수신자 검색"
             className="pl-8"
           />
         </div>
@@ -177,7 +216,8 @@ export function SmsComposer({
                           {ROLE_LABELS[r.role]}
                         </span>
                         <span className="font-medium">{r.name}</span>
-                        <span className="truncate text-xs text-muted-foreground">{r.phone}</span>
+                        {r.businessName && <span className="truncate text-xs text-muted-foreground">{r.businessName}</span>}
+                        <span className="truncate text-xs tabular-nums text-muted-foreground">{r.phone}</span>
                       </span>
                       <Plus className="h-4 w-4 shrink-0 text-muted-foreground" />
                     </button>
@@ -215,7 +255,7 @@ export function SmsComposer({
             <table className="w-full min-w-[360px] text-sm">
               <thead className="sticky top-0 bg-muted/60 text-left text-xs text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-2 font-medium">소속</th>
+                  <th className="px-3 py-2 font-medium">소속 / 역할</th>
                   <th className="px-3 py-2 font-medium">성명</th>
                   <th className="px-3 py-2 font-medium">연락처</th>
                   <th className="w-10 px-2 py-2"></th>
@@ -224,7 +264,7 @@ export function SmsComposer({
               <tbody>
                 {selected.map((r) => (
                   <tr key={r.id} className="border-t">
-                    <td className="px-3 py-1.5 text-muted-foreground">{ROLE_LABELS[r.role]}</td>
+                    <td className="px-3 py-1.5 text-muted-foreground">{r.businessName ? r.businessName : ROLE_LABELS[r.role]}</td>
                     <td className="px-3 py-1.5 font-medium">{r.name}</td>
                     <td className="px-3 py-1.5 tabular-nums">{r.phone}</td>
                     <td className="px-2 py-1.5 text-right">
@@ -253,7 +293,7 @@ export function SmsComposer({
           rows={4}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="발송할 메시지를 입력하세요."
+          placeholder="발송할 메시지를 입력하세요. 모든 수신자에게 같은 문안이 나갑니다."
         />
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm">
           <span className="text-muted-foreground">
@@ -273,6 +313,7 @@ export function SmsComposer({
           <button
             type="button"
             onClick={() => setMode('now')}
+            aria-pressed={mode === 'now'}
             className={cn(
               'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
               mode === 'now'
@@ -286,6 +327,7 @@ export function SmsComposer({
           <button
             type="button"
             onClick={() => setMode('scheduled')}
+            aria-pressed={mode === 'scheduled'}
             className={cn(
               'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors',
               mode === 'scheduled'
@@ -314,28 +356,42 @@ export function SmsComposer({
         )}
       </div>
 
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          onClick={send}
-          disabled={
-            !configured ||
-            sending ||
-            selected.length === 0 ||
-            text.trim().length === 0 ||
-            (mode === 'scheduled' && !scheduledAt)
-          }
-        >
-          {mode === 'scheduled' ? <Clock className="h-4 w-4" /> : <Send className="h-4 w-4" />}
-          {sending
-            ? mode === 'scheduled'
-              ? '예약 중…'
-              : '발송 중…'
-            : mode === 'scheduled'
-              ? `${selected.length}명 예약 발송`
-              : `${selected.length}명에게 발송`}
-        </Button>
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        {disabledReason && <span className="text-xs text-muted-foreground">{disabledReason}</span>}
+        <span title={disabledReason}>
+          <Button type="button" onClick={() => setConfirmOpen(true)} disabled={!ready} aria-disabled={!ready}>
+            {mode === 'scheduled' ? <Clock className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+            {sending
+              ? mode === 'scheduled'
+                ? '예약 중…'
+                : '발송 중…'
+              : mode === 'scheduled'
+                ? `${selected.length}명 예약 발송`
+                : `${selected.length}명에게 발송`}
+          </Button>
+        </span>
       </div>
+
+      <ConfirmDialog
+        open={confirmOpen}
+        onOpenChange={setConfirmOpen}
+        title={mode === 'scheduled' ? '예약 발송 확인' : '문자 발송 확인'}
+        description={mode === 'scheduled' ? `${scheduledAt.replace('T', ' ')} 에 아래 문안이 자동 발송됩니다.` : '아래 문안이 즉시 발송됩니다. 발송 후에는 취소할 수 없습니다.'}
+        impact={[
+          `수신자 ${selected.length}명${scopeLabel ? ` (범위: ${scopeLabel})` : ''}`,
+          `예상 비용 ${formatKRW(cost.total)} (${cost.kind} ${formatKRW(cost.unitPrice)}/건 · 부가세 별도)`,
+          `발신 경로: ${route}`,
+        ]}
+        confirmLabel={mode === 'scheduled' ? '예약' : '발송'}
+        pending={sending}
+        onConfirm={send}
+        className="max-w-lg"
+      >
+        <div className="rounded-lg border bg-muted/30 p-3">
+          <p className="mb-1 text-[11px] text-muted-foreground">문안 미리보기 · {cost.bytes}byte</p>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap font-sans text-xs leading-relaxed">{text}</pre>
+        </div>
+      </ConfirmDialog>
     </div>
   );
 }

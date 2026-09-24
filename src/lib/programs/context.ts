@@ -90,7 +90,7 @@ export const getContext = cache(async (profileArg?: Profile | null): Promise<Pro
     role,
     grade,
     duty: info?.duty ?? null,
-    grants: role === 'nextlab' ? resolveGrants(grade, program.staff_permissions) : [],
+    grants: role === 'nextlab' ? resolveGrants(grade, program.staff_permissions, profile.id) : [],
   };
 });
 

@@ -64,7 +64,12 @@ export function ProgramCreateForm({ sources }: { sources: { id: string; name: st
             <option key={s.id} value={s.id}>{s.name} 의 설정을 복제</option>
           ))}
         </select>
-        <p className="text-[11px] text-muted-foreground">그룹(코드·회차·필수서류)·단가·한도(오늘 적용일)·원천징수 파라미터·종결 게이트·서명 정책·보고서 양식·만족도 양식·키워드를 복제합니다.</p>
+        <p className="text-[11px] text-muted-foreground">그룹(코드·회차·정원·필수서류)·단가·한도(적용일 = 새 행사 시작일, 없으면 오늘)·원천징수 파라미터·종결 게이트·서명 정책·보고서 양식·만족도 양식·키워드·리마인더·위촉 서식·임의 컬럼·담당 권한·기능 플래그를 복제합니다. 예산·그룹 일정은 비웁니다.</p>
+        <div className="mt-1 flex flex-wrap gap-4 text-xs">
+          <label className="flex items-center gap-1"><input type="checkbox" name="clone_ended_groups" value="true" /> 종료 그룹 포함</label>
+          <input type="hidden" name="clone_mentor_pool" value="false" />
+          <label className="flex items-center gap-1"><input type="checkbox" name="clone_mentor_pool" value="true" defaultChecked /> 멘토 풀 가져오기 (소속 + 프로필, 배정·그룹 지정 제외)</label>
+        </div>
       </div>
       <fieldset className="grid gap-3 rounded-lg border p-3 sm:col-span-2 sm:grid-cols-3">
         <legend className="px-1 text-sm font-semibold">첫 운영사 계정 발급 (선택)</legend>

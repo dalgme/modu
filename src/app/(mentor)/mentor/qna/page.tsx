@@ -23,7 +23,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   unreadTotal = threads.reduce((s, t) => s + t.unread, 0);
 
   if (tab === 'board') {
-    const posts = await listBoardPosts();
+    const posts = await listBoardPosts(ctx.programId);
     body = <QnaBoard posts={posts} currentUserId={profile.id} currentRole={profile.role} />;
   } else {
     const selected = threads.find((t) => t.caseId === searchParams.case) ?? threads[0] ?? null;

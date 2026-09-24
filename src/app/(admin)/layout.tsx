@@ -13,7 +13,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const ctx = await requireContext(profile);
   // 운영사·발주처 콘솔과 같은 범위 스위처 — 문자 수신자 목록 등이 이 범위로 필터된다 (P28)
   const groups = await listMyGroups(ctx.programId, { id: profile.id, role: ctx.role, isPlatformAdmin: false });
-  const scopeGroups = groups.map((g) => ({ id: g.group.id, code: g.group.code, name: g.group.name, caseCount: g.caseCount, ended: g.group.status !== 'active' }));
+  const scopeGroups = groups.map((g) => ({ id: g.group.id, code: g.group.code, name: g.group.name, caseCount: g.caseCount, ended: g.group.status !== 'active', mine: g.mine }));
   return (
     <div className="min-h-screen bg-muted/20">
       <AppHeader

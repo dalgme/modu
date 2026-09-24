@@ -8,14 +8,16 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { listCampaigns } from '@/lib/surveys/campaigns';
 import { listSurveyTemplates } from '@/lib/settings/data';
 import { CampaignCreateForm, type MemberOpt } from '@/components/surveys/campaign-create-form';
+import { CampaignDuplicateButton } from '@/components/surveys/campaign-detail-panel';
+import { StatusBadge } from '@/components/cases/status-badge';
+import { EmptyState } from '@/components/common/empty-state';
+import { ClipboardList } from 'lucide-react';
 import { formatDateTime } from '@/lib/utils/format';
 import { satisfactionOverview } from '@/lib/surveys/satisfaction';
 import { SatisfactionRemindButton } from '@/components/surveys/satisfaction-panel';
 import { CASE_STATUS_META, type CaseStatus } from '@/types/case-status';
 
 export const dynamic = 'force-dynamic';
-
-const STATUS_LABEL: Record<string, string> = { draft: '준비', open: '진행 중', closed: '종료' };
 
 /** 조사 관리 — 여러 조사를 개설하고 실시간 응답률을 본다 */
 export default async function Page() {
@@ -34,7 +36,7 @@ export default async function Page() {
   const [{ data: users }, { data: cases }, { data: roster }] = await Promise.all([
     memberIds.length ? admin.from('users').select('id, name, phone').in('id', memberIds) : Promise.resolve({ data: [] as { id: string; name: string; phone: string | null }[] }),
     admin.from('cases').select('mentee_id, support_type_id').eq('program_id', ctx.programId).not('mentee_id', 'is', null),
-    admin.from('support_type_members').select('user_id, support_type_id').eq('is_active', true),
+    admin.from('support_type_members').select('user_id, support_type_id').eq('member_role', 'mentor').eq('is_active', true),
   ]);
   const uById = new Map((users ?? []).map((u) => [u.id, u]));
   const groupsOf = new Map<string, Set<string>>();
@@ -63,33 +65,38 @@ export default async function Page() {
         </p>
       </div>
 
-      <div className="overflow-x-auto rounded-xl border bg-background">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
-              <th className="px-3 py-2">조사</th>
-              <th className="px-3 py-2">양식 · 범위</th>
-              <th className="px-3 py-2">기간</th>
-              <th className="px-3 py-2">상태</th>
-              <th className="px-3 py-2 text-right">응답 / 대상</th>
-              <th className="px-3 py-2 text-right">응답률</th>
-            </tr>
-          </thead>
-          <tbody>
-            {campaigns.length === 0 && <tr><td colSpan={6} className="px-3 py-6 text-center text-muted-foreground">개설된 조사가 없습니다. 아래에서 첫 조사를 개설하세요.</td></tr>}
-            {campaigns.map((c) => (
-              <tr key={c.id} className="border-b last:border-0">
-                <td className="px-3 py-2"><Link href={`/nextlab/surveys/${c.id}`} className="font-medium text-primary hover:underline">{c.title}</Link></td>
-                <td className="px-3 py-2 text-xs text-muted-foreground">{c.templateName}{c.groupName ? ` · ${c.groupName}` : ' · 행사 전체'}</td>
-                <td className="px-3 py-2 text-xs tabular-nums">{formatDateTime(c.startsAt)} ~ {c.endsAt ? formatDateTime(c.endsAt) : '수동 종료'}</td>
-                <td className="px-3 py-2"><span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${c.status === 'open' ? 'bg-emerald-100 text-emerald-800' : 'bg-muted text-muted-foreground'}`}>{STATUS_LABEL[c.status] ?? c.status}</span></td>
-                <td className="px-3 py-2 text-right tabular-nums">{c.responded} / {c.targets}</td>
-                <td className="px-3 py-2 text-right tabular-nums font-semibold">{c.targets ? Math.round((c.responded / c.targets) * 100) : 0}%</td>
+      {campaigns.length === 0 ? (
+        <EmptyState icon={ClipboardList} title="개설된 조사가 없습니다" hint={`${ctx.group ? `${ctx.group.name} 범위에 ` : ''}아직 조사가 없습니다. 아래 [조사 개설]에서 양식·기간·대상을 골라 첫 조사를 만드세요.`} action={<a href="#campaign-create" className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground">조사 개설로 이동</a>} />
+      ) : (
+        <div className="overflow-x-auto rounded-xl border bg-background">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+                <th className="px-3 py-2">조사</th>
+                <th className="hidden px-3 py-2 md:table-cell">양식 · 범위</th>
+                <th className="hidden px-3 py-2 md:table-cell">기간</th>
+                <th className="px-3 py-2">상태</th>
+                <th className="px-3 py-2 text-right">응답 / 대상</th>
+                <th className="px-3 py-2 text-right">응답률</th>
+                <th className="px-3 py-2" />
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {campaigns.map((c) => (
+                <tr key={c.id} className="border-b last:border-0">
+                  <td className="px-3 py-2"><Link href={`/nextlab/surveys/${c.id}`} className="font-medium text-primary hover:underline">{c.title}</Link></td>
+                  <td className="hidden px-3 py-2 text-xs text-muted-foreground md:table-cell">{c.templateName}{c.groupName ? ` · ${c.groupName}` : ' · 행사 전체'}</td>
+                  <td className="hidden px-3 py-2 text-xs tabular-nums md:table-cell">{formatDateTime(c.startsAt)} ~ {c.endsAt ? formatDateTime(c.endsAt) : '수동 종료'}</td>
+                  <td className="px-3 py-2"><StatusBadge kind="survey" status={c.status} /></td>
+                  <td className="px-3 py-2 text-right tabular-nums">{c.responded} / {c.targets}</td>
+                  <td className="px-3 py-2 text-right tabular-nums font-semibold">{c.targets ? Math.round((c.responded / c.targets) * 100) : 0}%</td>
+                  <td className="px-3 py-2 text-right"><CampaignDuplicateButton campaignId={c.id} title={c.title} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
 
       <section className="flex flex-col gap-3 rounded-xl border bg-background p-4">
@@ -133,7 +140,9 @@ export default async function Page() {
         )}
       </section>
 
+      <div id="campaign-create" />
       <CampaignCreateForm
+        defaultGroupId={ctx.supportTypeId ?? null}
         templates={templates.map((t) => ({ id: t.id, name: `${t.name} v${t.version}`, groupName: t.support_type_id ? (gName.get(t.support_type_id) ?? null) : null }))}
         groups={(groups ?? []).map((g) => ({ id: g.id, name: g.name }))}
         members={members}

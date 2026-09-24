@@ -1,19 +1,21 @@
 import { requireMentee } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
-import { getMenteeCase } from '@/lib/data/cases';
+import { pickMenteeCase } from '@/lib/data/mentee';
 import { listRounds } from '@/lib/data/rounds';
 import { RoundSignList } from '@/components/mentee/round-sign-list';
+import { MenteeCaseSwitcher } from '@/components/mentee/mentee-case-switcher';
 import { resolveRoundReportPolicy } from '@/lib/documents/round-report';
 
 export const dynamic = 'force-dynamic';
 /** PDF(보고서·정산서) 생성 서버 액션 — 서버리스 Chromium 콜드스타트 대비 (CLAUDE.md §6-4) */
 export const maxDuration = 60;
 
-/** 멘티 회차 확인·서명 */
-export default async function Page() {
+/** 멘티 회차 확인·서명 — 승계로 케이스가 여러 건이면 `?case=` 로 고른다 (기본: 서명 대기가 있는 케이스, P30) */
+export default async function Page({ searchParams }: { searchParams: { case?: string } }) {
   const profile = await requireMentee();
   const ctx = await requireContext(profile);
-  const c = await getMenteeCase(profile.id, { programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined });
+  const pick = await pickMenteeCase(profile.id, { programId: ctx.programId, supportTypeId: ctx.supportTypeId }, searchParams.case);
+  const c = pick.current;
   const rounds = c ? await listRounds(c.id) : [];
   const policy = c ? await resolveRoundReportPolicy(c.program_id, c.support_type_id) : null;
   const signEnabled = !!policy?.menteeConfirmSignature;
@@ -28,6 +30,7 @@ export default async function Page() {
           {unsigned > 0 && <span className="ml-2 font-semibold text-amber-700">서명 대기 {unsigned}회차</span>}
         </p>
       </div>
+      {pick.cases.length > 1 && c && <MenteeCaseSwitcher href="/mentee/rounds" cases={pick.cases} currentId={c.id} pending={pick.pending} hint="unsigned" />}
       {c && !signEnabled && <p className="text-xs text-muted-foreground">이 그룹은 확인 서명을 받지 않습니다. 회차 내용만 열람합니다.</p>}
       {c && <RoundSignList caseId={c.id} rounds={rounds} signEnabled={signEnabled} />}
     </main>

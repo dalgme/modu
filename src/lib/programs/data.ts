@@ -6,6 +6,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import type { Tables } from '@/types/database';
 import type { UserRole } from '@/lib/auth/roles';
 import { brandingFromProgram, PLATFORM_BRANDING, type Branding } from '@/lib/programs/branding';
+import { fetchAll } from '@/lib/supabase/paginate';
 
 export type Program = Tables<'programs'>;
 export type SupportType = Tables<'support_types'>;
@@ -91,7 +92,19 @@ export interface MyGroup {
   group: SupportType;
   /** 이 그룹에서의 내 케이스 수(멘티) / 담당 케이스 수(멘토) / 전체 케이스 수(스태프) */
   caseCount: number;
+  /** 스태프(운영사·발주처): 내 담당 그룹(program_members.duty_groups) 이면 true. 담당 지정이 없으면 전부 false */
+  mine: boolean;
 }
+
+/**
+ * 스태프(운영사·발주처)의 담당 그룹 id — program_members.duty_groups (0080).
+ * 빈 배열 = 담당 지정 없음(모든 그룹). support_type_members 에는 staff 행을 넣지 않는다.
+ */
+export const listStaffGroupIds = cache(async (programId: string, userId: string): Promise<string[]> => {
+  const { data } = await createAdminClient().from('program_members').select('duty_groups').eq('program_id', programId).eq('user_id', userId).eq('is_active', true).maybeSingle();
+  const groups = (data as unknown as { duty_groups?: string[] | null } | null)?.duty_groups;
+  return Array.isArray(groups) ? groups : [];
+});
 
 /**
  * 행사 안에서 내가 들어갈 수 있는 그룹.
@@ -109,9 +122,13 @@ export async function listMyGroups(
   const groupIds = groups.map((g) => g.id);
 
   if (user.isPlatformAdmin || user.role === 'institution' || user.role === 'nextlab') {
-    const { data: cases } = await admin.from('cases').select('support_type_id').in('support_type_id', groupIds);
-    const counts = countBy((cases ?? []).map((c) => c.support_type_id));
-    return groups.map((group) => ({ group, caseCount: counts.get(group.id) ?? 0 }));
+    const [cases, mineIds] = await Promise.all([
+      fetchAll((from, to) => admin.from('cases').select('support_type_id').in('support_type_id', groupIds).range(from, to)),
+      user.isPlatformAdmin ? Promise.resolve([] as string[]) : listStaffGroupIds(programId, user.id),
+    ]);
+    const counts = countBy(cases.map((c) => c.support_type_id));
+    const mine = new Set(mineIds);
+    return groups.map((group) => ({ group, caseCount: counts.get(group.id) ?? 0, mine: mine.has(group.id) }));
   }
 
   if (user.role === 'mentee') {
@@ -121,7 +138,7 @@ export async function listMyGroups(
       .eq('mentee_id', user.id)
       .in('support_type_id', groupIds);
     const counts = countBy((cases ?? []).map((c) => c.support_type_id));
-    return groups.filter((g) => counts.has(g.id)).map((group) => ({ group, caseCount: counts.get(group.id) ?? 0 }));
+    return groups.filter((g) => counts.has(g.id)).map((group) => ({ group, caseCount: counts.get(group.id) ?? 0, mine: false }));
   }
 
   // mentor
@@ -130,6 +147,7 @@ export async function listMyGroups(
       .from('support_type_members')
       .select('support_type_id')
       .eq('user_id', user.id)
+      .eq('member_role', 'mentor')
       .eq('is_active', true)
       .in('support_type_id', groupIds),
     admin.from('mentor_assignments').select('case_id, cases!inner(support_type_id)').eq('mentor_id', user.id).eq('is_active', true),
@@ -141,7 +159,7 @@ export async function listMyGroups(
   const counts = countBy(assignedGroupIds);
   return groups
     .filter((g) => rosterIds.has(g.id) || counts.has(g.id))
-    .map((group) => ({ group, caseCount: counts.get(group.id) ?? 0 }));
+    .map((group) => ({ group, caseCount: counts.get(group.id) ?? 0, mine: false }));
 }
 
 function countBy(values: string[]): Map<string, number> {

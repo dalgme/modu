@@ -5,6 +5,8 @@ import { ArrowDown, ArrowUp, Lock, Plus, Trash2 } from 'lucide-react';
 
 import type { SurveyTemplateWithQuestions } from '@/lib/settings/data';
 import { saveSurveyTemplateAction, toggleSurveyTemplateAction } from '@/lib/settings/actions';
+import { useConfirm } from '@/components/common/confirm-dialog';
+import { useUnsavedGuard } from '@/hooks/use-unsaved-guard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -52,16 +54,42 @@ export function SurveyTemplatesManager({ templates, groups }: { templates: Surve
   const [scope, setScope] = useState('');
   const [name, setName] = useState('표준 만족도 조사');
   const [qs, setQs] = useState<Q[]>([{ ...EMPTY_Q }]);
+  const { confirm, dialog } = useConfirm();
+  // 편집 중(열림 + 문항이나 이름을 건드림)이면 탭 닫기·새로고침 확인
+  const [dirty, setDirty] = useState(false);
+  useUnsavedGuard(open && dirty);
 
   const startNew = (t?: SurveyTemplateWithQuestions) => {
+    setDirty(false);
     setBaseId(t?.id);
     setScope(t?.support_type_id ?? '');
     setName(t?.name ?? '표준 만족도 조사');
     setQs(t ? fromTemplate(t) : [{ ...EMPTY_Q }]);
     setOpen(true);
   };
-  const setQ = (i: number, patch: Partial<Q>) => setQs((a) => a.map((q, j) => (j === i ? { ...q, ...patch } : q)));
-  const move = (i: number, d: -1 | 1) => setQs((a) => { const b = [...a]; const j = i + d; if (j < 0 || j >= b.length) return a; [b[i], b[j]] = [b[j]!, b[i]!]; return b; });
+  const setQ = (i: number, patch: Partial<Q>) => { setDirty(true); setQs((a) => a.map((q, j) => (j === i ? { ...q, ...patch } : q))); };
+  const move = (i: number, d: -1 | 1) => { setDirty(true); setQs((a) => { const b = [...a]; const j = i + d; if (j < 0 || j >= b.length) return a; [b[i], b[j]] = [b[j]!, b[i]!]; return b; }); };
+  const removeQ = async (i: number) => {
+    const q = qs[i];
+    const ok = await confirm({
+      title: '문항 삭제',
+      description: `${i + 1}번 문항${q?.label ? ` "${q.label}"` : ''}을 편집 중인 양식에서 뺍니다.`,
+      impact: ['저장 전까지는 화면에서만 사라집니다. [취소]하면 되돌아옵니다.'],
+      confirmLabel: '삭제',
+      severity: 'danger',
+    });
+    if (!ok) return;
+    setDirty(true);
+    setQs((a) => a.filter((_, j) => j !== i));
+  };
+  const closeEditor = async () => {
+    if (dirty) {
+      const ok = await confirm({ title: '편집 취소', description: '저장하지 않은 변경 사항이 있습니다. 편집을 닫을까요?', confirmLabel: '닫기', severity: 'danger' });
+      if (!ok) return;
+    }
+    setOpen(false);
+    setDirty(false);
+  };
 
   const submit = () =>
     start(async () => {
@@ -79,13 +107,17 @@ export function SurveyTemplatesManager({ templates, groups }: { templates: Surve
         })),
       });
       toast(r.ok ? { title: '새 버전을 저장하고 활성화했습니다.' } : { title: r.error, variant: 'destructive' });
-      if (r.ok) setOpen(false);
+      if (r.ok) {
+        setOpen(false);
+        setDirty(false);
+      }
     });
 
   return (
     <div className="flex flex-col gap-4">
+      {dialog}
       <div className="flex justify-end">
-        <Button size="sm" className="gap-1" onClick={() => (open ? setOpen(false) : startNew())} disabled={pending}>
+        <Button size="sm" className="gap-1" onClick={() => (open ? void closeEditor() : startNew())} disabled={pending}>
           <Plus className="h-4 w-4" /> 새 양식
         </Button>
       </div>
@@ -93,8 +125,8 @@ export function SurveyTemplatesManager({ templates, groups }: { templates: Surve
         <div className="flex flex-col gap-3 rounded-lg border border-primary/30 bg-muted/20 p-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
-              <Label>적용 범위</Label>
-              <select value={scope} onChange={(e) => setScope(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm" disabled={!!baseId}>
+              <Label htmlFor="tpl-scope">적용 범위</Label>
+              <select id="tpl-scope" value={scope} onChange={(e) => { setDirty(true); setScope(e.target.value); }} className="h-9 rounded-md border bg-background px-2 text-sm" disabled={!!baseId}>
                 <option value="">행사 공통</option>
                 {groups.map((g) => (
                   <option key={g.id} value={g.id}>
@@ -104,14 +136,14 @@ export function SurveyTemplatesManager({ templates, groups }: { templates: Surve
               </select>
             </div>
             <div className="flex flex-col gap-1">
-              <Label>양식 이름</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} />
+              <Label htmlFor="tpl-name">양식 이름</Label>
+              <Input id="tpl-name" value={name} onChange={(e) => { setDirty(true); setName(e.target.value); }} />
             </div>
           </div>
           {qs.map((q, i) => (
             <div key={i} className="grid gap-2 rounded-md border bg-background p-3 sm:grid-cols-[auto_1fr_auto]">
               <div className="flex flex-col gap-1">
-                <select value={q.qtype} onChange={(e) => setQ(i, { qtype: e.target.value as Q['qtype'] })} className="h-9 rounded-md border bg-background px-2 text-sm">
+                <select aria-label={`${i + 1}번 문항 유형`} value={q.qtype} onChange={(e) => setQ(i, { qtype: e.target.value as Q['qtype'] })} className="h-9 rounded-md border bg-background px-2 text-sm">
                   {(Object.keys(QTYPE_LABEL) as Q['qtype'][]).map((k) => (
                     <option key={k} value={k}>
                       {QTYPE_LABEL[k]}
@@ -121,33 +153,33 @@ export function SurveyTemplatesManager({ templates, groups }: { templates: Surve
                 <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={q.required} onChange={(e) => setQ(i, { required: e.target.checked })} /> 필수</label>
               </div>
               <div className="flex flex-col gap-1">
-                <Input value={q.label} onChange={(e) => setQ(i, { label: e.target.value })} placeholder={`${i + 1}. 문항 내용`} />
-                <Input value={q.help} onChange={(e) => setQ(i, { help: e.target.value })} placeholder="도움말 (선택)" className="text-xs" />
+                <Input aria-label={`${i + 1}번 문항 내용`} value={q.label} onChange={(e) => setQ(i, { label: e.target.value })} placeholder={`${i + 1}. 문항 내용`} />
+                <Input aria-label={`${i + 1}번 문항 도움말`} value={q.help} onChange={(e) => setQ(i, { help: e.target.value })} placeholder="도움말 (선택)" className="text-xs" />
                 {q.qtype === 'scale' && (
                   <div className="grid grid-cols-4 gap-1">
-                    <Input type="number" value={q.scaleMin} onChange={(e) => setQ(i, { scaleMin: Number(e.target.value) })} placeholder="min" />
-                    <Input type="number" value={q.scaleMax} onChange={(e) => setQ(i, { scaleMax: Number(e.target.value) })} placeholder="max" />
-                    <Input value={q.minLabel} onChange={(e) => setQ(i, { minLabel: e.target.value })} placeholder="최소 라벨" />
-                    <Input value={q.maxLabel} onChange={(e) => setQ(i, { maxLabel: e.target.value })} placeholder="최대 라벨" />
+                    <Input aria-label="척도 최솟값" type="number" value={q.scaleMin} onChange={(e) => setQ(i, { scaleMin: Number(e.target.value) })} placeholder="min" />
+                    <Input aria-label="척도 최댓값" type="number" value={q.scaleMax} onChange={(e) => setQ(i, { scaleMax: Number(e.target.value) })} placeholder="max" />
+                    <Input aria-label="최솟값 라벨" value={q.minLabel} onChange={(e) => setQ(i, { minLabel: e.target.value })} placeholder="최소 라벨" />
+                    <Input aria-label="최댓값 라벨" value={q.maxLabel} onChange={(e) => setQ(i, { maxLabel: e.target.value })} placeholder="최대 라벨" />
                   </div>
                 )}
                 {(q.qtype === 'single' || q.qtype === 'multi' || q.qtype === 'rank') && (
-                  <textarea value={q.options} onChange={(e) => setQ(i, { options: e.target.value })} rows={3} placeholder="보기를 한 줄에 하나씩" className="rounded-md border bg-background px-2 py-1 text-sm" />
+                  <textarea aria-label={`${i + 1}번 문항 보기 목록`} value={q.options} onChange={(e) => setQ(i, { options: e.target.value })} rows={3} placeholder="보기를 한 줄에 하나씩" className="rounded-md border bg-background px-2 py-1 text-sm" />
                 )}
               </div>
               <div className="flex flex-col gap-1">
-                <Button type="button" size="sm" variant="ghost" onClick={() => move(i, -1)}><ArrowUp className="h-4 w-4" /></Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => move(i, 1)}><ArrowDown className="h-4 w-4" /></Button>
-                <Button type="button" size="sm" variant="ghost" onClick={() => setQs((a) => a.filter((_, j) => j !== i))}><Trash2 className="h-4 w-4" /></Button>
+                <Button type="button" size="sm" variant="ghost" aria-label={`${i + 1}번 문항 위로`} title="위로" disabled={i === 0} onClick={() => move(i, -1)}><ArrowUp className="h-4 w-4" /></Button>
+                <Button type="button" size="sm" variant="ghost" aria-label={`${i + 1}번 문항 아래로`} title="아래로" disabled={i === qs.length - 1} onClick={() => move(i, 1)}><ArrowDown className="h-4 w-4" /></Button>
+                <Button type="button" size="sm" variant="ghost" aria-label={`${i + 1}번 문항 삭제`} title="문항 삭제" className="text-destructive" disabled={qs.length <= 1} onClick={() => void removeQ(i)}><Trash2 className="h-4 w-4" /></Button>
               </div>
             </div>
           ))}
           <div className="flex justify-between">
-            <Button type="button" size="sm" variant="outline" onClick={() => setQs((a) => [...a, { ...EMPTY_Q }])}>
+            <Button type="button" size="sm" variant="outline" onClick={() => { setDirty(true); setQs((a) => [...a, { ...EMPTY_Q }]); }}>
               문항 추가
             </Button>
             <div className="flex gap-2">
-              <Button type="button" size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={pending}>취소</Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => void closeEditor()} disabled={pending}>취소</Button>
               <Button type="button" size="sm" onClick={submit} disabled={pending}>{baseId ? '새 버전으로 저장' : '저장·활성화'}</Button>
             </div>
           </div>

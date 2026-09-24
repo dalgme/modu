@@ -6,6 +6,8 @@ import { z } from 'zod';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { rankMentors, type MenteeProfileInput, type MentorProfileInput, type ObjectiveScore } from '@/lib/matching/score';
+import { mentorEligibleForGroup } from '@/lib/matching/eligibility';
+import { DEFAULT_MAX_MENTEES_PER_MENTOR } from '@/lib/matching/capacity';
 import type { Json, Tables } from '@/types/database';
 
 export const MATCH_MODEL = 'claude-opus-5';
@@ -42,22 +44,30 @@ async function loadInputs(caseId: string) {
   const admin = createAdminClient();
   const { data: c } = await admin.from('cases').select('id, program_id, support_type_id, business_name, predecessor_case_id, item, business_type').eq('id', caseId).maybeSingle();
   if (!c) return null;
-  const [{ data: prof }, { data: members }, { data: assigns }, priorMentor] = await Promise.all([
+  // 부하·정원·그룹 지정은 전부 **라운드(그룹) 단위** (P25 규칙 · P30): 이 그룹의 활성 배정만 세고, 지정 규칙에 맞는 멘토만 후보, 정원 = support_types.max_mentees_per_mentor
+  const [{ data: prof }, { data: members }, { data: assigns }, { data: roster }, { data: group }, { data: endedHere }, priorMentor] = await Promise.all([
     admin.from('mentee_profiles').select('*').eq('case_id', caseId).maybeSingle(),
     admin.from('program_members').select('user_id, users!inner(id, name, is_active)').eq('program_id', c.program_id).eq('role', 'mentor').eq('is_active', true),
-    admin.from('mentor_assignments').select('mentor_id, case_id').eq('is_active', true),
+    admin.from('mentor_assignments').select('mentor_id, case_id, cases!inner(program_id, support_type_id)').eq('is_active', true).eq('cases.program_id', c.program_id).eq('cases.support_type_id', c.support_type_id),
+    admin.from('support_type_members').select('user_id, support_type_id, support_types!inner(program_id)').eq('member_role', 'mentor').eq('is_active', true).eq('support_types.program_id', c.program_id),
+    admin.from('support_types').select('max_mentees_per_mentor').eq('id', c.support_type_id).maybeSingle(),
+    // 이 케이스에서 이미 종료(이탈·강제 종료·교체)된 멘토 — 다시 추천하지 않는다
+    admin.from('mentor_assignments').select('mentor_id').eq('case_id', caseId).eq('is_active', false).in('end_kind', ['mentor_withdrawal', 'forced', 'reassigned']),
     c.predecessor_case_id
       ? admin.from('mentor_assignments').select('mentor_id').eq('case_id', c.predecessor_case_id).order('is_active', { ascending: false }).order('assigned_at', { ascending: false }).limit(1).maybeSingle().then((r) => r.data?.mentor_id ?? null)
       : Promise.resolve(null as string | null),
   ]);
-  const mentorUsers = (members ?? []).map((m) => m.users as unknown as { id: string; name: string; is_active: boolean }).filter((u) => u.is_active);
+  const designatedByUser = new Map<string, Set<string>>();
+  for (const r of roster ?? []) (designatedByUser.get(r.user_id) ?? designatedByUser.set(r.user_id, new Set()).get(r.user_id)!).add(r.support_type_id);
+  const excluded = new Set((endedHere ?? []).map((e) => e.mentor_id));
+  const mentorUsers = (members ?? [])
+    .map((m) => m.users as unknown as { id: string; name: string; is_active: boolean })
+    .filter((u) => u.is_active && !excluded.has(u.id) && mentorEligibleForGroup(designatedByUser.get(u.id) ?? new Set(), c.support_type_id));
   const mentorIds = mentorUsers.map((u) => u.id);
   const { data: profiles } = mentorIds.length ? await admin.from('mentor_profiles').select('*').eq('program_id', c.program_id).in('user_id', mentorIds) : { data: [] as Tables<'mentor_profiles'>[] };
-  // 부하: 이 행사 케이스의 활성 배정만
-  const { data: programCases } = await admin.from('cases').select('id').eq('program_id', c.program_id);
-  const inProgram = new Set((programCases ?? []).map((x) => x.id));
   const load = new Map<string, number>();
-  for (const a of assigns ?? []) if (inProgram.has(a.case_id)) load.set(a.mentor_id, (load.get(a.mentor_id) ?? 0) + 1);
+  for (const a of assigns ?? []) load.set(a.mentor_id, (load.get(a.mentor_id) ?? 0) + 1);
+  const groupCap = group?.max_mentees_per_mentor ?? DEFAULT_MAX_MENTEES_PER_MENTOR;
 
   const mentee: MenteeProfileInput = {
     industry: prof?.industry ?? c.business_type ?? null,
@@ -77,7 +87,7 @@ async function loadInputs(caseId: string) {
       stages: p?.stages ?? [],
       modes: p?.modes ?? ['online', 'offline'],
       keywords: p?.keywords ?? [],
-      capacity: p?.capacity ?? 5,
+      capacity: groupCap,
       currentLoad: load.get(u.id) ?? 0,
       priorMentorOfMentee: priorMentor === u.id,
     };
@@ -93,7 +103,7 @@ export async function generateRecommendations(caseId: string, actorId: string): 
   const inputs = await loadInputs(caseId);
   if (!inputs) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
   const { c, prof, mentee, mentors, mentorUsers, profiles } = inputs;
-  if (mentors.length === 0) return { ok: false, error: '이 행사에 활성 멘토가 없습니다.' };
+  if (mentors.length === 0) return { ok: false, error: '이 그룹(라운드)에서 후보가 될 수 있는 활성 멘토가 없습니다. (그룹 지정·이전 종료 멘토 제외)' };
   const ranked = rankMentors(mentee, mentors, 8);
   const nameOf = new Map(mentorUsers.map((u) => [u.id, u.name]));
 

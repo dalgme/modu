@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { getMentorPopupAction, type MentorPopupData } from '@/lib/mentors/popup-actions';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { RoundDots } from '@/components/common/round-dots';
+import { ContactLinks } from '@/components/common/contact-links';
 import { mentorLabel } from '@/lib/utils/labels';
 import { formatDate } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
@@ -85,7 +86,10 @@ export function MentorName({
                 <dt className="text-muted-foreground">이름 / 소속</dt>
                 <dd><b>{data.name}</b>{data.organization ? ` / ${data.organization}` : ''}</dd>
                 <dt className="text-muted-foreground">휴대폰 / 이메일</dt>
-                <dd>{data.phone ?? '-'}{data.email ? ` / ${data.email}` : ''}</dd>
+                <dd className="flex flex-wrap items-center gap-1.5">
+                  <span>{data.phone ?? '-'}{data.email ? ` / ${data.email}` : ''}</span>
+                  <ContactLinks phone={data.phone} name={data.name} size="xs" />
+                </dd>
                 <dt className="text-muted-foreground">분야 (최대 10)</dt>
                 <dd className="flex flex-wrap gap-1">
                   {data.expertise.length === 0 && '-'}

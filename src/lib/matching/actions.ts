@@ -109,19 +109,42 @@ export async function saveMentorProfileAction(programId: string, mentorId: strin
   const staff = await realRoleOrNull(['nextlab']);
   const ctx = staff ? await contextOrNull(staff) : null;
   let allowed = !!ctx && ctx.programId === programId;
+  let actorId: string | null = staff?.id ?? null;
+  let byStaff = allowed;
+  if (allowed && ctx) {
+    // 운영사가 멘토 프로필을 고치는 것은 '멘토 배정·교체·매칭'(case.assign — 프로필 편집 포함) 권한 (옵저버 차단)
+    const denied = denyUnless(ctx, 'case.assign');
+    if (denied) return { ok: false, error: denied };
+    // 대상이 이 행사의 멘토 소속인지
+    const { data: mem } = await createAdminClient().from('program_members').select('role').eq('program_id', programId).eq('user_id', mentorId).eq('is_active', true).maybeSingle();
+    if (!mem || mem.role !== 'mentor') return { ok: false, error: '이 행사의 멘토가 아닙니다.' };
+  }
   if (!allowed) {
     const me = await mentorOrNull();
     const imp = await getImpersonation();
     if (me && me.id === mentorId && !(imp && imp.target.id === mentorId)) {
       const myCtx = await contextOrNull(me);
       allowed = !!myCtx && myCtx.programId === programId;
+      actorId = me.id;
+      byStaff = false;
     }
   }
   if (!allowed) return { ok: false, error: '본인 프로필만 수정할 수 있습니다(대행 불가).' };
-  const { error } = await createAdminClient().from('mentor_profiles').upsert({ program_id: programId, user_id: mentorId, ...parsed.data }, { onConflict: 'program_id,user_id' });
+  const admin = createAdminClient();
+  const { error } = await admin.from('mentor_profiles').upsert({ program_id: programId, user_id: mentorId, ...parsed.data }, { onConflict: 'program_id,user_id' });
   if (error) return { ok: false, error: error.message };
+  const { error: auditError } = await admin.from('audit_logs').insert({
+    actor_id: actorId,
+    program_id: programId,
+    action: 'mentor.profile_update',
+    entity_type: 'users',
+    entity_id: mentorId,
+    metadata: { by_staff: byStaff, fields: Object.keys(parsed.data) },
+  });
+  if (auditError) console.error('mentor profile audit failed:', auditError.message);
   revalidatePath('/mentor/profile');
   revalidatePath('/nextlab/mentors');
+  revalidatePath('/nextlab/roster');
   return { ok: true };
 }
 

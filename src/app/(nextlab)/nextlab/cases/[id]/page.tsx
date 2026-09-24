@@ -4,7 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
-import { getCaseById, getCaseStatusHistory, listMentorsForProgram, listPredecessorCases } from '@/lib/data/cases';
+import { getCaseById, getCaseStatusHistory, listMentorsForProgram, listPredecessorCases, listSuccessorCases } from '@/lib/data/cases';
 import { getObservationReportFile, listPendingRequestsForCase, listRounds } from '@/lib/data/rounds';
 import { listCaseDocuments, listRequiredDocSlots } from '@/lib/workflow/case-documents';
 import { getCaseSurvey } from '@/lib/data/survey';
@@ -31,9 +31,16 @@ import { MentorAssignPanel } from '@/components/cases/mentor-assign-panel';
 import { MenteeInvitePanel } from '@/components/cases/mentee-invite-panel';
 import { CaseDocumentsPanel } from '@/components/cases/case-documents-panel';
 import { CaseDeletePanel } from '@/components/cases/case-delete-panel';
+import { CaseScopeBanner } from '@/components/cases/case-scope-banner';
+import { CaseActivityCard, type CaseActivityItem } from '@/components/cases/case-activity-card';
 import { RoundsList } from '@/components/mentor/rounds-list';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/utils/format';
+import { listStaffGroupIds } from '@/lib/programs/data';
+import { hasCapability } from '@/lib/auth/capabilities';
+import { describeAudit } from '@/lib/audit/describe';
+import { CASE_STATUS_META } from '@/types/case-status';
+import { fmt } from '@/lib/programs/branding';
 
 export const maxDuration = 60;
 
@@ -43,9 +50,10 @@ export default async function Page({ params }: { params: { id: string } }) {
   const item = await getCaseById(params.id);
   if (!item || item.program_id !== ctx.programId) notFound();
 
-  const [history, predecessors, mentors, rounds, obsFile, requests, docs, settlements, statements, estimates, slots, survey, changeReqs, recs, menteeProfile, tags] = await Promise.all([
+  const [history, predecessors, successors, mentors, rounds, obsFile, requests, docs, settlements, statements, estimates, slots, survey, changeReqs, recs, menteeProfile, tags, myGroupIds, caseAudit] = await Promise.all([
     getCaseStatusHistory(item.id),
     listPredecessorCases(item.id),
+    listSuccessorCases(item.id),
     listMentorsForProgram(ctx.programId, item.support_type_id),
     listRounds(item.id),
     getObservationReportFile(item.id),
@@ -60,8 +68,34 @@ export default async function Page({ params }: { params: { id: string } }) {
     listLatestRecommendations(item.id),
     createAdminClient().from('mentee_profiles').select('*').eq('case_id', item.id).maybeSingle(),
     listTags(ctx.programId),
+    listStaffGroupIds(ctx.programId, profile.id),
+    // [조치 이력] — 이 케이스를 대상으로 한 감사로그(내부 메모 case.memo 포함), 최근 50건
+    createAdminClient().from('audit_logs').select('id, actor_id, action, entity_type, entity_id, metadata, created_at').eq('entity_type', 'cases').eq('entity_id', params.id).order('created_at', { ascending: false }).limit(50),
   ]);
   const teamMembers = await listTeamMembers(item.id);
+  // 담당 외 그룹 안내: 현재 범위 그룹이 있는데 다르면 'scope', 내 담당 그룹 지정이 있는데 포함되지 않으면 'duty'
+  const scopeReason: 'scope' | 'duty' | null = ctx.supportTypeId && ctx.supportTypeId !== item.support_type_id ? 'scope' : myGroupIds.length > 0 && !myGroupIds.includes(item.support_type_id) ? 'duty' : null;
+  // 조치 이력 = 상태 이력 + 감사로그(메모 포함) 시각 역순 병합, 최근 50건
+  const actorIds = Array.from(new Set([...history.map((h) => h.changed_by), ...(caseAudit.data ?? []).map((a) => a.actor_id)].filter((x): x is string => !!x)));
+  const { data: actorRows } = actorIds.length ? await createAdminClient().from('users').select('id, name').in('id', actorIds) : { data: [] as { id: string; name: string }[] };
+  const actorName = new Map((actorRows ?? []).map((u) => [u.id, u.name]));
+  const statusLabel = (st: string) => fmt(CASE_STATUS_META[st as keyof typeof CASE_STATUS_META]?.label ?? st, ctx.branding);
+  const activity: CaseActivityItem[] = [
+    ...history.map((h) => ({
+      id: `h-${h.id}`,
+      at: h.created_at,
+      kind: 'status' as const,
+      actorName: h.changed_by ? (actorName.get(h.changed_by) ?? null) : null,
+      category: '상태',
+      text: `${h.from_status ? `${statusLabel(h.from_status)} → ` : ''}${statusLabel(h.to_status)}${h.note ? ` — ${h.note}` : ''}`,
+    })),
+    ...(caseAudit.data ?? []).map((a) => {
+      const d = describeAudit({ action: a.action, entity_type: a.entity_type, entity_id: a.entity_id, metadata: a.metadata, actorName: a.actor_id ? (actorName.get(a.actor_id) ?? null) : null });
+      return { id: `a-${a.id}`, at: a.created_at, kind: a.action === 'case.memo' ? ('memo' as const) : ('audit' as const), actorName: a.actor_id ? (actorName.get(a.actor_id) ?? null) : null, category: d.category, text: d.text };
+    }),
+  ]
+    .sort((x, y) => (x.at < y.at ? 1 : -1))
+    .slice(0, 50);
   const tagOptions: TagOptions = {};
   for (const t of tags) (tagOptions[t.category] ??= []).push(t.label);
   const mp = menteeProfile.data;
@@ -77,6 +111,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   return (
     <main className="flex flex-col gap-5">
       <CaseDetailBackNav dashboardHref="/nextlab/dashboard" />
+      {scopeReason && <CaseScopeBanner groupName={item.supportTypeName} reason={scopeReason} />}
       <CaseNextStep
         status={item.status}
         mentorName={item.mentorName}
@@ -87,7 +122,13 @@ export default async function Page({ params }: { params: { id: string } }) {
         pendingChangeRequests={(changeReqs.data ?? []).length}
         menteeLinked={!!item.mentee_id}
       />
-      <CaseDetailShell item={item} history={history} predecessors={predecessors} branding={ctx.branding} basePath="/nextlab/cases" showLoginId>
+      {/* 종결 요청 상태에서는 검수 패널을 "지금 할 일" 바로 아래에 — 스크롤 없이 승인/보완 (2026-09-24) */}
+      {item.status === 'closure_requested' && canTransition('review_approve', item.status) && (
+        <div id="review" className="scroll-mt-40">
+          <ClosureReviewPanel caseId={item.id} estimates={estimateProps} observationUrl={obsFile?.url ?? null} />
+        </div>
+      )}
+      <CaseDetailShell item={item} history={history} predecessors={predecessors} successors={successors} branding={ctx.branding} basePath="/nextlab/cases" showLoginId>
         <div id="invite" className="scroll-mt-40" />
         <MenteeInvitePanel caseId={item.id} menteeLinked={!!item.mentee_id} defaultName={item.owner_name} defaultPhone={item.phone} defaultEmail={item.email} />
         <div id="assign" className="scroll-mt-40" />
@@ -116,9 +157,10 @@ export default async function Page({ params }: { params: { id: string } }) {
           members={teamMembers.map((m) => ({ id: m.id, name: m.name, member_role: m.member_role, phone: m.phone, email: m.email, is_representative: m.is_representative }))}
         />
 
-        <div id="review" className="scroll-mt-40" />
-        {canTransition('review_approve', item.status) && (
-          <ClosureReviewPanel caseId={item.id} estimates={estimateProps} observationUrl={obsFile?.url ?? null} />
+        {item.status !== 'closure_requested' && canTransition('review_approve', item.status) && (
+          <div id="review" className="scroll-mt-40">
+            <ClosureReviewPanel caseId={item.id} estimates={estimateProps} observationUrl={obsFile?.url ?? null} />
+          </div>
         )}
 
         <div id="settlement" className="scroll-mt-40" />
@@ -150,6 +192,8 @@ export default async function Page({ params }: { params: { id: string } }) {
           canForceEnd={canTransition('force_end_mentor', item.status)}
           canWithdrawCase={canTransition('withdraw_case', item.status)}
           hasActiveMentor={item.mentorId !== null}
+          canReinstate={canTransition('reinstate_case', item.status) && (!ctx.grade || ctx.grade === 'pl')}
+          withdrawnReason={item.withdrawn_reason ?? null}
         />
 
         <Card id="rounds" className="scroll-mt-40">
@@ -164,7 +208,7 @@ export default async function Page({ params }: { params: { id: string } }) {
             </div>
           </CardHeader>
           <CardContent>
-            <RoundsList caseId={item.id} rounds={rounds} editable={false} />
+            <RoundsList caseId={item.id} rounds={rounds} editable={false} operatorCorrect={hasCapability(ctx, 'case.manage')} />
           </CardContent>
         </Card>
 
@@ -184,6 +228,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         </Card>
 
         <SurveyResultCard survey={survey} />
+        <CaseActivityCard caseId={item.id} items={activity} canMemo={hasCapability(ctx, 'case.manage')} />
         <div id="docs" className="scroll-mt-40" />
         <a
           href={`/api/staff/case-docs-zip?case=${item.id}`}
@@ -195,7 +240,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         </a>
         <RequiredDocsPanel caseId={item.id} slots={slots} viewerRole="nextlab" canUpload />
         <CaseDocumentsPanel caseId={item.id} docs={docs} viewerRole="nextlab" canUpload />
-        <CaseDeletePanel caseId={item.id} ownerName={item.owner_name} businessName={item.business_name} />
+        {hasCapability(ctx, 'case.delete') && <CaseDeletePanel caseId={item.id} ownerName={item.owner_name} businessName={item.business_name} />}
       </CaseDetailShell>
     </main>
   );

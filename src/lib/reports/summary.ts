@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
-import { computeProgramMetrics, type ProgramMetrics } from '@/lib/reports/metrics';
+import { computeProgramMetrics, periodLabel, type ProgramMetrics, type ReportPeriod } from '@/lib/reports/metrics';
 import { CASE_STATUSES, CASE_STATUS_META } from '@/types/case-status';
 import { WITHHOLDING_LABELS } from '@/lib/settlement/compute';
 import type { Json } from '@/types/database';
@@ -168,19 +168,21 @@ async function scopeNames(programId: string, supportTypeId: string | null) {
   return { programName: p?.name ?? '', clientName: p?.client_name ?? '', operatorName: p?.operator_name ?? '', groupName: g?.name ?? null, period };
 }
 
-/** 스냅샷 생성 — 이 시점의 지표를 고정 저장 */
-export async function createSummarySnapshot(programId: string, supportTypeId: string | null, actorId: string, title?: string | null): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+/** 스냅샷 생성 — 이 시점의 지표를 고정 저장. period 가 있으면 metrics.scope.period 에 함께 저장된다 (P30) */
+export async function createSummarySnapshot(programId: string, supportTypeId: string | null, actorId: string, title?: string | null, period?: ReportPeriod | null): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const admin = createAdminClient();
-  const [m, names] = await Promise.all([computeProgramMetrics(programId, supportTypeId), scopeNames(programId, supportTypeId)]);
+  const [m, names] = await Promise.all([computeProgramMetrics(programId, supportTypeId, period), scopeNames(programId, supportTypeId)]);
   const narrative = buildNarrative(m, names);
-  const finalTitle = title?.trim() || `${names.programName}${names.groupName ? ` ${names.groupName}` : ''} 종합결과리포트 (${new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })})`;
+  const hasPeriod = !!(period && (period.from || period.to));
+  const finalTitle = title?.trim() || `${names.programName}${names.groupName ? ` ${names.groupName}` : ''} 종합결과리포트${hasPeriod ? ` [${periodLabel(period)}]` : ''} (${new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' })})`;
   const { data, error } = await admin
     .from('report_snapshots')
     .insert({ program_id: programId, support_type_id: supportTypeId, title: finalTitle, generated_by: actorId, metrics: m as unknown as Json, narrative: narrative as unknown as Json })
     .select('id')
     .single();
   if (error || !data) return { ok: false, error: error?.message ?? '생성 실패' };
-  await admin.from('audit_logs').insert({ actor_id: actorId, program_id: programId, action: 'report.snapshot', entity_type: 'report_snapshots', entity_id: data.id, metadata: { title: finalTitle, support_type_id: supportTypeId } });
+  const { error: auditError } = await admin.from('audit_logs').insert({ actor_id: actorId, program_id: programId, action: 'report.snapshot', entity_type: 'report_snapshots', entity_id: data.id, metadata: { title: finalTitle, support_type_id: supportTypeId, period: hasPeriod ? { from: period?.from ?? null, to: period?.to ?? null } : null } });
+  if (auditError) console.error('report.snapshot audit insert failed:', auditError.message);
   return { ok: true, id: data.id };
 }
 
@@ -208,6 +210,8 @@ export async function getSummarySnapshot(id: string): Promise<SummarySnapshot | 
   if (!r) return null;
   const names = await scopeNames(r.program_id, r.support_type_id);
   const { data: u } = r.generated_by ? await admin.from('users').select('name').eq('id', r.generated_by).maybeSingle() : { data: null };
+  const metrics = r.metrics as unknown as ProgramMetrics;
+  const snapPeriod = metrics.scope?.period;
   return {
     id: r.id,
     title: r.title,
@@ -215,6 +219,8 @@ export async function getSummarySnapshot(id: string): Promise<SummarySnapshot | 
     generatedByName: u?.name ?? null,
     programId: r.program_id,
     ...names,
+    // 집계 기간이 지정된 스냅샷은 그 기간을 표시 (행사 기간 대신)
+    period: snapPeriod && (snapPeriod.from || snapPeriod.to) ? `${periodLabel(snapPeriod)} (집계 기간)` : names.period,
     metrics: r.metrics as unknown as ProgramMetrics,
     narrative: Array.isArray(r.narrative) ? (r.narrative as string[]) : [],
   };

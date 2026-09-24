@@ -22,8 +22,9 @@ import { ScheduledMessagesList } from '@/components/admin/scheduled-messages-lis
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 
-// Solapi 잔액·발송리스트를 매 요청 최신 조회
+// Solapi 잔액·발송리스트를 매 요청 최신 조회. 대량 발송(수백 명 순차)이 길어질 수 있어 함수 시간을 늘린다.
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -49,23 +50,29 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   const configured = solapiConfigured();
   const tab: TabKey = (TABS.find((t) => t.key === searchParams.tab)?.key ?? 'send') as TabKey;
 
-  const [balance, messages, recipients] = configured
-    ? await Promise.all([getSolapiBalance(), getSolapiMessages(120), listSmsRecipients(ctx.programId, ctx.supportTypeId)])
-    : [null, null, []];
+  // 행사별 문자 API 등록·활성 여부 — 발송 경로 안내(확인창)와 리마인더 준비 상태에 쓴다
+  const { data: psms } = await createAdminClient().from('program_sms_settings').select('is_active').eq('program_id', ctx.programId).maybeSingle();
+  const programSmsActive = !!psms?.is_active;
+  // 발송 권한 — 운영사 문자 권한자만. 발주처는 열람 전용 (버튼 잠금 + 서버 액션도 별도 차단)
+  const canSend = profile.role === 'nextlab' && denyUnless(ctx, 'sms') === null;
+
+  // 수신자는 행사별 API 만 있어도 필요하다. 잔액·발송 리스트는 플랫폼 공통 연동일 때만.
+  const [balance, messages, recipients] = await Promise.all([
+    configured ? getSolapiBalance() : Promise.resolve(null),
+    configured ? getSolapiMessages(120) : Promise.resolve(null),
+    configured || programSmsActive ? listSmsRecipients(ctx.programId, ctx.supportTypeId) : Promise.resolve([]),
+  ]);
 
   // 예약 발송 (Solapi 연동 여부와 무관하게 DB 조회)
-  const scheduled = await listScheduledMessages();
+  const scheduled = await listScheduledMessages(ctx.programId);
 
   // 멘토 리마인더 — 행사·그룹별 설정 + 범위별 발송 대상 (P29)
   let reminderScopes: ReminderScope[] = [];
-  let programSmsActive = false;
   if (tab === 'reminder') {
-    const [settings, groups, { data: psms }] = await Promise.all([
+    const [settings, groups] = await Promise.all([
       listReminderSettings(ctx.programId),
       listSupportTypes(ctx.programId),
-      createAdminClient().from('program_sms_settings').select('is_active').eq('program_id', ctx.programId).maybeSingle(),
     ]);
-    programSmsActive = !!psms?.is_active;
     const activeGroups = groups.filter((g) => g.status === 'active');
     const common = settings.find((x) => x.supportTypeId === null) ?? null;
     const commonPreview = common ? await previewEligibleForSetting(common, settings) : { groups: activeGroups.filter((g) => !settings.some((x) => x.supportTypeId === g.id)).map((g) => ({ id: g.id, name: g.name })), mentors: [] as EligibleMentor[] };
@@ -77,7 +84,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     );
     reminderScopes = [{ id: null, name: '행사 공통', setting: common, eligible: commonPreview.mentors, coveredGroups: commonPreview.groups.map((g) => g.name) }, ...groupScopes];
   }
-  const canEditReminder = profile.role === 'nextlab' && denyUnless(ctx, 'sms') === null;
+  const canEditReminder = canSend;
 
   const balanceText =
     balance && balance.ok ? `${balance.balance.toLocaleString()}원` : configured ? '조회 실패' : '-';
@@ -126,7 +133,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
               </p>
             </CardHeader>
             <CardContent>
-              <SmsComposer recipients={recipients} configured={configured} />
+              <SmsComposer recipients={recipients} configured={configured} programSmsActive={programSmsActive} canSend={canSend} scopeLabel={ctx.group ? ctx.group.name : '행사 전체'} />
             </CardContent>
           </Card>
         </>
@@ -154,7 +161,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             <p className="text-xs text-muted-foreground">예약한 문자는 지정한 시각에 자동 발송됩니다(최대 5분 이내 오차). 발송 전에는 취소할 수 있습니다. 예약은 [문자 발송]에서 메시지 작성 시 만듭니다.</p>
           </CardHeader>
           <CardContent>
-            <ScheduledMessagesList items={scheduled} />
+            <ScheduledMessagesList items={scheduled} canCancel={canSend} />
           </CardContent>
         </Card>
       )}

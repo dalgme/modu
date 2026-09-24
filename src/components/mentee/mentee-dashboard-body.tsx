@@ -36,6 +36,18 @@ export function MenteeDashboardBody({
   extra?: MenteeDashboardExtra | null;
 }) {
   const [primary, ...others] = cases;
+  // 승계 체인 순서: predecessor_case_id 를 따라 "이전 → 그 이전" 순으로 정렬해 몇 단계 전인지 표시 (P30)
+  const byId = new Map(cases.map((c) => [c.id, c]));
+  const chain: CaseListItem[] = [];
+  let cursor = primary?.predecessor_case_id ?? null;
+  for (let i = 0; i < 10 && cursor; i += 1) {
+    const prev = byId.get(cursor);
+    if (!prev) break;
+    chain.push(prev);
+    cursor = prev.predecessor_case_id;
+  }
+  const chainIds = new Set(chain.map((c) => c.id));
+  const unrelated = others.filter((c) => !chainIds.has(c.id));
   return (
     <div className="flex flex-col gap-5">
       <div>
@@ -86,11 +98,28 @@ export function MenteeDashboardBody({
         </>
       )}
 
-      {others.length > 0 && (
+      {chain.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-base font-semibold">이전 단계 이력</h2>
+          <p className="text-xs text-muted-foreground">현재 컨설팅은 아래 단계에서 이어졌습니다. 이전 회차·서류는 그대로 보존됩니다.</p>
+          <ul className="flex flex-col gap-2">
+            {chain.map((c, i) => (
+              <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
+                <span>
+                  <span className="mr-2 rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">{i + 1}단계 전</span>
+                  {c.supportTypeName ?? '-'} · 멘토 {c.mentorName ?? '-'} · 회차 {c.roundsDone}/{c.requiredRounds} · {formatDate(c.created_at)}
+                </span>
+                <StatusBadge status={c.status} branding={branding} short />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {unrelated.length > 0 && (
         <section className="flex flex-col gap-2">
           <h2 className="text-base font-semibold">다른 그룹 참여 이력</h2>
           <ul className="flex flex-col gap-2">
-            {others.map((c) => (
+            {unrelated.map((c) => (
               <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-background px-3 py-2 text-sm">
                 <span>
                   {c.supportTypeName ?? '-'} · 멘토 {c.mentorName ?? '-'} · {formatDate(c.created_at)}

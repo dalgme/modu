@@ -15,12 +15,18 @@ export interface GroupOpt { id: string; name: string }
 export interface MemberOpt { id: string; name: string; role: string; phone: string | null; groupNames: string[] }
 
 /** 조사 개설 — 양식 · 기간 · 대상(행사 전체 역할 / 그룹 / 개별 선택) */
-export function CampaignCreateForm({ templates, groups, members }: { templates: TemplateOpt[]; groups: GroupOpt[]; members: MemberOpt[] }) {
+export function CampaignCreateForm({ templates, groups, members, defaultGroupId = null }: { templates: TemplateOpt[]; groups: GroupOpt[]; members: MemberOpt[]; /** 현재 범위 그룹(범위 스위처) — 대상 그룹 기본값 */ defaultGroupId?: string | null }) {
   const { toast } = useToast();
   const router = useRouter();
   const [pending, start] = useTransition();
   const [kind, setKind] = useState<'role' | 'users'>('role');
+  const [groupId, setGroupId] = useState<string>(defaultGroupId && groups.some((g) => g.id === defaultGroupId) ? defaultGroupId : '');
+  const [roles, setRoles] = useState<{ mentee: boolean; mentor: boolean }>({ mentee: true, mentor: false });
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const scopeText =
+    kind === 'users'
+      ? `개별 구성원 ${picked.size}명`
+      : `${groupId ? (groups.find((g) => g.id === groupId)?.name ?? '') : '행사 전체'} · ${[roles.mentee ? '멘티' : null, roles.mentor ? '멘토' : null].filter(Boolean).join('+') || '멘티'}`;
   const [filter, setFilter] = useState('');
   const shown = members.filter((m) => !filter.trim() || m.name.includes(filter.trim()) || m.groupNames.some((g) => g.includes(filter.trim())));
   return (
@@ -94,9 +100,9 @@ export function CampaignCreateForm({ templates, groups, members }: { templates: 
             </div>
             {kind === 'role' ? (
               <div className="flex flex-wrap items-center gap-4 text-sm">
-                <label className="flex items-center gap-1.5"><input type="checkbox" name="roles" value="mentee" defaultChecked /> 멘티</label>
-                <label className="flex items-center gap-1.5"><input type="checkbox" name="roles" value="mentor" /> 멘토</label>
-                <select name="groupId" className="h-9 rounded-md border border-input bg-background px-2 text-sm" defaultValue="">
+                <label className="flex items-center gap-1.5"><input type="checkbox" name="roles" value="mentee" checked={roles.mentee} onChange={(e) => setRoles((r) => ({ ...r, mentee: e.target.checked }))} /> 멘티</label>
+                <label className="flex items-center gap-1.5"><input type="checkbox" name="roles" value="mentor" checked={roles.mentor} onChange={(e) => setRoles((r) => ({ ...r, mentor: e.target.checked }))} /> 멘토</label>
+                <select name="groupId" aria-label="대상 그룹" className="h-9 rounded-md border border-input bg-background px-2 text-sm" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
                   <option value="">행사 전체</option>
                   {groups.map((g) => (
                     <option key={g.id} value={g.id}>{g.name} 만</option>
@@ -121,8 +127,12 @@ export function CampaignCreateForm({ templates, groups, members }: { templates: 
             )}
           </fieldset>
 
-          <div className="flex justify-end">
-            <Button type="submit" disabled={pending}>{pending ? '개설 중…' : '조사 개설'}</Button>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <p className="text-sm">
+              적용 범위: <b className="text-brand-coral">{scopeText}</b>
+              {kind === 'role' && defaultGroupId && groupId === defaultGroupId && <span className="ml-1 text-xs text-muted-foreground">(현재 범위)</span>}
+            </p>
+            <Button type="submit" disabled={pending || (kind === 'role' && !roles.mentee && !roles.mentor)}>{pending ? '개설 중…' : '조사 개설'}</Button>
           </div>
         </form>
       </CardContent>

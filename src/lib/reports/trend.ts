@@ -23,7 +23,16 @@ const kstMonth = (iso: string | null): string | null => {
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
 };
 
-export async function computeMonthlyTrend(programId: string, supportTypeId?: string | null, months = 12): Promise<TrendMonth[]> {
+export interface TrendOptions {
+  /** 최근 N개월 (기본 12) */
+  months?: number;
+  /** 특정 연도 1~12월 (P30) — 지정하면 months 무시 */
+  year?: number;
+}
+
+export async function computeMonthlyTrend(programId: string, supportTypeId?: string | null, opts: number | TrendOptions = 12): Promise<TrendMonth[]> {
+  const o: TrendOptions = typeof opts === 'number' ? { months: opts } : opts;
+  const months = o.months ?? 12;
   const admin = createAdminClient();
   let casesQ = admin.from('cases').select('id, created_at, closed_at').eq('program_id', programId);
   if (supportTypeId) casesQ = casesQ.eq('support_type_id', supportTypeId);
@@ -35,18 +44,14 @@ export async function computeMonthlyTrend(programId: string, supportTypeId?: str
     fetchAllIn<{ case_id: string; gross: number; confirmed_at: string | null; created_at: string; status: string }>(caseIds, (chunk, from, to) => admin.from('settlements').select('case_id, gross, confirmed_at, created_at, status').in('case_id', chunk).neq('status', 'canceled').range(from, to)),
   ]);
 
-  // 최근 N개월 버킷 (이번 달 포함)
+  // 버킷: 특정 연도 1~12월 또는 최근 N개월 (이번 달 포함)
   const now = new Date(Date.now() + 9 * 3600 * 1000);
   const buckets: TrendMonth[] = [];
-  for (let i = months - 1; i >= 0; i -= 1) {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
-    buckets.push({
-      month: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`,
-      rounds: 0,
-      settledGross: 0,
-      newCases: 0,
-      closedCases: 0,
-    });
+  const empty = (d: Date): TrendMonth => ({ month: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`, rounds: 0, settledGross: 0, newCases: 0, closedCases: 0 });
+  if (o.year) {
+    for (let mth = 0; mth < 12; mth += 1) buckets.push(empty(new Date(Date.UTC(o.year, mth, 1))));
+  } else {
+    for (let i = months - 1; i >= 0; i -= 1) buckets.push(empty(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1))));
   }
   const byMonth = new Map(buckets.map((b) => [b.month, b]));
 

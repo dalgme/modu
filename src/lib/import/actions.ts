@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { realRoleOrNull } from '@/lib/auth/guards';
-import { denyUnless } from '@/lib/auth/capabilities';
+import { denyUnless, isPL } from '@/lib/auth/capabilities';
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { commitImport, isImportKind, parseSheet, previewImport, type ImportKind, type ImportPreview, type ImportResult, type ImportRow } from '@/lib/import/bulk-import';
@@ -11,14 +11,14 @@ import { commitImport, isImportKind, parseSheet, previewImport, type ImportKind,
 type PreviewResult = { ok: true; preview: ImportPreview } | { ok: false; error: string };
 type CommitResult = { ok: true; result: ImportResult } | { ok: false; error: string };
 
-async function operatorContext(): Promise<{ id: string; programId: string } | { error: string }> {
+async function operatorContext(): Promise<{ id: string; programId: string; isPL: boolean } | { error: string }> {
   const profile = await realRoleOrNull(['nextlab']);
   if (!profile) return { error: '운영사 담당자만 실행할 수 있습니다.' };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { error: '행사를 먼저 선택하세요.' };
   const denied = denyUnless(ctx, 'members');
   if (denied) return { error: denied };
-  return { id: profile.id, programId: ctx.programId };
+  return { id: profile.id, programId: ctx.programId, isPL: isPL(ctx.grade) };
 }
 
 /** 업로드 화면에서 고른 사업그룹 검증 — 멘티는 필수, 멘토는 선택 (P23: 그룹코드 컬럼 폐지) */
@@ -68,7 +68,7 @@ export async function commitImportAction(kind: ImportKind, rows: ImportRow[], gr
   if ('error' in group) return { ok: false, error: group.error };
   // 클라이언트가 보낸 검증 결과를 믿지 않는다 — 서버에서 재검증
   const revalidated = await previewImport(op.programId, kind, rows.map((r) => r.values), group.groupId);
-  const result = await commitImport(op.programId, kind, revalidated.rows, op.id, group.groupId);
+  const result = await commitImport(op.programId, kind, revalidated.rows, op.id, group.groupId, { actorIsPL: op.isPL });
   revalidatePath('/nextlab/members');
   revalidatePath('/nextlab/roster');
   revalidatePath('/nextlab/dashboard');

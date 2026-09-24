@@ -10,6 +10,19 @@ export interface AuditLike {
   actorName: string | null;
   programName?: string | null;
   onBehalfOfName?: string | null;
+  /** 대상 이름 (users → 회원명, cases → 멘티/닉네임) */
+  targetName?: string | null;
+}
+
+/** metadata 에서 이름 비슷한 값을 찾는다 (대상 표시 폴백) — name / target_name / owner_name / title / email */
+export function auditTargetLabel(l: AuditLike): string | null {
+  if (l.targetName) return l.targetName;
+  const m = meta(l.metadata);
+  for (const k of ['target_name', 'name', 'owner_name', 'title', 'email', 'program']) {
+    const v = str(m[k]);
+    if (v) return v;
+  }
+  return null;
 }
 
 export interface AuditDescription {
@@ -67,8 +80,8 @@ const RULES: { test: (a: string) => boolean; category: string; text: (a: string,
   { test: (a) => a === 'program.staff_added', category: '행사', text: (_a, m) => `행사에 ${ROLE[str(m.role) ?? ''] ?? '스태프'} 담당자를 추가했습니다${m.created ? ' (새 계정 발급)' : ''}` },
   { test: (a) => a === 'membership.add', category: '회원', text: (_a, m) => `기존 계정을 이 행사에 ${ROLE[str(m.role) ?? ''] ?? ''} 역할로 추가했습니다` },
   { test: (a) => a === 'membership.update', category: '회원', text: (_a, m) => `이 행사 소속을 ${ROLE[str(m.role) ?? ''] ?? ''} 역할로 다시 활성화했습니다` },
-  { test: (a) => a === 'membership.role', category: '회원', text: (_a, m) => `이 행사에서의 역할을 ${ROLE[str(m.previous_role) ?? ''] ?? '?'} → ${ROLE[str(m.role) ?? ''] ?? '?'} 로 바꿨습니다` },
-  { test: (a) => a === 'membership.grade', category: '회원', text: (_a, m) => `운영사 담당 등급을 ${GRADE[str(m.grade) ?? ''] ?? '메인 담당(PL)'} 로 지정했습니다${str(m.duty) ? ` · 담당: ${str(m.duty)}` : ''}` },
+  { test: (a) => a === 'membership.role', category: '회원', text: (_a, m) => `이 행사에서의 역할을 ${ROLE[str(m.previous_role) ?? ''] ?? '?'} → ${ROLE[str(m.role) ?? ''] ?? '?'} 로 바꿨습니다${str(m.grade) ? ` (등급 ${GRADE[str(m.grade) ?? ''] ?? str(m.grade)})` : ''}` },
+  { test: (a) => a === 'membership.grade', category: '회원', text: (_a, m) => `운영사 담당 등급을 ${str(m.previous_grade) ? `${GRADE[str(m.previous_grade) ?? ''] ?? '?'} → ` : ''}${GRADE[str(m.grade) ?? ''] ?? '메인 담당(PL)'} 로 지정했습니다${str(m.duty) ? ` · 담당: ${str(m.duty)}` : ''}` },
   { test: (a) => a === 'membership.profile', category: '회원', text: (_a, m) => `회원 정보를 수정했습니다${str(m.name) ? ` (${str(m.name)})` : ''}${str(m.position) ? ` · 직위 ${str(m.position)}` : ''}` },
   { test: (a) => a === 'roster.column_add', category: '회원', text: (_a, m) => `${str(m.target) === 'mentor' ? '멘토' : '멘티'} 리스트에 임의 컬럼 '${str(m.name) ?? ''}' 을 추가했습니다` },
   { test: (a) => a === 'roster.column_delete', category: '회원', text: (_a, m) => `${str(m.target) === 'mentor' ? '멘토' : '멘티'} 리스트의 임의 컬럼 '${str(m.name) ?? ''}' 을 삭제했습니다` },
@@ -109,12 +122,13 @@ const RULES: { test: (a: string) => boolean; category: string; text: (a: string,
   { test: (a) => a === 'mentor.withdrawal_approved', category: '요청', text: () => '멘토 중도 종료 요청을 승인했습니다 (재배정 대기)' },
   { test: (a) => a === 'mentor.withdrawal_rejected', category: '요청', text: () => '멘토 중도 종료 요청을 반려했습니다' },
   { test: (a) => a === 'mentor.force_ended', category: '배정', text: () => '운영사 결정으로 멘토 배정을 강제 종료했습니다 (사유는 운영사·발주처만 열람)' },
-  { test: (a) => a === 'mentor.docs_zip_export', category: '멘토', text: (_a, m) => `멘토 서류를 일괄 다운로드했습니다 (파일 ${num(m.files) ?? 0}건)` },
+  { test: (a) => a === 'mentor.docs_zip_export', category: '멘토', text: (_a, m) => `멘토 서류를 일괄 다운로드했습니다 (파일 ${num(m.files) ?? 0}건${str(m.role) === 'institution' ? ' · 발주처' : ''})` },
   { test: (a) => a === 'mentor.change_requested', category: '요청', text: () => '멘티가 멘토 변경을 요청했습니다' },
   { test: (a) => a.startsWith('mentor.change_'), category: '요청', text: (a) => (a.endsWith('accepted') ? '멘토 변경 요청을 수락해 교체했습니다' : '멘토 변경 요청을 반려했습니다') },
   { test: (a) => a === 'mentor.payment_doc_check', category: '멘토', text: () => '멘토 지급서류(이력서·통장사본·신분증) 수령 여부를 기록했습니다 (비밀번호 재인증)' },
   { test: (a) => a === 'mentor.group_review', category: '멘토', text: () => '그룹 안에서 멘토 평가·메모를 남겼습니다' },
   { test: (a) => a === 'mentor.signature_saved', category: '멘토', text: () => '멘토가 서명 이미지를 등록했습니다' },
+  { test: (a) => a === 'mentor.profile_update', category: '멘토', text: (_a, m) => (m.by_staff ? '운영사가 멘토 프로필(분야·권역 등)을 수정했습니다' : '멘토가 본인 프로필을 수정했습니다') },
   { test: (a) => a.startsWith('settlement.confirmed'), category: '정산', text: (a, m) => (a.endsWith('statement') ? (str(m.status) === 'failed' ? '정산서 PDF 생성에 실패했습니다' : '정산서 PDF를 생성했습니다') : `정산을 확정 저장했습니다${num(m.net) ? ` (실지급 ${won(num(m.net))})` : ''}`) },
   { test: (a) => a === 'settlement.canceled', category: '정산', text: (_a, m) => `확정 정산을 취소했습니다${str(m.reason) ? ` — ${str(m.reason)}` : ''}` },
   { test: (a) => a === 'batch.created', category: '품의', text: () => '지급 품의 묶음을 만들었습니다' },
@@ -134,13 +148,21 @@ const RULES: { test: (a: string) => boolean; category: string; text: (a: string,
   { test: (a) => a === 'survey.satisfaction_reminded', category: '조사', text: (_a, m) => `만족도 미응답 멘티에게 독려 문자를 발송했습니다 (발송 ${num(m.sent) ?? 0} · 실패 ${num(m.failed) ?? 0})` },
   { test: (a) => a === 'settings.update', category: '설정', text: (_a, m) => `운영 설정을 변경했습니다 — ${SETTING_KEY[str(m.key) ?? ''] ?? str(m.key) ?? ''}` },
   { test: (a) => a.startsWith('sms.api'), category: '문자', text: (a) => (a.includes('test') ? '행사별 문자 API로 테스트 발송을 했습니다' : a.includes('delete') || a.includes('revoke') ? '행사별 문자 API 등록을 해제했습니다' : '행사별 문자 API 자격증명을 등록·갱신했습니다 (비밀번호 재인증)') },
-  { test: (a) => a === 'sms.bulk_send', category: '문자', text: (_a, m) => `문자를 일괄 발송했습니다${num(m.count) ? ` (${num(m.count)}건)` : ''}` },
-  { test: (a) => a === 'sms.schedule', category: '문자', text: () => '문자 예약 발송을 등록했습니다' },
+  { test: (a) => a === 'sms.bulk_send', category: '문자', text: (_a, m) => { const n = num(m.total) ?? num(m.count); return `문자를 일괄 발송했습니다${n ? ` (대상 ${n}건${num(m.sent) !== null ? ` · 발송 ${num(m.sent)} · 실패 ${num(m.failed) ?? 0}` : ''})` : ''}${str(m.fatal_error) ? ' — 발송사 오류로 중단' : ''}`; } },
+  { test: (a) => a === 'sms.schedule', category: '문자', text: (_a, m) => `문자 예약 발송을 등록했습니다${num(m.total) ? ` (${num(m.total)}명)` : ''}` },
+  { test: (a) => a === 'sms.schedule_cancel', category: '문자', text: () => '문자 예약 발송을 취소했습니다' },
   { test: (a) => a === 'sms.mentor_weekly_reminder', category: '문자', text: (_a, m) => `멘토 리마인더 문자를 발송했습니다${Array.isArray(m.groups) && m.groups.length ? ` — ${(m.groups as string[]).join('·')}` : ''} (대상 ${num(m.eligible) ?? 0} · 발송 ${num(m.sent) ?? 0} · 실패 ${num(m.failed) ?? 0}${m.manual ? ' · 수동' : ' · 자동'})` },
   { test: (a) => a === 'sms.mentor_reminder_setting', category: '문자', text: (_a, m) => (m.cleared ? '그룹 리마인더 설정을 해제했습니다(행사 공통 적용)' : `멘토 리마인더 설정을 저장했습니다 (${m.support_type_id ? '그룹' : '행사 공통'} · ${m.enabled ? '자동발송 켜짐' : '꺼짐'})`) },
   { test: (a) => a === 'impersonation.start', category: '대행', text: (_a, m) => `${str(m.target_name) ?? '회원'} 님 화면 대행을 시작했습니다` },
   { test: (a) => a === 'impersonation.stop', category: '대행', text: () => '화면 대행을 종료했습니다' },
-  { test: (a) => a === 'inquiry.create', category: '문의', text: () => '문의를 등록했습니다' },
+  { test: (a) => a === 'inquiry.create', category: '문의', text: (_a, m) => `문의를 등록했습니다${str(m.subject) ? ` — ${str(m.subject)}` : ''}` },
+  { test: (a) => a === 'inquiry.answer', category: '문의', text: (_a, m) => (m.edit ? '멘티 문의 답변을 수정했습니다' : '멘티 문의에 답변했습니다') },
+  { test: (a) => a === 'board.delete', category: '게시판', text: (_a, m) => `게시판 글을 삭제했습니다${str(m.title) ? ` — ${str(m.title)}` : ''}${m.by_author ? ' (작성자 본인)' : ''}` },
+  { test: (a) => a === 'operator_request.read', category: '요청', text: (_a, m) => `발주처 요청을 확인했습니다${str(m.title) ? ` — ${str(m.title)}` : ''}` },
+  { test: (a) => a === 'operator_request.assign', category: '요청', text: (_a, m) => `발주처 요청의 담당을 맡았습니다${m.takeover ? ' (인계)' : ''}${str(m.title) ? ` — ${str(m.title)}` : ''}` },
+  { test: (a) => a === 'operator_request.done', category: '요청', text: (_a, m) => `발주처 요청을 처리 완료했습니다${str(m.title) ? ` — ${str(m.title)}` : ''}` },
+  { test: (a) => a === 'case.memo', category: '메모', text: (_a, m) => `메모: ${str(m.body) ?? ''}` },
+  { test: (a) => a === 'membership.staff_groups', category: '회원', text: (_a, m) => (num(m.count) ? `담당 그룹 ${num(m.count)}개를 지정했습니다` : '담당 그룹 지정을 해제했습니다(전체)') },
   { test: (a) => a === 'report.snapshot', category: '리포트', text: (_a, m) => `종합결과리포트를 생성했습니다${str(m.title) ? ` — ${str(m.title)}` : ''}` },
   { test: (a) => a === 'report.export', category: '리포트', text: (_a, m) => `종합결과리포트를 ${String(str(m.format) ?? '').toUpperCase()} 로 내보냈습니다` },
 ];

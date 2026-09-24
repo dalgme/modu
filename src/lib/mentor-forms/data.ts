@@ -147,7 +147,7 @@ async function mentorGroupMap(programId: string, mentorIds: string[]): Promise<M
   const admin = createAdminClient();
   const [{ data: groups }, { data: roster }] = await Promise.all([
     admin.from('support_types').select('id').eq('program_id', programId),
-    admin.from('support_type_members').select('support_type_id, user_id, is_active').in('user_id', mentorIds),
+    admin.from('support_type_members').select('support_type_id, user_id, is_active').eq('member_role', 'mentor').in('user_id', mentorIds),
   ]);
   const groupIds = new Set((groups ?? []).map((g) => g.id));
   for (const r of roster ?? []) {

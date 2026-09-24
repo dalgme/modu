@@ -20,7 +20,7 @@ export function MobileTabBar({ tabs, hideOn = [] }: { tabs: MobileTab[]; /** 이
   const pathname = usePathname();
   if (hideOn.some((h) => pathname.startsWith(h))) return null;
   return (
-    <nav aria-label="하단 메뉴" className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur md:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
+    <nav aria-label="하단 메뉴" className="fixed inset-x-0 bottom-0 z-40 border-t bg-background/95 backdrop-blur md:hidden print:hidden" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
       <ul className="grid" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
         {tabs.map((t) => {
           const active = pathname === t.href || pathname.startsWith(`${t.href}/`) || pathname.startsWith(`${t.href}?`);

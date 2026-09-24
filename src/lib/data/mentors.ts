@@ -56,7 +56,7 @@ export async function listProgramMentors(programId: string, supportTypeId?: stri
 
   const [{ data: groups }, { data: roster }, { data: assigns }, { data: logs }, { data: settlements }, { data: docs }, { data: sigs }, { data: reviews }, { data: cases }, { data: mentorProfiles }] = await Promise.all([
     admin.from('support_types').select('id, name').eq('program_id', programId),
-    admin.from('support_type_members').select('*').in('user_id', mids),
+    admin.from('support_type_members').select('*').eq('member_role', 'mentor').in('user_id', mids),
     admin.from('mentor_assignments').select('mentor_id, case_id, is_active').in('mentor_id', mids),
     admin.from('mentoring_logs').select('mentor_id, case_id').in('mentor_id', mids),
     admin.from('settlements').select('mentor_id, net, status, case_id').in('mentor_id', mids).eq('program_id', programId).neq('status', 'canceled'),

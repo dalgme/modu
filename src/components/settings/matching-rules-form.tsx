@@ -27,7 +27,7 @@ export function MatchingRulesForm({ value }: { value: MatchingRulesValue }) {
     }
     start(async () => {
       const r = await saveMatchingRulesAction({ groups: payload });
-      toast(r.ok ? { title: '매칭 규칙을 저장했습니다.' } : { title: r.error, variant: 'destructive' });
+      toast(r.ok ? { title: '매칭 규칙을 저장했습니다.', description: r.message } : { title: r.error, variant: 'destructive' });
       if (r.ok) router.refresh();
     });
   };

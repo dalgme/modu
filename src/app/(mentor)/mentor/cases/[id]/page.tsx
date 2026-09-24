@@ -37,7 +37,8 @@ export default async function Page({ params }: { params: { id: string } }) {
   const today = kstDate(new Date());
   const [history, predecessors, rounds, allowance, obs, obsFile, requests, docs, online, offline, settlements, statements, estimates, slots, readiness, reportPolicy, lastReview] = await Promise.all([
     getCaseStatusHistory(item.id),
-    listPredecessorCases(item.id),
+    // 이전 단계 케이스는 다른 배정이라 RLS 로 못 읽는다 — 요약(그룹·멘토·회차)만 service_role 로 읽어 링크 없이 표시 (P30). 접근 근거 = 이 케이스의 담당 멘토(위 notFound 가드)
+    listPredecessorCases(item.id, { admin: true }),
     listRounds(item.id),
     getRoundAllowance(item.id),
     getObservationReport(item.id),
@@ -96,7 +97,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         reportPending={rounds.filter((r) => !r.report_registered_at && new Date(r.started_at).getTime() <= Date.now()).map((r) => r.round_no)}
         nextPlanned={rounds.filter((r) => !r.report_registered_at && new Date(r.started_at).getTime() > Date.now()).map((r) => ({ roundNo: r.round_no, startedAt: r.started_at }))[0] ?? null}
       />
-      <CaseDetailShell item={item} history={history} predecessors={predecessors} branding={ctx.branding} basePath="/mentor/cases">
+      <CaseDetailShell item={item} history={history} predecessors={predecessors} predecessorLinks={false} branding={ctx.branding} basePath="/mentor/cases">
         <div id="requests" className="scroll-mt-36" />
         <MentorRequests
           caseId={item.id}

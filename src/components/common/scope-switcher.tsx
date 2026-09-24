@@ -15,6 +15,14 @@ export interface ScopeGroupOption {
   name: string;
   caseCount: number;
   ended?: boolean;
+  /** 내 담당 그룹(★) — 앞에 정렬 */
+  mine?: boolean;
+}
+
+/** 표시 순서: 내 담당(★) → 진행 중 → 종료. 같은 묶음 안에서는 원래 순서(sort_order) 유지 */
+function orderGroups(groups: ScopeGroupOption[]): ScopeGroupOption[] {
+  const rank = (g: ScopeGroupOption) => (g.ended ? 2 : g.mine ? 0 : 1);
+  return groups.map((g, i) => ({ g, i })).sort((a, b) => rank(a.g) - rank(b.g) || a.i - b.i).map((x) => x.g);
 }
 
 /**
@@ -38,12 +46,13 @@ export function ScopeSwitcher({ groups, currentGroupId, emptyHref }: { groups: S
     });
   };
 
-  const pill = (active: boolean, disabled: boolean) =>
+  const pill = (active: boolean, disabled: boolean, ended = false) =>
     cn(
       'inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold transition-colors',
       active ? 'border-primary bg-primary text-primary-foreground shadow-sm' : 'border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground',
-      disabled && 'opacity-60',
+      (disabled || ended) && 'opacity-60',
     );
+  const ordered = orderGroups(groups);
 
   return (
     <div className="border-b bg-muted/40">
@@ -54,17 +63,19 @@ export function ScopeSwitcher({ groups, currentGroupId, emptyHref }: { groups: S
         <button type="button" disabled={pending} onClick={() => go(null)} className={pill(currentGroupId === null, pending)} title="행사 안 모든 그룹을 한 번에 봅니다">
           행사 전체
         </button>
-        {groups.map((g) => (
+        {ordered.map((g) => (
           <button
             key={g.id}
             type="button"
             disabled={pending}
             onClick={() => go(g.id)}
-            className={pill(currentGroupId === g.id, pending)}
-            title={`${g.code} · ${g.name}${g.ended ? ' (종료)' : ''}`}
+            className={pill(currentGroupId === g.id, pending, !!g.ended)}
+            title={`${g.code} · ${g.name}${g.mine ? ' · 내 담당 그룹' : ''}${g.ended ? ' (종료)' : ''}`}
           >
+            {g.mine && <span aria-label="내 담당" className={cn('text-[11px]', currentGroupId === g.id ? 'text-primary-foreground' : 'text-amber-500')}>★</span>}
             <span>{g.name}</span>
             <span className={cn('rounded-full px-1.5 text-[10px] tabular-nums', currentGroupId === g.id ? 'bg-primary-foreground/20' : 'bg-muted')}>{g.caseCount}</span>
+            {g.ended && <span className="text-[9px] font-normal opacity-80">종료</span>}
           </button>
         ))}
         {groups.length === 0 && (

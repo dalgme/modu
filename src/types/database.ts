@@ -106,6 +106,7 @@ export type Database = {
       };
       board_posts: {
         Row: {
+          program_id: string | null;
           author_id: string;
           body: string;
           created_at: string;
@@ -115,6 +116,7 @@ export type Database = {
           visibility: string;
         };
         Insert: {
+          program_id?: string | null;
           author_id: string;
           body: string;
           created_at?: string;
@@ -124,6 +126,7 @@ export type Database = {
           visibility?: string;
         };
         Update: {
+          program_id?: string | null;
           author_id?: string;
           body?: string;
           created_at?: string;
@@ -592,6 +595,7 @@ export type Database = {
       };
       documents: {
         Row: {
+          copied_from_case_id: string | null;
           case_id: string;
           created_at: string;
           doc_key: string;
@@ -607,6 +611,7 @@ export type Database = {
           uploaded_role: Database['public']['Enums']['user_role'] | null;
         };
         Insert: {
+          copied_from_case_id?: string | null;
           case_id: string;
           created_at?: string;
           doc_key: string;
@@ -622,6 +627,7 @@ export type Database = {
           uploaded_role?: Database['public']['Enums']['user_role'] | null;
         };
         Update: {
+          copied_from_case_id?: string | null;
           case_id?: string;
           created_at?: string;
           doc_key?: string;
@@ -688,6 +694,7 @@ export type Database = {
       };
       inquiries: {
         Row: {
+          program_id: string | null;
           answer: string | null;
           answered_at: string | null;
           answered_by: string | null;
@@ -702,6 +709,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          program_id?: string | null;
           answer?: string | null;
           answered_at?: string | null;
           answered_by?: string | null;
@@ -716,6 +724,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          program_id?: string | null;
           answer?: string | null;
           answered_at?: string | null;
           answered_by?: string | null;
@@ -1566,6 +1575,7 @@ export type Database = {
       };
       mentoring_logs: {
         Row: {
+          corrected_at: string | null;
           amount_snapshot: number;
           case_id: string;
           content: string | null;
@@ -1591,6 +1601,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          corrected_at?: string | null;
           amount_snapshot: number;
           case_id: string;
           content?: string | null;
@@ -1616,6 +1627,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          corrected_at?: string | null;
           amount_snapshot?: number;
           case_id?: string;
           content?: string | null;
@@ -1843,6 +1855,10 @@ export type Database = {
       };
       operator_requests: {
         Row: {
+          program_id: string | null;
+          assigned_to: string | null;
+          done_at: string | null;
+          done_by: string | null;
           body: string;
           case_id: string | null;
           created_at: string;
@@ -1854,6 +1870,10 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          program_id?: string | null;
+          assigned_to?: string | null;
+          done_at?: string | null;
+          done_by?: string | null;
           body: string;
           case_id?: string | null;
           created_at?: string;
@@ -1865,6 +1885,10 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          program_id?: string | null;
+          assigned_to?: string | null;
+          done_at?: string | null;
+          done_by?: string | null;
           body?: string;
           case_id?: string | null;
           created_at?: string;
@@ -1939,6 +1963,7 @@ export type Database = {
       };
       program_members: {
         Row: {
+          duty_groups: string[];
           created_at: string;
           duty: string | null;
           grade: string | null;
@@ -1953,6 +1978,7 @@ export type Database = {
           user_id: string;
         };
         Insert: {
+          duty_groups?: string[];
           created_at?: string;
           duty?: string | null;
           grade?: string | null;
@@ -1967,6 +1993,7 @@ export type Database = {
           user_id: string;
         };
         Update: {
+          duty_groups?: string[];
           created_at?: string;
           duty?: string | null;
           grade?: string | null;
@@ -2466,6 +2493,7 @@ export type Database = {
       };
       scheduled_messages: {
         Row: {
+          program_id: string | null;
           created_at: string;
           created_by: string | null;
           dispatched_at: string | null;
@@ -2481,6 +2509,7 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          program_id?: string | null;
           created_at?: string;
           created_by?: string | null;
           dispatched_at?: string | null;
@@ -2496,6 +2525,7 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          program_id?: string | null;
           created_at?: string;
           created_by?: string | null;
           dispatched_at?: string | null;

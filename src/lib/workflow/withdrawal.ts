@@ -155,3 +155,46 @@ export async function forceEndMentor(caseId: string, actorId: string, reason: st
   await rebalanceSafely(c.program_id, actorId);
   return { ok: true, caseId };
 }
+
+/**
+ * T13 중도 종료 복귀 (P30) — withdrawn → reassignment_pending. 운영사 PL 전용(호출부 가드).
+ * 이미 만들어진 부분 정산(pending)은 그대로 둔다 — 이전 멘토가 이행한 회차에 대한 지급이므로. 품의 편성·확인·지급된 정산이 있으면 복귀 불가
+ * (정산 스냅샷과 케이스 상태가 어긋나므로). withdrawn_at/사유는 비우고 감사 metadata 에 보존한다.
+ * 같은 멘티가 같은 그룹에 이미 진행 중 케이스를 가지면(재배치 등록) 복귀할 수 없다(0079 유니크).
+ */
+export async function reinstateCase(caseId: string, actorId: string, reason: string): Promise<WorkflowResult> {
+  if (!reason.trim()) return { ok: false, error: '복귀 사유를 입력하세요.' };
+  const admin = createAdminClient();
+  const { data: c } = await admin.from('cases').select('id, status, program_id, mentee_id, support_type_id, withdrawn_at, withdrawn_reason').eq('id', caseId).maybeSingle();
+  if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
+  const denied = assertTransition('reinstate_case', c.status);
+  if (denied) return { ok: false, error: denied };
+  const { data: group } = await admin.from('support_types').select('status, name').eq('id', c.support_type_id).maybeSingle();
+  if (group && group.status !== 'active') return { ok: false, error: `종료된 그룹(${group.name})의 케이스는 복귀시킬 수 없습니다. 승계 개설 › 재배치를 이용하세요.` };
+  const { data: locked } = await admin.from('settlements').select('id, status').eq('case_id', caseId).in('status', ['batched', 'confirmed', 'paid']).limit(1);
+  if (locked && locked.length > 0) return { ok: false, error: '이미 품의 편성·정산 확인·지급된 정산이 있는 케이스는 복귀시킬 수 없습니다. 승계 개설 › 재배치로 새 케이스를 만드세요.' };
+  if (c.mentee_id) {
+    const { count } = await admin.from('cases').select('id', { count: 'exact', head: true }).eq('mentee_id', c.mentee_id).eq('support_type_id', c.support_type_id).neq('status', 'withdrawn').neq('id', caseId);
+    if ((count ?? 0) > 0) return { ok: false, error: '이 멘티는 같은 그룹에 진행 중 케이스(재배치 등록)가 있어 복귀할 수 없습니다.' };
+  }
+  const { data: upd } = await admin
+    .from('cases')
+    .update({ status: 'reassignment_pending', withdrawn_at: null, withdrawn_reason: null })
+    .eq('id', caseId)
+    .in('status', [...TRANSITIONS.reinstate_case.from])
+    .select('id');
+  if (!upd || upd.length === 0) return { ok: false, error: '이미 처리된 케이스입니다.' };
+  await admin.from('case_status_history').insert({ case_id: caseId, from_status: 'withdrawn', to_status: 'reassignment_pending', changed_by: actorId, note: `중도 종료 복귀: ${reason.trim()}` });
+  if (c.mentee_id) await queueNotification(admin, { caseId, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'mentor_ended' });
+  const { error: auditError } = await admin.from('audit_logs').insert({
+    actor_id: actorId,
+    program_id: c.program_id,
+    action: 'case.reinstated',
+    entity_type: 'cases',
+    entity_id: caseId,
+    metadata: { reason: reason.trim(), previous_withdrawn_at: c.withdrawn_at, previous_withdrawn_reason: c.withdrawn_reason },
+  });
+  if (auditError) console.error('case.reinstated audit insert failed:', auditError.message);
+  await rebalanceSafely(c.program_id, actorId);
+  return { ok: true, caseId };
+}

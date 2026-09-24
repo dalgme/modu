@@ -93,7 +93,7 @@ export function MentorAssignPanel({
       return;
     }
     setReassigning(true);
-    const result = await reassignMentorAction(caseId, newMentorId);
+    const result = await reassignMentorAction(caseId, newMentorId, undefined, currentMentorId ?? undefined);
     setReassigning(false);
     if (result.ok) {
       toast({ title: '멘토가 재배정되었습니다.' });
