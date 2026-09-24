@@ -24,10 +24,8 @@ export async function dispatchPending(limit = 100): Promise<DispatchSummary> {
   const admin = createAdminClient();
   const summary: DispatchSummary = { processed: 0, sent: 0, fallback: 0, failed: 0, skipped: 0 };
 
-  if (!alimtalkConfigured()) {
-    // 발송 채널 미설정 — 보류 (pending 유지)
-    return summary;
-  }
+  // 알림톡 대행사가 없으면 SMS 로 바로 보낸다 — 예전에는 pending 으로 영구 보류돼 멘토가 정산 확정·보완 요청을 받지 못했다 (P30)
+  const alimtalkOn = alimtalkConfigured();
 
   const { data: pending } = await admin
     .from('notifications')
@@ -70,8 +68,8 @@ export async function dispatchPending(limit = 100): Promise<DispatchSummary> {
     const tpl = { code: rawTpl.code, text: fmt(rawTpl.text, branding) + (extra ? ` ${extra}` : '') + (branding.smsFooter ? ` ${branding.smsFooter}` : '') };
     const now = new Date().toISOString();
 
-    // 1) 알림톡
-    const alim = await sendAlimtalk(phone, n.template_code ?? tpl.code, tpl.text);
+    // 1) 알림톡 (설정된 경우만)
+    const alim = alimtalkOn ? await sendAlimtalk(phone, n.template_code ?? tpl.code, tpl.text) : { ok: false as const, error: 'alimtalk_not_configured' };
     if (alim.ok) {
       await admin
         .from('notifications')

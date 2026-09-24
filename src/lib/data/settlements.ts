@@ -131,9 +131,14 @@ export async function getBatch(batchId: string, programId: string): Promise<{ ba
 /** 정산서 PDF (케이스별 최신 1건 또는 전체) */
 export async function listStatementFiles(caseId: string): Promise<{ id: string; name: string; url: string | null; createdAt: string }[]> {
   const supabase = createClient();
-  const { data } = await supabase.from('documents').select('id, doc_name, storage_path, created_at').eq('case_id', caseId).eq('doc_key', 'settlement_statement').order('created_at', { ascending: false });
+  // 정산 건별 키(settlement_statement:{id}) + 구 키(settlement_statement). 취소된 정산의 정산서는 취소 시 삭제되지만 안전하게 한 번 더 거른다 (P30)
+  const [{ data }, { data: canceled }] = await Promise.all([
+    supabase.from('documents').select('id, doc_name, storage_path, created_at, doc_key').eq('case_id', caseId).like('doc_key', 'settlement_statement%').order('created_at', { ascending: false }),
+    supabase.from('settlements').select('id').eq('case_id', caseId).eq('status', 'canceled'),
+  ]);
+  const canceledKeys = new Set((canceled ?? []).map((s) => `settlement_statement:${s.id}`));
   const out = [];
-  for (const d of data ?? []) {
+  for (const d of (data ?? []).filter((d) => !canceledKeys.has(d.doc_key))) {
     out.push({ id: d.id, name: d.doc_name, createdAt: d.created_at, url: await createCaseScopedSignedUrl('documents', caseId, d.storage_path, 600, d.doc_name) });
   }
   return out;

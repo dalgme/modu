@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { fetchAllIn } from '@/lib/supabase/paginate';
 
 /**
  * 멘토링 예산 집행 현황 (P22) — 예산은 지급총액(gross, 원천징수 공제 전) 기준.
@@ -33,15 +34,15 @@ export async function computeBudgetOverview(programId: string, supportTypeId?: s
   const confirmedByGroup = new Map<string, number>();
   const forecastByGroup = new Map<string, number>();
   if (caseIds.length) {
-    const [{ data: settlements }, { data: logs }] = await Promise.all([
-      admin.from('settlements').select('case_id, gross').in('case_id', caseIds).neq('status', 'canceled'),
-      admin.from('mentoring_logs').select('case_id, amount_snapshot').in('case_id', caseIds).not('report_registered_at', 'is', null).is('settlement_id', null),
+    const [settlements, logs] = await Promise.all([
+      fetchAllIn<{ case_id: string; gross: number }>(caseIds, (chunk, from, to) => admin.from('settlements').select('case_id, gross').in('case_id', chunk).neq('status', 'canceled').range(from, to)),
+      fetchAllIn<{ case_id: string; amount_snapshot: number }>(caseIds, (chunk, from, to) => admin.from('mentoring_logs').select('case_id, amount_snapshot').in('case_id', chunk).not('report_registered_at', 'is', null).is('settlement_id', null).range(from, to)),
     ]);
-    for (const s of settlements ?? []) {
+    for (const s of settlements) {
       const g = caseGroup.get(s.case_id);
       if (g) confirmedByGroup.set(g, (confirmedByGroup.get(g) ?? 0) + Number(s.gross));
     }
-    for (const l of logs ?? []) {
+    for (const l of logs) {
       const g = caseGroup.get(l.case_id);
       if (g) forecastByGroup.set(g, (forecastByGroup.get(g) ?? 0) + Number(l.amount_snapshot));
     }

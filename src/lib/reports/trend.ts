@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { fetchAllIn } from '@/lib/supabase/paginate';
 
 /** 월별 추이 (P22) — 최근 12개월(KST). 발주처 월간 보고 대응. */
 export interface TrendMonth {
@@ -29,12 +30,10 @@ export async function computeMonthlyTrend(programId: string, supportTypeId?: str
   const { data: cases } = await casesQ;
   const caseIds = (cases ?? []).map((c) => c.id);
 
-  const [{ data: logs }, { data: settlements }] = caseIds.length
-    ? await Promise.all([
-        admin.from('mentoring_logs').select('case_id, report_registered_at').in('case_id', caseIds).not('report_registered_at', 'is', null),
-        admin.from('settlements').select('case_id, gross, confirmed_at, created_at, status').in('case_id', caseIds).neq('status', 'canceled'),
-      ])
-    : [{ data: [] as { case_id: string; report_registered_at: string | null }[] }, { data: [] as { case_id: string; gross: number; confirmed_at: string | null; created_at: string; status: string }[] }];
+  const [logs, settlements] = await Promise.all([
+    fetchAllIn<{ case_id: string; report_registered_at: string | null }>(caseIds, (chunk, from, to) => admin.from('mentoring_logs').select('case_id, report_registered_at').in('case_id', chunk).not('report_registered_at', 'is', null).range(from, to)),
+    fetchAllIn<{ case_id: string; gross: number; confirmed_at: string | null; created_at: string; status: string }>(caseIds, (chunk, from, to) => admin.from('settlements').select('case_id, gross, confirmed_at, created_at, status').in('case_id', chunk).neq('status', 'canceled').range(from, to)),
+  ]);
 
   // 최근 N개월 버킷 (이번 달 포함)
   const now = new Date(Date.now() + 9 * 3600 * 1000);
@@ -51,11 +50,11 @@ export async function computeMonthlyTrend(programId: string, supportTypeId?: str
   }
   const byMonth = new Map(buckets.map((b) => [b.month, b]));
 
-  for (const l of logs ?? []) {
+  for (const l of logs) {
     const m = kstMonth(l.report_registered_at);
     if (m && byMonth.has(m)) byMonth.get(m)!.rounds += 1;
   }
-  for (const s of settlements ?? []) {
+  for (const s of settlements) {
     const m = kstMonth(s.confirmed_at ?? s.created_at);
     if (m && byMonth.has(m)) byMonth.get(m)!.settledGross += Number(s.gross);
   }

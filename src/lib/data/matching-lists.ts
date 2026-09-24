@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { fetchAllIn } from '@/lib/supabase/paginate';
 import { listCases } from '@/lib/data/cases';
 import { CASE_STATUS_META, CASE_STATUSES, type CaseStatus } from '@/types/case-status';
 import { AUTO_MATCH_VERSION } from '@/lib/matching/auto-match';
@@ -129,13 +130,12 @@ export async function loadMatchingLists(programId: string, supportTypeId?: strin
   const caseIds = cases.map((c) => c.id);
 
   const [{ data: assigns }, { data: profiles }, { data: responses }, { data: recs }, { data: mentorMembers }, { data: roster }, { data: settlements }, { data: docs }, { data: reviews }] = await Promise.all([
-    caseIds.length
-      ? admin.from('mentor_assignments').select('case_id, mentor_id, assigned_at, confirmed_at, match_method').eq('is_active', true).in('case_id', caseIds)
-      : Promise.resolve({ data: [] as { case_id: string; mentor_id: string; assigned_at: string; confirmed_at: string | null; match_method: string | null }[] }),
-    caseIds.length
-      ? admin.from('mentee_profiles').select('case_id, preferred_mentor, needs, rank').in('case_id', caseIds)
-      : Promise.resolve({ data: [] as { case_id: string; preferred_mentor: string | null; needs: string[]; rank: number | null }[] }),
-    caseIds.length ? admin.from('survey_responses').select('case_id, score').in('case_id', caseIds) : Promise.resolve({ data: [] as { case_id: string; score: number | null }[] }),
+    // 활성 배정 + 종결·중도 종료로 끝난 마지막 배정 — 종결 멘티도 멘토 행에 남는다 (P30). 1,000행 캡 대비 페이지 조회.
+    fetchAllIn<{ case_id: string; mentor_id: string; assigned_at: string; confirmed_at: string | null; match_method: string | null; is_active: boolean; end_kind: string | null }>(caseIds, (chunk, from, to) =>
+      admin.from('mentor_assignments').select('case_id, mentor_id, assigned_at, confirmed_at, match_method, is_active, end_kind').in('case_id', chunk).or('is_active.eq.true,end_kind.in.(case_closed,case_withdrawn)').order('assigned_at', { ascending: false }).range(from, to),
+    ).then((rows) => ({ data: rows })),
+    fetchAllIn<{ case_id: string; preferred_mentor: string | null; needs: string[]; rank: number | null }>(caseIds, (chunk, from, to) => admin.from('mentee_profiles').select('case_id, preferred_mentor, needs, rank').in('case_id', chunk).range(from, to)).then((rows) => ({ data: rows })),
+    fetchAllIn<{ case_id: string; score: number | null }>(caseIds, (chunk, from, to) => admin.from('survey_responses').select('case_id, score').in('case_id', chunk).range(from, to)).then((rows) => ({ data: rows })),
     caseIds.length
       ? admin
           .from('match_recommendations')
@@ -152,13 +152,14 @@ export async function loadMatchingLists(programId: string, supportTypeId?: strin
     admin.from('mentor_group_reviews').select('id, mentor_id, support_type_id, rating, memo, author_id, created_at').eq('program_id', programId).is('deleted_at', null).order('created_at', { ascending: false }),
   ]);
   // 멘토별 이행 회차 = 그 멘토가 보고서까지 등록한 회차 (교체 전 멘토 회차는 그 멘토 몫)
-  const { data: reportedLogs } = caseIds.length
-    ? await admin.from('mentoring_logs').select('mentor_id').in('case_id', caseIds).not('report_registered_at', 'is', null)
-    : { data: [] as { mentor_id: string }[] };
+  const reportedLogs = await fetchAllIn<{ mentor_id: string }>(caseIds, (chunk, from, to) => admin.from('mentoring_logs').select('mentor_id').in('case_id', chunk).not('report_registered_at', 'is', null).range(from, to));
   const reportedByMentor = new Map<string, number>();
-  for (const l of reportedLogs ?? []) reportedByMentor.set(l.mentor_id, (reportedByMentor.get(l.mentor_id) ?? 0) + 1);
+  for (const l of reportedLogs) reportedByMentor.set(l.mentor_id, (reportedByMentor.get(l.mentor_id) ?? 0) + 1);
 
-  const assignByCase = new Map((assigns ?? []).map((a) => [a.case_id, a]));
+  // 케이스별 대표 배정 = 활성 우선, 없으면 최신 종료 배정 (assigned_at 내림차순이라 첫 행이 최신)
+  const assignByCase = new Map<string, NonNullable<typeof assigns>[number]>();
+  for (const a of assigns ?? []) if (a.is_active) assignByCase.set(a.case_id, a);
+  for (const a of assigns ?? []) if (!assignByCase.has(a.case_id)) assignByCase.set(a.case_id, a);
   const profileByCase = new Map((profiles ?? []).map((p) => [p.case_id, p]));
   const scoreByCase = new Map((responses ?? []).map((r) => [r.case_id, r.score]));
   const surveyed = new Set((responses ?? []).map((r) => r.case_id));
@@ -185,7 +186,8 @@ export async function loadMatchingLists(programId: string, supportTypeId?: strin
 
   // 멘토별 확정 배정 수 (조회 범위 기준) — 이름(n) 표기
   const activeByMentor = new Map<string, number>();
-  for (const c of cases) if (c.mentorId && c.status !== 'withdrawn') activeByMentor.set(c.mentorId, (activeByMentor.get(c.mentorId) ?? 0) + 1);
+  // 활성 배정만 (종결·중도 종료의 마지막 멘토는 mentorEnded=true 라 제외)
+  for (const c of cases) if (c.mentorId && !c.mentorEnded) activeByMentor.set(c.mentorId, (activeByMentor.get(c.mentorId) ?? 0) + 1);
 
   const recsByCase = new Map<string, MenteeMatchRecommendation[]>();
   for (const raw of (recs ?? []) as { case_id: string; mentor_id: string; rank: number; score: number; rationale: string | null; users: { name: string } | null }[]) {

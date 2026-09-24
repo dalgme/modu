@@ -185,6 +185,13 @@ export async function cancelSettlement(settlementId: string, actorId: string, re
     .select('id');
   if (!upd || upd.length === 0) return { ok: false, error: '이미 처리된 정산입니다.' };
   await admin.from('mentoring_logs').update({ settlement_id: null }).eq('settlement_id', settlementId);
+  // 취소된 정산의 정산서 PDF 제거 — 증빙 ZIP·케이스 화면에 취소본이 남지 않게
+  const { data: stmtDocs } = await admin.from('documents').select('id, storage_path').eq('case_id', s.case_id).eq('doc_key', `settlement_statement:${settlementId}`);
+  if (stmtDocs && stmtDocs.length > 0) {
+    await admin.storage.from('documents').remove(stmtDocs.map((d) => d.storage_path));
+    await admin.from('documents').delete().in('id', stmtDocs.map((d) => d.id));
+  }
+  await queueNotification(admin, { caseId: s.case_id, programId: s.program_id, recipientId: s.mentor_id, triggerEvent: 'settlement_canceled', payload: { settlement_id: settlementId, message: reason.trim().slice(0, 80) } });
 
   if (s.kind === 'closure') {
     const { data: c } = await admin.from('cases').select('status').eq('id', s.case_id).maybeSingle();
@@ -202,6 +209,34 @@ export async function cancelSettlement(settlementId: string, actorId: string, re
     metadata: { case_id: s.case_id, mentor_id: s.mentor_id, kind: s.kind, reason: reason.trim() },
   });
   return { ok: true, caseId: s.case_id };
+}
+
+/**
+ * 교체 이력상 이전 멘토들의 미정산(보고서 등록) 회차를 partial 로 확정한다 — 종결 검수·중도 종료 공용 (P30).
+ * 한 건이라도 실패하면 이번에 만든 것을 모두 취소하고 오류를 돌려준다(금액 전이 반쪽 성공 금지).
+ */
+export async function settleLeftoverMentors(caseId: string, actorId: string, excludeMentorId: string | null, note: string): Promise<{ ok: true; settlementIds: string[] } | { ok: false; error: string }> {
+  const admin = createAdminClient();
+  const { data: logs } = await admin.from('mentoring_logs').select('mentor_id').eq('case_id', caseId).is('settlement_id', null).not('report_registered_at', 'is', null);
+  const mentors = Array.from(new Set((logs ?? []).map((l) => l.mentor_id))).filter((m) => m !== excludeMentorId);
+  const created: string[] = [];
+  for (const m of mentors) {
+    const snap = await createSettlementSnapshot({ caseId, mentorId: m, kind: 'partial', actorId, note });
+    if (!snap.ok) {
+      await rollbackSettlements(created, actorId, `연쇄 정산 실패로 자동 취소: ${snap.error}`);
+      return { ok: false, error: `이전 멘토 정산 실패: ${snap.error}` };
+    }
+    if (snap.settlementId) created.push(snap.settlementId);
+  }
+  return { ok: true, settlementIds: created };
+}
+
+/** 방금 만든 정산 스냅샷들을 취소 상태로 되돌린다 (전이 실패·경쟁 시) */
+export async function rollbackSettlements(ids: string[], actorId: string, reason: string): Promise<void> {
+  if (ids.length === 0) return;
+  const admin = createAdminClient();
+  await admin.from('mentoring_logs').update({ settlement_id: null }).in('settlement_id', ids);
+  await admin.from('settlements').update({ status: 'canceled', canceled_by: actorId, canceled_at: new Date().toISOString(), cancel_reason: reason }).in('id', ids);
 }
 
 export function summarizeForMessage(r: SettlementResult): string {
@@ -271,7 +306,8 @@ async function renderStatementPdf(input: {
   const meta = await uploadFile('documents', input.caseId, pdf, 'application/pdf', 'pdf');
   await admin.from('documents').insert({
     case_id: input.caseId,
-    doc_key: 'settlement_statement',
+    // 정산 건별 키 — 취소 시 그 정산서만 지우고, ZIP·목록에서 취소본이 섞이지 않게 (P30)
+    doc_key: `settlement_statement:${input.settlementId}`,
     doc_name: `정산서_${input.businessName}_${mentor?.name ?? ''}.pdf`,
     storage_path: meta.storagePath,
     sha256: meta.sha256,

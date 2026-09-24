@@ -113,7 +113,7 @@ export function buildTemplate(kind: ImportKind): Buffer {
 const splitList = (v: string) => v.split(/[;,]/).map((s) => s.trim()).filter(Boolean);
 
 /** 검증 — DB 는 조회만. 필수값·형식·복수값 상한·중복·기존 계정 매칭 (그룹은 액션에서 검증) */
-export async function previewImport(programId: string, kind: ImportKind, rows: Record<string, string>[]): Promise<ImportPreview> {
+export async function previewImport(programId: string, kind: ImportKind, rows: Record<string, string>[], groupId?: string | null): Promise<ImportPreview> {
   const admin = createAdminClient();
   const seenPhones = new Set<string>();
   const out: ImportRow[] = [];
@@ -131,6 +131,17 @@ export async function previewImport(programId: string, kind: ImportKind, rows: R
     ? await admin.from('program_members').select('user_id, role').eq('program_id', programId).in('user_id', matchedIds)
     : { data: [] as { user_id: string; role: string }[] };
   const programRoleByUser = new Map((memberships ?? []).map((m) => [m.user_id, m.role]));
+  // 멘티: 같은 그룹에 진행 중 케이스가 이미 있는 계정은 중복 등록 오류 (1멘티 = 1케이스, P30)
+  const openCaseUsers = new Set<string>();
+  const nameByUser = new Map<string, string>();
+  if (matchedIds.length) {
+    const [{ data: openCases }, { data: names }] = await Promise.all([
+      kind === 'mentee' && groupId ? admin.from('cases').select('mentee_id').eq('support_type_id', groupId).neq('status', 'withdrawn').in('mentee_id', matchedIds) : Promise.resolve({ data: [] as { mentee_id: string | null }[] }),
+      admin.from('users').select('id, name').in('id', matchedIds),
+    ]);
+    for (const c of openCases ?? []) if (c.mentee_id) openCaseUsers.add(c.mentee_id);
+    for (const u of names ?? []) nameByUser.set(u.id, u.name);
+  }
 
   rows.forEach((values, i) => {
     const errors: string[] = [];
@@ -149,7 +160,10 @@ export async function previewImport(programId: string, kind: ImportKind, rows: R
     const existing = userByPhone.get(phoneDigits) ?? (email ? userByEmail.get(email) : undefined);
     if (existing) {
       const programRole = programRoleByUser.get(existing.id);
+      const existingName = nameByUser.get(existing.id);
       if (programRole && programRole !== kind) errors.push(`이 행사에서 이미 ${IMPORT_KIND_LABELS[programRole as ImportKind] ?? programRole} 역할로 등록된 계정`);
+      else if (kind === 'mentee' && openCaseUsers.has(existing.id)) errors.push('이 그룹에 이미 등록된 멘티(중복 행 또는 재업로드)');
+      else if (existingName && name && existingName.trim() !== name.trim()) errors.push(`같은 휴대폰/이메일의 기존 계정 이름(${existingName})과 다릅니다 — 번호를 확인하세요`);
       else existingUserId = existing.id; // 이 행사 소속이 아니면 기존 계정을 이 역할로 초대(설계 B)
     }
     out.push({ line, values, errors, existingUserId });

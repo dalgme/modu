@@ -288,6 +288,8 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
 export async function updateRound(input: {
   logId: string;
   mentorId: string;
+  /** 호출 화면의 케이스 — 다른 케이스의 logId 로 수정하는 것을 막는다 (P30) */
+  caseId?: string;
   place?: string;
   topic?: string;
   content?: string;
@@ -297,6 +299,8 @@ export async function updateRound(input: {
   const admin = createAdminClient();
   const { data: log } = await admin.from('mentoring_logs').select('id, case_id, mentor_id, settlement_id, report_kind, report_registered_at, mentee_signed_at, cases!inner(status, program_id)').eq('id', input.logId).maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
+  if (input.caseId && log.case_id !== input.caseId) return { ok: false, error: '이 케이스의 회차가 아닙니다.' };
+  if (log.mentor_id !== input.mentorId) return { ok: false, error: '다른 멘토가 진행한 회차는 수정할 수 없습니다.' };
   if (log.settlement_id) return { ok: false, error: '정산에 포함된 회차는 수정할 수 없습니다.' };
   if (log.mentee_signed_at) return { ok: false, error: '멘티가 서명한 회차는 내용을 수정할 수 없습니다.' };
   if (!log.report_registered_at) return { ok: false, error: '아직 보고서가 등록되지 않은 회차입니다. [보고서 등록]을 이용하세요.' };
@@ -336,6 +340,7 @@ export async function updateRound(input: {
 export async function updatePlannedRound(input: {
   logId: string;
   mentorId: string;
+  caseId?: string;
   mode: ConsultingMode;
   startedAt: string;
   endedAt: string;
@@ -348,6 +353,7 @@ export async function updatePlannedRound(input: {
     .eq('id', input.logId)
     .maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
+  if (input.caseId && log.case_id !== input.caseId) return { ok: false, error: '이 케이스의 회차가 아닙니다.' };
   if (log.settlement_id) return { ok: false, error: '정산에 포함된 회차는 수정할 수 없습니다.' };
   if (log.report_registered_at) return { ok: false, error: '보고서가 등록된 회차는 일정을 바꿀 수 없습니다. (내용 수정은 [회차 수정])' };
   const c = log.cases as unknown as { status: string; program_id: string; support_type_id: string };
@@ -428,7 +434,7 @@ export async function updatePlannedRound(input: {
  * 계획(미보고) 회차 삭제 (P20) — 마지막이 아니어도, 그 뒤 회차가 전부 미보고·미정산이면
  * 삭제하고 뒤 회차 번호를 당긴다(is_extra 재계산).
  */
-export async function deletePlannedRound(logId: string, mentorId: string): Promise<WorkflowResult> {
+export async function deletePlannedRound(logId: string, mentorId: string, caseId?: string): Promise<WorkflowResult> {
   const admin = createAdminClient();
   const { data: log } = await admin
     .from('mentoring_logs')
@@ -436,6 +442,7 @@ export async function deletePlannedRound(logId: string, mentorId: string): Promi
     .eq('id', logId)
     .maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
+  if (caseId && log.case_id !== caseId) return { ok: false, error: '이 케이스의 회차가 아닙니다.' };
   if (log.settlement_id) return { ok: false, error: '정산에 포함된 회차는 삭제할 수 없습니다.' };
   if (log.report_registered_at) return { ok: false, error: '보고서가 등록된 회차는 여기서 삭제할 수 없습니다.' };
   const c = log.cases as unknown as { status: string; program_id: string; support_type_id: string };
@@ -473,10 +480,13 @@ export async function deletePlannedRound(logId: string, mentorId: string): Promi
 }
 
 /** 회차 삭제 — 마지막 회차만, 정산 미포함, 종결 요청 전. 삭제 후 회차 번호가 이어진다. */
-export async function deleteRound(logId: string, mentorId: string): Promise<WorkflowResult> {
+export async function deleteRound(logId: string, mentorId: string, caseId?: string): Promise<WorkflowResult> {
   const admin = createAdminClient();
-  const { data: log } = await admin.from('mentoring_logs').select('id, case_id, round_no, settlement_id, cases!inner(status, program_id)').eq('id', logId).maybeSingle();
+  const { data: log } = await admin.from('mentoring_logs').select('id, case_id, round_no, mentor_id, settlement_id, mentee_signed_at, report_registered_at, cases!inner(status, program_id)').eq('id', logId).maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
+  if (caseId && log.case_id !== caseId) return { ok: false, error: '이 케이스의 회차가 아닙니다.' };
+  if (log.report_registered_at && log.mentor_id !== mentorId) return { ok: false, error: '다른 멘토가 보고서를 등록한 회차는 삭제할 수 없습니다.' };
+  if (log.mentee_signed_at) return { ok: false, error: '멘티가 서명한 회차는 삭제할 수 없습니다. 운영사에 정정을 요청하세요.' };
   if (log.settlement_id) return { ok: false, error: '정산에 포함된 회차는 삭제할 수 없습니다.' };
   const c = log.cases as unknown as { status: string; program_id: string };
   const denied = assertTransition('submit_round', c.status as never);
@@ -537,4 +547,31 @@ async function attachPhotos(caseId: string, logId: string, uploadedBy: string, s
       mime_type: moved.mime.startsWith('image/') ? moved.mime : 'image/jpeg',
     });
   }
+}
+
+/**
+ * 배정이 끝난 멘토의 미보고(계획만) 회차를 정리한다 — 교체·중도 종료·강제 종료 공용 (P30).
+ * 남겨두면 새 멘토의 회차 상한이 줄고 보고서 등록도 mentor_id 불일치로 막힌다. 뒤 번호를 당기고 is_extra 를 재계산한다.
+ */
+export async function dropPlannedRoundsOfMentor(caseId: string, mentorId: string, actorId: string | null): Promise<number> {
+  const admin = createAdminClient();
+  const { data: planned } = await admin.from('mentoring_logs').select('id, round_no').eq('case_id', caseId).eq('mentor_id', mentorId).is('report_registered_at', null).is('settlement_id', null);
+  if (!planned || planned.length === 0) return 0;
+  const { error } = await admin.from('mentoring_logs').delete().in('id', planned.map((p) => p.id));
+  if (error) {
+    console.error('dropPlannedRoundsOfMentor failed:', error.message);
+    return 0;
+  }
+  const [{ data: rest }, { data: c }] = await Promise.all([
+    admin.from('mentoring_logs').select('id, round_no').eq('case_id', caseId).order('round_no'),
+    admin.from('cases').select('program_id, support_types(required_rounds)').eq('id', caseId).maybeSingle(),
+  ]);
+  const required = (c?.support_types as unknown as { required_rounds: number } | null)?.required_rounds ?? 0;
+  let no = 0;
+  for (const r of rest ?? []) {
+    no += 1;
+    if (r.round_no !== no) await admin.from('mentoring_logs').update({ round_no: no, is_extra: no > required }).eq('id', r.id);
+  }
+  await admin.from('audit_logs').insert({ actor_id: actorId, program_id: c?.program_id ?? null, action: 'round.plan_dropped', entity_type: 'cases', entity_id: caseId, metadata: { mentor_id: mentorId, dropped: planned.length } });
+  return planned.length;
 }

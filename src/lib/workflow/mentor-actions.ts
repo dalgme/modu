@@ -85,7 +85,7 @@ export async function updatePlannedRoundAction(input: { caseId: string; logId: s
 export async function deletePlannedRoundAction(caseId: string, logId: string): Promise<WorkflowResult> {
   const profile = await mentorOfCaseOrNull(caseId);
   if (!profile) return { ok: false, error: NOT_ASSIGNED_ERROR };
-  const result = await deletePlannedRound(logId, profile.id);
+  const result = await deletePlannedRound(logId, profile.id, caseId);
   if (result.ok) revalidate(caseId);
   return result;
 }
@@ -94,7 +94,7 @@ export async function deletePlannedRoundAction(caseId: string, logId: string): P
 export async function deleteRoundAction(caseId: string, logId: string): Promise<WorkflowResult> {
   const profile = await mentorOfCaseOrNull(caseId);
   if (!profile) return { ok: false, error: NOT_ASSIGNED_ERROR };
-  const result = await deleteRound(logId, profile.id);
+  const result = await deleteRound(logId, profile.id, caseId);
   if (result.ok) revalidate(caseId);
   return result;
 }

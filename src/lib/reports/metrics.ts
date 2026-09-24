@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { fetchAllIn } from '@/lib/supabase/paginate';
 import { CASE_STATUSES, type CaseStatus } from '@/types/case-status';
 import { SURVEY_OPEN_STATUSES } from '@/lib/workflow/mentee';
 
@@ -108,12 +109,19 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
   const caseIds = cases.map((c) => c.id);
   const inScope = new Set(caseIds);
 
-  const [logsR, settR, respR, assignR, extR, chgR, wdR, docsR, reviewsR, extraR, succR, membersR] = caseIds.length
+  // 회차·정산·응답·배정은 1,000행 캡을 넘을 수 있어 페이지로 읽는다 (P30)
+  const [logsAll, settlementsAll, responsesAll, assignsAll, extR, chgR, wdR, docsR, reviewsR, extraR, succR, membersR] = caseIds.length
     ? await Promise.all([
-        admin.from('mentoring_logs').select('id, case_id, mentor_id, mode, amount_snapshot, settlement_id, started_at, mentee_signed_at').in('case_id', caseIds),
-        admin.from('settlements').select('case_id, mentor_id, status, net, withholding, withholding_method').in('case_id', caseIds).neq('status', 'canceled'),
-        admin.from('survey_responses').select('case_id, score').in('case_id', caseIds),
-        admin.from('mentor_assignments').select('case_id, mentor_id, is_active').in('case_id', caseIds),
+        fetchAllIn<{ id: string; case_id: string; mentor_id: string; mode: string; amount_snapshot: number; settlement_id: string | null; started_at: string; mentee_signed_at: string | null; report_registered_at: string | null }>(caseIds, (chunk, from, to) =>
+          admin.from('mentoring_logs').select('id, case_id, mentor_id, mode, amount_snapshot, settlement_id, started_at, mentee_signed_at, report_registered_at').in('case_id', chunk).range(from, to),
+        ),
+        fetchAllIn<{ case_id: string; mentor_id: string; status: string; net: number; withholding: number; withholding_method: string }>(caseIds, (chunk, from, to) =>
+          admin.from('settlements').select('case_id, mentor_id, status, net, withholding, withholding_method').in('case_id', chunk).neq('status', 'canceled').range(from, to),
+        ),
+        fetchAllIn<{ case_id: string; score: number | null }>(caseIds, (chunk, from, to) => admin.from('survey_responses').select('case_id, score').in('case_id', chunk).range(from, to)),
+        fetchAllIn<{ case_id: string; mentor_id: string; is_active: boolean; assigned_at: string }>(caseIds, (chunk, from, to) =>
+          admin.from('mentor_assignments').select('case_id, mentor_id, is_active, assigned_at').in('case_id', chunk).order('assigned_at').range(from, to),
+        ),
         admin.from('round_extension_requests').select('id').in('case_id', caseIds).eq('status', 'pending'),
         admin.from('mentor_change_requests').select('id').in('case_id', caseIds).eq('status', 'pending'),
         admin.from('mentor_withdrawal_requests').select('id').in('case_id', caseIds).eq('status', 'pending'),
@@ -123,11 +131,14 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
         admin.from('cases').select('id, predecessor_case_id').eq('program_id', programId).in('predecessor_case_id', caseIds),
         admin.from('program_members').select('user_id').eq('program_id', programId).eq('is_active', true),
       ])
-    : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }];
-  const logs = (logsR.data ?? []) as { id: string; case_id: string; mentor_id: string; mode: string; amount_snapshot: number; settlement_id: string | null; started_at: string; mentee_signed_at: string | null }[];
-  const settlements = (settR.data ?? []) as { case_id: string; mentor_id: string; status: string; net: number; withholding: number; withholding_method: string }[];
-  const responses = (respR.data ?? []) as { case_id: string; score: number | null }[];
-  const assigns = (assignR.data ?? []) as { case_id: string; mentor_id: string; is_active: boolean }[];
+    : [[], [], [], [], { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }];
+  // 이행 회차 = 보고서(2단계) 등록 회차만 (CLAUDE.md §3-1). 계획만 있는 회차는 roundsScheduled 로만 센다.
+  const allLogs = logsAll as { id: string; case_id: string; mentor_id: string; mode: string; amount_snapshot: number; settlement_id: string | null; started_at: string; mentee_signed_at: string | null; report_registered_at: string | null }[];
+  const logs = allLogs.filter((l) => l.report_registered_at);
+  const settlements = settlementsAll as { case_id: string; mentor_id: string; status: string; net: number; withholding: number; withholding_method: string }[];
+  const responses = responsesAll as { case_id: string; score: number | null }[];
+  // assigned_at 오름차순 — "마지막 배정" 판정이 순서에 의존한다
+  const assigns = assignsAll as { case_id: string; mentor_id: string; is_active: boolean; assigned_at: string }[];
   const extras = (extraR.data ?? []) as { case_id: string; extra_rounds: number }[];
   const succ = (succR.data ?? []) as { id: string; predecessor_case_id: string | null }[];
   const reviews = (reviewsR.data ?? []) as { mentor_id: string; rating: number | null }[];
@@ -151,7 +162,8 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
   const now = Date.now();
   const stalled = cases.filter((c) => {
     if (c.status !== 'in_progress' && c.status !== 'mentor_assigned') return false;
-    const last = (logsByCase.get(c.id) ?? []).reduce((m, l) => Math.max(m, new Date(l.started_at).getTime()), 0);
+    // 미래 계획 회차가 '최근 활동'이 되지 않게 — 보고서 등록 시각 기준, 지금보다 뒤면 지금으로
+    const last = (logsByCase.get(c.id) ?? []).reduce((m, l) => Math.max(m, Math.min(now, new Date(l.report_registered_at ?? l.started_at).getTime())), 0);
     const ref = last || new Date(c.created_at).getTime();
     return now - ref > STALLED_DAYS * 86400000;
   }).length;
@@ -166,7 +178,7 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
   const scores = responses.map((r) => r.score).filter((s): s is number => typeof s === 'number');
   const activeMentorOf = new Map<string, string>();
   for (const a of assigns) if (a.is_active) activeMentorOf.set(a.case_id, a.mentor_id);
-  const lastMentorOf = new Map<string, string>(); // 활성 없으면 마지막 배정
+  const lastMentorOf = new Map<string, string>(); // 활성 없으면 마지막 배정 (assigned_at 오름차순이라 마지막 대입이 최신)
   for (const a of assigns) if (!activeMentorOf.has(a.case_id)) lastMentorOf.set(a.case_id, a.mentor_id);
   const mentorOfCase = (caseId: string) => activeMentorOf.get(caseId) ?? lastMentorOf.get(caseId) ?? null;
   const mentorUserIds = Array.from(new Set([...assigns.map((a) => a.mentor_id), ...logs.map((l) => l.mentor_id), ...settlements.map((s) => s.mentor_id)]));
@@ -279,6 +291,7 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
       observationRate,
     },
     settlement: {
+      // 예상(미확정) = 보고서 등록됐고 아직 정산되지 않은 회차 — budget.ts 의 예상 집행액과 같은 조건
       estimatedGross: logs.filter((l) => !l.settlement_id).reduce((a, l) => a + Number(l.amount_snapshot), 0),
       pendingNet: sumNet('pending'),
       batchedNet: sumNet('batched'),

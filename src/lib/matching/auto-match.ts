@@ -102,10 +102,12 @@ function buildRecommendationRows(
   preferredMentor: string | null,
   pool: MentorPool,
   actorId: string | null,
+  /** 이 케이스에서 이미 종료(이탈·강제 종료·교체)된 멘토 — 다시 추천하지 않는다 (P30) */
+  excludeMentorIds: Set<string> = new Set(),
 ) {
   const needs = needsRaw.slice(0, 6);
   const candidates = pool.mentors
-    .filter((m) => eligible(pool, m, groupId))
+    .filter((m) => !excludeMentorIds.has(m.id) && eligible(pool, m, groupId))
     .sort((a, b) => activeIn(a, groupId) - activeIn(b, groupId) || a.name.localeCompare(b.name, 'ko'));
 
   const picks: { m: ProgramMentor; need: string | null; needRank: number | null; matched: string | null }[] = [];
@@ -183,9 +185,12 @@ export async function rebuildAutoRecommendations(caseId: string, actorId: string
   if (assign) return 0;
   if (!(OPEN_STATUSES as readonly string[]).includes(c.status)) return 0;
 
-  const { data: prof } = await admin.from('mentee_profiles').select('needs, preferred_mentor').eq('case_id', caseId).maybeSingle();
+  const [{ data: prof }, { data: ended }] = await Promise.all([
+    admin.from('mentee_profiles').select('needs, preferred_mentor').eq('case_id', caseId).maybeSingle(),
+    admin.from('mentor_assignments').select('mentor_id').eq('case_id', caseId).eq('is_active', false).in('end_kind', ['mentor_withdrawal', 'forced', 'reassigned']),
+  ]);
   const pool = preloaded ?? (await loadMentorPool(c.program_id));
-  const rows = buildRecommendationRows(c.program_id, caseId, c.support_type_id, prof?.needs ?? [], prof?.preferred_mentor ?? null, pool, actorId);
+  const rows = buildRecommendationRows(c.program_id, caseId, c.support_type_id, prof?.needs ?? [], prof?.preferred_mentor ?? null, pool, actorId, new Set((ended ?? []).map((e) => e.mentor_id)));
   if (rows.length === 0) return 0;
   const { error } = await admin.from('match_recommendations').insert(rows);
   if (error) {
@@ -256,19 +261,24 @@ export async function rebalanceAllOpenRecommendations(programId: string, actorId
   if (!open || open.length === 0) return;
   const pool = preloaded ?? (await loadMentorPool(programId));
   const openIds = open.map((c) => c.id);
-  const [{ data: profiles }, { data: activeAssigns }, { error: deleteError }] = await Promise.all([
+  const [{ data: profiles }, { data: assignRows }, { error: deleteError }] = await Promise.all([
     admin.from('mentee_profiles').select('case_id, needs, preferred_mentor').in('case_id', openIds),
-    admin.from('mentor_assignments').select('case_id').eq('is_active', true).in('case_id', openIds),
+    admin.from('mentor_assignments').select('case_id, mentor_id, is_active, end_kind').in('case_id', openIds),
     admin.from('match_recommendations').delete().eq('prompt_version', AUTO_MATCH_VERSION).is('adopted_at', null).in('case_id', openIds),
   ]);
   if (deleteError) console.error('auto recommendation cleanup failed:', deleteError.message);
-  const hasActive = new Set((activeAssigns ?? []).map((a) => a.case_id));
+  const hasActive = new Set((assignRows ?? []).filter((a) => a.is_active).map((a) => a.case_id));
+  const endedByCase = new Map<string, Set<string>>();
+  for (const a of assignRows ?? []) {
+    if (a.is_active || !['mentor_withdrawal', 'forced', 'reassigned'].includes(a.end_kind ?? '')) continue;
+    (endedByCase.get(a.case_id) ?? endedByCase.set(a.case_id, new Set()).get(a.case_id)!).add(a.mentor_id);
+  }
   const profileByCase = new Map((profiles ?? []).map((p) => [p.case_id, p]));
   const rows = open
     .filter((c) => !hasActive.has(c.id))
     .flatMap((c) => {
       const p = profileByCase.get(c.id);
-      return buildRecommendationRows(programId, c.id, c.support_type_id, p?.needs ?? [], p?.preferred_mentor ?? null, pool, actorId);
+      return buildRecommendationRows(programId, c.id, c.support_type_id, p?.needs ?? [], p?.preferred_mentor ?? null, pool, actorId, endedByCase.get(c.id));
     });
   if (rows.length > 0) {
     const { error } = await admin.from('match_recommendations').insert(rows);

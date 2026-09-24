@@ -45,6 +45,10 @@ export const NOTIFICATION_TEMPLATES: Record<string, { code: string; text: string
     code: 'SETTLEMENT_CONFIRMED',
     text: '[{program}] 정산이 확정되었습니다. 정산 내역을 확인해 주세요.',
   },
+  settlement_canceled: {
+    code: 'SETTLEMENT_CANCELED',
+    text: '[{program}] 확정됐던 정산이 취소되었습니다. 회차 정정 후 다시 확정됩니다.',
+  },
   batch_submitted: {
     code: 'BATCH_SUBMITTED',
     text: '[{program}] 지급 품의가 제출되었습니다. 정산 확인을 진행해 주세요.',

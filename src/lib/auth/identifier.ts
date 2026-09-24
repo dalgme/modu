@@ -70,10 +70,13 @@ export async function resolveUserByIdentifier(
   // 휴대폰 번호(숫자·기호만, 6자리 이상)로 보이면 휴대폰 매칭
   const digits = normalizePhone(id);
   if (/^[\d\s()+.-]+$/.test(id) && digits.length >= 6) {
+    // 뒷 4자리로 좁혀 읽는다 — users 전체 스캔은 1,000행 캡에 잘려 로그인이 실패한다 (P30)
     const { data } = await admin
       .from('users')
       .select('id, email, phone, is_active')
-      .not('phone', 'is', null);
+      .not('phone', 'is', null)
+      .ilike('phone', `%${digits.slice(-4)}`)
+      .limit(1000);
     const matches = (data ?? []).filter((u) => normalizePhone(u.phone) === digits);
     if (matches.length === 1) return matches[0]!;
     if (matches.length > 1) return 'ambiguous';
@@ -83,14 +86,16 @@ export async function resolveUserByIdentifier(
   // 멘티 아이디 = 한글이름 + 휴대폰 뒷4자리 (예: 강종복0306)
   const key = id.replace(/\s+/g, '');
   // 기본 역할이 멘티이거나, 어느 행사에서든 멘티 역할로 소속된 계정 (설계 B)
-  const [{ data: primary }, { data: memberships }] = await Promise.all([
-    admin.from('users').select('id, email, phone, is_active, name').eq('role', 'mentee'),
-    admin.from('program_members').select('user_id').eq('role', 'mentee').eq('is_active', true),
-  ]);
-  const extraIds = Array.from(new Set((memberships ?? []).map((m) => m.user_id))).filter((id) => !(primary ?? []).some((u) => u.id === id));
-  const { data: extra } = extraIds.length ? await admin.from('users').select('id, email, phone, is_active, name').in('id', extraIds) : { data: [] as NonNullable<typeof primary> };
-  const mentees = [...(primary ?? []), ...(extra ?? [])];
-  const hits = mentees.filter((u) => menteeLoginKey(u.name, u.phone) === key);
+  // 아이디 = 이름 + 뒷4자리 → 이름·뒷자리로 좁혀 읽은 뒤 키를 재검증 (전체 스캔 금지, P30)
+  const last4 = key.slice(-4);
+  const nameKey = key.slice(0, -4);
+  if (!/^\d{4}$/.test(last4) || !nameKey) return null;
+  const { data: candidates } = await admin
+    .from('users')
+    .select('id, email, phone, is_active, name')
+    .ilike('phone', `%${last4}`)
+    .limit(1000);
+  const hits = (candidates ?? []).filter((u) => menteeLoginKey(u.name, u.phone) === key);
   if (hits.length === 1) {
     const u = hits[0]!;
     return { id: u.id, email: u.email, phone: u.phone, is_active: u.is_active };

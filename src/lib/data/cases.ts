@@ -1,4 +1,6 @@
+import { fetchAllIn } from '@/lib/supabase/paginate';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { menteeLoginKey } from '@/lib/auth/identifier';
 import type { Tables } from '@/types/database';
 import type { CaseStatus } from '@/types/case-status';
@@ -18,10 +20,12 @@ export interface CaseListItem extends CaseRow {
   roundsDone: number;
   /** 등록된 회차 전체(계획 포함) */
   roundsPlanned: number;
-  /** 활성 배정 멘토 */
+  /** 담당 멘토 — 활성 배정. 종결·중도 종료 케이스는 마지막 배정(mentorEnded=true) */
   mentorName: string | null;
   mentorId: string | null;
   mentorAssignedAt: string | null;
+  /** true 면 mentorId 는 종료된(마지막) 배정 — 정원·활성 계산에 넣지 말 것 (P30) */
+  mentorEnded: boolean;
   /** 멘티 로그인 아이디 = 이름+휴대폰 뒷4자리. 계정 미발급이면 null */
   menteeLoginId: string | null;
   /** 담당 멘토의 현재 확정 배정 멘티 수 — 조회 범위(행사/그룹) 기준 (P25-10 "이름(n)") */
@@ -42,6 +46,8 @@ export interface CaseFilters {
   menteeId?: string;
   from?: string;
   to?: string;
+  /** mentorId 필터에서 종결·중도 종료된(비활성) 배정 케이스도 포함 (멘토 '완료 멘티', P30) */
+  includeEnded?: boolean;
 }
 
 /**
@@ -53,12 +59,10 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
 
   let caseIdsByMentor: string[] | null = null;
   if (filters.mentorId) {
-    const { data: assigns } = await supabase
-      .from('mentor_assignments')
-      .select('case_id')
-      .eq('mentor_id', filters.mentorId)
-      .eq('is_active', true);
-    caseIdsByMentor = (assigns ?? []).map((a) => a.case_id);
+    let aq = supabase.from('mentor_assignments').select('case_id, is_active, end_kind').eq('mentor_id', filters.mentorId);
+    aq = filters.includeEnded ? aq.or('is_active.eq.true,end_kind.in.(case_closed,case_withdrawn)') : aq.eq('is_active', true);
+    const { data: assigns } = await aq;
+    caseIdsByMentor = Array.from(new Set((assigns ?? []).map((a) => a.case_id)));
     if (caseIdsByMentor.length === 0) return [];
   }
 
@@ -76,14 +80,13 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
 
   const caseIds = cases.map((c) => c.id);
   const typeIds = Array.from(new Set(cases.map((c) => c.support_type_id)));
-  const [{ data: types }, { data: assigns }, { data: logs }] = await Promise.all([
+  // 회차·배정은 1,000행 캡을 넘을 수 있어 페이지로 읽는다 (P30)
+  const [{ data: types }, assigns, logs] = await Promise.all([
     supabase.from('support_types').select('id, name, code, required_rounds').in('id', typeIds),
-    supabase
-      .from('mentor_assignments')
-      .select('case_id, mentor_id, assigned_at')
-      .in('case_id', caseIds)
-      .eq('is_active', true),
-    supabase.from('mentoring_logs').select('case_id, report_registered_at').in('case_id', caseIds),
+    fetchAllIn<{ case_id: string; mentor_id: string; assigned_at: string; is_active: boolean; end_kind: string | null }>(caseIds, (chunk, from, to) =>
+      supabase.from('mentor_assignments').select('case_id, mentor_id, assigned_at, is_active, end_kind').in('case_id', chunk).order('assigned_at', { ascending: false }).range(from, to),
+    ),
+    fetchAllIn<{ case_id: string; report_registered_at: string | null }>(caseIds, (chunk, from, to) => supabase.from('mentoring_logs').select('case_id, report_registered_at').in('case_id', chunk).range(from, to)),
   ]);
   const typeMap = new Map((types ?? []).map((t) => [t.id, t]));
   const roundsByCase = new Map<string, number>();
@@ -93,7 +96,17 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
     if (l.report_registered_at) roundsByCase.set(l.case_id, (roundsByCase.get(l.case_id) ?? 0) + 1);
   }
 
-  const mentorIds = Array.from(new Set((assigns ?? []).map((a) => a.mentor_id)));
+  // 케이스별 담당 배정: 활성 배정 우선, 없으면(종결·중도 종료) 가장 최근 배정 — 종결 후에도 멘토가 명단·리포트에 남는다 (P30)
+  const assignByCase = new Map<string, { case_id: string; mentor_id: string; assigned_at: string; ended: boolean }>();
+  for (const a of assigns) {
+    if (a.is_active) assignByCase.set(a.case_id, { case_id: a.case_id, mentor_id: a.mentor_id, assigned_at: a.assigned_at, ended: false });
+  }
+  for (const a of assigns) {
+    if (!assignByCase.has(a.case_id) && (a.end_kind === 'case_closed' || a.end_kind === 'case_withdrawn')) {
+      assignByCase.set(a.case_id, { case_id: a.case_id, mentor_id: a.mentor_id, assigned_at: a.assigned_at, ended: true });
+    }
+  }
+  const mentorIds = Array.from(new Set(Array.from(assignByCase.values()).map((a) => a.mentor_id)));
   const menteeIds = Array.from(new Set(cases.map((c) => c.mentee_id).filter(Boolean))) as string[];
   const [{ data: mentors }, { data: mentees }] = await Promise.all([
     mentorIds.length
@@ -104,7 +117,6 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
       : Promise.resolve({ data: [] as { id: string; name: string | null; phone: string | null }[] }),
   ]);
   const mentorNameById = new Map((mentors ?? []).map((m) => [m.id, m.name]));
-  const assignByCase = new Map((assigns ?? []).map((a) => [a.case_id, a]));
   const menteeAccById = new Map((mentees ?? []).map((m) => [m.id, m]));
   // 멘토별 확정 배정 수 — 조회 범위(행사, 그룹이 있으면 그룹) 기준. 필터로 잘린 목록이 아니라 범위 전체를 센다.
   const mentorActive = new Map<string, number>();
@@ -129,6 +141,7 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
       mentorName: a ? (mentorNameById.get(a.mentor_id) ?? null) : null,
       mentorId: a?.mentor_id ?? null,
       mentorAssignedAt: a?.assigned_at ?? null,
+      mentorEnded: !!a?.ended,
       menteeLoginId: deriveMenteeLoginId(c.mentee_id ? menteeAccById.get(c.mentee_id) : undefined),
       mentorActiveCount: a ? (mentorActive.get(a.mentor_id) ?? 0) : 0,
     };
@@ -138,9 +151,55 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
 /** 멘토: 본인에게 배정된 케이스 (컨텍스트 행사/그룹 범위) */
 export async function listMentorCases(
   mentorId: string,
-  scope: { programId?: string; supportTypeId?: string } = {},
+  scope: { programId?: string; supportTypeId?: string; includeEnded?: boolean } = {},
 ): Promise<CaseListItem[]> {
   return listCases({ mentorId, ...scope });
+}
+
+/**
+ * 멘토: 종결·중도 종료로 끝난 담당 케이스 (읽기 전용 목록, P30).
+ * RLS(is_mentor_of)는 활성 배정만 통과시키므로 service_role 로 읽되, 본인 배정 이력이 있는 케이스만 돌려준다.
+ */
+export async function listMentorEndedCases(mentorId: string, programId: string): Promise<CaseListItem[]> {
+  const admin = createAdminClient();
+  const { data: assigns } = await admin
+    .from('mentor_assignments')
+    .select('case_id, assigned_at, cases!inner(program_id)')
+    .eq('mentor_id', mentorId)
+    .eq('is_active', false)
+    .in('end_kind', ['case_closed', 'case_withdrawn'])
+    .eq('cases.program_id', programId)
+    .order('assigned_at', { ascending: false });
+  const ids = Array.from(new Set((assigns ?? []).map((a) => a.case_id)));
+  if (ids.length === 0) return [];
+  const [{ data: cases }, logs] = await Promise.all([
+    admin.from('cases').select('*, support_types(name, code, required_rounds)').in('id', ids).in('status', ['closed', 'withdrawn']).order('closed_at', { ascending: false }),
+    fetchAllIn<{ case_id: string; report_registered_at: string | null }>(ids, (chunk, from, to) => admin.from('mentoring_logs').select('case_id, report_registered_at').in('case_id', chunk).range(from, to)),
+  ]);
+  const done = new Map<string, number>();
+  const planned = new Map<string, number>();
+  for (const l of logs) {
+    planned.set(l.case_id, (planned.get(l.case_id) ?? 0) + 1);
+    if (l.report_registered_at) done.set(l.case_id, (done.get(l.case_id) ?? 0) + 1);
+  }
+  const assignedAt = new Map((assigns ?? []).map((a) => [a.case_id, a.assigned_at]));
+  return (cases ?? []).map((row) => {
+    const { support_types, ...c } = row as typeof row & { support_types: { name: string; code: string; required_rounds: number } | null };
+    return {
+      ...(c as CaseRow),
+      supportTypeName: support_types?.name ?? null,
+      supportTypeCode: support_types?.code ?? null,
+      requiredRounds: support_types?.required_rounds ?? 0,
+      roundsDone: done.get(c.id) ?? 0,
+      roundsPlanned: planned.get(c.id) ?? 0,
+      mentorName: null,
+      mentorId,
+      mentorAssignedAt: assignedAt.get(c.id) ?? null,
+      mentorEnded: true,
+      menteeLoginId: null,
+      mentorActiveCount: 0,
+    };
+  });
 }
 
 /** 멘티: 본인 케이스들 (그룹 승계로 여러 건일 수 있다). 최신순. */

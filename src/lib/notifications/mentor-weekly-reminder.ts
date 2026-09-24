@@ -85,7 +85,8 @@ export function renderMentorReminder(template: string, vars: { program: string; 
  */
 async function groupsCoveredBy(setting: ReminderSetting, settings: ReminderSetting[]): Promise<{ id: string; name: string }[]> {
   const admin = createAdminClient();
-  const { data: groups } = await admin.from('support_types').select('id, name').eq('program_id', setting.programId).eq('status', 'active');
+  // 종료 그룹도 포함 — 회차가 남은 멘티가 있으면(PENDING_APPLY_STATUSES) 독려가 계속 가야 한다 (P30)
+  const { data: groups } = await admin.from('support_types').select('id, name').eq('program_id', setting.programId);
   const all = groups ?? [];
   if (setting.supportTypeId) return all.filter((g) => g.id === setting.supportTypeId);
   const overridden = new Set(settings.filter((s) => s.supportTypeId).map((s) => s.supportTypeId));
@@ -144,36 +145,44 @@ export async function sendReminderForSetting(setting: ReminderSetting, settings:
     groupsCoveredBy(setting, settings),
   ]);
   const programName = program?.name ?? '';
-  // 그룹별로 대상을 모아 {group} 치환이 맞게 — 공통 행이 여러 그룹을 덮으면 그룹마다 한 통 (그룹명이 문구에 들어갈 수 있으므로)
+  // 문구에 {group} 이 있으면 그룹마다 한 통, 없으면 멘토별로 멘티를 합쳐 한 통 (A·B 두 그룹을 맡은 멘토가 같은 날 두 통 받지 않게, P30)
+  const perGroup = setting.template.includes('{group}');
   let eligible = 0;
   let sent = 0;
   let failed = 0;
-  for (const g of groups) {
-    const mentors = await listEligibleMentors(setting.programId, [g.id]);
-    for (const m of mentors) {
-      eligible += 1;
-      const digits = (m.phone ?? '').replace(/\D/g, '');
-      if (digits.length < 10) {
-        failed += 1;
-        continue;
-      }
-      const text = renderMentorReminder(setting.template, { program: programName, group: g.name, mentor: m.name, companies: m.companies });
-      try {
-        const r = await sendSms(m.phone as string, text, setting.programId);
-        if (r.ok) sent += 1;
-        else failed += 1;
-      } catch (err) {
-        console.error('mentor reminder send failed:', err);
-        failed += 1;
-      }
+  const sendOne = async (m: EligibleMentor, groupName: string) => {
+    eligible += 1;
+    const digits = (m.phone ?? '').replace(/\D/g, '');
+    if (digits.length < 10) {
+      failed += 1;
+      return;
     }
+    const text = renderMentorReminder(setting.template, { program: programName, group: groupName, mentor: m.name, companies: m.companies });
+    try {
+      const r = await sendSms(m.phone as string, text, setting.programId);
+      if (r.ok) sent += 1;
+      else failed += 1;
+    } catch (err) {
+      console.error('mentor reminder send failed:', err);
+      failed += 1;
+    }
+  };
+  if (perGroup) {
+    for (const g of groups) {
+      const mentors = await listEligibleMentors(setting.programId, [g.id]);
+      for (const m of mentors) await sendOne(m, g.name);
+    }
+  } else {
+    const mentors = await listEligibleMentors(setting.programId, groups.map((g) => g.id));
+    for (const m of mentors) await sendOne(m, groups.map((g) => g.name).join('·'));
   }
   if (eligible === 0) return { eligible: 0, sent: 0, failed: 0, skipped: true, reason: 'no_targets' };
 
   const now = new Date();
   const kstToday = new Date(now.getTime() + 9 * 3600000).toISOString().slice(0, 10);
   const result = { eligible, sent, failed, at: now.toISOString() };
-  const { error: upErr } = await admin.from('mentor_reminder_settings').update({ last_sent_on: kstToday, last_result: result, updated_at: now.toISOString() }).eq('id', setting.id);
+  // 전원 실패(잔액 부족·키 만료 등)면 오늘 발송한 것으로 치지 않아 다음 시간대 점검에서 재시도된다
+  const { error: upErr } = await admin.from('mentor_reminder_settings').update({ last_sent_on: sent > 0 ? kstToday : setting.lastSentOn, last_result: result, updated_at: now.toISOString() }).eq('id', setting.id);
   if (upErr) console.error('mentor reminder last_result update failed:', upErr.message);
   const { error: auditErr } = await admin.from('audit_logs').insert({
     actor_id: actorId,

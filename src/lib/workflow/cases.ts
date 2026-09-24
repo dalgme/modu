@@ -2,6 +2,7 @@ import type { MatchMethod } from '@/lib/matching/labels';
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { dropPlannedRoundsOfMentor } from '@/lib/workflow/rounds';
 import { queueNotification } from '@/lib/workflow/notifications';
 import { inviteMentee } from '@/lib/auth/admin-accounts';
 import { toStoredPhone } from '@/lib/auth/identifier';
@@ -43,6 +44,13 @@ export async function createCase(input: CreateCaseInput): Promise<CreateCaseResu
   }
   if (group.status !== 'active') return { ok: false, error: '종료된 사업그룹에는 등록할 수 없습니다.' };
 
+  // 1멘티 = 1케이스(그룹당): 같은 계정이 이 그룹에 진행 중(중도 종료 제외) 케이스를 이미 가지면 거부 — 엑셀 재업로드 중복 방지 (P30, DB 부분 유니크 0079 와 이중 방어)
+  const candidateMenteeId = input.menteeId ?? (await findExistingAccount(input.email, input.phone))?.id ?? null;
+  if (candidateMenteeId) {
+    const { count: dup } = await admin.from('cases').select('id', { count: 'exact', head: true }).eq('mentee_id', candidateMenteeId).eq('support_type_id', input.support_type_id).neq('status', 'withdrawn');
+    if ((dup ?? 0) > 0) return { ok: false, error: '이 멘티는 이 그룹에 이미 등록되어 있습니다(1멘티 = 1케이스). 기존 케이스를 확인하세요.' };
+  }
+
   const storedPhone = toStoredPhone(input.phone) ?? input.phone;
   const insert: TablesInsert<'cases'> = {
     program_id: input.programId,
@@ -64,7 +72,7 @@ export async function createCase(input: CreateCaseInput): Promise<CreateCaseResu
   };
 
   const { data: created, error } = await admin.from('cases').insert(insert).select('id').single();
-  if (error || !created) return { ok: false, error: error?.message ?? '멘티 등록에 실패했습니다.' };
+  if (error || !created) return { ok: false, error: error?.code === '23505' ? '이 멘티는 이 그룹에 이미 등록되어 있습니다(1멘티 = 1케이스).' : (error?.message ?? '멘티 등록에 실패했습니다.') };
 
   await admin.from('case_status_history').insert({
     case_id: created.id,
@@ -314,6 +322,8 @@ export async function reassignMentor(caseId: string, newMentorId: string, actorI
   }
 
   await ensureGroupRoster(c.support_type_id, newMentorId, c.program_id);
+  // 이전 멘토의 계획(미보고) 회차 정리 — 새 멘토의 상한·보고서 등록을 막지 않게 (P30)
+  await dropPlannedRoundsOfMentor(caseId, current.mentor_id, actorId);
   await admin.from('case_status_history').insert({
     case_id: caseId,
     from_status: c.status,

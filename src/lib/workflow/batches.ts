@@ -155,7 +155,11 @@ export async function confirmBatch(batchId: string, actorId: string): Promise<Ba
   const { data: items } = await admin.from('settlements').select('id, case_id, kind, mentor_id').eq('batch_id', batchId).eq('status', 'batched');
   await admin.from('settlements').update({ status: 'confirmed' }).eq('batch_id', batchId).eq('status', 'batched');
   for (const s of items ?? []) {
-    if (s.kind !== 'closure') continue;
+    // 종결 = closure 정산 확인, 또는 이 케이스의 다른 정산(대기·품의)이 더 없을 때 (활성 멘토 회차 0건으로 partial 만 남은 케이스, P30)
+    if (s.kind !== 'closure') {
+      const { count: open } = await admin.from('settlements').select('id', { count: 'exact', head: true }).eq('case_id', s.case_id).in('status', ['pending', 'batched']).neq('id', s.id);
+      if ((open ?? 0) > 0) continue;
+    }
     const { data: c } = await admin
       .from('cases')
       .update({ status: 'closed', closed_at: now })

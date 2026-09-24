@@ -54,7 +54,7 @@ export async function previewImportAction(formData: FormData): Promise<PreviewRe
   const groupRaw = formData.get('group');
   const group = await resolveGroup(op.programId, kind, typeof groupRaw === 'string' && groupRaw ? groupRaw : null);
   if ('error' in group) return { ok: false, error: group.error };
-  const preview = await previewImport(op.programId, kind, rows);
+  const preview = await previewImport(op.programId, kind, rows, group.groupId);
   return { ok: true, preview };
 }
 
@@ -67,7 +67,7 @@ export async function commitImportAction(kind: ImportKind, rows: ImportRow[], gr
   const group = await resolveGroup(op.programId, kind, groupId ?? null);
   if ('error' in group) return { ok: false, error: group.error };
   // 클라이언트가 보낸 검증 결과를 믿지 않는다 — 서버에서 재검증
-  const revalidated = await previewImport(op.programId, kind, rows.map((r) => r.values));
+  const revalidated = await previewImport(op.programId, kind, rows.map((r) => r.values), group.groupId);
   const result = await commitImport(op.programId, kind, revalidated.rows, op.id, group.groupId);
   revalidatePath('/nextlab/members');
   revalidatePath('/nextlab/roster');

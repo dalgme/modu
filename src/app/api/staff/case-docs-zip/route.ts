@@ -15,7 +15,7 @@ function folderOf(docKey: string): string {
   if (docKey.startsWith('mentoring_report:')) return '회차 보고서';
   if (docKey.startsWith('mentoring_photo:')) return '회차 사진';
   if (docKey === 'observation_report') return '관찰의견서';
-  if (docKey === 'settlement_statement') return '정산서';
+  if (docKey.startsWith('settlement_statement')) return '정산서';
   if (docKey.startsWith('req')) return '필수서류';
   return '기타 서류';
 }
@@ -41,11 +41,14 @@ export async function GET(request: Request): Promise<Response> {
     .eq('case_id', caseId)
     .order('created_at');
   if (!docs || docs.length === 0) return NextResponse.json({ error: '이 케이스에 등록된 서류가 없습니다.' }, { status: 404 });
+  // 취소된 정산의 정산서는 증빙 ZIP 에서 제외 (P30)
+  const { data: canceled } = await admin.from('settlements').select('id').eq('case_id', caseId).eq('status', 'canceled');
+  const canceledKeys = new Set((canceled ?? []).map((s) => `settlement_statement:${s.id}`));
 
   const zip = new JSZip();
   const used = new Set<string>();
   let added = 0;
-  for (const d of docs) {
+  for (const d of docs.filter((d) => !canceledKeys.has(d.doc_key))) {
     const bucket = d.doc_key.startsWith('mentoring_photo:') ? 'photos' : 'documents';
     const { data: blob } = await admin.storage.from(bucket).download(d.storage_path);
     if (!blob) continue;

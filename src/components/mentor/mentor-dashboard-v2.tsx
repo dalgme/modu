@@ -61,10 +61,13 @@ export function MentorDashboardV2({
   guideHref,
   scheduleHref,
   settlementsHref,
+  endedCases = [],
 }: {
   name: string;
   data: MentorDashboardData;
   cases: CaseListItem[];
+  /** 종결·중도 종료된 담당 멘티 — 정산·이력 확인용 (P30) */
+  endedCases?: CaseListItem[];
   basePath: string;
   branding: Branding;
   guideHref: string;
@@ -193,6 +196,20 @@ export function MentorDashboardV2({
           <p className="inline-flex items-center gap-1 text-xs text-muted-foreground"><CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> 정산이 확정된 케이스의 금액은 <Link href={settlementsHref} className="underline">내 정산 내역</Link>에서 봅니다.</p>
         )}
       </section>
+
+      {endedCases.length > 0 && (
+        <details className="rounded-xl border bg-background">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">완료·종료된 멘티 <span className="font-normal text-muted-foreground">({endedCases.length}) — 종결 확정 또는 중도 종료된 케이스</span></summary>
+          <ul className="grid gap-2 px-4 pb-4 sm:grid-cols-2">
+            {endedCases.map((c) => (
+              <li key={c.id} className="rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+                <p className="font-medium">{c.owner_name}{c.business_name && c.business_name !== c.owner_name ? ` / ${c.business_name}` : ''}</p>
+                <p className="text-xs text-muted-foreground">{c.supportTypeName ?? '-'} · {c.status === 'closed' ? '종결' : '중도 종료'} · 이행 {c.roundsDone}/{c.requiredRounds}회 · <Link href={settlementsHref} className="underline">정산 내역</Link></p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
     </div>
   );
 }

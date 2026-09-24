@@ -3,6 +3,7 @@
 import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { fetchAllIn } from '@/lib/supabase/paginate';
 import { CASE_STATUS_META, type CaseStatus } from '@/types/case-status';
 import { menteeLabel } from '@/lib/utils/labels';
 
@@ -102,12 +103,12 @@ export async function getMentorPopupAction(mentorId: string): Promise<Result> {
     const inScope = programAssigns.filter((a) => !ctx.supportTypeId || caseById.get(a.case_id)!.support_type_id === ctx.supportTypeId);
     const scopedIds = inScope.map((a) => a.case_id);
 
-    const [{ data: logs }, { data: responses }] = await Promise.all([
-      scopedIds.length ? admin.from('mentoring_logs').select('case_id').in('case_id', scopedIds).not('report_registered_at', 'is', null) : Promise.resolve({ data: [] as { case_id: string }[] }),
+    const [logs, { data: responses }] = await Promise.all([
+      fetchAllIn<{ case_id: string }>(scopedIds, (chunk, from, to) => admin.from('mentoring_logs').select('case_id').in('case_id', chunk).not('report_registered_at', 'is', null).range(from, to)),
       scopedIds.length ? admin.from('survey_responses').select('case_id, score').in('case_id', scopedIds) : Promise.resolve({ data: [] as { case_id: string; score: number | null }[] }),
     ]);
     const rounds = new Map<string, number>();
-    for (const l of logs ?? []) rounds.set(l.case_id, (rounds.get(l.case_id) ?? 0) + 1);
+    for (const l of logs) rounds.set(l.case_id, (rounds.get(l.case_id) ?? 0) + 1);
     const scoreByCase = new Map((responses ?? []).map((r) => [r.case_id, r.score]));
 
     const byGroupMap = new Map<string, number>();
