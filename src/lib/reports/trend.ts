@@ -4,11 +4,18 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 
 /** 월별 추이 (P22) — 최근 12개월(KST). 발주처 월간 보고 대응. */
+/** (P31) 회차 귀속 기준 — 'performed' = 실시일(started_at, 기본) · 'report' = 보고서 등록일 */
+export type TrendBasis = 'report' | 'performed';
+export const TREND_BASIS_LABELS: Record<TrendBasis, string> = { performed: '회차 실시일 기준', report: '보고서 등록일 기준' };
+
 export interface TrendMonth {
   /** YYYY-MM */
   month: string;
-  /** 이행(보고서 등록) 회차 수 — 등록 시점 기준 */
+  /** 이행(보고서 등록) 회차 수 — basis 에 따라 실시일 또는 보고서 등록일 귀속 */
   rounds: number;
+  /** 회차 귀속 기준 (P31) */
+  basis: TrendBasis;
+  basisLabel: string;
   /** 확정 지급총액(gross, 취소 제외) — 정산 확정 시점 기준 */
   settledGross: number;
   /** 신규 등록 케이스 수 */
@@ -28,11 +35,14 @@ export interface TrendOptions {
   months?: number;
   /** 특정 연도 1~12월 (P30) — 지정하면 months 무시 */
   year?: number;
+  /** 회차 귀속 기준 (P31, 기본 'performed' = started_at) */
+  basis?: TrendBasis;
 }
 
 export async function computeMonthlyTrend(programId: string, supportTypeId?: string | null, opts: number | TrendOptions = 12): Promise<TrendMonth[]> {
   const o: TrendOptions = typeof opts === 'number' ? { months: opts } : opts;
   const months = o.months ?? 12;
+  const basis: TrendBasis = o.basis ?? 'performed';
   const admin = createAdminClient();
   let casesQ = admin.from('cases').select('id, created_at, closed_at').eq('program_id', programId);
   if (supportTypeId) casesQ = casesQ.eq('support_type_id', supportTypeId);
@@ -40,14 +50,14 @@ export async function computeMonthlyTrend(programId: string, supportTypeId?: str
   const caseIds = (cases ?? []).map((c) => c.id);
 
   const [logs, settlements] = await Promise.all([
-    fetchAllIn<{ case_id: string; report_registered_at: string | null }>(caseIds, (chunk, from, to) => admin.from('mentoring_logs').select('case_id, report_registered_at').in('case_id', chunk).not('report_registered_at', 'is', null).range(from, to)),
+    fetchAllIn<{ case_id: string; report_registered_at: string | null; started_at: string }>(caseIds, (chunk, from, to) => admin.from('mentoring_logs').select('case_id, report_registered_at, started_at').in('case_id', chunk).not('report_registered_at', 'is', null).range(from, to)),
     fetchAllIn<{ case_id: string; gross: number; confirmed_at: string | null; created_at: string; status: string }>(caseIds, (chunk, from, to) => admin.from('settlements').select('case_id, gross, confirmed_at, created_at, status').in('case_id', chunk).neq('status', 'canceled').range(from, to)),
   ]);
 
   // 버킷: 특정 연도 1~12월 또는 최근 N개월 (이번 달 포함)
   const now = new Date(Date.now() + 9 * 3600 * 1000);
   const buckets: TrendMonth[] = [];
-  const empty = (d: Date): TrendMonth => ({ month: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`, rounds: 0, settledGross: 0, newCases: 0, closedCases: 0 });
+  const empty = (d: Date): TrendMonth => ({ month: `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`, rounds: 0, basis, basisLabel: TREND_BASIS_LABELS[basis], settledGross: 0, newCases: 0, closedCases: 0 });
   if (o.year) {
     for (let mth = 0; mth < 12; mth += 1) buckets.push(empty(new Date(Date.UTC(o.year, mth, 1))));
   } else {
@@ -56,7 +66,7 @@ export async function computeMonthlyTrend(programId: string, supportTypeId?: str
   const byMonth = new Map(buckets.map((b) => [b.month, b]));
 
   for (const l of logs) {
-    const m = kstMonth(l.report_registered_at);
+    const m = kstMonth(basis === 'report' ? l.report_registered_at : l.started_at);
     if (m && byMonth.has(m)) byMonth.get(m)!.rounds += 1;
   }
   for (const s of settlements) {

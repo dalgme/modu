@@ -6,12 +6,14 @@ import { realRoleOrNull } from '@/lib/auth/guards';
 import { denyUnless } from '@/lib/auth/capabilities';
 
 import { contextOrNull } from '@/lib/programs/context';
+import { fmt } from '@/lib/programs/branding';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { reviewClosure } from '@/lib/workflow/review';
-import { cancelSettlement } from '@/lib/settlement/settle';
-import { addToBatch, confirmBatch, createBatch, deleteDraftBatch, markBatchPaid, removeFromBatch, submitBatch, unsubmitBatch, type BatchResult } from '@/lib/workflow/batches';
+import { reviewClosure, type ApprovalExpectation } from '@/lib/workflow/review';
+import { cancelSettlement, resettlePartial, type CancelResult } from '@/lib/settlement/settle';
+import { addToBatch, confirmBatch, createBatch, deleteDraftBatch, markBatchPaid, previewBatchSubmit, removeFromBatch, returnBatch, submitBatch, unsubmitBatch, updateBatchMeta, type BatchResult, type BatchSubmitPreview } from '@/lib/workflow/batches';
+import { canWithdrawAs, INSTITUTION_WITHDRAW_DENIED } from '@/lib/workflow/transitions';
 import { decideMentorWithdrawal, forceEndMentor, withdrawCase } from '@/lib/workflow/withdrawal';
-import { decideRoundExtension } from '@/lib/workflow/closure';
+import { decideRoundExtension, notifyProgramStaff } from '@/lib/workflow/closure';
 import type { WorkflowResult } from '@/lib/workflow/cases';
 
 const OPERATOR_ONLY = '운영사 담당자만 실행할 수 있습니다.';
@@ -43,21 +45,24 @@ async function batchInProgram(batchId: string, programId: string): Promise<boole
   return !!data && data.program_id === programId;
 }
 
-/** 운영사: T6 보완 요청 / T7 검수 승인(+정산 확정) */
-export async function reviewClosureAction(caseId: string, result: 'approved' | 'revision_requested', comment: string): Promise<WorkflowResult> {
+/** 운영사: T6 보완 요청 / T7 검수 승인(+정산 확정). expected = 화면이 본 예상 실지급·회차 id (서버 재계산과 다르면 거부, P31) */
+export async function reviewClosureAction(caseId: string, result: 'approved' | 'revision_requested', comment: string, expected?: ApprovalExpectation | null): Promise<WorkflowResult> {
   const profile = await realRoleOrNull(['nextlab']);
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
   { const denied = denyUnless(ctx, 'review'); if (denied) return { ok: false, error: denied }; }
   if (!(await caseInProgram(caseId, ctx.programId))) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
-  const r = await reviewClosure(caseId, profile.id, result, comment ?? '');
-  if (r.ok) revalidateCase(caseId);
+  const r = await reviewClosure(caseId, profile.id, result, comment ?? '', expected ?? null);
+  if (r.ok) {
+    revalidateCase(caseId);
+    revalidatePath('/nextlab/review');
+  }
   return r;
 }
 
-/** 운영사: 정산 확정 취소 (pending · 품의 미편성) */
-export async function cancelSettlementAction(settlementId: string, reason: string): Promise<WorkflowResult> {
+/** 운영사: 정산 확정 취소 (pending · 품의 미편성). 반환에 kind·caseReverted 를 실어 화면 문구를 종류별로 (P31) */
+export async function cancelSettlementAction(settlementId: string, reason: string): Promise<CancelResult> {
   const profile = await realRoleOrNull(['nextlab']);
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
@@ -71,6 +76,21 @@ export async function cancelSettlementAction(settlementId: string, reason: strin
     revalidateBatches();
   }
   return r;
+}
+
+/** (P31) 운영사: 취소된 부분 정산 재확정 — 종료된 멘토의 미정산 이행 회차를 partial 로 다시 스냅샷 */
+export async function resettlePartialAction(caseId: string, mentorId: string): Promise<WorkflowResult> {
+  const profile = await realRoleOrNull(['nextlab']);
+  if (!profile) return { ok: false, error: OPERATOR_ONLY };
+  const ctx = await contextOrNull(profile);
+  if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'settlement'); if (denied) return { ok: false, error: denied }; }
+  if (!(await caseInProgram(caseId, ctx.programId))) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
+  const r = await resettlePartial(caseId, mentorId, profile.id);
+  if (!r.ok) return r;
+  revalidateCase(caseId);
+  revalidateBatches();
+  return { ok: true, caseId };
 }
 
 /** 운영사: 지급 품의 생성 (T8) */
@@ -121,6 +141,30 @@ export async function deleteBatchAction(batchId: string): Promise<{ ok: true } |
   return r;
 }
 
+/** (P31) 운영사: draft 품의 제목·메모 수정 */
+export async function updateBatchMetaAction(batchId: string, title: string, note?: string | null): Promise<BatchResult> {
+  const profile = await realRoleOrNull(['nextlab']);
+  if (!profile) return { ok: false, error: OPERATOR_ONLY };
+  const ctx = await contextOrNull(profile);
+  if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'settlement'); if (denied) return { ok: false, error: denied }; }
+  if (!(await batchInProgram(batchId, ctx.programId))) return { ok: false, error: '이 행사의 품의가 아닙니다.' };
+  const r = await updateBatchMeta(batchId, profile.id, { title, note });
+  if (r.ok) revalidateBatches(batchId);
+  return r;
+}
+
+/** (P31) 운영사: 제출 전 미리보기 — 품의 단위 과세최저한 재계산 대상·합계 변화 */
+export async function previewBatchSubmitAction(batchId: string): Promise<BatchSubmitPreview | { ok: false; error: string }> {
+  const profile = await realRoleOrNull(['nextlab']);
+  if (!profile) return { ok: false, error: OPERATOR_ONLY };
+  const ctx = await contextOrNull(profile);
+  if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'settlement.submit'); if (denied) return { ok: false, error: denied }; }
+  if (!(await batchInProgram(batchId, ctx.programId))) return { ok: false, error: '이 행사의 품의가 아닙니다.' };
+  return previewBatchSubmit(batchId);
+}
+
 export async function submitBatchAction(batchId: string): Promise<BatchResult> {
   const profile = await realRoleOrNull(['nextlab']);
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
@@ -145,6 +189,18 @@ export async function unsubmitBatchAction(batchId: string): Promise<BatchResult>
   return r;
 }
 
+/** (P31) 발주처: 품의 반려 (submitted → draft) — 사유 필수, 운영사 담당자에게 알림 */
+export async function returnBatchAction(batchId: string, reason: string): Promise<BatchResult> {
+  const profile = await realRoleOrNull(['institution']);
+  if (!profile) return { ok: false, error: CLIENT_ONLY };
+  const ctx = await contextOrNull(profile);
+  if (!ctx) return { ok: false, error: NO_CONTEXT };
+  if (!(await batchInProgram(batchId, ctx.programId))) return { ok: false, error: '이 행사의 품의가 아닙니다.' };
+  const r = await returnBatch(batchId, profile.id, reason ?? '');
+  if (r.ok) revalidateBatches(batchId);
+  return r;
+}
+
 /** 발주처: T9 정산 확인 (품의 단위) */
 export async function confirmBatchAction(batchId: string): Promise<BatchResult> {
   const profile = await realRoleOrNull(['institution']);
@@ -161,16 +217,19 @@ export async function confirmBatchAction(batchId: string): Promise<BatchResult> 
   return r;
 }
 
-/** 운영사: 지급 완료 표시 */
-export async function markBatchPaidAction(batchId: string, paidAt?: string): Promise<BatchResult> {
+/** 운영사: 지급 완료 표시. paidOn = KST 날짜(YYYY-MM-DD, 기본 오늘, 미래 불가 — 서버 검증) */
+export async function markBatchPaidAction(batchId: string, paidOn?: string): Promise<BatchResult> {
   const profile = await realRoleOrNull(['nextlab']);
   if (!profile) return { ok: false, error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
   { const denied = denyUnless(ctx, 'settlement.submit'); if (denied) return { ok: false, error: denied }; }
   if (!(await batchInProgram(batchId, ctx.programId))) return { ok: false, error: '이 행사의 품의가 아닙니다.' };
-  const r = await markBatchPaid(batchId, profile.id, paidAt);
-  if (r.ok) revalidateBatches(batchId);
+  const r = await markBatchPaid(batchId, profile.id, paidOn);
+  if (r.ok) {
+    revalidateBatches(batchId);
+    revalidatePath('/mentor/settlements');
+  }
   return r;
 }
 
@@ -181,9 +240,23 @@ export async function withdrawCaseAction(caseId: string, reason: string): Promis
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
   if (ctx.role === 'nextlab') { const denied = denyUnless(ctx, 'review'); if (denied) return { ok: false, error: denied }; }
-  if (!(await caseInProgram(caseId, ctx.programId))) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
+  const admin = createAdminClient();
+  const { data: c } = await admin.from('cases').select('program_id, status').eq('id', caseId).maybeSingle();
+  if (!c || c.program_id !== ctx.programId) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
+  // (P31) 발주처는 운영사 검수 중(종결·보완 요청) 케이스를 중도 종료할 수 없다 — 화면 버튼과 같은 canWithdrawAs
+  if (!canWithdrawAs(ctx.role, c.status)) return { ok: false, error: ctx.role === 'institution' ? fmt(INSTITUTION_WITHDRAW_DENIED, ctx.branding) : '이미 종결(또는 정산 확정)된 케이스는 중도 종료할 수 없습니다.' };
   const r = await withdrawCase(caseId, profile.id, reason ?? '');
-  if (r.ok) revalidateCase(caseId);
+  if (r.ok) {
+    revalidateCase(caseId);
+    // (P31) 발주처가 중도 종료하면 운영사 담당자에게 통보
+    if (ctx.role === 'institution') {
+      try {
+        await notifyProgramStaff(ctx.programId, caseId, 'case_withdrawn', ['nextlab']);
+      } catch (err) {
+        console.error('withdraw notify staff failed:', err);
+      }
+    }
+  }
   return r;
 }
 

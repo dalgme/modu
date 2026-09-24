@@ -359,7 +359,7 @@ export function DashboardV2(p: DashboardV2Props) {
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <AlertCard icon={Users} label="멘토 배정 대기" value={p.assignQueue.length} sub="새로 등록됐거나 재배정이 필요한 멘티" tone="navy" href="/nextlab/roster?tab=mentee-match&filter=unassigned" hrefLabel="미배정만 보기" onDetail={() => setDetail('assign')} />
           <AlertCard icon={AlertTriangle} label="지연 케이스" value={p.delays.length} sub="배정·첫 회차·장기 무진행·보완 지연 — 독려 문자 가능" tone="red" href="/nextlab/reports?tab=overview#delays" hrefLabel="지연 목록" onDetail={() => setDetail('delay')} />
-          <AlertCard icon={ClipboardCheck} label="종결 검수 대기" value={p.closureQueue.length} sub="관찰의견서 제출 · 승인 시 정산 확정" tone="violet" href="/nextlab/reports?tab=cases&status=closure_requested" hrefLabel="검수할 케이스만" onDetail={() => setDetail('closure')} />
+          <AlertCard icon={ClipboardCheck} label="종결 검수 대기" value={p.closureQueue.length} sub="관찰의견서 제출 · 승인 시 정산 확정" tone="violet" href="/nextlab/review?tab=pending" hrefLabel="검수 대기열 열기" onDetail={() => setDetail('closure')} />
           <AlertCard icon={Inbox} label="처리 대기 요청" value={p.inbox.length} sub="추가 회차 · 멘토 변경 · 중도 종료" tone="amber" href="/nextlab/board?tab=requests" hrefLabel="요청함" onDetail={() => setDetail('inbox')} />
           <AlertCard icon={Building2} label="발주처 요청 미확인" value={p.operatorRequestsUnread} sub="발주처가 보낸 운영 요청 중 아직 읽지 않은 것" tone="amber" href="/nextlab/board?tab=requests" hrefLabel="요청함" />
           <AlertCard icon={MessageSquare} label="게시판 새 소식" value={boardTotal} sub={`문의 ${p.board.inquiries} · 게시글 ${p.board.posts} · 메시지 ${p.board.messages}`} tone="sky" href="/nextlab/board" hrefLabel="게시판" />

@@ -28,6 +28,8 @@ export interface DelayedCase {
   status: string;
   mentorId: string | null;
   mentorName: string | null;
+  /** (P31) 지연 목록 전화·문자 아이콘 */
+  mentorPhone?: string | null;
   roundsDone: number;
   requiredRounds: number;
 }

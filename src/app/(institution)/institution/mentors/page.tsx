@@ -7,6 +7,9 @@ export default async function Page() {
   const profile = await requireInstitution();
   const ctx = await requireContext(profile);
   const mentors = await listMentorsWithLoad(ctx.programId);
+  // (P31) 서류 일괄 ZIP 은 행사 설정 staff_permissions.institution_docs_zip 이 켜진 발주처만 — 라우트(/api/staff/mentor-docs-zip)와 같은 판정
+  const perms = ctx.program.staff_permissions;
+  const zipAllowed = !!perms && typeof perms === 'object' && !Array.isArray(perms) && (perms as Record<string, unknown>).institution_docs_zip === true;
 
   return (
     <main className="flex flex-col gap-5">
@@ -17,13 +20,23 @@ export default async function Page() {
             멘토별 연락처와 현재까지 배정받은 멘티기업 수를 확인합니다. (총 {mentors.length}명)
           </p>
         </div>
-        <a
-          href="/api/staff/mentor-docs-zip"
-          title="멘토별 폴더로 정리된 ZIP — 지급서류(이력서·통장·신분증)와 위촉 서식 제출 파일"
-          className="inline-flex items-center gap-1 rounded-lg border bg-background px-3 py-2 text-sm font-semibold hover:bg-accent"
-        >
-          멘토 서류 일괄 다운로드 (ZIP)
-        </a>
+        {zipAllowed ? (
+          <a
+            href="/api/staff/mentor-docs-zip"
+            title="멘토별 폴더로 정리된 ZIP — 지급서류(이력서·통장·신분증)와 위촉 서식 제출 파일"
+            className="inline-flex items-center gap-1 rounded-lg border bg-background px-3 py-2 text-sm font-semibold hover:bg-accent"
+          >
+            멘토 서류 일괄 다운로드 (ZIP)
+          </a>
+        ) : (
+          <span
+            title="개인정보 서류 일괄 반출은 운영사가 행사 설정(담당 권한 › 발주처 옵션)에서 허용한 경우에만 가능합니다."
+            className="inline-flex cursor-not-allowed items-center gap-1 rounded-lg border bg-muted px-3 py-2 text-sm font-semibold text-muted-foreground"
+            aria-disabled="true"
+          >
+            멘토 서류 일괄 다운로드 (운영사 허용 필요)
+          </span>
+        )}
       </div>
 
       {mentors.length === 0 ? (

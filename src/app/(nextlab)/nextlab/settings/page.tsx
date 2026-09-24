@@ -19,7 +19,7 @@ import { listSupportTypes } from '@/lib/programs/data';
 import { featureEnabled } from '@/lib/platform/features';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { listCases, mapSuccessors } from '@/lib/data/cases';
-import { loadProgramAuditRows } from '@/lib/audit/rows';
+import { AUDIT_PAGE_SIZE, countProgramAuditRows, listAuditActors, loadProgramAuditRows, parseAuditQuery } from '@/lib/audit/rows';
 import { SUCCESSION_FILTERS, SuccessionPanel, type SuccessionFilter, type SuccessionMode, type SuccessorInfo } from '@/components/nextlab/succession-panel';
 import { AuditTable } from '@/components/audit/audit-table';
 import { SettingsTabSelect } from '@/components/nav/settings-tab-select';
@@ -54,7 +54,7 @@ const SETTING_GROUPS: { label: string; keys: string[]; extra?: { href: string; l
 ];
 
 /** 운영 설정 (docs/MODU-DESIGN.md §16) — 탭별 서버 렌더. 승계 개설·감사 로그도 미니탭 (P20) */
-export default async function Page({ searchParams }: { searchParams: { tab?: string; source?: string; mode?: string; filter?: string } }) {
+export default async function Page({ searchParams }: { searchParams: { tab?: string; source?: string; mode?: string; filter?: string; [k: string]: string | undefined } }) {
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
   // 플랫폼 기능 플래그 (P15) — 비활성 기능의 탭은 노출하지 않는다
@@ -178,11 +178,13 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     );
   }
   if (tab === 'audit') {
-    const rows = await loadProgramAuditRows(ctx.programId);
+    // 기간·수행자·구분·대상 id 서버 필터 + 페이지 (P31)
+    const aq = parseAuditQuery(searchParams);
+    const [rows, total, actors] = await Promise.all([loadProgramAuditRows(ctx.programId, aq), countProgramAuditRows(ctx.programId, aq), listAuditActors(ctx.programId)]);
     body = (
       <div className="flex flex-col gap-3">
-        <p className="text-sm text-muted-foreground">{ctx.program.name} 의 관리자 액션 이력 (INSERT-only · 위변조 방지). 최근 200건. [소스] 를 누르면 원본 로그를 봅니다.</p>
-        <AuditTable rows={rows} />
+        <p className="text-sm text-muted-foreground">{ctx.program.name} 의 관리자 액션 이력 (INSERT-only · 위변조 방지). 기간·수행자·구분으로 서버에서 조회합니다 (한 페이지 200건). [소스] 를 누르면 원본 로그를 봅니다.</p>
+        <AuditTable rows={rows} server={{ from: aq.from ?? null, to: aq.to ?? null, actor: aq.actor ?? null, actionPrefix: aq.actionPrefix ?? null, entityId: aq.entityId ?? null, q: aq.q ?? null, total, page: Math.floor((aq.offset ?? 0) / AUDIT_PAGE_SIZE) + 1, pageSize: AUDIT_PAGE_SIZE, actors, exportHref: '/api/nextlab/audit-export' }} />
       </div>
     );
   }

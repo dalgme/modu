@@ -46,9 +46,10 @@ export async function listDelayedCases(programId: string, supportTypeId?: string
   const assignByCase = new Map((assigns ?? []).map((a) => [a.case_id, a]));
   const mentorIds = Array.from(new Set((assigns ?? []).map((a) => a.mentor_id)));
   const { data: mentors } = mentorIds.length
-    ? await admin.from('users').select('id, name').in('id', mentorIds)
-    : { data: [] as { id: string; name: string }[] };
+    ? await admin.from('users').select('id, name, phone').in('id', mentorIds)
+    : { data: [] as { id: string; name: string; phone: string | null }[] };
   const mentorName = new Map((mentors ?? []).map((m) => [m.id, m.name]));
+  const mentorPhone = new Map((mentors ?? []).map((m) => [m.id, m.phone ?? null]));
 
   // 이행 = 보고서 등록 회차만. 최근 활동 = 보고서 등록 시각(미래 계획 회차의 일정은 활동이 아니다) (P30)
   const nowIso = new Date().toISOString();
@@ -85,6 +86,7 @@ export async function listDelayedCases(programId: string, supportTypeId?: string
       status: c.status,
       mentorId: assign?.mentor_id ?? null,
       mentorName: assign ? (mentorName.get(assign.mentor_id) ?? null) : null,
+      mentorPhone: assign ? (mentorPhone.get(assign.mentor_id) ?? null) : null,
       roundsDone: rounds.count,
       requiredRounds: target,
     };

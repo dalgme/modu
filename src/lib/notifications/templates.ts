@@ -53,8 +53,27 @@ export const NOTIFICATION_TEMPLATES: Record<string, { code: string; text: string
     code: 'BATCH_SUBMITTED',
     text: '[{program}] 지급 품의가 제출되었습니다. 정산 확인을 진행해 주세요.',
   },
+  // (P31) 품의 흐름 보강 — 발주처: 철회 통보 / 운영사: 반려·확인 통보 / 멘토: 지급 완료(실지급액은 payload.message)
+  batch_unsubmitted: {
+    code: 'BATCH_UNSUBMITTED',
+    text: '[{program}] {operator}가 제출했던 지급 품의를 철회했습니다. 수정 후 다시 제출됩니다.',
+  },
+  batch_returned: {
+    code: 'BATCH_RETURNED',
+    text: '[{program}] {client}가 지급 품의를 반려했습니다. 품의 메모의 반려 사유를 확인하고 다시 제출해 주세요.',
+  },
+  batch_confirmed: {
+    code: 'BATCH_CONFIRMED',
+    text: '[{program}] {client}가 지급 품의의 정산을 확인했습니다. 지급 후 [지급 완료]를 표시해 주세요.',
+  },
+  settlement_paid: {
+    code: 'SETTLEMENT_PAID',
+    text: '[{program}] 멘토링 정산금 지급이 완료되었습니다.',
+  },
   case_closed: { code: 'CASE_CLOSED', text: '[{program}] 케이스가 종결되었습니다.' },
   case_withdrawn: { code: 'CASE_WITHDRAWN', text: '[{program}] 케이스가 중도 종료되었습니다.' },
+  // 만족도 조사 개시 (closure.ts 가 목표 회차 완료 시 큐 — 상세 문구는 payload.message)
+  survey_opened: { code: 'SURVEY_OPENED', text: '[{program}] 컨설팅이 마무리 단계입니다.' },
   survey_reminder: {
     code: 'SURVEY_REMINDER',
     text: '[{program}] 만족도 조사에 아직 응답하지 않으셨습니다. 참여 부탁드립니다.',

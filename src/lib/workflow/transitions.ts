@@ -95,7 +95,8 @@ export const TRANSITIONS: Record<TransitionKey, Transition> = {
     denied: '품의 편성 상태에서만 제외할 수 있습니다(제출 전 품의만).',
   },
   confirm_settlement: {
-    from: ['settlement_batched'],
+    // (P31) 부분 정산만 남은 케이스는 settlement_pending 에 머물러 있을 수 있다 — 두 상태 모두에서 종결 허용
+    from: ['settlement_pending', 'settlement_batched'],
     to: 'closed',
     who: ['institution'],
     denied: '지급 품의에 편성된 케이스만 정산 확인할 수 있습니다.',
@@ -157,4 +158,65 @@ export function assignTarget(status: CaseStatus): CaseStatus {
 /** 역할이 이 전이의 실행 주체인가 (버튼 노출용 — 실제 권한은 guards 로 재검증) */
 export function roleCan(key: TransitionKey, role: UserRole): boolean {
   return (TRANSITIONS[key].who as readonly string[]).includes(role);
+}
+
+/**
+ * (P31) 발주처의 중도 종료는 종결 요청·보완 요청 단계(운영사 검수 중)에서는 허용하지 않는다.
+ * 화면 버튼(institution/cases/[id])과 서버 액션(withdrawCaseAction)이 **같이** 이 함수를 읽는다 (§3 불변 규칙).
+ */
+export const INSTITUTION_WITHDRAW_EXCLUDED: readonly CaseStatus[] = ['closure_requested', 'revision_requested'];
+export function canWithdrawAs(role: UserRole, status: CaseStatus): boolean {
+  if (!canTransition('withdraw_case', status)) return false;
+  if (role === 'institution') return !INSTITUTION_WITHDRAW_EXCLUDED.includes(status);
+  return roleCan('withdraw_case', role);
+}
+export const INSTITUTION_WITHDRAW_DENIED = '{operator} 검수 중(종결 요청·보완 요청)인 케이스는 발주처가 중도 종료할 수 없습니다. 검수가 끝난 뒤 처리하세요.';
+
+// ───────────────────────────────────────────── 지급 품의(settlement_batches) 상태 전이 (P31)
+export type BatchStatus = 'draft' | 'submitted' | 'confirmed' | 'paid';
+export type BatchTransitionKey =
+  | 'add_item' // draft 에 정산 건 편성
+  | 'remove_item' // draft 에서 정산 건 제외
+  | 'edit_meta' // draft 제목·메모 수정
+  | 'delete' // draft 삭제
+  | 'submit' // draft → submitted (운영사)
+  | 'unsubmit' // submitted → draft (운영사 철회)
+  | 'return' // submitted → draft (발주처 반려)
+  | 'confirm' // submitted → confirmed (발주처 정산 확인)
+  | 'mark_paid'; // confirmed → paid (운영사 지급 완료)
+
+export interface BatchTransition {
+  from: readonly BatchStatus[];
+  to: BatchStatus | null;
+  who: readonly UserRole[];
+  denied: string;
+}
+
+/** 품의 전이 상수 — batches.ts(서버 게이트)와 batch-actions.tsx(버튼 노출)가 같이 읽는다. */
+export const BATCH_TRANSITIONS: Record<BatchTransitionKey, BatchTransition> = {
+  add_item: { from: ['draft'], to: null, who: ['nextlab'], denied: '작성 중(draft) 품의에만 편성할 수 있습니다.' },
+  remove_item: { from: ['draft'], to: null, who: ['nextlab'], denied: '품의 편성 상태에서만 제외할 수 있습니다(제출 전 품의만).' },
+  edit_meta: { from: ['draft'], to: null, who: ['nextlab'], denied: '작성 중 품의만 제목·메모를 수정할 수 있습니다.' },
+  delete: { from: ['draft'], to: null, who: ['nextlab'], denied: '작성 중 품의만 삭제할 수 있습니다.' },
+  submit: { from: ['draft'], to: 'submitted', who: ['nextlab'], denied: '작성 중 품의만 제출할 수 있습니다.' },
+  unsubmit: { from: ['submitted'], to: 'draft', who: ['nextlab'], denied: '제출 상태의 품의만 철회할 수 있습니다.' },
+  return: { from: ['submitted'], to: 'draft', who: ['institution'], denied: '제출된 품의만 반려할 수 있습니다.' },
+  confirm: { from: ['submitted'], to: 'confirmed', who: ['institution'], denied: '제출된 품의만 정산 확인할 수 있습니다.' },
+  mark_paid: { from: ['confirmed'], to: 'paid', who: ['nextlab'], denied: '발주처가 확인한 품의만 지급 완료로 표시할 수 있습니다.' },
+};
+
+export function canBatchTransition(key: BatchTransitionKey, status: string): boolean {
+  return (BATCH_TRANSITIONS[key].from as readonly string[]).includes(status);
+}
+export function assertBatchTransition(key: BatchTransitionKey, status: string): string | null {
+  return canBatchTransition(key, status) ? null : BATCH_TRANSITIONS[key].denied;
+}
+export function batchRoleCan(key: BatchTransitionKey, role: UserRole): boolean {
+  return (BATCH_TRANSITIONS[key].who as readonly string[]).includes(role);
+}
+
+/** 정산 확정 취소 가능 조건 — settle.ts(서버)와 settlement-card.tsx(버튼)가 같이 읽는다 (P31) */
+export const SETTLEMENT_CANCEL_DENIED = '지급 대기 상태이고 품의에 편성되지 않은 정산만 취소할 수 있습니다.';
+export function canCancelSettlement(s: { status: string; batch_id: string | null }): boolean {
+  return s.status === 'pending' && !s.batch_id;
 }

@@ -13,12 +13,12 @@ import type { Json } from '@/types/database';
 type Result = { ok: true; message?: string } | { ok: false; error: string };
 const OPERATOR_ONLY = '운영사 담당자만 실행할 수 있습니다.';
 
-async function operator(): Promise<{ id: string; email: string | null; programId: string } | { error: string }> {
+async function operator(cap: 'mentors.docs' | 'settings.money' = 'mentors.docs'): Promise<{ id: string; email: string | null; programId: string } | { error: string }> {
   const profile = await realRoleOrNull(['nextlab']);
   if (!profile) return { error: OPERATOR_ONLY };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { error: '행사를 먼저 선택하세요.' };
-  const denied = denyUnless(ctx, 'mentors.docs');
+  const denied = denyUnless(ctx, cap);
   if (denied) return { error: denied };
   return { id: profile.id, email: profile.email, programId: ctx.programId };
 }
@@ -73,9 +73,9 @@ export async function checkPaymentDocsAction(input: { userIds: string[]; fields:
   return { ok: true, message: `${ids.length}명의 지급서류 수령 상태를 저장했습니다.` };
 }
 
-/** 그룹 내 멘토별 원천징수 방식 (support_type_members.withholding_method) */
+/** 그룹 내 멘토별 원천징수 방식 (support_type_members.withholding_method) — 금액 설정이므로 'settings.money' 권한 (P31, 기존 mentors.docs 에서 상향) */
 export async function setMentorGroupWithholdingAction(supportTypeId: string, userId: string, method: 'other_income' | 'business_income' | 'none' | ''): Promise<Result> {
-  const op = await operator();
+  const op = await operator('settings.money');
   if ('error' in op) return { ok: false, error: op.error };
   const admin = createAdminClient();
   const { data: g } = await admin.from('support_types').select('program_id').eq('id', supportTypeId).maybeSingle();

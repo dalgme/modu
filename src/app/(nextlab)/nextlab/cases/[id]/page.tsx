@@ -19,6 +19,7 @@ import { MatchRecommendations } from '@/components/matching/match-recommendation
 import { MenteeProfileForm, type TagOptions } from '@/components/matching/profile-forms';
 import { listCaseSettlements, listStatementFiles } from '@/lib/data/settlements';
 import { estimateSettlements } from '@/lib/settlement/settle';
+import { canApproveClosure } from '@/lib/workflow/review';
 import { ClosureReviewPanel } from '@/components/settlement/closure-review-panel';
 import { SettlementCard } from '@/components/settlement/settlement-card';
 import { CaseEndPanel } from '@/components/settlement/case-end-panel';
@@ -107,8 +108,12 @@ export default async function Page({ params }: { params: { id: string } }) {
   const pendingExt = requests.extensions.filter((r) => r.status === 'pending');
   const pendingWd = requests.withdrawals.filter((r) => r.status === 'pending');
   const SOURCE_LABEL = { mentor_in_group: '그룹 내 멘토별 설정', group: '그룹 일괄 설정', program: '행사 기본' } as const;
+  // 검수 승인 가능 여부는 서버 판정 함수 그대로 (§3 불변 규칙: 버튼 조건 = 서버 게이트, P31)
+  const approval = item.status === 'closure_requested' ? await canApproveClosure(item.id) : { ok: false, reason: null as string | null };
   const estimateProps = estimates.map((e) => ({
+    mentorId: e.mentorId,
     mentorName: e.mentorName,
+    roundIds: e.rounds.map((r) => r.log_id),
     source: SOURCE_LABEL[e.withholding.source],
     figures: { lines: e.result.lines, gross: e.result.gross, taxable: e.result.taxable, income_tax: e.result.income_tax, local_tax: e.result.local_tax, withholding: e.result.withholding, net: e.result.net, method: e.result.policy.method, exempted: e.result.exempted },
   }));
@@ -131,7 +136,7 @@ export default async function Page({ params }: { params: { id: string } }) {
       {/* 종결 요청 상태에서는 검수 패널을 "지금 할 일" 바로 아래에 — 스크롤 없이 승인/보완 (2026-09-24) */}
       {item.status === 'closure_requested' && canTransition('review_approve', item.status) && (
         <div id="review" className="scroll-mt-40">
-          <ClosureReviewPanel caseId={item.id} estimates={estimateProps} observationUrl={obsFile?.url ?? null} />
+          <ClosureReviewPanel caseId={item.id} estimates={estimateProps} observationUrl={obsFile?.url ?? null} canApprove={{ ok: approval.ok, reason: approval.reason ?? '' }} canReview={hasCapability(ctx, 'review')} />
         </div>
       )}
       <CaseDetailShell item={item} history={history} predecessors={predecessors} successors={successors} branding={ctx.branding} basePath="/nextlab/cases" showLoginId>
@@ -169,14 +174,8 @@ export default async function Page({ params }: { params: { id: string } }) {
           members={teamMembers.map((m) => ({ id: m.id, name: m.name, member_role: m.member_role, phone: m.phone, email: m.email, is_representative: m.is_representative }))}
         />
 
-        {item.status !== 'closure_requested' && canTransition('review_approve', item.status) && (
-          <div id="review" className="scroll-mt-40">
-            <ClosureReviewPanel caseId={item.id} estimates={estimateProps} observationUrl={obsFile?.url ?? null} />
-          </div>
-        )}
-
         <div id="settlement" className="scroll-mt-40" />
-        <SettlementCard items={settlements} statements={statements} canCancel batchHrefBase="/nextlab/settlements/batches" />
+        <SettlementCard items={settlements} statements={statements} canCancel={hasCapability(ctx, 'settlement')} batchHrefBase="/nextlab/settlements/batches" />
 
         {pendingExt.length > 0 && (
           <Card className="border-amber-300">
@@ -204,6 +203,7 @@ export default async function Page({ params }: { params: { id: string } }) {
           canForceEnd={canTransition('force_end_mentor', item.status)}
           canWithdrawCase={canTransition('withdraw_case', item.status)}
           hasActiveMentor={item.mentorId !== null}
+          unsettledRounds={estimates.reduce((n, e) => n + e.rounds.length, 0)}
           canReinstate={canTransition('reinstate_case', item.status) && (!ctx.grade || ctx.grade === 'pl')}
           withdrawnReason={item.withdrawn_reason ?? null}
         />

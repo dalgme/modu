@@ -7,4 +7,10 @@ export interface SnapshotListItem {
   groupName: string | null;
   cases: number;
   closed: number;
+  /** (P31) 리포트 구분 — 내부용 / 발주처 공유용 */
+  audience: 'internal' | 'client';
+  /** (P31) 숨김(소프트 삭제) */
+  hidden: boolean;
+  /** (P31) 집계 기간 라벨 (기간 스냅샷일 때) */
+  period: string | null;
 }

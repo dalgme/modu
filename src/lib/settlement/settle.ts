@@ -8,6 +8,7 @@ import { getBranding } from '@/lib/programs/data';
 import { fmt } from '@/lib/programs/branding';
 import { computeSettlement, WITHHOLDING_LABELS, type SettlementResult, type SettlementRoundInput } from '@/lib/settlement/compute';
 import { resolveWithholding, type ResolvedWithholding } from '@/lib/settlement/policy';
+import { canCancelSettlement, SETTLEMENT_CANCEL_DENIED } from '@/lib/workflow/transitions';
 import type { Json, Tables } from '@/types/database';
 
 export type SettlementRow = Tables<'settlements'>;
@@ -75,8 +76,10 @@ export async function estimateSettlements(caseId: string, mentorId?: string): Pr
 export type SnapshotResult = { ok: true; settlementId: string | null; result: SettlementResult | null } | { ok: false; error: string };
 
 /**
- * 정산 확정 스냅샷 (T7 closure / T10·T11 partial) — 케이스 × 멘토 1건.
- * 회차가 0건이면 행을 만들지 않는다(§6-6). 같은 회차는 두 번 정산되지 않는다(mentoring_logs.settlement_id).
+ * 정산 확정 스냅샷 (T7 closure / T10·T11 partial).
+ * (P31) 케이스 × 멘토당 closure 는 1건(0082 부분 유니크 인덱스), partial 은 여러 건 가능 — 같은 회차의 이중 정산은
+ * mentoring_logs.settlement_id 잠금이 막는다(취소 시 해제 → 다시 정산 가능).
+ * 회차가 0건이면 행을 만들지 않는다(§6-6).
  */
 export async function createSettlementSnapshot(input: { caseId: string; mentorId: string; kind: SettlementKind; actorId: string; note?: string }): Promise<SnapshotResult> {
   const admin = createAdminClient();
@@ -87,14 +90,18 @@ export async function createSettlementSnapshot(input: { caseId: string; mentorId
     .maybeSingle();
   if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
 
-  const { data: existing } = await admin
-    .from('settlements')
-    .select('id')
-    .eq('case_id', input.caseId)
-    .eq('mentor_id', input.mentorId)
-    .neq('status', 'canceled')
-    .maybeSingle();
-  if (existing) return { ok: false, error: '이 멘토의 정산이 이미 확정되어 있습니다.' };
+  if (input.kind === 'closure') {
+    // "이미 확정" 가드는 closure 에만 — partial 은 회차 잠금(settlement_id)에 맡긴다 (P31)
+    const { data: existing } = await admin
+      .from('settlements')
+      .select('id')
+      .eq('case_id', input.caseId)
+      .eq('mentor_id', input.mentorId)
+      .eq('kind', 'closure')
+      .neq('status', 'canceled')
+      .maybeSingle();
+    if (existing) return { ok: false, error: '이 멘토의 종결 정산이 이미 확정되어 있습니다.' };
+  }
 
   const rounds = await loadUnsettledRounds(input.caseId, input.mentorId);
   if (rounds.length === 0) return { ok: true, settlementId: null, result: null };
@@ -168,13 +175,15 @@ export async function createSettlementSnapshot(input: { caseId: string; mentorId
   return { ok: true, settlementId: inserted.id, result };
 }
 
-/** 확정 취소 — pending 이고 품의 미편성일 때만. 회차 잠금 해제, closure 정산이면 케이스를 종결 요청 단계로 되돌린다. */
-export async function cancelSettlement(settlementId: string, actorId: string, reason: string): Promise<{ ok: true; caseId: string } | { ok: false; error: string }> {
+export type CancelResult = { ok: true; caseId: string; kind: SettlementKind; caseReverted: boolean } | { ok: false; error: string };
+
+/** 확정 취소 — pending 이고 품의 미편성일 때만(canCancelSettlement). 회차 잠금 해제, closure 정산이면 케이스를 종결 요청 단계로 되돌린다. */
+export async function cancelSettlement(settlementId: string, actorId: string, reason: string): Promise<CancelResult> {
   if (!reason.trim()) return { ok: false, error: '취소 사유를 입력하세요.' };
   const admin = createAdminClient();
   const { data: s } = await admin.from('settlements').select('id, case_id, program_id, kind, status, batch_id, mentor_id').eq('id', settlementId).maybeSingle();
   if (!s) return { ok: false, error: '정산 건을 찾을 수 없습니다.' };
-  if (s.status !== 'pending' || s.batch_id) return { ok: false, error: '지급 대기 상태이고 품의에 편성되지 않은 정산만 취소할 수 있습니다.' };
+  if (!canCancelSettlement(s)) return { ok: false, error: SETTLEMENT_CANCEL_DENIED };
   const now = new Date().toISOString();
   const { data: upd } = await admin
     .from('settlements')
@@ -193,22 +202,41 @@ export async function cancelSettlement(settlementId: string, actorId: string, re
   }
   await queueNotification(admin, { caseId: s.case_id, programId: s.program_id, recipientId: s.mentor_id, triggerEvent: 'settlement_canceled', payload: { settlement_id: settlementId, message: reason.trim().slice(0, 80) } });
 
+  let caseReverted = false;
   if (s.kind === 'closure') {
     const { data: c } = await admin.from('cases').select('status').eq('id', s.case_id).maybeSingle();
     if (c?.status === 'settlement_pending') {
-      await admin.from('cases').update({ status: 'closure_requested' }).eq('id', s.case_id).eq('status', 'settlement_pending');
-      await admin.from('case_status_history').insert({ case_id: s.case_id, from_status: 'settlement_pending', to_status: 'closure_requested', changed_by: actorId, note: `정산 확정 취소: ${reason.trim()}` });
+      const { data: rev } = await admin.from('cases').update({ status: 'closure_requested' }).eq('id', s.case_id).eq('status', 'settlement_pending').select('id');
+      caseReverted = !!rev && rev.length > 0;
+      if (caseReverted) await admin.from('case_status_history').insert({ case_id: s.case_id, from_status: 'settlement_pending', to_status: 'closure_requested', changed_by: actorId, note: `정산 확정 취소: ${reason.trim()}` });
     }
   }
-  await admin.from('audit_logs').insert({
+  const { error: auditError } = await admin.from('audit_logs').insert({
     actor_id: actorId,
     program_id: s.program_id,
     action: 'settlement.canceled',
     entity_type: 'settlements',
     entity_id: settlementId,
-    metadata: { case_id: s.case_id, mentor_id: s.mentor_id, kind: s.kind, reason: reason.trim() },
+    metadata: { case_id: s.case_id, mentor_id: s.mentor_id, kind: s.kind, reason: reason.trim(), case_reverted: caseReverted },
   });
-  return { ok: true, caseId: s.case_id };
+  if (auditError) console.error('settlement.canceled audit insert failed:', auditError.message);
+  return { ok: true, caseId: s.case_id, kind: s.kind as SettlementKind, caseReverted };
+}
+
+/**
+ * (P31) 취소된 부분 정산을 다시 확정한다 — 종료(비활성)된 멘토의 미정산 이행 회차를 partial 로.
+ * 활성 멘토분은 종결 검수(closure)로 확정되므로 여기서는 거부한다.
+ */
+export async function resettlePartial(caseId: string, mentorId: string, actorId: string, note?: string): Promise<SnapshotResult> {
+  const admin = createAdminClient();
+  const { data: active } = await admin.from('mentor_assignments').select('id').eq('case_id', caseId).eq('mentor_id', mentorId).eq('is_active', true).maybeSingle();
+  if (active) return { ok: false, error: '활성 멘토의 회차는 종결 검수 승인(또는 중도 종료)으로 정산합니다. 부분 정산 재확정은 종료된 멘토에게만 가능합니다.' };
+  const { data: c } = await admin.from('cases').select('status').eq('id', caseId).maybeSingle();
+  if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
+  if (c.status === 'closed') return { ok: false, error: '이미 종결된 케이스입니다.' };
+  const rounds = await loadUnsettledRounds(caseId, mentorId);
+  if (rounds.length === 0) return { ok: false, error: '이 멘토의 미정산 이행 회차가 없습니다.' };
+  return createSettlementSnapshot({ caseId, mentorId, kind: 'partial', actorId, note: note?.trim() || '부분 정산 재확정(취소 후)' });
 }
 
 /**
@@ -231,12 +259,30 @@ export async function settleLeftoverMentors(caseId: string, actorId: string, exc
   return { ok: true, settlementIds: created };
 }
 
-/** 방금 만든 정산 스냅샷들을 취소 상태로 되돌린다 (전이 실패·경쟁 시) */
+/** 방금 만든 정산 스냅샷들을 취소 상태로 되돌린다 (전이 실패·경쟁 시). 감사 `settlement.rolled_back` 건별 기록 (P31) */
 export async function rollbackSettlements(ids: string[], actorId: string, reason: string): Promise<void> {
   if (ids.length === 0) return;
   const admin = createAdminClient();
+  const { data: rows } = await admin.from('settlements').select('id, program_id, case_id, mentor_id, kind, net').in('id', ids);
   await admin.from('mentoring_logs').update({ settlement_id: null }).in('settlement_id', ids);
   await admin.from('settlements').update({ status: 'canceled', canceled_by: actorId, canceled_at: new Date().toISOString(), cancel_reason: reason }).in('id', ids);
+  // 취소본 정산서 PDF 정리 (cancelSettlement 와 동일)
+  for (const r of rows ?? []) {
+    const { data: stmtDocs } = await admin.from('documents').select('id, storage_path').eq('case_id', r.case_id).eq('doc_key', `settlement_statement:${r.id}`);
+    if (stmtDocs && stmtDocs.length > 0) {
+      await admin.storage.from('documents').remove(stmtDocs.map((d) => d.storage_path));
+      await admin.from('documents').delete().in('id', stmtDocs.map((d) => d.id));
+    }
+    const { error } = await admin.from('audit_logs').insert({
+      actor_id: actorId,
+      program_id: r.program_id,
+      action: 'settlement.rolled_back',
+      entity_type: 'settlements',
+      entity_id: r.id,
+      metadata: { case_id: r.case_id, mentor_id: r.mentor_id, kind: r.kind, net: Number(r.net), reason },
+    });
+    if (error) console.error('settlement.rolled_back audit insert failed:', error.message);
+  }
 }
 
 export function summarizeForMessage(r: SettlementResult): string {

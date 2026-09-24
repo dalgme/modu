@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import { CASE_STATUSES, type CaseStatus } from '@/types/case-status';
 import { SURVEY_OPEN_STATUSES } from '@/lib/workflow/mentee';
+import { DELAY_DAYS } from '@/lib/reports/delays-shared';
 
 /**
  * 리포트·대시보드 수치 — **한 곳**에서 계산 (docs/MODU-DESIGN.md §19).
@@ -30,8 +31,11 @@ export function periodLabel(period?: ReportPeriod | null): string {
   return `${period.from ?? '…'} ~ ${period.to ?? '…'}`;
 }
 
+/** (P31) 기간 필터의 귀속 기준 설명 — 화면·리포트가 그대로 표시한다 */
+export const PERIOD_BASIS_NOTE = '기간 기준: 회차 = 보고서 등록일 · 신규/종결 케이스 = 등록일/종결일 · 정산 지급 대기 = 확정일 · 품의 편성 = 품의 제출일 · 정산 확인 = 발주처 확인일 · 지급 완료 = 지급일';
+
 export interface ProgramMetrics {
-  scope: { programId: string; supportTypeId: string | null; generatedAt: string; period?: ReportPeriod | null };
+  scope: { programId: string; supportTypeId: string | null; generatedAt: string; period?: ReportPeriod | null; /** 기간 귀속 기준 설명 (P31) */ note?: string };
   performance: {
     cases: number;
     /** 기간 내 신규 등록 케이스 (기간 없으면 = cases) */
@@ -115,7 +119,10 @@ export interface MentorMetric {
   reviewAvg: number | null;
 }
 
-const STALLED_DAYS = 14;
+// 정체 기준일은 지연 관리(delays-shared)와 같은 상수 (P31 — 리포트 14일 / 지연 21일로 갈리던 문제)
+const STALLED_DAYS = DELAY_DAYS.stalled;
+
+type SettlementRow = { case_id: string; mentor_id: string; status: string; net: number; withholding: number; withholding_method: string; confirmed_at: string | null; created_at: string; paid_at: string | null; batch_id: string | null };
 
 function emptyStatus(): Record<CaseStatus, number> {
   return Object.fromEntries(CASE_STATUSES.map((s) => [s, 0])) as Record<CaseStatus, number>;
@@ -143,20 +150,21 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
         fetchAllIn<{ id: string; case_id: string; mentor_id: string; mode: string; amount_snapshot: number; settlement_id: string | null; started_at: string; mentee_signed_at: string | null; report_registered_at: string | null }>(caseIds, (chunk, from, to) =>
           admin.from('mentoring_logs').select('id, case_id, mentor_id, mode, amount_snapshot, settlement_id, started_at, mentee_signed_at, report_registered_at').in('case_id', chunk).range(from, to),
         ),
-        fetchAllIn<{ case_id: string; mentor_id: string; status: string; net: number; withholding: number; withholding_method: string; confirmed_at: string | null; created_at: string }>(caseIds, (chunk, from, to) =>
-          admin.from('settlements').select('case_id, mentor_id, status, net, withholding, withholding_method, confirmed_at, created_at').in('case_id', chunk).neq('status', 'canceled').range(from, to),
+        fetchAllIn<SettlementRow>(caseIds, (chunk, from, to) =>
+          admin.from('settlements').select('case_id, mentor_id, status, net, withholding, withholding_method, confirmed_at, created_at, paid_at, batch_id').in('case_id', chunk).neq('status', 'canceled').range(from, to),
         ),
         fetchAllIn<{ case_id: string; score: number | null }>(caseIds, (chunk, from, to) => admin.from('survey_responses').select('case_id, score').in('case_id', chunk).range(from, to)),
         fetchAllIn<{ case_id: string; mentor_id: string; is_active: boolean; assigned_at: string }>(caseIds, (chunk, from, to) =>
           admin.from('mentor_assignments').select('case_id, mentor_id, is_active, assigned_at').in('case_id', chunk).order('assigned_at').range(from, to),
         ),
-        admin.from('round_extension_requests').select('id').in('case_id', caseIds).eq('status', 'pending'),
-        admin.from('mentor_change_requests').select('id').in('case_id', caseIds).eq('status', 'pending'),
-        admin.from('mentor_withdrawal_requests').select('id').in('case_id', caseIds).eq('status', 'pending'),
+        // (P31) `.in()` 대상이 케이스 200개를 넘으면 URL 길이·1,000행 캡에 걸리므로 전부 fetchAllIn 으로
+        fetchAllIn<{ id: string }>(caseIds, (chunk, from, to) => admin.from('round_extension_requests').select('id').in('case_id', chunk).eq('status', 'pending').range(from, to)).then((data) => ({ data })),
+        fetchAllIn<{ id: string }>(caseIds, (chunk, from, to) => admin.from('mentor_change_requests').select('id').in('case_id', chunk).eq('status', 'pending').range(from, to)).then((data) => ({ data })),
+        fetchAllIn<{ id: string }>(caseIds, (chunk, from, to) => admin.from('mentor_withdrawal_requests').select('id').in('case_id', chunk).eq('status', 'pending').range(from, to)).then((data) => ({ data })),
         admin.from('mentor_payment_docs').select('user_id, resume_state, bankbook_state, id_card_state').eq('program_id', programId),
         admin.from('mentor_group_reviews').select('mentor_id, rating').eq('program_id', programId).is('deleted_at', null),
-        admin.from('round_extension_requests').select('case_id, extra_rounds').in('case_id', caseIds).eq('status', 'approved'),
-        admin.from('cases').select('id, predecessor_case_id, status').eq('program_id', programId).in('predecessor_case_id', caseIds),
+        fetchAllIn<{ case_id: string; extra_rounds: number }>(caseIds, (chunk, from, to) => admin.from('round_extension_requests').select('case_id, extra_rounds').in('case_id', chunk).eq('status', 'approved').range(from, to)).then((data) => ({ data })),
+        fetchAllIn<{ id: string; predecessor_case_id: string | null; status: string }>(caseIds, (chunk, from, to) => admin.from('cases').select('id, predecessor_case_id, status').eq('program_id', programId).in('predecessor_case_id', chunk).range(from, to)).then((data) => ({ data })),
         admin.from('program_members').select('user_id').eq('program_id', programId).eq('is_active', true),
       ])
     : [[], [], [], [], { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }];
@@ -164,7 +172,23 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
   const allLogs = logsAll as { id: string; case_id: string; mentor_id: string; mode: string; amount_snapshot: number; settlement_id: string | null; started_at: string; mentee_signed_at: string | null; report_registered_at: string | null }[];
   // 기간 필터 (P30): 회차 = 보고서 등록일, 정산 = 확정일(없으면 생성일)
   const logs = allLogs.filter((l) => l.report_registered_at && inPeriod(l.report_registered_at, period));
-  const settlements = (settlementsAll as { case_id: string; mentor_id: string; status: string; net: number; withholding: number; withholding_method: string; confirmed_at: string | null; created_at: string }[]).filter((st) => inPeriod(st.confirmed_at ?? st.created_at, period));
+  const settlementRows = settlementsAll as SettlementRow[];
+  const settlements = settlementRows.filter((st) => inPeriod(st.confirmed_at ?? st.created_at, period));
+  // (P31) 단계별 금액은 각 단계의 귀속 시점으로 — 품의 편성 = 품의 제출일, 정산 확인 = 발주처 확인일, 지급 완료 = 지급일
+  const batchIds = Array.from(new Set(settlementRows.map((st) => st.batch_id).filter((x): x is string => !!x)));
+  const batchRows = await fetchAllIn<{ id: string; submitted_at: string | null; confirmed_at: string | null }>(batchIds, (chunk, from, to) => admin.from('settlement_batches').select('id, submitted_at, confirmed_at').in('id', chunk).range(from, to));
+  const batchOf = new Map(batchRows.map((b) => [b.id, b]));
+  const stageNet = (status: 'pending' | 'batched' | 'confirmed' | 'paid') =>
+    settlementRows
+      .filter((st) => st.status === status)
+      .filter((st) => {
+        if (!hasPeriod) return true;
+        if (status === 'pending') return inPeriod(st.confirmed_at ?? st.created_at, period);
+        if (status === 'paid') return inPeriod(st.paid_at, period);
+        const b = st.batch_id ? batchOf.get(st.batch_id) : undefined;
+        return inPeriod(status === 'batched' ? (b?.submitted_at ?? null) : (b?.confirmed_at ?? null), period);
+      })
+      .reduce((a, st) => a + Number(st.net), 0);
   const responses = responsesAll as { case_id: string; score: number | null }[];
   // assigned_at 오름차순 — "마지막 배정" 판정이 순서에 의존한다
   const assigns = assignsAll as { case_id: string; mentor_id: string; is_active: boolean; assigned_at: string }[];
@@ -231,7 +255,6 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
   const observationRate = cases.length ? cases.filter((c) => ['closure_requested', 'revision_requested', 'settlement_pending', 'settlement_batched', 'closed'].includes(c.status)).length / cases.length : 0;
 
   // ---- settlement
-  const sumNet = (status: string) => settlements.filter((s) => s.status === status).reduce((a, s) => a + Number(s.net), 0);
   const byMethodMap = new Map<string, { count: number; net: number }>();
   for (const s of settlements) {
     const m = byMethodMap.get(s.withholding_method) ?? { count: 0, net: 0 };
@@ -295,7 +318,7 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
   void groupIds;
   void membersR;
   return {
-    scope: { programId, supportTypeId: supportTypeId ?? null, generatedAt: new Date().toISOString(), period: hasPeriod ? { from: period?.from ?? null, to: period?.to ?? null } : null },
+    scope: { programId, supportTypeId: supportTypeId ?? null, generatedAt: new Date().toISOString(), period: hasPeriod ? { from: period?.from ?? null, to: period?.to ?? null } : null, note: hasPeriod ? PERIOD_BASIS_NOTE : undefined },
     performance: {
       cases: cases.length,
       newCases,
@@ -333,10 +356,10 @@ export async function computeProgramMetrics(programId: string, supportTypeId?: s
     settlement: {
       // 예상(미확정) = 보고서 등록됐고 아직 정산되지 않은 회차 — budget.ts 의 예상 집행액과 같은 조건
       estimatedGross: logs.filter((l) => !l.settlement_id).reduce((a, l) => a + Number(l.amount_snapshot), 0),
-      pendingNet: sumNet('pending'),
-      batchedNet: sumNet('batched'),
-      confirmedNet: sumNet('confirmed'),
-      paidNet: sumNet('paid'),
+      pendingNet: stageNet('pending'),
+      batchedNet: stageNet('batched'),
+      confirmedNet: stageNet('confirmed'),
+      paidNet: stageNet('paid'),
       withholdingTotal: settlements.reduce((a, s) => a + Number(s.withholding), 0),
       byMethod: Array.from(byMethodMap.entries()).map(([method, v]) => ({ method, ...v })),
     },

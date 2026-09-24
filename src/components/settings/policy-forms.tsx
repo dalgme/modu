@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 
-type Result = { ok: true; id?: string } | { ok: false; error: string };
+type Result = { ok: true; id?: string; message?: string } | { ok: false; error: string };
 
 function useRun() {
   const { toast } = useToast();
@@ -17,7 +17,7 @@ function useRun() {
   const run = (fn: () => Promise<Result>, ok: string) =>
     start(async () => {
       const r = await fn();
-      toast(r.ok ? { title: ok } : { title: r.error, variant: 'destructive' });
+      toast(r.ok ? { title: ok, description: r.message } : { title: r.error, variant: 'destructive' });
     });
   return { pending, run };
 }

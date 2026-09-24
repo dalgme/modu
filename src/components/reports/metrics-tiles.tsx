@@ -39,7 +39,8 @@ export function MetricsTiles({ m, base, reportsHref }: { m: ProgramMetrics; base
         <Tile label="이행 회차 / 계획" value={`${p.roundsDone} / ${p.roundsPlanned}`} sub={p.roundsPlanned ? pct(p.roundsDone / p.roundsPlanned) : '-'} href={`${reportsHref}?tab=cases`} />
         <Tile label="완료 회차(정산 확정)" value={p.roundsCompleted} sub={`온 ${p.onlineRounds} · 오프 ${p.offlineRounds}`} />
         <Tile label="종결률" value={pct(p.closureRate)} sub={`관찰의견서 제출률 ${pct(e.observationRate)}`} tone={p.closureRate >= 0.5 ? 'good' : 'default'} />
-        <Tile label="만족도 평균" value={e.surveyAvg ?? '-'} sub={`응답 ${e.surveyResponses}건 · 운영사 평가 ${e.mentorReviewAvg ?? '-'}`} href={`${reportsHref}?tab=survey`} />
+        {/* 운영사 멘토 평가는 내부 지표 — 발주처 화면에는 노출하지 않는다 (P31) */}
+        <Tile label="만족도 평균" value={e.surveyAvg ?? '-'} sub={base === '/institution' ? `응답 ${e.surveyResponses}건` : `응답 ${e.surveyResponses}건 · 운영사 평가 ${e.mentorReviewAvg ?? '-'}`} href={`${reportsHref}?tab=survey`} />
       </div>
       <h2 className="text-base font-semibold">비수행 잔여 과업</h2>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">

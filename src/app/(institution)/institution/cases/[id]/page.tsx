@@ -12,7 +12,7 @@ import { getCaseSurvey } from '@/lib/data/survey';
 import { RequiredDocsPanel } from '@/components/cases/required-docs-panel';
 import { SurveyResultCard } from '@/components/cases/survey-result-card';
 import { listCaseSettlements, listStatementFiles } from '@/lib/data/settlements';
-import { canTransition } from '@/lib/workflow/transitions';
+import { canWithdrawAs } from '@/lib/workflow/transitions';
 import { CaseDocumentsPanel } from '@/components/cases/case-documents-panel';
 import { RoundsList } from '@/components/mentor/rounds-list';
 import { SettlementCard } from '@/components/settlement/settlement-card';
@@ -88,7 +88,8 @@ export default async function Page({ params }: { params: { id: string } }) {
         </a>
         <RequiredDocsPanel caseId={item.id} slots={slots} viewerRole="institution" canUpload={false} />
         <CaseDocumentsPanel caseId={item.id} docs={docs} viewerRole="institution" canUpload={false} />
-        <CaseEndPanel caseId={item.id} pendingWithdrawals={[]} canDecideWithdrawal={false} canForceEnd={false} canWithdrawCase={canTransition('withdraw_case', item.status)} hasActiveMentor={item.mentorId !== null} />
+        {/* (P31) 발주처 중도 종료는 운영사 검수 중(종결·보완 요청)에는 불가 — 서버 액션(withdrawCaseAction)과 같은 canWithdrawAs */}
+        <CaseEndPanel caseId={item.id} pendingWithdrawals={[]} canDecideWithdrawal={false} canForceEnd={false} canWithdrawCase={canWithdrawAs('institution', item.status)} hasActiveMentor={item.mentorId !== null} />
       </CaseDetailShell>
     </main>
   );

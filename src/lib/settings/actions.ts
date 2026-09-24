@@ -522,9 +522,13 @@ export async function updateWithholdingAction(input: unknown): Promise<Result> {
   const after = { default_withholding_method: parsed.data.default_withholding_method, withholding_params: params as Json };
   const { error } = await admin.from('programs').update(after).eq('id', op.programId);
   if (error) return { ok: false, error: error.message };
-  await audit(op.id, op.programId, 'withholding', before, after, op.programId);
+  // (P31) 검수 대기(closure_requested) 케이스는 승인 시 **새 파라미터**로 확정된다 — 영향 건수를 감사·화면에 알린다. 이미 확정된 스냅샷은 바뀌지 않는다.
+  const { count: pendingReview } = await admin.from('cases').select('id', { count: 'exact', head: true }).eq('program_id', op.programId).eq('status', 'closure_requested');
+  await audit(op.id, op.programId, 'withholding', before, { ...after, affected_pending_review: pendingReview ?? 0 }, op.programId);
   revalidateAll();
-  return { ok: true };
+  revalidatePath('/nextlab/review');
+  const n = pendingReview ?? 0;
+  return { ok: true, message: n > 0 ? `저장했습니다. 검수 대기 중인 케이스 ${n}건은 승인 시 변경된 원천징수 기준으로 확정됩니다(이미 확정된 정산은 영향 없음).` : '저장했습니다. 이미 확정된 정산 스냅샷은 영향을 받지 않습니다.' };
 }
 
 const closureSchema = z.object({
@@ -770,14 +774,23 @@ export async function saveBudgetsAction(input: unknown): Promise<Result> {
   if (!parsed.success) return { ok: false, error: '입력값을 확인하세요.' };
   const admin = createAdminClient();
 
-  const { data: before } = await admin.from('programs').select('mentoring_budget').eq('id', op.programId).maybeSingle();
+  const [{ data: before }, { data: groupsBefore }] = await Promise.all([
+    admin.from('programs').select('mentoring_budget').eq('id', op.programId).maybeSingle(),
+    admin.from('support_types').select('id, name, mentoring_budget').eq('program_id', op.programId),
+  ]);
   const { error: pErr } = await admin.from('programs').update({ mentoring_budget: parsed.data.programBudget }).eq('id', op.programId);
   if (pErr) return { ok: false, error: pErr.message };
   for (const g of parsed.data.groups) {
     const { error } = await admin.from('support_types').update({ mentoring_budget: g.budget }).eq('id', g.id).eq('program_id', op.programId);
     if (error) return { ok: false, error: error.message };
   }
-  await audit(op.id, op.programId, 'mentoring_budget', before?.mentoring_budget ?? null, { program: parsed.data.programBudget, groups: parsed.data.groups.length });
+  // (P31) 그룹별 before/after 를 감사에 남긴다 — 바뀐 그룹만
+  const gBefore = new Map((groupsBefore ?? []).map((g) => [g.id, g]));
+  const groupChanges = parsed.data.groups
+    .map((g) => ({ id: g.id, name: gBefore.get(g.id)?.name ?? null, before: gBefore.get(g.id)?.mentoring_budget === null || gBefore.get(g.id)?.mentoring_budget === undefined ? null : Number(gBefore.get(g.id)!.mentoring_budget), after: g.budget }))
+    .filter((g) => g.before !== g.after);
+  const programBefore = before?.mentoring_budget === null || before?.mentoring_budget === undefined ? null : Number(before.mentoring_budget);
+  await audit(op.id, op.programId, 'mentoring_budget', { program: programBefore, groups: groupChanges.map((g) => ({ id: g.id, name: g.name, budget: g.before })) }, { program: parsed.data.programBudget, groups: groupChanges.map((g) => ({ id: g.id, name: g.name, budget: g.after })) });
   revalidateAll();
   revalidatePath('/nextlab/reports');
   revalidatePath('/institution/reports');

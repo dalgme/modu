@@ -9,6 +9,7 @@ import { useScrollActiveTab } from '@/components/common/use-scroll-active-tab';
 const TABS: { href: string; label: string; match?: string[]; external?: boolean }[] = [
   { href: '/nextlab/dashboard', label: '대시보드' },
   { href: '/nextlab/reports', label: '리포트' },
+  { href: '/nextlab/review', label: '검수' },
   { href: '/nextlab/roster', label: '회원 명단', match: ['/nextlab/cases', '/nextlab/members', '/nextlab/view'] },
   { href: '/nextlab/board', label: '게시판', match: ['/nextlab/requests'] },
   { href: '/nextlab/settlements', label: '정산·품의' },

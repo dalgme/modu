@@ -3,12 +3,13 @@ import Link from 'next/link';
 import type { BatchItem, SettlementItem } from '@/lib/data/settlements';
 import { WITHHOLDING_LABELS } from '@/lib/settlement/compute';
 import { BatchActions, BatchBackLink, RemoveFromBatchButton } from '@/components/settlement/batch-actions';
+import { BatchMetaForm } from '@/components/settlement/batch-meta-form';
 import { StatusBadge } from '@/components/cases/status-badge';
 import { formatDateTime, formatKRW } from '@/lib/utils/format';
 
 /** 품의 상세 (운영사·발주처 공용) */
-export function BatchDetail({ batch, items, role, caseHrefBase, backHref }: { batch: BatchItem; items: SettlementItem[]; role: 'nextlab' | 'institution'; caseHrefBase: string; backHref: string }) {
-  const removable = role === 'nextlab' && batch.status === 'draft';
+export function BatchDetail({ batch, items, role, caseHrefBase, backHref, canSettle = true, canSubmit = true }: { batch: BatchItem; items: SettlementItem[]; role: 'nextlab' | 'institution'; caseHrefBase: string; backHref: string; /** 운영사 'settlement' 권한 — 편성·제외·삭제·제목 수정 (P31) */ canSettle?: boolean; /** 운영사 'settlement.submit' 권한 — 제출·철회·지급 완료 (P31) */ canSubmit?: boolean }) {
+  const removable = role === 'nextlab' && batch.status === 'draft' && canSettle;
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -22,9 +23,10 @@ export function BatchDetail({ batch, items, role, caseHrefBase, backHref }: { ba
             {batch.confirmed_at && <span className="ml-2">· 정산 확인 {batch.confirmedByName ?? ''} {formatDateTime(batch.confirmed_at)}</span>}
             {batch.paid_at && <span className="ml-2">· 지급 {formatDateTime(batch.paid_at)}</span>}
           </p>
-          {batch.note && <p className="mt-1 text-sm">{batch.note}</p>}
+          {batch.note && <p className="mt-1 whitespace-pre-wrap text-sm">{batch.note}</p>}
+          {role === 'nextlab' && <BatchMetaForm batchId={batch.id} title={batch.title} note={batch.note} status={batch.status} canEdit={canSettle} />}
         </div>
-        <BatchActions batchId={batch.id} status={batch.status} role={role} exportHref={`/api/nextlab/batches/${batch.id}/export`} itemCount={items.length} totalNet={formatKRW(Number(batch.total_net))} afterDeleteHref={backHref} />
+        <BatchActions batchId={batch.id} status={batch.status} role={role} exportHref={`/api/nextlab/batches/${batch.id}/export`} pdfHref={`/api/nextlab/batches/${batch.id}/pdf`} itemCount={items.length} totalNet={formatKRW(Number(batch.total_net))} afterDeleteHref={backHref} canSubmit={canSubmit} canMarkPaid={canSubmit} canDelete={canSettle} />
       </div>
 
       {/* (P31) 폰은 세로 1열 */}

@@ -1,3 +1,4 @@
+import { hasCapability } from '@/lib/auth/capabilities';
 import { notFound } from 'next/navigation';
 
 import { requireNextlab } from '@/lib/auth/guards';
@@ -14,7 +15,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   if (!found) notFound();
   return (
     <main>
-      <BatchDetail batch={found.batch} items={found.items} role="nextlab" caseHrefBase="/nextlab/cases" backHref="/nextlab/settlements" />
+      <BatchDetail batch={found.batch} items={found.items} role="nextlab" caseHrefBase="/nextlab/cases" backHref="/nextlab/settlements" canSettle={hasCapability(ctx, 'settlement')} canSubmit={hasCapability(ctx, 'settlement.submit')} />
     </main>
   );
 }

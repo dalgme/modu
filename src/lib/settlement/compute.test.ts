@@ -5,6 +5,7 @@ import {
   computeSettlement,
   effectiveRate,
   policyFromParams,
+  recomputeFromLines,
   splitByMentor,
   sumSettlements,
   type SettlementRoundInput,
@@ -167,5 +168,52 @@ describe('policyFromParams · rounding · effectiveRate', () => {
     expect(applyRounding(12345.6, 'floor_1')).toBe(12345);
     expect(applyRounding(12345.6, 'round')).toBe(12346);
     expect(applyRounding(-5, 'floor_10')).toBe(0);
+  });
+});
+
+describe('과세최저한 옵션 — 품의(지급 건) 단위 판정 (P31)', () => {
+  it('applyMinimum:false 면 최저한 이하라도 원천징수를 계산한다 (온라인 1회 80,000 → 소득금액 32,000 → 소득세 6,400 · 지방세 640)', () => {
+    const r = computeSettlement({ rounds: [round('online', 80000)], withholding: OTHER }, { applyMinimum: false });
+    expect(r.taxable).toBe(32000);
+    expect(r.income_tax).toBe(6400);
+    expect(r.local_tax).toBe(640);
+    expect(r.withholding).toBe(7040);
+    expect(r.net).toBe(72960);
+    expect(r.exempted).toBe(false);
+  });
+  it('기본값(applyMinimum 생략)은 기존과 같이 면제한다', () => {
+    const a = computeSettlement({ rounds: [round('online', 80000)], withholding: OTHER });
+    const b = computeSettlement({ rounds: [round('online', 80000)], withholding: OTHER }, {});
+    expect(a).toEqual(b);
+    expect(a.exempted).toBe(true);
+  });
+  it('사업소득·없음 방식은 옵션과 무관하다', () => {
+    const b1 = computeSettlement({ rounds: [round('offline', 100000)], withholding: BUSINESS });
+    const b2 = computeSettlement({ rounds: [round('offline', 100000)], withholding: BUSINESS }, { applyMinimum: false });
+    expect(b1).toEqual(b2);
+    const n1 = computeSettlement({ rounds: [round('offline', 100000)], withholding: { method: 'none' } }, { applyMinimum: false });
+    expect(n1.withholding).toBe(0);
+  });
+  it('recomputeFromLines: 저장된 내역 줄로 다시 계산해도 회차 계산과 같은 결과', () => {
+    const rounds = [round('online', 80000), round('offline', 100000), round('online', 80000, { is_extra: true })];
+    const full = computeSettlement({ rounds, withholding: OTHER }, { applyMinimum: false });
+    const fromLines = recomputeFromLines(full.lines, OTHER, { applyMinimum: false });
+    expect(fromLines.gross).toBe(full.gross);
+    expect(fromLines.taxable).toBe(full.taxable);
+    expect(fromLines.income_tax).toBe(full.income_tax);
+    expect(fromLines.local_tax).toBe(full.local_tax);
+    expect(fromLines.net).toBe(full.net);
+    expect(fromLines.lines).toEqual(full.lines);
+  });
+  it('시나리오: 같은 멘토의 2건(각 32,000 면제)이 한 품의에서 합산 64,000 > 50,000 → 두 건 모두 과세로 재계산', () => {
+    const a = computeSettlement({ rounds: [round('online', 80000)], withholding: OTHER });
+    const b = computeSettlement({ rounds: [round('online', 80000)], withholding: OTHER });
+    expect(a.exempted && b.exempted).toBe(true);
+    const combined = a.taxable + b.taxable;
+    expect(combined).toBeGreaterThan(OTHER.min_taxable_exempt);
+    const a2 = recomputeFromLines(a.lines, OTHER, { applyMinimum: false });
+    const b2 = recomputeFromLines(b.lines, OTHER, { applyMinimum: false });
+    expect(a2.withholding + b2.withholding).toBe(14080);
+    expect(sumSettlements([a2, b2]).net).toBe(160000 - 14080);
   });
 });

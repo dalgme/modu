@@ -359,6 +359,9 @@ const EVENT_CAPABILITY: Record<string, CapabilityKey> = {
   mentor_withdrawal_requested: 'review',
   mentor_change_requested: 'review',
   closure_overdue: 'review',
+  // 품의 반려·발주처 확인 통지는 품의 권한자에게 (P31)
+  batch_returned: 'settlement.submit',
+  batch_confirmed: 'settlement.submit',
 };
 
 /**
@@ -440,7 +443,7 @@ const OBSERVATION_TEMPLATE = `
 </table>
 <table class="rounds">
   <tr><th>회차</th><th>유형</th><th>일자</th><th>장소</th><th>멘티 서명</th></tr>
-  {{rounds_table}}
+  {{{rounds_table}}}
 </table>
 <table>
   <tr><th>멘토링 총평</th><td class="section">{{summary}}</td></tr>

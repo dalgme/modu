@@ -94,11 +94,21 @@ export function buildLines(rounds: SettlementRoundInput[]): SettlementLine[] {
   });
 }
 
+export interface ComputeOptions {
+  /**
+   * 과세최저한(min_taxable_exempt) 적용 여부 (기본 true).
+   * (P31) 과세최저한은 **지급 건(품의) 단위**로 판단한다 — 같은 멘토의 여러 정산이 한 품의에 묶여 합산 소득금액이 최저한을 넘으면
+   * batches.ts 가 이 옵션을 false 로 다시 계산해 스냅샷의 원천징수·실지급을 갱신한다. 계산은 여전히 이 함수 한 곳.
+   */
+  applyMinimum?: boolean;
+}
+
 /**
  * 정산 계산. 입력 회차는 **한 멘토분**이어야 한다(케이스 × 멘토 단위). 여러 멘토가 섞여 있으면 throw.
  */
-export function computeSettlement(input: { rounds: SettlementRoundInput[]; withholding: WithholdingPolicy }): SettlementResult {
+export function computeSettlement(input: { rounds: SettlementRoundInput[]; withholding: WithholdingPolicy }, options: ComputeOptions = {}): SettlementResult {
   const { rounds, withholding } = input;
+  const applyMinimum = options.applyMinimum ?? true;
   const mentors = new Set(rounds.map((r) => r.mentor_id));
   if (mentors.size > 1) throw new Error('정산 단위는 케이스 × 멘토입니다. 멘토별로 나누어 계산하세요.');
 
@@ -112,7 +122,7 @@ export function computeSettlement(input: { rounds: SettlementRoundInput[]; withh
 
   if (withholding.method === 'other_income') {
     taxable = applyRounding(gross * (1 - withholding.expense_rate), 'floor_1');
-    if (taxable <= withholding.min_taxable_exempt) {
+    if (applyMinimum && taxable <= withholding.min_taxable_exempt) {
       exempted = taxable > 0 || gross > 0;
       income_tax = 0;
       local_tax = 0;
@@ -204,4 +214,21 @@ export const WITHHOLDING_LABELS: Record<WithholdingPolicy['method'], string> = {
 function num(v: unknown): number {
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+/**
+ * (P31) 저장된 정산 스냅샷(lines·gross)으로 원천징수만 다시 계산한다 — 품의 단위 과세최저한 판정용.
+ * 회차 재조회 없이 lines 를 가짜 회차로 펼쳐 computeSettlement 를 그대로 태운다(계산 경로 단일화).
+ */
+export function recomputeFromLines(lines: SettlementLine[], withholding: WithholdingPolicy, options: ComputeOptions = {}): SettlementResult {
+  const rounds: SettlementRoundInput[] = [];
+  let i = 0;
+  for (const l of lines) {
+    const per = l.count > 0 ? l.amount / l.count : 0;
+    for (let k = 0; k < l.count; k += 1) {
+      i += 1;
+      rounds.push({ log_id: `line-${i}`, round_no: i, mode: l.mode, started_at: '', unit_price_snapshot: l.unit_price, amount_snapshot: per, is_extra: l.is_extra, mentor_id: 'snapshot' });
+    }
+  }
+  return computeSettlement({ rounds, withholding }, options);
 }
