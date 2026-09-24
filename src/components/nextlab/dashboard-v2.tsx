@@ -17,6 +17,7 @@ import {
   Network,
   Settings,
   Send,
+  Smartphone,
   UserPlus,
   Users,
   type LucideIcon,
@@ -30,6 +31,7 @@ import type { InboxItem } from '@/lib/data/requests';
 import { CASE_STATUSES, CASE_STATUS_META, type CaseStatus } from '@/types/case-status';
 import { BudgetCard } from '@/components/reports/budget-card';
 import { DelayList } from '@/components/reports/delay-list';
+import { InboxList } from '@/components/nextlab/inbox-list';
 import { RoundDots } from '@/components/common/round-dots';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { formatKRW, formatDate } from '@/lib/utils/format';
@@ -70,9 +72,10 @@ export interface DashboardV2Props {
   operatorRequestsUnread: number;
   /** 멘토별 최근 독려 문자 시각 (감사로그) — 지연 목록 "최근 독려" 표시 */
   lastNudges?: Record<string, string>;
+  /** (P31) 운영 시작 체크리스트 — 알람 카드 바로 아래에 놓는다(첫날에만 페이지가 넘김) */
+  setup?: React.ReactNode;
 }
 
-const KIND_LABELS: Record<InboxItem['kind'], string> = { extension: '추가 회차', mentor_change: '멘토 변경', mentor_withdrawal: '중도 종료' };
 const TONE_BAR: Record<string, string> = { pending: 'bg-amber-400', progress: 'bg-sky-500', approved: 'bg-emerald-500', rejected: 'bg-status-rejected' };
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
 
@@ -89,22 +92,33 @@ const TONE_CARD: Record<Tone, { box: string; num: string; icon: string }> = {
 
 function AlertCard({ icon: Icon, label, value, sub, tone, href, hrefLabel, onDetail }: { icon: LucideIcon; label: string; value: number; sub?: string; tone: Tone; href: string; hrefLabel: string; onDetail?: () => void }) {
   const t = value > 0 ? TONE_CARD[tone] : { box: 'bg-background', num: 'text-muted-foreground', icon: 'bg-muted text-muted-foreground' };
-  return (
-    <div className={cn('flex flex-col gap-2 rounded-2xl border-2 p-4 shadow-sm', t.box)}>
+  // (P31) 카드 본체 전체가 탭 타깃 — 상세 팝업이 있으면 팝업, 없으면 바로가기. 보조 설명은 폰에서 숨긴다
+  const body = (
+    <>
       <div className="flex items-center gap-2">
         <span className={cn('inline-flex h-8 w-8 items-center justify-center rounded-lg', t.icon)}><Icon className="h-4 w-4" /></span>
         <span className="text-sm font-semibold">{label}</span>
       </div>
       <div className="flex items-end gap-2">
-        <span className={cn('text-4xl font-extrabold leading-none tabular-nums', t.num)}>{value}</span>
+        <span className={cn('text-3xl font-extrabold leading-none tabular-nums sm:text-4xl', t.num)}>{value}</span>
         <span className="pb-1 text-xs text-muted-foreground">건</span>
       </div>
-      {sub && <p className="text-[11px] leading-snug text-muted-foreground">{sub}</p>}
+      {sub && <p className="hidden text-[11px] leading-snug text-muted-foreground sm:block">{sub}</p>}
+    </>
+  );
+  const bodyCls = 'flex w-full flex-col gap-2 text-left';
+  return (
+    <div className={cn('flex flex-col gap-2 rounded-2xl border-2 p-4 shadow-sm', t.box)}>
+      {onDetail ? (
+        <button type="button" onClick={onDetail} disabled={value === 0} className={cn(bodyCls, 'disabled:cursor-default')} aria-label={`${label} ${value}건 상세 보기`}>{body}</button>
+      ) : (
+        <Link href={href} className={bodyCls}>{body}</Link>
+      )}
       <div className="mt-auto flex flex-wrap gap-1.5 pt-1">
         {onDetail && (
-          <button type="button" onClick={onDetail} disabled={value === 0} className="rounded-md border bg-background px-2 py-1 text-[11px] font-semibold hover:bg-accent disabled:opacity-50">상세 보기</button>
+          <button type="button" onClick={onDetail} disabled={value === 0} className="inline-flex h-9 items-center rounded-md border bg-background px-2 text-[11px] font-semibold hover:bg-accent disabled:opacity-50 sm:h-7">상세 보기</button>
         )}
-        <Link href={href} className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-semibold text-primary hover:underline">{hrefLabel} <ArrowRight className="h-3 w-3" /></Link>
+        <Link href={href} className="inline-flex h-9 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-primary hover:underline sm:h-7">{hrefLabel} <ArrowRight className="h-3 w-3" /></Link>
       </div>
     </div>
   );
@@ -128,11 +142,11 @@ function Ring({ value, label, color = '#2AD1BF' }: { value: number; label: strin
   );
 }
 
-function Kpi({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+function Kpi({ label, value, sub, wide = false }: { label: string; value: string | number; sub?: string; /** (P31) 금액처럼 긴 값 — 폰에서 2칸 차지 + 글자 축소 */ wide?: boolean }) {
   return (
-    <div className="flex flex-col gap-0.5">
+    <div className={cn('flex flex-col gap-0.5', wide && 'col-span-2 md:col-span-1')}>
       <span className="text-xs text-midnight-foreground/70">{label}</span>
-      <span className="text-2xl font-extrabold leading-tight tabular-nums text-white sm:text-3xl">{value}</span>
+      <span className={cn('font-extrabold leading-tight tabular-nums text-white', wide ? 'text-xl sm:text-3xl' : 'text-2xl sm:text-3xl')}>{value}</span>
       {sub && <span className="text-[11px] text-midnight-foreground/70">{sub}</span>}
     </div>
   );
@@ -269,7 +283,8 @@ function MonthlyRounds({ months: all, period }: { months: TrendMonth[]; period: 
     <div className={cn('flex h-36 items-end gap-1', period === 'month' && 'mx-auto w-24')}>
       {months.map((d, i) => (
         <div key={d.month} className="group flex h-full flex-1 flex-col items-center justify-end gap-0.5" title={`${d.month} · 회차 ${d.rounds}건 · 신규 ${d.newCases} · 종결 ${d.closedCases}`}>
-          <span className={cn('text-[9px] font-semibold tabular-nums leading-none text-muted-foreground', d.rounds === 0 && 'invisible', i !== months.length - 1 && 'invisible group-hover:visible')}>{d.rounds}</span>
+          {/* (P31) 폰은 hover 가 없어 값 라벨을 항상 표시 (마지막 달은 진하게) */}
+          <span className={cn('text-[9px] font-semibold tabular-nums leading-none text-muted-foreground', d.rounds === 0 && 'invisible', i !== months.length - 1 && 'opacity-70')}>{d.rounds}</span>
           <div className="w-full rounded-t bg-sky-500 transition-opacity group-hover:opacity-80" style={{ height: `${Math.max(d.rounds > 0 ? 4 : 1, (d.rounds / max) * 100)}%` }} />
           <span className="text-[9px] leading-none text-muted-foreground">{Number(d.month.slice(5, 7))}월</span>
         </div>
@@ -317,6 +332,8 @@ const SHORTCUTS: { href: string; label: string; icon: LucideIcon; desc: string }
   { href: '/admin/settings/sms', label: '문자 발송', icon: Send, desc: '로그인 안내 · 독려 · 예약 발송' },
   { href: '/guide.html#tab-op', label: '이용안내', icon: BookOpen, desc: '운영사 업무 흐름 · 역할별 안내서' },
   { href: '/nextlab/settings', label: '운영 설정', icon: Settings, desc: '그룹 · 단가 · 매칭 규칙 · 권한' },
+  // (P31) 휴대폰 홈 화면 설치 안내
+  { href: '/nextlab/install', label: '휴대폰 설치', icon: Smartphone, desc: '홈 화면에 앱처럼 추가 · 현장에서 바로' },
 ];
 
 export function DashboardV2(p: DashboardV2Props) {
@@ -337,7 +354,7 @@ export function DashboardV2(p: DashboardV2Props) {
         <div className="flex items-center gap-2">
           <BellRing className="h-4 w-4 text-brand-coral" />
           <h2 className="text-base font-bold">지금 확인할 것</h2>
-          <span className="text-xs text-muted-foreground">카드의 [상세 보기]로 목록을 열고, 바로가기로 처리 화면으로 이동합니다.</span>
+          <span className="hidden text-xs text-muted-foreground sm:inline">카드를 누르면 목록이 열리고, 바로가기로 처리 화면으로 이동합니다.</span>
         </div>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <AlertCard icon={Users} label="멘토 배정 대기" value={p.assignQueue.length} sub="새로 등록됐거나 재배정이 필요한 멘티" tone="navy" href="/nextlab/roster?tab=mentee-match&filter=unassigned" hrefLabel="미배정만 보기" onDetail={() => setDetail('assign')} />
@@ -347,6 +364,7 @@ export function DashboardV2(p: DashboardV2Props) {
           <AlertCard icon={Building2} label="발주처 요청 미확인" value={p.operatorRequestsUnread} sub="발주처가 보낸 운영 요청 중 아직 읽지 않은 것" tone="amber" href="/nextlab/board?tab=requests" hrefLabel="요청함" />
           <AlertCard icon={MessageSquare} label="게시판 새 소식" value={boardTotal} sub={`문의 ${p.board.inquiries} · 게시글 ${p.board.posts} · 메시지 ${p.board.messages}`} tone="sky" href="/nextlab/board" hrefLabel="게시판" />
         </div>
+        {p.setup}
         {missed > 0 && (
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-dashed border-amber-400 bg-amber-50/50 px-4 py-2 text-xs dark:bg-amber-950/20">
             <span className="font-semibold text-amber-800 dark:text-amber-300">놓치기 쉬운 업무</span>
@@ -370,7 +388,7 @@ export function DashboardV2(p: DashboardV2Props) {
           <Ring value={pct(perf.roundsDone, perf.roundsPlanned)} label={`회차 이행률 (${perf.roundsDone}/${perf.roundsPlanned})`} color="#60A5FA" />
           <Ring value={Math.round(perf.closureRate * 100)} label={`종결률 (${perf.closed}/${perf.cases})`} color="#A78BFA" />
           <Kpi label="만족도 평균" value={m.evaluation.surveyAvg ?? '-'} sub={`응답 ${m.evaluation.surveyResponses}건 · 운영사 평가 ${m.evaluation.mentorReviewAvg ?? '-'}`} />
-          <Kpi label="확정 지급 대기" value={formatKRW(m.settlement.pendingNet)} sub={`예상(미확정) ${formatKRW(m.settlement.estimatedGross)}`} />
+          <Kpi wide label="확정 지급 대기" value={formatKRW(m.settlement.pendingNet)} sub={`예상(미확정) ${formatKRW(m.settlement.estimatedGross)}`} />
         </div>
       </section>
 
@@ -401,7 +419,7 @@ export function DashboardV2(p: DashboardV2Props) {
         <Panel title="정산 파이프라인" sub="예상(미확정 이행 회차) → 지급 대기 → 품의 → 정산 확인 → 지급 완료">
           <SettlementPipeline m={m} />
         </Panel>
-        <Panel title={period === 'month' ? '이번 달 이행 회차' : '월별 이행 회차 (최근 12개월)'} sub="막대에 마우스를 올리면 신규·종결도 함께 표시 · 기간은 이 차트와 요약 띠에만 적용">
+        <Panel title={period === 'month' ? '이번 달 이행 회차' : '월별 이행 회차 (최근 12개월)'} sub="막대를 누르면 신규·종결도 함께 표시 · 기간은 이 차트와 요약 띠에만 적용">
           <div className="flex items-center justify-between gap-2">
             <PeriodSegment value={period} onChange={setPeriod} />
           </div>
@@ -428,33 +446,16 @@ export function DashboardV2(p: DashboardV2Props) {
         </DialogContent>
       </Dialog>
       <Dialog open={detail === 'delay'} onOpenChange={(o) => { if (!o) setDetail(null); }}>
-        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+        <DialogContent className="max-w-4xl">
           <DialogHeader><DialogTitle>지연 케이스 {p.delays.length}건</DialogTitle><DialogDescription>배정 지연 · 재배정 지연 · 첫 회차 없음 · 장기 무진행 · 보완 지연. 멘토별로 독려 문자를 보낼 수 있습니다.</DialogDescription></DialogHeader>
           <DelayList items={p.delays} caseHrefBase="/nextlab/cases" canNudge lastNudges={p.lastNudges} />
         </DialogContent>
       </Dialog>
       <Dialog open={detail === 'inbox'} onOpenChange={(o) => { if (!o) setDetail(null); }}>
         <DialogContent className="max-w-3xl">
-          <DialogHeader><DialogTitle>처리 대기 요청 {p.inbox.length}건</DialogTitle><DialogDescription>추가 회차 · 멘토 변경 · 중도 종료 요청. 승인/반려는 게시판 요청함에서 처리합니다.</DialogDescription></DialogHeader>
-          {p.inbox.length === 0 ? <p className="text-sm text-muted-foreground">대기 중인 요청이 없습니다.</p> : (
-            <div className="max-h-[60vh] overflow-y-auto rounded-lg border">
-              <table className="w-full text-xs">
-                <thead className="sticky top-0 bg-muted/60"><tr className="text-left text-muted-foreground"><th className="px-2 py-1.5">종류</th><th className="px-2 py-1.5">멘티</th><th className="px-2 py-1.5">라운드</th><th className="px-2 py-1.5">요청자</th><th className="px-2 py-1.5">사유</th><th className="px-2 py-1.5">요청일</th></tr></thead>
-                <tbody>
-                  {p.inbox.map((it) => (
-                    <tr key={it.id} className="border-t align-top">
-                      <td className="px-2 py-1.5 whitespace-nowrap font-semibold">{KIND_LABELS[it.kind]}{it.extraRounds ? ` +${it.extraRounds}회` : ''}</td>
-                      <td className="px-2 py-1.5 whitespace-nowrap"><Link href={`/nextlab/cases/${it.caseId}`} className="text-primary hover:underline">{it.ownerName}</Link></td>
-                      <td className="px-2 py-1.5 whitespace-nowrap">{it.supportTypeName ?? '-'}</td>
-                      <td className="px-2 py-1.5 whitespace-nowrap">{it.requesterName}</td>
-                      <td className="px-2 py-1.5 max-w-[18rem] truncate" title={it.reason}>{it.reason}</td>
-                      <td className="px-2 py-1.5 whitespace-nowrap">{formatDate(it.createdAt)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <DialogHeader><DialogTitle>처리 대기 요청 {p.inbox.length}건</DialogTitle><DialogDescription>추가 회차 · 멘토 변경 · 중도 종료 요청. 추가 회차·중도 종료는 여기서 바로 승인/반려할 수 있고, 멘토 변경은 케이스 상세에서 처리합니다.</DialogDescription></DialogHeader>
+          {/* (P31) 6열 표 대신 요청함과 같은 InboxList — 폰에서도 사유 전문·승인/반려 인라인 */}
+          <InboxList items={p.inbox} />
           <Link href="/nextlab/board?tab=requests" className="text-sm font-semibold text-primary hover:underline">요청함으로 이동 →</Link>
         </DialogContent>
       </Dialog>

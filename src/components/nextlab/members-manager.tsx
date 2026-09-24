@@ -36,6 +36,9 @@ import { Badge } from '@/components/ui/badge';
 import { ViewAsStartButton } from '@/components/nextlab/view-as-start-button';
 import { MentorName } from '@/components/common/mentor-name';
 import { RoundDots } from '@/components/common/round-dots';
+import { ContactLinks } from '@/components/common/contact-links';
+import { useConfirm } from '@/components/common/confirm-dialog';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { MentorGroupControls, type MentorGroupInfo } from '@/components/nextlab/mentor-group-controls';
 import { RankBadge } from '@/components/nextlab/matching-lists';
 import { Search } from 'lucide-react';
@@ -89,6 +92,23 @@ const ALL_ROLES: UserRole[] = ['institution', 'nextlab', 'mentor', 'mentee'];
 
 /** 발급 가능한 역할 (멘티는 케이스 초대 플로우로만 생성) */
 const ISSUABLE_ROLES: UserRole[] = ['institution', 'nextlab', 'mentor'];
+
+/** (P31) 인라인 편집 입력 — 폰은 16px·40px 높이(iOS 확대 방지·탭 타깃), sm 이상은 기존 소형 */
+const EDIT_INPUT = 'h-10 text-base sm:h-8 sm:text-xs';
+const EDIT_SELECT = 'h-10 rounded-md border border-input bg-background px-2 text-base sm:h-8 sm:text-xs';
+
+/** (P31) md 미만(폰) 여부 — SSR 은 false, 마운트 후 matchMedia 로 판정. 편집 패널을 표 안(데스크톱)/다이얼로그(폰) 중 어디에 그릴지 결정 */
+function useIsMobile(): boolean {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 767px)');
+    const on = () => setMobile(mq.matches);
+    on();
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
+  return mobile;
+}
 
 function TempPasswordNotice({ email, tempPassword }: { email?: string; tempPassword?: string }) {
   if (!tempPassword) return null;
@@ -315,40 +335,40 @@ function MemberDetailsForm({ member }: { member: MemberItem }) {
       <div className="grid gap-3 sm:grid-cols-3">
         <div className="flex flex-col gap-1">
           <Label className="text-xs" htmlFor={`ed-name-${member.id}`}>이름</Label>
-          <Input id={`ed-name-${member.id}`} name="name" defaultValue={member.name} className="h-8 text-xs" required />
+          <Input id={`ed-name-${member.id}`} name="name" defaultValue={member.name} className={EDIT_INPUT} required />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs" htmlFor={`ed-phone-${member.id}`}>휴대폰</Label>
-          <Input id={`ed-phone-${member.id}`} name="phone" type="tel" inputMode="tel" defaultValue={member.phone ?? ''} className="h-8 text-xs" placeholder="010-0000-0000" />
+          <Input id={`ed-phone-${member.id}`} name="phone" type="tel" inputMode="tel" defaultValue={member.phone ?? ''} className={EDIT_INPUT} placeholder="010-0000-0000" />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs" htmlFor={`ed-email-${member.id}`}>이메일 (로그인 아이디)</Label>
-          <Input id={`ed-email-${member.id}`} name="email" type="email" defaultValue={member.email ?? ''} className="h-8 text-xs" />
+          <Input id={`ed-email-${member.id}`} name="email" type="email" defaultValue={member.email ?? ''} className={EDIT_INPUT} />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs" htmlFor={`ed-org-${member.id}`}>소속</Label>
-          <Input id={`ed-org-${member.id}`} name="organization" defaultValue={member.organization ?? ''} className="h-8 text-xs" placeholder="회사·기관·부서" />
+          <Input id={`ed-org-${member.id}`} name="organization" defaultValue={member.organization ?? ''} className={EDIT_INPUT} placeholder="회사·기관·부서" />
         </div>
         <div className="flex flex-col gap-1">
           <Label className="text-xs" htmlFor={`ed-pos-${member.id}`}>직위{staff ? ' *' : ''}</Label>
-          <Input id={`ed-pos-${member.id}`} name="position" defaultValue={member.position ?? ''} className="h-8 text-xs" placeholder="예: 팀장" />
+          <Input id={`ed-pos-${member.id}`} name="position" defaultValue={member.position ?? ''} className={EDIT_INPUT} placeholder="예: 팀장" />
         </div>
         {member.role === 'nextlab' && (
           <div className="flex flex-col gap-1">
             <Label className="text-xs" htmlFor={`ed-duty-${member.id}`}>담당역할</Label>
-            <Input id={`ed-duty-${member.id}`} name="duty" defaultValue={member.duty ?? ''} className="h-8 text-xs" placeholder="이 행사에서의 담당" />
+            <Input id={`ed-duty-${member.id}`} name="duty" defaultValue={member.duty ?? ''} className={EDIT_INPUT} placeholder="이 행사에서의 담당" />
           </div>
         )}
         {member.role !== 'mentee' && (
           <div className="flex flex-col gap-1">
             <Label className="text-xs" htmlFor={`ed-note-${member.id}`}>비고</Label>
-            <Input id={`ed-note-${member.id}`} name="note" defaultValue={member.note ?? ''} className="h-8 text-xs" />
+            <Input id={`ed-note-${member.id}`} name="note" defaultValue={member.note ?? ''} className={EDIT_INPUT} />
           </div>
         )}
         {member.role === 'nextlab' && (
           <div className="flex flex-col gap-1">
             <Label className="text-xs" htmlFor={`ed-grade-${member.id}`}>운영사 등급</Label>
-            <select id={`ed-grade-${member.id}`} name="grade" defaultValue={(member.grade as StaffGrade | null) ?? 'pl'} className="h-8 rounded-md border border-input bg-background px-2 text-xs">
+            <select id={`ed-grade-${member.id}`} name="grade" defaultValue={(member.grade as StaffGrade | null) ?? 'pl'} className={EDIT_SELECT}>
               {STAFF_GRADES.map((g) => (
                 <option key={g} value={g}>{GRADE_LABELS[g]}</option>
               ))}
@@ -425,7 +445,7 @@ function RoleSelectForm({ member }: { member: MemberItem }) {
   return (
     <form action={action} className="flex items-center gap-1">
       <input type="hidden" name="userId" value={member.id} />
-      <select name="role" defaultValue={member.role} className="h-8 rounded-md border border-input bg-background px-2 text-xs" title="이 행사에서의 역할">
+      <select name="role" defaultValue={member.role} className={EDIT_SELECT} title="이 행사에서의 역할">
         {ALL_ROLES.map((r) => (
           <option key={r} value={r}>{ROLE_LABELS[r]}</option>
         ))}
@@ -450,7 +470,7 @@ function RemoveFromProgramForm({ member }: { member: MemberItem }) {
 function RowSubmit({ children, variant }: { children: string; variant?: 'outline' | 'destructive' }) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" size="sm" variant={variant ?? 'outline'} disabled={pending}>
+    <Button type="submit" size="sm" variant={variant ?? 'outline'} disabled={pending} className="h-10 sm:h-9">
       {pending ? '처리 중…' : children}
     </Button>
   );
@@ -537,7 +557,7 @@ function RosterValueCell({ columnId, userId, value }: { columnId: string; userId
       <Input
         name="value"
         defaultValue={value}
-        className="h-7 w-24 text-xs"
+        className="h-10 w-28 text-base sm:h-7 sm:w-24 sm:text-xs"
         placeholder="-"
         onChange={() => setDirty(true)}
         onBlur={() => {
@@ -557,17 +577,33 @@ function RosterColumnManager({ target, columns }: { target: UserRole; columns: R
   const [addState, addAction] = useFormState<MemberActionState, FormData>(addRosterColumnAction, undefined);
   const [delState, delAction] = useFormState<MemberActionState, FormData>(deleteRosterColumnAction, undefined);
   const formRef = useRef<HTMLFormElement>(null);
+  // (P31) window.confirm → 공용 ConfirmDialog. 확인을 통과한 컬럼 id 를 기억했다가 requestSubmit 으로 실제 제출
+  const { confirm: ask, dialog: confirmDialog } = useConfirm();
+  const confirmed = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (addState?.ok) formRef.current?.reset();
   }, [addState]);
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-md border border-dashed bg-muted/30 px-3 py-2">
+      {confirmDialog}
       <span className="text-xs font-medium text-muted-foreground">임의 컬럼(카테고리 마크)</span>
       {columns.map((c) => (
         <form
           key={c.id}
           action={delAction}
-          onSubmit={(e) => { if (!confirm(`'${c.name}' 컬럼을 삭제할까요? 입력된 마크도 함께 삭제됩니다.`)) e.preventDefault(); }}
+          onSubmit={(e) => {
+            if (confirmed.current.has(c.id)) {
+              confirmed.current.delete(c.id);
+              return;
+            }
+            e.preventDefault();
+            const form = e.currentTarget;
+            void ask({ title: '임의 컬럼 삭제', description: `'${c.name}' 컬럼을 삭제할까요?`, impact: ['회원별로 입력된 마크도 함께 삭제됩니다.'], confirmLabel: '삭제', severity: 'danger' }).then((ok) => {
+              if (!ok) return;
+              confirmed.current.add(c.id);
+              form.requestSubmit();
+            });
+          }}
           className="inline-flex"
         >
           <input type="hidden" name="columnId" value={c.id} />
@@ -579,7 +615,7 @@ function RosterColumnManager({ target, columns }: { target: UserRole; columns: R
       ))}
       <form ref={formRef} action={addAction} className="inline-flex items-center gap-1">
         <input type="hidden" name="target" value={target} />
-        <Input name="name" className="h-7 w-32 text-xs" placeholder="새 컬럼 이름" required maxLength={30} />
+        <Input name="name" className="h-10 w-36 text-base sm:h-7 sm:w-32 sm:text-xs" placeholder="새 컬럼 이름" required maxLength={30} />
         <RowSubmit>추가</RowSubmit>
       </form>
       {(addState?.ok === false || delState?.ok === false) && (
@@ -656,6 +692,7 @@ function SurveyControl({ item }: { item: MenteeProgressItem }) {
   const [pending, startTransition] = useTransition();
   const { toast } = useToast();
   const router = useRouter();
+  const { confirm: ask, dialog: confirmDialog } = useConfirm();
   if (item.surveyStatus === 'done') {
     return <Badge className="w-fit bg-status-approved/15 text-[10px] text-status-approved">만족도 완료</Badge>;
   }
@@ -664,21 +701,27 @@ function SurveyControl({ item }: { item: MenteeProgressItem }) {
   }
   if (item.withdrawn) return null;
   return (
-    <button
-      type="button"
-      disabled={pending}
-      onClick={() => {
-        if (!confirm('이 멘티에게 만족도 조사를 지금 열까요? 멘티 화면에 바로 노출됩니다.')) return;
-        startTransition(async () => {
-          const r = await openCaseSurveyAction(item.caseId);
-          toast(r.ok ? { title: '만족도 조사를 열었습니다.' } : { title: r.error, variant: 'destructive' });
-          if (r.ok) router.refresh();
-        });
-      }}
-      className="w-fit rounded border border-primary/50 px-1.5 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/10 disabled:opacity-50"
-    >
-      {pending ? '여는 중…' : '만족도 생성'}
-    </button>
+    <>
+      {confirmDialog}
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => {
+          // (P31) window.confirm → 공용 ConfirmDialog
+          void ask({ title: '만족도 조사 열기', description: '이 멘티에게 만족도 조사를 지금 열까요?', impact: ['멘티 화면에 바로 노출됩니다.', '개시 1주일 미응답 시 자동 리마인드 문자가 발송됩니다.'], confirmLabel: '열기' }).then((ok) => {
+            if (!ok) return;
+            startTransition(async () => {
+              const r = await openCaseSurveyAction(item.caseId);
+              toast(r.ok ? { title: '만족도 조사를 열었습니다.' } : { title: r.error, variant: 'destructive' });
+              if (r.ok) router.refresh();
+            });
+          });
+        }}
+        className="w-fit rounded border border-primary/50 px-1.5 py-1 text-[10px] font-semibold text-primary hover:bg-primary/10 disabled:opacity-50 sm:py-0.5"
+      >
+        {pending ? '여는 중…' : '만족도 생성'}
+      </button>
+    </>
   );
 }
 
@@ -698,6 +741,7 @@ export function MembersManager({
   progress?: Record<string, MenteeProgressItem[]>;
 }) {
   const tab = mode;
+  const isMobile = useIsMobile();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -713,9 +757,13 @@ export function MembersManager({
     window.setTimeout(() => document.getElementById(`member-row-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // (P31) 검색: 이름 · 이메일(대소문자 무시) · 휴대폰(숫자만 비교 — 하이픈 유무 무관)
+  const q = query.trim();
+  const qLower = q.toLowerCase();
+  const qDigits = q.replace(/\D/g, '');
   const filtered = members
     .filter((m) => MODE_MATCH[mode](m.role))
-    .filter((m) => !query.trim() || m.name.includes(query.trim()) || (m.phone ?? '').includes(query.trim()))
+    .filter((m) => !q || m.name.includes(q) || (m.email ?? '').toLowerCase().includes(qLower) || (qDigits.length > 0 && (m.phone ?? '').replace(/\D/g, '').includes(qDigits)))
     .filter((m) => !onlyUnsent || !m.guideSentAt)
     .sort((a, b) => {
       const byName = a.name.localeCompare(b.name, 'ko');
@@ -751,6 +799,8 @@ export function MembersManager({
   const showProgress = mode === 'mentee' && !!progress;
   const showRank = mode === 'mentee';
   const colSpan = 6 + (showRank ? 1 : 0) + (showProgress ? 2 : 0) + tabColumns.length + 1;
+  const kind = mode;
+  const editingMember = editing ? members.find((m) => m.id === editing) ?? null : null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -764,31 +814,37 @@ export function MembersManager({
 
         {(tab === 'mentor' || tab === 'mentee') && (
           selectedMembers.length > 0 ? (
-            <LoginGuideBar selected={selectedMembers} onDone={() => setSelected(new Set())} />
+            <>
+              <LoginGuideBar selected={selectedMembers} onDone={() => setSelected(new Set())} />
+              {/* (P31) 일괄 작업 마운트 지점 — 다른 작업자가 실제 컴포넌트로 교체 */}
+              <RosterBulkActionsSlot selectedIds={Array.from(selected)} kind={kind} />
+            </>
           ) : (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              <span>
-                <b className="text-foreground">로그인 안내 문자</b> — 왼쪽 체크박스로 회원을 선택하면 아이디·임시 비밀번호 안내 문자를 일괄 발송할 수 있습니다.
-              </span>
-              <label className="inline-flex cursor-pointer items-center gap-1.5">
-                <input type="checkbox" checked={onlyUnsent} onChange={(e) => setOnlyUnsent(e.target.checked)} className="h-3.5 w-3.5" />
-                안내 미발송 회원만 보기
+              {/* (P31) 안내 문구는 접어 두고(폰 화면 절약) 제목만 노출 */}
+              <details className="min-w-0 flex-1">
+                <summary className="cursor-pointer font-semibold text-foreground">로그인 안내 문자 — 체크한 회원에게 일괄 발송</summary>
+                <p className="mt-1">왼쪽 체크박스로 회원을 선택하면 아이디·임시 비밀번호 안내 문자를 일괄 발송할 수 있습니다.</p>
+              </details>
+              <label className="inline-flex cursor-pointer items-center gap-1.5 py-1">
+                <input type="checkbox" checked={onlyUnsent} onChange={(e) => setOnlyUnsent(e.target.checked)} className="h-5 w-5 accent-primary sm:h-3.5 sm:w-3.5" />
+                안내 미발송만
               </label>
             </div>
           )
         )}
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="relative">
+          <div className="relative w-full sm:w-auto">
             <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="이름·휴대폰 검색" className="h-9 w-52 pl-8" />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="이름·이메일·휴대폰 검색" className="h-10 w-full pl-8 sm:h-9 sm:w-52" />
           </div>
           <span className="text-xs text-muted-foreground">{filtered.length}명</span>
           {mode === 'mentee' ? (
             <div className="ml-auto flex items-center gap-1 text-xs">
               <span className="text-muted-foreground">정렬</span>
               {([['rank', '멘티 순위'], ['name', '이름(가나다)'], ['progress', '진행현황']] as const).map(([k, label]) => (
-                <button key={k} type="button" onClick={() => setSortKey(k)} className={cn('rounded-full border px-2.5 py-1 font-semibold', sortKey === k ? 'border-primary bg-primary text-primary-foreground' : 'bg-background hover:bg-accent')}>{label}</button>
+                <button key={k} type="button" onClick={() => setSortKey(k)} className={cn('rounded-full border px-2.5 py-1.5 font-semibold sm:py-1', sortKey === k ? 'border-primary bg-primary text-primary-foreground' : 'bg-background hover:bg-accent')}>{label}</button>
               ))}
             </div>
           ) : (
@@ -801,20 +857,21 @@ export function MembersManager({
             <TableHeader>
               <TableRow>
                 <TableHead className="w-8">
-                  <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="전체 선택" />
+                  <input type="checkbox" checked={allChecked} onChange={toggleAll} aria-label="전체 선택" className="h-5 w-5 accent-primary sm:h-4 sm:w-4" />
                 </TableHead>
                 {showRank && <TableHead className="whitespace-nowrap">순위</TableHead>}
                 <TableHead>이름</TableHead>
                 <TableHead className="whitespace-nowrap">이메일/핸드폰</TableHead>
                 <TableHead className="hidden md:table-cell">소속</TableHead>
-                <TableHead>역할</TableHead>
-                <TableHead>상태</TableHead>
-                {showProgress && <TableHead className="whitespace-nowrap">라운드 정보</TableHead>}
+                {/* (P31) 폰에서는 역할·상태·라운드 열을 숨기고 이름 아래 요약·버튼으로 대신한다 */}
+                <TableHead className="hidden md:table-cell">역할</TableHead>
+                <TableHead className="hidden md:table-cell">상태</TableHead>
+                {showProgress && <TableHead className="hidden whitespace-nowrap md:table-cell">라운드 정보</TableHead>}
                 {showProgress && <TableHead className="whitespace-nowrap">진행현황</TableHead>}
                 {tabColumns.map((c) => (
                   <TableHead key={c.id} className="whitespace-nowrap text-xs">{c.name}</TableHead>
                 ))}
-                <TableHead className="text-right">관리</TableHead>
+                <TableHead className="hidden text-right md:table-cell">관리</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -834,20 +891,43 @@ export function MembersManager({
                           checked={selected.has(m.id)}
                           onChange={() => toggleOne(m.id)}
                           aria-label={`${m.name} 선택`}
+                          className="h-5 w-5 accent-primary sm:h-4 sm:w-4"
                         />
                       </TableCell>
                       {showRank && <TableCell><RankBadge rank={m.rank ?? null} /></TableCell>}
                       <TableCell className="whitespace-nowrap font-medium">
                         {m.role === 'mentor' ? <MentorName id={m.id} name={m.name} count={m.assignedCount} /> : m.name}
+                        {/* (P31) 폰: 숨긴 역할·상태 열 요약 + 관리 버튼을 이름 아래에 */}
+                        <div className="mt-1 flex flex-wrap items-center gap-1 md:hidden">
+                          <Badge variant="secondary" className="text-[10px]">{ROLE_LABELS[m.role]}{m.role === 'nextlab' ? ` · ${GRADE_LABELS[(m.grade as StaffGrade | null) ?? 'pl']}` : ''}</Badge>
+                          {!m.is_active && <Badge variant="outline" className="text-[10px]">비활성</Badge>}
+                          {m.must_change_password && <Badge variant="outline" className="text-[10px]">비번변경대기</Badge>}
+                          {!m.memberActive && <span className="text-[10px] text-muted-foreground">소속 해제됨</span>}
+                        </div>
+                        <div className="mt-1.5 flex gap-1.5 md:hidden">
+                          {(m.role === 'mentor' || m.role === 'mentee') && m.is_active ? (
+                            <ViewAsStartButton targetUserId={m.id} targetName={m.name} size="sm" variant="outline" label="화면 보기" />
+                          ) : (
+                            <Button asChild size="sm" variant="outline" className="h-9">
+                              <Link href={`/nextlab/view/${m.id}`}>화면 보기</Link>
+                            </Button>
+                          )}
+                          <Button size="sm" variant={editing === m.id ? 'default' : 'outline'} className="h-9" onClick={() => setEditing((v) => (v === m.id ? null : m.id))}>
+                            {editing === m.id ? '닫기' : '정보 수정'}
+                          </Button>
+                        </div>
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                         <div>{m.email ?? '-'}</div>
-                        <div>{m.phone ?? '-'}</div>
+                        <div className="flex items-center gap-1">
+                          <span>{m.phone ?? '-'}</span>
+                          <ContactLinks phone={m.phone} name={m.name} size="xs" />
+                        </div>
                       </TableCell>
                       <TableCell className="hidden text-sm text-muted-foreground md:table-cell">
                         {[m.organization, m.position].filter(Boolean).join(' · ') || '-'}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden md:table-cell">
                         <div className="flex flex-col items-start gap-1">
                           <Badge variant="secondary" className="whitespace-nowrap">
                             {ROLE_LABELS[m.role]}
@@ -861,7 +941,7 @@ export function MembersManager({
                           {!m.memberActive && <span className="text-[10px] text-muted-foreground">소속 해제됨</span>}
                         </div>
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="hidden md:table-cell">
                         <div className="flex flex-col items-start gap-1">
                           <div className="flex flex-wrap gap-1">
                             <Badge variant={m.is_active ? 'default' : 'outline'}>
@@ -879,7 +959,7 @@ export function MembersManager({
                         </div>
                       </TableCell>
                       {showProgress && (
-                        <TableCell className="whitespace-nowrap text-xs">
+                        <TableCell className="hidden whitespace-nowrap text-xs md:table-cell">
                           {(progress?.[m.id] ?? []).length === 0 ? (
                             <span className="text-muted-foreground">케이스 없음</span>
                           ) : (
@@ -917,7 +997,7 @@ export function MembersManager({
                           <RosterValueCell columnId={c.id} userId={m.id} value={rosterValues[`${c.id}:${m.id}`] ?? ''} />
                         </TableCell>
                       ))}
-                      <TableCell>
+                      <TableCell className="hidden md:table-cell">
                         <div className="flex flex-wrap items-start justify-end gap-2">
                           {/* 멘토·멘티는 '화면 보기' 가 곧 대행 시작 — 들어가서 바로 업무를 처리할 수 있어야 한다.
                               (열람만 하려면 대행 배너의 [대행 종료] 를 누르면 된다) */}
@@ -944,20 +1024,10 @@ export function MembersManager({
                         </div>
                       </TableCell>
                     </TableRow>
-                    {editing === m.id && (
+                    {editing === m.id && !isMobile && (
                       <TableRow className="bg-muted/30 hover:bg-muted/30">
                         <TableCell colSpan={colSpan} className="p-4">
-                          <div className="flex flex-col gap-4">
-                            <MemberDetailsForm member={m} />
-                            {(m.role === 'nextlab' || m.role === 'institution') && <StaffGroupChips member={m} />}
-                            <div className="flex flex-wrap items-start gap-2 border-t pt-3">
-                              <RoleSelectForm member={m} />
-                              {m.memberActive && <RemoveFromProgramForm member={m} />}
-                              <ToggleActiveForm member={m} />
-                              <ResetPasswordForm member={m} />
-                              <DeleteMemberForm member={m} />
-                            </div>
-                          </div>
+                          <MemberEditPanel member={m} />
                         </TableCell>
                       </TableRow>
                     )}
@@ -968,6 +1038,44 @@ export function MembersManager({
           </Table>
         </div>
       </div>
+      {/* (P31) 폰: 편집 패널은 표 안 colSpan 행 대신 하단 시트(Dialog)로 — 가로 스크롤 표 안에서는 폼이 잘린다 */}
+      {isMobile && (
+        <Dialog open={!!editingMember} onOpenChange={(o) => { if (!o) setEditing(null); }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>{editingMember?.name} · 정보 수정</DialogTitle>
+              <DialogDescription>{editingMember ? ROLE_LABELS[editingMember.role] : ''} — 저장하면 명단에 바로 반영됩니다.</DialogDescription>
+            </DialogHeader>
+            {editingMember && <MemberEditPanel member={editingMember} />}
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
+}
+
+/** 회원 편집 패널 본문 — 데스크톱은 표 안 행, 폰은 다이얼로그에서 같은 내용을 쓴다 (P31) */
+function MemberEditPanel({ member: m }: { member: MemberItem }) {
+  return (
+    <div className="flex flex-col gap-4">
+      <MemberDetailsForm member={m} />
+      {(m.role === 'nextlab' || m.role === 'institution') && <StaffGroupChips member={m} />}
+      <div className="flex flex-wrap items-start gap-2 border-t pt-3">
+        <RoleSelectForm member={m} />
+        {m.memberActive && <RemoveFromProgramForm member={m} />}
+        <ToggleActiveForm member={m} />
+        <ResetPasswordForm member={m} />
+        <DeleteMemberForm member={m} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * (P31) 명단 일괄 작업 마운트 지점 — 체크한 회원 id 와 명단 종류(mentee/mentor/staff)를 받는다.
+ * 자리만 잡아 둔 플레이스홀더이며, 다른 작업자가 실제 컴포넌트로 교체한다.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function RosterBulkActionsSlot(_: { selectedIds: string[]; kind: string }) {
+  return null;
 }

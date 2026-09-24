@@ -79,7 +79,7 @@ export function GroupsManager({
         <Field label="종료일" name="ends_on" type="date" defaultValue={g?.ends_on ?? ''} />
         <div className="flex flex-col gap-1">
           <Label>승계 원천 그룹</Label>
-          <select name="predecessor_support_type_id" defaultValue={g?.predecessor_support_type_id ?? ''} className="h-9 rounded-md border bg-background px-2 text-sm">
+          <select name="predecessor_support_type_id" defaultValue={g?.predecessor_support_type_id ?? ''} className="h-10 rounded-md border bg-background px-2 text-base sm:h-9 sm:text-sm">
             <option value="">없음</option>
             {groups.filter((x) => x.id !== g?.id).map((x) => (
               <option key={x.id} value={x.id}>
@@ -90,7 +90,7 @@ export function GroupsManager({
         </div>
         <div className="flex flex-col gap-1">
           <Label>상태</Label>
-          <select name="status" defaultValue={g?.status ?? 'active'} className="h-9 rounded-md border bg-background px-2 text-sm">
+          <select name="status" defaultValue={g?.status ?? 'active'} className="h-10 rounded-md border bg-background px-2 text-base sm:h-9 sm:text-sm">
             <option value="active">진행 중</option>
             <option value="ended">종료</option>
           </select>
@@ -98,7 +98,7 @@ export function GroupsManager({
         <Field label="정렬" name="sort_order" type="number" defaultValue={String(g?.sort_order ?? 0)} />
         <div className="flex flex-col gap-1">
           <Label>그룹 원천징수 방식 (일괄)</Label>
-          <select name="withholding_method" defaultValue={g?.withholding_method ?? ''} className="h-9 rounded-md border bg-background px-2 text-sm">
+          <select name="withholding_method" defaultValue={g?.withholding_method ?? ''} className="h-10 rounded-md border bg-background px-2 text-base sm:h-9 sm:text-sm">
             <option value="">행사 기본 따름</option>
             <option value="other_income">기타소득</option>
             <option value="business_income">사업소득</option>
@@ -127,7 +127,7 @@ export function GroupsManager({
         {!g && groups.length > 0 && (
           <div className="flex flex-col gap-1 sm:col-span-2">
             <Label>설정 복사해 올 그룹 (선택)</Label>
-            <select name="copy_from" defaultValue="" className="h-9 rounded-md border bg-background px-2 text-sm">
+            <select name="copy_from" defaultValue="" className="h-10 rounded-md border bg-background px-2 text-base sm:h-9 sm:text-sm">
               <option value="">복사 안 함</option>
               {groups.map((x) => (
                 <option key={x.id} value={x.id}>
@@ -205,7 +205,7 @@ export function GroupsManager({
               <input type="hidden" name="support_type_id" value={g.id} />
               <Input name="doc_key" placeholder="키 (예: biz_plan)" required className="sm:col-span-1" />
               <Input name="doc_name" placeholder="서류 이름 (예: 사업계획서)" required className="sm:col-span-2" />
-              <select name="for_role" defaultValue="mentee" className="h-9 rounded-md border bg-background px-2 text-sm">
+              <select name="for_role" defaultValue="mentee" className="h-10 rounded-md border bg-background px-2 text-base sm:h-9 sm:text-sm">
                 <option value="mentee">멘티 제출</option>
                 <option value="mentor">멘토 제출</option>
                 <option value="staff">운영사 제출</option>

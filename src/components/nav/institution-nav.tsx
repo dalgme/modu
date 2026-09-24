@@ -22,8 +22,9 @@ export function InstitutionNav() {
   const pathname = usePathname();
   useScrollActiveTab(pathname);
   return (
-    <nav className="sticky top-14 z-30 border-b bg-background/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/75 print:hidden">
-      <div className="mx-auto flex max-w-6xl no-scrollbar gap-1.5 overflow-x-auto px-4 py-2">
+    // (P31) 운영사 내비와 동일 — 폰에서는 sticky 해제 + 오른쪽 페이드
+    <nav className="relative z-30 border-b bg-background/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/75 after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-10 after:bg-gradient-to-l after:from-background after:to-transparent md:sticky md:top-14 md:after:hidden print:hidden">
+      <div className="mx-auto flex max-w-6xl no-scrollbar gap-1.5 overflow-x-auto px-4 py-2 pr-8 md:pr-4">
         {TABS.map((t) => {
           const active = pathname === t.href || pathname.startsWith(`${t.href}/`);
           const tone = 'tone' in t ? t.tone : undefined;

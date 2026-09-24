@@ -79,15 +79,15 @@ export default async function Page() {
             <b>{ctx.program.name}</b> · {ctx.group ? ctx.group.name : '행사 전체'} — 배정 · 회차 · 검수 · 정산의 현재 상태와 오늘 처리할 일.
           </p>
         </div>
-        <div className="flex gap-2">
+        {/* (P31) 폰에서는 하단 탭·바로가기가 대신하므로 헤더 버튼 숨김 */}
+        <div className="hidden gap-2 sm:flex">
           <Link href="/nextlab/roster" className="rounded-lg border bg-background px-3 py-2 text-sm font-semibold hover:bg-accent">회원 명단</Link>
           <Link href="/nextlab/reports" className="rounded-lg border bg-background px-3 py-2 text-sm font-semibold hover:bg-accent">리포트</Link>
         </div>
       </div>
 
-      {showSetup && <SetupChecklist s={setup} />}
-
       <DashboardV2
+        setup={showSetup ? <SetupChecklist s={setup} /> : null}
         scopeLabel={ctx.group ? ctx.group.name : '행사 전체'}
         metrics={metrics}
         budget={budget}

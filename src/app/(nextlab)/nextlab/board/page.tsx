@@ -66,11 +66,22 @@ const KIND_LABEL: Record<string, string> = {
 };
 
 /** 게시판 통합 탭 (P20) — 멘티 문의 · 멘토·운영 게시판 · 요청함 · 멘토·멘티 메시지 · 멘토 FAQ */
-export default async function Page({ searchParams }: { searchParams: { tab?: string; from?: string; sub?: string; open?: string } }) {
+export default async function Page({ searchParams }: { searchParams: { tab?: string; from?: string; sub?: string; open?: string; limit?: string } }) {
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
-  const tab = (TABS.find((t) => t.key === searchParams.tab)?.key ?? 'all') as TabKey;
+  // (P31) 기본 탭 = 처리 대기 요청 (하단 탭 [요청] 과 같은 진입점)
+  const tab = (TABS.find((t) => t.key === searchParams.tab)?.key ?? 'requests') as TabKey;
   const from = SENDER_FILTERS.find((f) => f.key === searchParams.from)?.key ?? '';
+  // (P31) 긴 목록은 50건씩 [더 보기] — 폰에서 수백 행을 한 번에 그리지 않는다
+  const PAGE = 50;
+  const limit = Math.max(PAGE, Math.min(2000, Number(searchParams.limit) || PAGE));
+  const moreHref = (base: string) => `${base}&limit=${limit + PAGE}`;
+  const MoreLink = ({ total, base }: { total: number; base: string }) =>
+    total > limit ? (
+      <Link href={moreHref(base)} className="mx-auto inline-flex h-11 items-center rounded-lg border bg-background px-4 text-sm font-semibold hover:bg-accent">
+        더 보기 ({Math.min(limit, total)}/{total})
+      </Link>
+    ) : null;
   const canReview = hasCapability(ctx, 'review');
   // 탭 배지: 미답변 문의 · 처리 대기 요청(요청함 대기 + 발주처 요청 미확인)
   const [openInquiryCount, unreadOpReqCount, pendingInbox] = await Promise.all([
@@ -98,7 +109,8 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         senderName: q.menteeName ?? '멘티',
         at: q.created_at,
         checked: q.status !== 'open',
-        href: '/nextlab/board?tab=inquiries',
+        // (P31) 답변된 문의는 기본(미답변만) 필터에서 빠지므로 open=0 으로 열고 앵커로 이동
+        href: `/nextlab/board?tab=inquiries${q.status !== 'open' ? '&open=0' : ''}#inq-${q.id}`,
       })),
       ...posts.map((p) => ({
         id: `post-${p.id}`,
@@ -107,7 +119,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         senderName: p.authorName ?? '-',
         at: p.created_at,
         checked: p.replies.length > 0,
-        href: '/nextlab/board?tab=qna',
+        href: `/nextlab/board?tab=qna#post-${p.id}`,
       })),
       ...inbox.map((r) => ({
         id: `req-${r.kind}-${r.id}`,
@@ -116,7 +128,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         senderName: r.requesterName,
         at: r.createdAt,
         checked: r.status !== 'pending',
-        href: '/nextlab/board?tab=requests&sub=all',
+        href: `/nextlab/board?tab=requests&sub=all#req-${r.id}`,
       })),
       ...opReqs.map((r) => ({
         id: `opr-${r.id}`,
@@ -125,7 +137,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         senderName: r.createdByName ?? '-',
         at: r.created_at,
         checked: !!r.done_at || !!r.read_at,
-        href: '/nextlab/board?tab=requests',
+        href: `/nextlab/board?tab=requests${r.done_at ? '&sub=all' : ''}#opr-${r.id}`,
       })),
       ...messages.map((m) => ({
         id: `msg-${m.id}`,
@@ -134,7 +146,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         senderName: m.senderName,
         at: m.createdAt,
         checked: m.read,
-        href: '/nextlab/board?tab=messages',
+        href: `/nextlab/board?tab=messages#msg-${m.id}`,
       })),
     ]
       .filter((r) => !from || r.senderRole === from)
@@ -168,7 +180,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
               {rows.length === 0 && (
                 <tr><td colSpan={4} className="px-3 py-8 text-center text-muted-foreground">등록된 글이 없습니다.</td></tr>
               )}
-              {rows.map((r) => (
+              {rows.slice(0, limit).map((r) => (
                 <tr key={r.id} className={cn('border-b last:border-0', !r.checked && 'bg-amber-50/40 dark:bg-amber-950/20')}>
                   <td className="px-3 py-2">
                     <Link href={r.href} className="font-medium hover:underline">{r.title}</Link>
@@ -190,12 +202,14 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             </tbody>
           </table>
         </div>
+        <MoreLink total={rows.length} base={`/nextlab/board?tab=all${from ? `&from=${from}` : ''}`} />
       </div>
     );
   }
 
   if (tab === 'inquiries') {
-    const onlyOpen = searchParams.open === '1';
+    // (P31) 기본 = 미답변만 (open=0 이면 전체)
+    const onlyOpen = searchParams.open !== '0';
     const inquiries = await listInquiries(ctx.programId, { onlyOpen });
     const openCount = onlyOpen ? inquiries.length : inquiries.filter((q) => q.status === 'open').length;
     body = (
@@ -203,17 +217,18 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-muted-foreground">멘티 문의를 확인하고 답변합니다. 미답변 <span className="font-semibold text-status-progress">{openCount}건</span></p>
           <div className="flex gap-1">
-            <Link href="/nextlab/board?tab=inquiries" className={`rounded-full px-3 py-1 text-xs font-semibold ${!onlyOpen ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>전체</Link>
-            <Link href="/nextlab/board?tab=inquiries&open=1" className={`rounded-full px-3 py-1 text-xs font-semibold ${onlyOpen ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>미답변만</Link>
+            <Link href="/nextlab/board?tab=inquiries&open=0" className={`rounded-full px-3 py-1.5 text-xs font-semibold sm:py-1 ${!onlyOpen ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>전체</Link>
+            <Link href="/nextlab/board?tab=inquiries" className={`rounded-full px-3 py-1.5 text-xs font-semibold sm:py-1 ${onlyOpen ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>미답변만</Link>
           </div>
         </div>
         {inquiries.length === 0 ? (
           <div className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">{onlyOpen ? '미답변 문의가 없습니다.' : '접수된 문의가 없습니다.'}</div>
         ) : (
-          inquiries.map((q) => {
+          inquiries.slice(0, limit).map((q) => {
             const answered = q.status !== 'open';
             return (
-              <Card key={q.id} className={cn(!answered && 'border-status-progress/40')}>
+              /* (P31) 전체 글 탭의 #inq-<id> 앵커 대상 · 고정 헤더에 가리지 않게 scroll-mt */
+              <Card key={q.id} id={`inq-${q.id}`} className={cn('scroll-mt-40', !answered && 'border-status-progress/40')}>
                 <CardHeader className="pb-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <CardTitle className="text-base">
@@ -244,6 +259,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             );
           })
         )}
+        <MoreLink total={inquiries.length} base={`/nextlab/board?tab=inquiries${onlyOpen ? '' : '&open=0'}`} />
       </div>
     );
   }
@@ -270,8 +286,8 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-muted-foreground">멘토의 추가 회차·중도 종료 요청과 멘티의 멘토 변경 요청을 처리합니다. {ctx.group ? `(${ctx.group.name})` : ''}</p>
           <div className="flex gap-1">
-            <Link href="/nextlab/board?tab=requests" className={`rounded-full px-3 py-1 text-xs font-semibold ${!all ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>대기</Link>
-            <Link href="/nextlab/board?tab=requests&sub=all" className={`rounded-full px-3 py-1 text-xs font-semibold ${all ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>전체</Link>
+            <Link href="/nextlab/board?tab=requests" className={`rounded-full px-3 py-1.5 text-xs font-semibold sm:py-1 ${!all ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>대기</Link>
+            <Link href="/nextlab/board?tab=requests&sub=all" className={`rounded-full px-3 py-1.5 text-xs font-semibold sm:py-1 ${all ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>전체</Link>
           </div>
         </div>
         <InboxList items={items} />
@@ -307,8 +323,8 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
               {messages.length === 0 && (
                 <tr><td colSpan={5} className="px-3 py-8 text-center text-muted-foreground">주고받은 메시지가 없습니다.</td></tr>
               )}
-              {messages.map((m) => (
-                <tr key={m.id} className="border-b last:border-0">
+              {messages.slice(0, limit).map((m) => (
+                <tr key={m.id} id={`msg-${m.id}`} className="scroll-mt-40 border-b last:border-0">
                   <td className="px-3 py-2">
                     <Link href={`/nextlab/cases/${m.caseId}`} className="hover:underline">{m.ownerName}<span className="text-muted-foreground">/{m.businessName}</span></Link>
                   </td>
@@ -321,6 +337,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             </tbody>
           </table>
         </div>
+        <MoreLink total={messages.length} base="/nextlab/board?tab=messages" />
       </div>
     );
   }

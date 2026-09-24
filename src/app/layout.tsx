@@ -34,7 +34,8 @@ export const metadata: Metadata = {
     statusBarStyle: 'default',
     title: '멘토링',
   },
-  formatDetection: { telephone: false },
+  // (P31) 전화번호 자동 링크 허용 — 명단·케이스의 번호를 폰에서 바로 탭해 걸 수 있게 (ContactLinks 와 병행)
+  formatDetection: { telephone: true },
 };
 
 export const viewport: Viewport = {

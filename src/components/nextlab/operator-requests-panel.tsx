@@ -10,6 +10,7 @@ import { assignOperatorRequestAction, completeOperatorRequestAction, markOperato
 import { formatDateTime } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
+import { useConfirm } from '@/components/common/confirm-dialog';
 
 /**
  * 운영사 대시보드·게시판: 발주처 요청 리스트.
@@ -21,6 +22,8 @@ export function OperatorRequestsPanel({ requests, currentUserId, canAct = true }
   const { toast } = useToast();
   const [openId, setOpenId] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  // (P31) window.confirm → 공용 ConfirmDialog
+  const { confirm: ask, dialog: confirmDialog } = useConfirm();
 
   const run = (fn: () => Promise<{ ok: true } | { ok: false; error: string }>, done: string) =>
     startTransition(async () => {
@@ -51,6 +54,7 @@ export function OperatorRequestsPanel({ requests, currentUserId, canAct = true }
 
   return (
     <div className="flex flex-col gap-2">
+      {confirmDialog}
       {requests.map((r) => {
         const unread = !r.read_at;
         const done = !!r.done_at;
@@ -59,8 +63,10 @@ export function OperatorRequestsPanel({ requests, currentUserId, canAct = true }
         return (
           <div
             key={r.id}
+            id={`opr-${r.id}`}
             className={cn(
-              'rounded-lg border bg-card transition-colors',
+              // (P31) 전체 글 탭 #opr-<id> 앵커 대상
+              'scroll-mt-40 rounded-lg border bg-card transition-colors',
               unread
                 ? 'border-primary/50 bg-primary/5 shadow-sm ring-1 ring-primary/20'
                 : done
@@ -122,10 +128,11 @@ export function OperatorRequestsPanel({ requests, currentUserId, canAct = true }
                           type="button"
                           disabled={pending}
                           onClick={() => {
-                            if (r.assigned_to && !window.confirm(`${r.assignedToName ?? '다른 담당자'} 님이 맡은 요청입니다. 내가 인계받을까요?`)) return;
-                            run(() => assignOperatorRequestAction(r.id, { force: !!r.assigned_to }), '내가 담당으로 지정되었습니다.');
+                            const go = () => run(() => assignOperatorRequestAction(r.id, { force: !!r.assigned_to }), '내가 담당으로 지정되었습니다.');
+                            if (!r.assigned_to) return go();
+                            void ask({ title: '담당 인계', description: `${r.assignedToName ?? '다른 담당자'} 님이 맡은 요청입니다. 내가 인계받을까요?`, confirmLabel: '인계받기' }).then((ok) => { if (ok) go(); });
                           }}
-                          className="rounded-md border px-2.5 py-1 text-xs font-semibold hover:bg-accent disabled:opacity-50"
+                          className="inline-flex h-9 items-center rounded-md border px-2.5 text-xs font-semibold hover:bg-accent disabled:opacity-50 sm:h-7"
                         >
                           {r.assigned_to ? '담당 인계(내가 맡기)' : '담당 지정(내가 맡기)'}
                         </button>
@@ -134,10 +141,9 @@ export function OperatorRequestsPanel({ requests, currentUserId, canAct = true }
                         type="button"
                         disabled={pending}
                         onClick={() => {
-                          if (!window.confirm('이 요청을 처리 완료로 표시할까요?')) return;
-                          run(() => completeOperatorRequestAction(r.id), '처리 완료로 표시했습니다.');
+                          void ask({ title: '처리 완료', description: '이 요청을 처리 완료로 표시할까요?', confirmLabel: '처리 완료' }).then((ok) => { if (ok) run(() => completeOperatorRequestAction(r.id), '처리 완료로 표시했습니다.'); });
                         }}
-                        className="rounded-md bg-primary px-2.5 py-1 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                        className="inline-flex h-9 items-center rounded-md bg-primary px-2.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 sm:h-7"
                       >
                         처리 완료
                       </button>

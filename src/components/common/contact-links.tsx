@@ -14,8 +14,9 @@ export function ContactLinks({ phone, name, className, size = 'sm' }: { phone: s
   const digits = (phone ?? '').replace(/\D/g, '');
   if (digits.length < 9) return null;
   const who = name ? `${name} ` : '';
-  const btn = cn('inline-flex items-center justify-center rounded-md border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground', size === 'xs' ? 'h-5 w-5' : 'h-6 w-6');
-  const icon = size === 'xs' ? 'h-3 w-3' : 'h-3.5 w-3.5';
+  // (P31) 폰에서는 탭 타깃을 키운다 (xs 32px / sm 40px), sm 이상은 기존 소형 아이콘
+  const btn = cn('inline-flex items-center justify-center rounded-md border bg-background text-muted-foreground transition-colors hover:bg-accent hover:text-foreground', size === 'xs' ? 'h-8 w-8 sm:h-5 sm:w-5' : 'h-10 w-10 sm:h-6 sm:w-6');
+  const icon = size === 'xs' ? 'h-4 w-4 sm:h-3 sm:w-3' : 'h-4 w-4 sm:h-3.5 sm:w-3.5';
 
   const copy = async () => {
     try {
@@ -28,7 +29,7 @@ export function ContactLinks({ phone, name, className, size = 'sm' }: { phone: s
   };
 
   return (
-    <span className={cn('inline-flex items-center gap-0.5', className)} onClick={(e) => e.stopPropagation()}>
+    <span className={cn('inline-flex items-center gap-1.5 sm:gap-0.5', className)} onClick={(e) => e.stopPropagation()}>
       <a href={`tel:${digits}`} className={btn} aria-label={`${who}전화 걸기`} title="전화">
         <Phone className={icon} />
       </a>

@@ -2,6 +2,7 @@ import { menteeOrg } from '@/lib/utils/labels';
 import type { CaseListItem } from '@/lib/data/cases';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDate } from '@/lib/utils/format';
+import { ContactLinks } from '@/components/common/contact-links';
 
 /** 멘티(케이스) 기본 정보 카드 */
 export function CaseDetailCard({ item, showLoginId = false }: { item: CaseListItem; showLoginId?: boolean }) {
@@ -33,7 +34,11 @@ export function CaseDetailCard({ item, showLoginId = false }: { item: CaseListIt
           {rows.map((r) => (
             <div key={r.label} className="flex gap-3">
               <dt className="w-28 shrink-0 text-muted-foreground">{r.label}</dt>
-              <dd className="min-w-0 break-words">{r.value ?? '-'}</dd>
+              <dd className="min-w-0 break-words">
+                {r.value ?? '-'}
+                {/* (P31) 연락처 행에 전화·문자·복사 */}
+                {r.label === '연락처' && <ContactLinks phone={item.phone} name={item.owner_name} size="xs" className="ml-1.5" />}
+              </dd>
             </div>
           ))}
         </dl>

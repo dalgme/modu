@@ -69,7 +69,7 @@ export function CampaignCreateForm({ templates, groups, members, defaultGroupId 
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="c-template">조사 양식 *</Label>
-              <select id="c-template" name="templateId" required className="h-10 rounded-md border border-input bg-background px-3 text-sm" defaultValue="">
+              <select id="c-template" name="templateId" required className="h-10 rounded-md border border-input bg-background px-3 text-base sm:text-sm" defaultValue="">
                 <option value="" disabled>양식 선택 (운영 설정 → 만족도 양식에서 관리)</option>
                 {templates.map((t) => (
                   <option key={t.id} value={t.id}>{t.name}{t.groupName ? ` (${t.groupName})` : ''}</option>
@@ -102,7 +102,7 @@ export function CampaignCreateForm({ templates, groups, members, defaultGroupId 
               <div className="flex flex-wrap items-center gap-4 text-sm">
                 <label className="flex items-center gap-1.5"><input type="checkbox" name="roles" value="mentee" checked={roles.mentee} onChange={(e) => setRoles((r) => ({ ...r, mentee: e.target.checked }))} /> 멘티</label>
                 <label className="flex items-center gap-1.5"><input type="checkbox" name="roles" value="mentor" checked={roles.mentor} onChange={(e) => setRoles((r) => ({ ...r, mentor: e.target.checked }))} /> 멘토</label>
-                <select name="groupId" aria-label="대상 그룹" className="h-9 rounded-md border border-input bg-background px-2 text-sm" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
+                <select name="groupId" aria-label="대상 그룹" className="h-10 rounded-md border border-input bg-background px-2 text-base sm:h-9 sm:text-sm" value={groupId} onChange={(e) => setGroupId(e.target.value)}>
                   <option value="">행사 전체</option>
                   {groups.map((g) => (
                     <option key={g.id} value={g.id}>{g.name} 만</option>
@@ -111,7 +111,7 @@ export function CampaignCreateForm({ templates, groups, members, defaultGroupId 
               </div>
             ) : (
               <div className="flex flex-col gap-2">
-                <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="이름·그룹으로 검색" className="h-9 max-w-xs" />
+                <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="이름·그룹으로 검색" className="h-10 w-full sm:h-9 sm:max-w-xs" />
                 <div className="max-h-56 overflow-auto rounded-md border">
                   {shown.map((m) => (
                     <label key={m.id} className="flex items-center gap-2 border-b px-3 py-1.5 text-sm last:border-0 hover:bg-accent/50">

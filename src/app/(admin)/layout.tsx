@@ -6,6 +6,7 @@ import { InstitutionNav } from '@/components/nav/institution-nav';
 import { GRADE_LABELS } from '@/lib/auth/capabilities';
 import { ScopeSwitcher } from '@/components/common/scope-switcher';
 import { listMyGroups } from '@/lib/programs/data';
+import { StaffMobileTabs } from '@/components/nav/staff-mobile-tabs';
 
 // 관리 화면(감사로그·설정·문자발송)은 발주처·운영사 공용. 각 역할의 상단 탭을 유지한다.
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -26,7 +27,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
       {profile.role === 'nextlab' && <NextlabNav />}
       {profile.role === 'institution' && <InstitutionNav />}
       <ScopeSwitcher groups={scopeGroups} currentGroupId={ctx.supportTypeId} emptyHref={profile.role === 'nextlab' ? '/nextlab/settings?tab=groups' : undefined} />
-      <div className="mx-auto max-w-6xl px-4 py-6 pb-24 md:pb-6">{children}</div>
+      <div className="mx-auto max-w-6xl px-4 py-6 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6">{children}</div>
+      {/* (P31) 문자 발송 등 공용 화면에서도 역할별 하단 탭바 유지 */}
+      {(profile.role === 'nextlab' || profile.role === 'institution') && <StaffMobileTabs role={profile.role} />}
     </div>
   );
 }

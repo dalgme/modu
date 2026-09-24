@@ -39,7 +39,8 @@ function ColumnChart({
             const showLabel = (i === maxIdx || i === lastIdx) && d.value > 0;
             return (
               <div key={d.month} className="group relative flex h-full flex-1 flex-col items-center justify-end gap-0.5" title={`${d.month} · ${money ? formatKRW(d.value) : `${d.value}건`}`}>
-                <span className={`text-[9px] font-semibold tabular-nums leading-none text-muted-foreground ${showLabel ? '' : 'invisible group-hover:visible'}`}>
+                {/* (P31) 폰은 hover 가 없어 값 라벨을 항상 표시 */}
+                <span className={`text-[9px] font-semibold tabular-nums leading-none text-muted-foreground ${showLabel ? '' : 'opacity-70'}`}>
                   {money ? fmtManwon(d.value) : d.value}
                 </span>
                 <div
@@ -59,7 +60,7 @@ function ColumnChart({
 export function TrendCharts({ months }: { months: TrendMonth[] }) {
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-xs text-muted-foreground">최근 12개월(한국 시간 기준). 막대에 마우스를 올리면 값이 표시됩니다. 지급액은 지급총액(원천징수 공제 전)입니다.</p>
+      <p className="text-xs text-muted-foreground">최근 12개월(한국 시간 기준). 막대를 누르면 상세(신규·종결)가 표시됩니다. 지급액은 지급총액(원천징수 공제 전)입니다.</p>
       <div className="grid gap-4 sm:grid-cols-2">
         <ColumnChart title="이행 회차 (보고서 등록)" color="bg-sky-600" data={months.map((m) => ({ month: m.month, value: m.rounds }))} />
         <ColumnChart title="확정 지급총액" color="bg-emerald-600" money data={months.map((m) => ({ month: m.month, value: m.settledGross }))} />

@@ -184,7 +184,7 @@ export function QnaBoard({
           {posts.map((p) => {
             const canDelete = currentRole === 'nextlab' || p.author_id === currentUserId;
             return (
-              <Card key={p.id}>
+              <Card key={p.id} id={`post-${p.id}`} className="scroll-mt-40">
                 <CardHeader className="pb-2">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div className="min-w-0">

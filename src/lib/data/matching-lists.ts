@@ -85,6 +85,8 @@ export interface MenteeMatchRow {
   caseId: string;
   label: string;
   menteeName: string;
+  /** 멘티 휴대폰 (P31 — 매칭 리스트 연락 아이콘) */
+  menteePhone: string | null;
   /** 멘티 순위 (P27-01) */
   rank: number | null;
   groupId: string;
@@ -236,6 +238,7 @@ export async function loadMatchingLists(programId: string, supportTypeId?: strin
         caseId: c.id,
         label,
         menteeName: c.owner_name,
+        menteePhone: c.phone ?? null,
         rank,
         groupId: c.support_type_id,
         groupName: c.supportTypeName,

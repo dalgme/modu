@@ -5,6 +5,7 @@ import { StatusBadge } from '@/components/cases/status-badge';
 import { CaseStepNumbers } from '@/components/cases/case-step-numbers';
 import { MentorName } from '@/components/common/mentor-name';
 import { RoundDots } from '@/components/common/round-dots';
+import { ContactLinks } from '@/components/common/contact-links';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { formatDate } from '@/lib/utils/format';
 import { menteeLabel } from '@/lib/utils/labels';
@@ -79,7 +80,11 @@ export function CaseTable({
                   <Link href={`${basePath}/${c.id}`} className="font-medium hover:underline">
                     {menteeLabel(c.owner_name, c.business_name)}
                   </Link>
-                  <div className="text-xs text-muted-foreground">{c.phone || '-'}</div>
+                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                    <span>{c.phone || '-'}</span>
+                    {/* (P31) 목록에서 바로 전화·문자 */}
+                    <ContactLinks phone={c.phone} name={c.owner_name} size="xs" />
+                  </div>
                 </TableCell>
                 {showGroup && <TableCell className="hidden text-sm md:table-cell">{c.supportTypeName ?? '-'}</TableCell>}
                 {showMentor && (

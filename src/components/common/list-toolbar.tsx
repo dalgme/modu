@@ -55,7 +55,8 @@ export function ListToolbar({
                 aria-pressed={on}
                 onClick={() => onFilter?.(f.key)}
                 className={cn(
-                  'inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold transition-colors',
+                  // (P31) 폰 탭 타깃 py-1.5
+                  'inline-flex items-center gap-1 whitespace-nowrap rounded-full px-2.5 py-1.5 text-xs font-semibold transition-colors sm:py-1',
                   on ? 'bg-midnight text-white shadow-sm' : 'bg-white/70 text-sky-950 hover:bg-white dark:bg-sky-900/40 dark:text-sky-100',
                 )}
               >
@@ -66,12 +67,12 @@ export function ListToolbar({
           })}
         </div>
       )}
-      <div className="ml-auto flex flex-wrap items-center gap-2">
+      <div className="flex w-full flex-wrap items-center gap-2 sm:ml-auto sm:w-auto">
         {extra}
         {onQuery && (
-          <div className="relative">
+          <div className="relative w-full sm:w-auto">
             <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={query ?? ''} onChange={(e) => onQuery(e.target.value)} placeholder={placeholder} aria-label={placeholder} className="h-9 w-44 bg-background pl-8" />
+            <Input value={query ?? ''} onChange={(e) => onQuery(e.target.value)} placeholder={placeholder} aria-label={placeholder} className="h-10 w-full bg-background pl-8 sm:h-9 sm:w-44" />
           </div>
         )}
         {exportHref && <ExcelButton href={exportHref} label={exportLabel} />}

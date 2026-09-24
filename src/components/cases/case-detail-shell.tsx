@@ -9,6 +9,8 @@ import { StatusBadge } from '@/components/cases/status-badge';
 import { ProcessStepBar } from '@/components/cases/process-step-bar';
 import { CaseDetailCard } from '@/components/cases/case-detail-card';
 import { CaseTimeline } from '@/components/cases/case-timeline';
+import { ContactLinks } from '@/components/common/contact-links';
+import { MentorName } from '@/components/common/mentor-name';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDate } from '@/lib/utils/format';
 
@@ -44,13 +46,36 @@ export function CaseDetailShell({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="truncate text-2xl font-semibold">{menteeLabel(item.owner_name, item.business_name)}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {item.phone || '-'} · {item.supportTypeName ?? '-'} · 회차 {item.roundsDone}/{item.requiredRounds}
+          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-muted-foreground">
+            <span>{item.phone || '-'}</span>
+            {/* (P31) 헤더에서 바로 전화·문자 */}
+            <ContactLinks phone={item.phone} name={item.owner_name} size="xs" />
+            <span>· {item.supportTypeName ?? '-'} · 회차 {item.roundsDone}/{item.requiredRounds}</span>
           </p>
         </div>
         <StatusBadge status={item.status} branding={branding} showStep />
       </div>
       <ProcessStepBar status={item.status} branding={branding} />
+
+      {/* (P31) 폰 요약 카드 — 멘티 연락처·담당 멘토를 헤더 바로 아래에 (정보 카드는 아래쪽에 있어 스크롤이 길다) */}
+      <div className="grid grid-cols-2 gap-2 rounded-xl border bg-background p-3 text-sm md:hidden">
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">멘티 연락처</span>
+          <span className="font-medium">{item.phone || '-'}</span>
+          <ContactLinks phone={item.phone} name={item.owner_name} size="sm" />
+        </div>
+        <div className="flex flex-col gap-1">
+          <span className="text-[11px] text-muted-foreground">담당 멘토</span>
+          {item.mentorId && item.mentorName ? (
+            <>
+              <MentorName id={item.mentorId} name={item.mentorName} count={item.mentorActiveCount} caseHrefBase={basePath} />
+              <ContactLinks phone={(item as { mentorPhone?: string | null }).mentorPhone} name={item.mentorName} size="sm" />
+            </>
+          ) : (
+            <span className="text-muted-foreground">미배정</span>
+          )}
+        </div>
+      </div>
 
       {children}
 

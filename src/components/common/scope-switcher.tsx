@@ -7,6 +7,7 @@ import { Layers } from 'lucide-react';
 
 import { switchScopeAction } from '@/lib/programs/scope-actions';
 import { useToast } from '@/hooks/use-toast';
+import { ScrollActiveTab } from '@/components/common/scroll-active-tab';
 import { cn } from '@/lib/utils';
 
 export interface ScopeGroupOption {
@@ -48,7 +49,8 @@ export function ScopeSwitcher({ groups, currentGroupId, emptyHref }: { groups: S
 
   const pill = (active: boolean, disabled: boolean, ended = false) =>
     cn(
-      'inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-semibold transition-colors',
+      // (P31) 폰은 탭 타깃 확보를 위해 py-2
+      'inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-full border px-3 py-2 text-xs font-semibold transition-colors sm:py-1',
       active ? 'border-primary bg-primary text-primary-foreground shadow-sm' : 'border-border bg-background text-muted-foreground hover:bg-accent hover:text-foreground',
       (disabled || ended) && 'opacity-60',
     );
@@ -56,11 +58,12 @@ export function ScopeSwitcher({ groups, currentGroupId, emptyHref }: { groups: S
 
   return (
     <div className="border-b bg-muted/40">
-      <div className="mx-auto flex max-w-6xl items-center gap-2 overflow-x-auto px-4 py-1.5">
+      <div className="no-scrollbar mx-auto flex max-w-6xl items-center gap-2 overflow-x-auto px-4 py-1.5">
+        <ScrollActiveTab />
         <span className="inline-flex shrink-0 items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
           <Layers className="h-3.5 w-3.5" /> 범위
         </span>
-        <button type="button" disabled={pending} onClick={() => go(null)} className={pill(currentGroupId === null, pending)} title="행사 안 모든 그룹을 한 번에 봅니다">
+        <button type="button" disabled={pending} aria-pressed={currentGroupId === null} onClick={() => go(null)} className={pill(currentGroupId === null, pending)} title="행사 안 모든 그룹을 한 번에 봅니다">
           행사 전체
         </button>
         {ordered.map((g) => (
@@ -68,6 +71,7 @@ export function ScopeSwitcher({ groups, currentGroupId, emptyHref }: { groups: S
             key={g.id}
             type="button"
             disabled={pending}
+            aria-pressed={currentGroupId === g.id}
             onClick={() => go(g.id)}
             className={pill(currentGroupId === g.id, pending, !!g.ended)}
             title={`${g.code} · ${g.name}${g.mine ? ' · 내 담당 그룹' : ''}${g.ended ? ' (종료)' : ''}`}

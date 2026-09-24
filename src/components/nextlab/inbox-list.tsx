@@ -36,7 +36,7 @@ export function InboxList({ items }: { items: InboxItem[] }) {
   return (
     <ul className="flex flex-col gap-3">
       {items.map((it) => (
-        <li key={it.id} className={`rounded-xl border bg-background p-4 ${it.status === 'pending' ? 'border-amber-300' : ''}`}>
+        <li key={it.id} id={`req-${it.id}`} className={`scroll-mt-40 rounded-xl border bg-background p-4 ${it.status === 'pending' ? 'border-amber-300' : ''}`}>
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
             <span>
               <b>{KIND_LABEL[it.kind]}</b>

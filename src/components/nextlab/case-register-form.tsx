@@ -58,7 +58,7 @@ export function CaseRegisterForm({ groups, defaultGroupId }: { groups: { id: str
     >
       <div className="flex flex-col gap-1 sm:col-span-2">
         <Label>사업그룹 *</Label>
-        <select name="support_type_id" defaultValue={defaultGroupId ?? groups[0]?.id ?? ''} className="h-9 rounded-md border bg-background px-2 text-sm" required>
+        <select name="support_type_id" defaultValue={defaultGroupId ?? groups[0]?.id ?? ''} className="h-10 rounded-md border bg-background px-2 text-base sm:h-9 sm:text-sm" required>
           {groups.map((g) => (
             <option key={g.id} value={g.id}>
               {g.code} · {g.name}

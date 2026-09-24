@@ -141,7 +141,7 @@ export function PwaInstallPrompt() {
   if (!visible || !platform) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[60] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+    <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-[60] p-3 md:bottom-0 md:pb-[max(0.75rem,env(safe-area-inset-bottom))]">{/* (P31) 하단 탭바(3.5rem) 위에 띄운다 */}
       <div className="mx-auto max-w-md rounded-2xl border bg-card p-4 shadow-xl">
         <div className="flex items-start gap-3">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">

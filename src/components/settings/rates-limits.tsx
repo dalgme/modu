@@ -210,7 +210,7 @@ export function RatesLimits({ rates, limits, groups, today, defaultGroupId = nul
             <Button type="submit" size="sm" disabled={pending || !rPrice || !rCap || !rFrom} className="w-full">추가</Button>
           </div>
         </form>
-        <table className="mt-3 w-full text-sm">
+        <div className="mt-3 overflow-x-auto">{/* (P31) 폰 가로 스크롤 */}<table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left text-xs text-muted-foreground">
               <th className="py-1">범위</th><th className="py-1">유형</th><th className="py-1 text-right">단가</th><th className="py-1 text-right">일일 상한</th><th className="py-1">적용일</th><th />
@@ -235,7 +235,7 @@ export function RatesLimits({ rates, limits, groups, today, defaultGroupId = nul
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </section>
 
       <section className="rounded-xl border bg-background p-4">
@@ -273,7 +273,7 @@ export function RatesLimits({ rates, limits, groups, today, defaultGroupId = nul
             <Button type="submit" size="sm" disabled={pending || !lMentor || !lCase || !lFrom} className="w-full">추가</Button>
           </div>
         </form>
-        <table className="mt-3 w-full text-sm">
+        <div className="mt-3 overflow-x-auto">{/* (P31) 폰 가로 스크롤 */}<table className="w-full text-sm">
           <thead>
             <tr className="border-b text-left text-xs text-muted-foreground">
               <th className="py-1">범위</th><th className="py-1 text-right">멘토 1일 건수</th><th className="py-1 text-right">멘티 1일 회차</th><th className="py-1">적용일</th><th />
@@ -297,7 +297,7 @@ export function RatesLimits({ rates, limits, groups, today, defaultGroupId = nul
               </tr>
             ))}
           </tbody>
-        </table>
+        </table></div>
       </section>
     </div>
   );

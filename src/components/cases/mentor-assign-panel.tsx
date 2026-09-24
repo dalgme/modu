@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, ArrowRight, Ban, RefreshCw, Undo2 } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Ban, RefreshCw, Search, Undo2 } from 'lucide-react';
 
 import {
   assignMentorAction,
@@ -12,13 +12,8 @@ import {
 } from '@/lib/workflow/case-actions';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
+import { useConfirm } from '@/components/common/confirm-dialog';
 import {
   Dialog,
   DialogContent,
@@ -28,6 +23,37 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
+
+/**
+ * (P31) 검색형 멘토 선택 리스트 — Radix Select 대신 이름 검색 + 라디오 행 (폰에서 긴 드롭다운 대신 검색·탭).
+ * 후보가 없으면 안내 문구만.
+ */
+function MentorPickList({ mentors, value, onChange, emptyText = '배정 가능한 멘토가 없습니다.' }: { mentors: { id: string; name: string }[]; value?: string; onChange: (id: string) => void; emptyText?: string }) {
+  const [q, setQ] = useState('');
+  const list = useMemo(() => {
+    const t = q.trim();
+    return (t ? mentors.filter((m) => m.name.includes(t)) : mentors).slice().sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  }, [mentors, q]);
+  return (
+    <div className="flex w-full flex-col gap-2">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="멘토 이름 검색" aria-label="멘토 이름 검색" className="h-10 pl-8 sm:h-9" />
+      </div>
+      <ul className="max-h-56 overflow-y-auto rounded-lg border" role="radiogroup">
+        {list.length === 0 && <li className="px-3 py-3 text-center text-xs text-muted-foreground">{mentors.length === 0 ? emptyText : '검색 결과가 없습니다.'}</li>}
+        {list.map((m) => (
+          <li key={m.id}>
+            <label className={`flex cursor-pointer items-center gap-2 border-b px-3 py-2.5 text-sm last:border-0 hover:bg-accent/40 ${value === m.id ? 'bg-primary/10 font-semibold' : ''}`}>
+              <input type="radio" name="mentor-pick" className="h-5 w-5 accent-primary sm:h-4 sm:w-4" checked={value === m.id} onChange={() => onChange(m.id)} />
+              {m.name}
+            </label>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 interface MentorAssignPanelProps {
   caseId: string;
@@ -68,6 +94,8 @@ export function MentorAssignPanel({
   const [newMentorId, setNewMentorId] = useState<string | undefined>();
   const [reassigning, setReassigning] = useState(false);
   const [recalling, setRecalling] = useState(false);
+  // (P31) window.confirm → 공용 ConfirmDialog
+  const { confirm: ask, dialog: confirmDialog } = useConfirm();
 
   const reassignCandidates = mentors.filter((m) => m.id !== currentMentorId);
 
@@ -106,13 +134,14 @@ export function MentorAssignPanel({
   }
 
   async function onRecall() {
-    if (
-      !window.confirm(
-        '멘토 배정을 회수하고 멘티 등록(배정 대기) 단계로 되돌립니다.\n회차가 등록되기 전에만 가능하며, 이후 다른 멘토를 다시 배정할 수 있습니다. 계속할까요?',
-      )
-    ) {
-      return;
-    }
+    const ok = await ask({
+      title: '멘토 배정 회수',
+      description: '멘토 배정을 회수하고 멘티 등록(배정 대기) 단계로 되돌립니다.',
+      impact: ['회차가 등록되기 전에만 가능합니다.', '이후 다른 멘토를 다시 배정할 수 있습니다.'],
+      confirmLabel: '회수',
+      severity: 'danger',
+    });
+    if (!ok) return;
     setRecalling(true);
     const result = await recallMentorAction(caseId);
     setRecalling(false);
@@ -130,6 +159,7 @@ export function MentorAssignPanel({
         <CardTitle className="text-base">멘토 배정</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+        {confirmDialog}
         {currentMentorName ? (
           <p className="text-sm">
             현재 담당 멘토: <span className="font-medium">{currentMentorName}</span>
@@ -139,20 +169,11 @@ export function MentorAssignPanel({
         )}
 
         {assignable && (
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <Select value={mentorId} onValueChange={setMentorId}>
-              <SelectTrigger className="sm:w-64">
-                <SelectValue placeholder="멘토 선택" />
-              </SelectTrigger>
-              <SelectContent>
-                {mentors.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button onClick={onAssign} disabled={submitting}>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start">
+            <div className="sm:w-80">
+              <MentorPickList mentors={mentors} value={mentorId} onChange={setMentorId} />
+            </div>
+            <Button onClick={onAssign} disabled={submitting || !mentorId} className="h-10 sm:h-9">
               {submitting ? '배정 중…' : '배정'}
             </Button>
           </div>
@@ -263,25 +284,8 @@ export function MentorAssignPanel({
               배정 알림이 전달되며, 진행 이력에 재배정 기록이 남습니다.
             </DialogDescription>
           </DialogHeader>
-          <Select value={newMentorId} onValueChange={setNewMentorId}>
-            <SelectTrigger>
-              <SelectValue placeholder="새 멘토 선택" />
-            </SelectTrigger>
-            <SelectContent>
-              {reassignCandidates.length === 0 ? (
-                <div className="px-3 py-2 text-xs text-muted-foreground">
-                  배정 가능한 다른 멘토가 없습니다.
-                </div>
-              ) : (
-                reassignCandidates.map((m) => (
-                  <SelectItem key={m.id} value={m.id}>
-                    {m.name}
-                  </SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
-          <DialogFooter>
+          <MentorPickList mentors={reassignCandidates} value={newMentorId} onChange={setNewMentorId} emptyText="배정 가능한 다른 멘토가 없습니다." />
+          <DialogFooter className="sticky bottom-0 z-10 -mb-4 gap-2 border-t bg-background pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:-mb-6 sm:pb-6">
             <Button
               type="button"
               variant="outline"

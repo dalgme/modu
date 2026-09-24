@@ -99,7 +99,7 @@ export async function AppHeader({ name, role, branding = PLATFORM_BRANDING, cont
           )}
           <span className="hidden max-w-[8rem] truncate text-sm text-midnight-foreground/70 sm:inline">{name}</span>
           {!impersonating && (
-          <form action={signOut}>
+          <form action={signOut} className="hidden md:block">{/* (P31) 폰은 하단 탭 [더보기] 시트에서 로그아웃 */}
             <Button
               type="submit"
               size="sm"

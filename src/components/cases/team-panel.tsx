@@ -51,10 +51,10 @@ function MemberRow({ caseId, member }: { caseId: string; member: TeamMemberItem 
         <input type="hidden" name="memberId" value={member.id} />
         <input type="hidden" name="isRepresentative" value={member.is_representative ? 'true' : 'false'} />
         {member.is_representative && <Badge className="shrink-0">대표</Badge>}
-        <Input name="name" defaultValue={member.name} className="h-8 w-24 text-xs" required placeholder="이름 *" />
-        <Input name="memberRole" defaultValue={member.member_role ?? ''} className="h-8 w-24 text-xs" placeholder="역할 (기획 등)" />
-        <Input name="phone" type="tel" inputMode="tel" defaultValue={member.phone ?? ''} className="h-8 w-32 text-xs" placeholder="휴대폰" />
-        <Input name="email" defaultValue={member.email ?? ''} className="h-8 w-40 text-xs" placeholder="이메일" />
+        <Input name="name" defaultValue={member.name} className="h-10 w-24 text-base sm:h-8 sm:text-xs" required placeholder="이름 *" />
+        <Input name="memberRole" defaultValue={member.member_role ?? ''} className="h-10 w-24 text-base sm:h-8 sm:text-xs" placeholder="역할 (기획 등)" />
+        <Input name="phone" type="tel" inputMode="tel" defaultValue={member.phone ?? ''} className="h-10 w-32 text-base sm:h-8 sm:text-xs" placeholder="휴대폰" />
+        <Input name="email" defaultValue={member.email ?? ''} className="h-10 w-40 text-base sm:h-8 sm:text-xs" placeholder="이메일" />
         <Submit>저장</Submit>
         <StateLine state={saveState} />
       </form>
@@ -90,10 +90,10 @@ function AddMemberForm({ caseId }: { caseId: string }) {
       >
         대표
       </button>
-      <Input name="name" className="h-8 w-24 text-xs" required placeholder="이름 *" />
-      <Input name="memberRole" className="h-8 w-24 text-xs" placeholder="역할 (개발 등)" />
-      <Input name="phone" type="tel" inputMode="tel" className="h-8 w-32 text-xs" placeholder="휴대폰 (선택)" />
-      <Input name="email" className="h-8 w-40 text-xs" placeholder="이메일 (선택)" />
+      <Input name="name" className="h-10 w-24 text-base sm:h-8 sm:text-xs" required placeholder="이름 *" />
+      <Input name="memberRole" className="h-10 w-24 text-base sm:h-8 sm:text-xs" placeholder="역할 (개발 등)" />
+      <Input name="phone" type="tel" inputMode="tel" className="h-10 w-32 text-base sm:h-8 sm:text-xs" placeholder="휴대폰 (선택)" />
+      <Input name="email" className="h-10 w-40 text-base sm:h-8 sm:text-xs" placeholder="이메일 (선택)" />
       <Submit>팀원 추가</Submit>
       <StateLine state={state} />
     </form>
@@ -125,7 +125,7 @@ export function TeamPanel({ caseId, item, itemDescription, members }: {
           <div className="grid gap-2 sm:grid-cols-[1fr_2fr]">
             <div className="flex flex-col gap-1">
               <Label htmlFor="team-item" className="text-xs">아이템명</Label>
-              <Input id="team-item" name="item" defaultValue={item ?? ''} className="h-8 text-sm" placeholder="예: 반려동물 헬스케어 앱" />
+              <Input id="team-item" name="item" defaultValue={item ?? ''} className="h-10 text-base sm:h-8 sm:text-sm" placeholder="예: 반려동물 헬스케어 앱" />
             </div>
             <div className="flex flex-col gap-1">
               <Label htmlFor="team-itemdesc" className="text-xs">아이템 설명</Label>

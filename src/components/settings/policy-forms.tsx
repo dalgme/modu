@@ -47,7 +47,7 @@ export function WithholdingForm({ program }: { program: ProgramRow }) {
     >
       <div className="flex flex-col gap-1 sm:max-w-xs">
         <Label>행사 기본 원천징수 방식</Label>
-        <select name="default_withholding_method" defaultValue={program.default_withholding_method} className="h-9 rounded-md border bg-background px-2 text-sm">
+        <select name="default_withholding_method" defaultValue={program.default_withholding_method} className="h-10 rounded-md border bg-background px-2 text-base sm:h-9 sm:text-sm">
           <option value="other_income">기타소득 (필요경비 60% · 22% → 실효 8.8%)</option>
           <option value="business_income">사업소득 (3.3%)</option>
           <option value="none">원천징수 없음</option>
@@ -88,7 +88,7 @@ function Rounding({ name, v }: { name: string; v: string }) {
   return (
     <div className="flex flex-col gap-1">
       <Label className="text-xs">절사</Label>
-      <select name={name} defaultValue={v} className="h-9 rounded-md border bg-background px-2 text-sm">
+      <select name={name} defaultValue={v} className="h-10 rounded-md border bg-background px-2 text-base sm:h-9 sm:text-sm">
         <option value="floor_10">10원 미만 절사</option>
         <option value="floor_1">1원 미만 절사</option>
         <option value="round">반올림</option>

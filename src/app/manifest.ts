@@ -8,7 +8,8 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: '/',
     scope: '/',
     display: 'standalone',
-    orientation: 'portrait',
+    // (P31) 운영사 표·대시보드는 가로 모드가 유리 — 방향 제한 해제
+    orientation: 'any',
     background_color: '#ffffff',
     theme_color: '#103355',
     lang: 'ko',

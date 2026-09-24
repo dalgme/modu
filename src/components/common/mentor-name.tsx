@@ -60,7 +60,7 @@ export function MentorName({
         {text}
       </button>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>{data ? mentorLabel(data.name, data.activeCount) : name} · 멘토 정보</DialogTitle>
             <DialogDescription>

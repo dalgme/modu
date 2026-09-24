@@ -24,8 +24,9 @@ export function NextlabNav() {
   const pathname = usePathname();
   useScrollActiveTab(pathname);
   return (
-    <nav className="sticky top-14 z-30 border-b bg-background/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/75 print:hidden">
-      <div className="mx-auto flex max-w-6xl no-scrollbar gap-1.5 overflow-x-auto px-4 py-2">
+    // (P31) 폰에서는 sticky 를 풀어(하단 탭바가 주 내비) 화면을 넓게 쓰고, 오른쪽 끝에 페이드로 "더 있음"을 알린다
+    <nav className="relative z-30 border-b bg-background/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/75 after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-10 after:bg-gradient-to-l after:from-background after:to-transparent md:sticky md:top-14 md:after:hidden print:hidden">
+      <div className="mx-auto flex max-w-6xl no-scrollbar gap-1.5 overflow-x-auto px-4 py-2 pr-8 md:pr-4">
         {TABS.map((t) => {
           const active = pathname === t.href || pathname.startsWith(`${t.href}/`) || (t.match ?? []).some((m) => pathname === m || pathname.startsWith(`${m}/`));
           const cls = cn(

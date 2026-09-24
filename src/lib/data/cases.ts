@@ -23,6 +23,8 @@ export interface CaseListItem extends CaseRow {
   /** 담당 멘토 — 활성 배정. 종결·중도 종료 케이스는 마지막 배정(mentorEnded=true) */
   mentorName: string | null;
   mentorId: string | null;
+  /** 담당 멘토 휴대폰 (P31 — 케이스 상세 요약 카드 전화·문자 아이콘) */
+  mentorPhone?: string | null;
   mentorAssignedAt: string | null;
   /** true 면 mentorId 는 종료된(마지막) 배정 — 정원·활성 계산에 넣지 말 것 (P30) */
   mentorEnded: boolean;
@@ -118,10 +120,11 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
   const menteeIds = Array.from(new Set(cases.map((c) => c.mentee_id).filter(Boolean))) as string[];
   // 회원 id 는 수백 개가 될 수 있어 `in()` 을 200개 단위로 쪼개 읽는다 (P31, paginate.ts)
   const [mentors, mentees] = await Promise.all([
-    fetchAllIn<{ id: string; name: string }>(mentorIds, (chunk, from, to) => supabase.from('users').select('id, name').in('id', chunk).range(from, to)),
+    fetchAllIn<{ id: string; name: string; phone: string | null }>(mentorIds, (chunk, from, to) => supabase.from('users').select('id, name, phone').in('id', chunk).range(from, to)),
     fetchAllIn<{ id: string; name: string | null; phone: string | null }>(menteeIds, (chunk, from, to) => supabase.from('users').select('id, name, phone').in('id', chunk).range(from, to)),
   ]);
   const mentorNameById = new Map(mentors.map((m) => [m.id, m.name]));
+  const mentorPhoneById = new Map(mentors.map((m) => [m.id, m.phone ?? null]));
   const menteeAccById = new Map(mentees.map((m) => [m.id, m]));
   // 멘토별 확정 배정 수 — 조회 범위(행사, 그룹이 있으면 그룹) 기준. 필터로 잘린 목록이 아니라 범위 전체를 센다.
   const mentorActive = new Map<string, number>();
@@ -147,6 +150,7 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
       roundsPlanned: plannedByCase.get(c.id) ?? 0,
       mentorName: a ? (mentorNameById.get(a.mentor_id) ?? null) : null,
       mentorId: a?.mentor_id ?? null,
+      mentorPhone: a ? (mentorPhoneById.get(a.mentor_id) ?? null) : null,
       mentorAssignedAt: a?.assigned_at ?? null,
       mentorEnded: !!a?.ended,
       menteeLoginId: deriveMenteeLoginId(c.mentee_id ? menteeAccById.get(c.mentee_id) : undefined),

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import type { LucideIcon } from 'lucide-react';
 
+import { ScrollActiveTab } from '@/components/common/scroll-active-tab';
 import { cn } from '@/lib/utils';
 
 export interface SubTabItem {
@@ -17,7 +18,9 @@ export interface SubTabItem {
  */
 export function SubTabs({ items, active, ariaLabel, className }: { items: SubTabItem[]; active: string; ariaLabel?: string; className?: string }) {
   return (
-    <nav aria-label={ariaLabel} className={cn('flex flex-wrap gap-1 rounded-xl bg-midnight p-1.5 shadow-sm', className)}>
+    // (P31) 폰에서는 한 줄 가로 스크롤(스크롤바 숨김) + 현재 탭 자동 스크롤, sm 이상은 줄바꿈
+    <nav aria-label={ariaLabel} className={cn('no-scrollbar flex flex-nowrap gap-1 overflow-x-auto rounded-xl bg-midnight p-1.5 shadow-sm sm:flex-wrap sm:overflow-visible', className)}>
+      <ScrollActiveTab />
       {items.map((t) => {
         const isActive = t.key === active;
         const Icon = t.icon;
@@ -27,7 +30,7 @@ export function SubTabs({ items, active, ariaLabel, className }: { items: SubTab
             href={t.href}
             aria-current={isActive ? 'page' : undefined}
             className={cn(
-              'inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-colors',
+              'inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-sm font-semibold transition-colors',
               isActive ? 'bg-white text-brand-coral shadow' : 'text-midnight-foreground/85 hover:bg-white/10 hover:text-white',
             )}
           >

@@ -22,6 +22,7 @@ import { listCases, mapSuccessors } from '@/lib/data/cases';
 import { loadProgramAuditRows } from '@/lib/audit/rows';
 import { SUCCESSION_FILTERS, SuccessionPanel, type SuccessionFilter, type SuccessionMode, type SuccessorInfo } from '@/components/nextlab/succession-panel';
 import { AuditTable } from '@/components/audit/audit-table';
+import { SettingsTabSelect } from '@/components/nav/settings-tab-select';
 import { BudgetForm } from '@/components/settings/budget-form';
 import { MatchingRulesForm } from '@/components/settings/matching-rules-form';
 
@@ -192,8 +193,19 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         <h1 className="text-2xl font-semibold">운영 설정</h1>
         <p className="mt-1 text-sm text-muted-foreground">{ctx.program.name} — 저장 즉시 이 행사 전체에 반영됩니다. 숫자 한도는 적용일 이력으로 쌓이며 과거 정산은 바뀌지 않습니다.</p>
       </div>
-      {/* 탭을 3묶음으로 — 처음 쓰는 담당자가 "먼저 해야 할 것"을 구분하도록 (P28) */}
-      <nav className="flex flex-col gap-1.5 rounded-xl border bg-background p-3" aria-label="운영 설정 메뉴">
+      {/* (P31) 폰: 3묶음 optgroup 셀렉트 — 칩 14개가 화면을 다 차지하지 않게 */}
+      <SettingsTabSelect
+        value={tab}
+        groups={SETTING_GROUPS.map((g) => ({
+          label: g.label,
+          items: [
+            ...visibleTabs.filter((t) => g.keys.includes(t.key)).map((t) => ({ key: t.key, label: t.label, href: `/nextlab/settings?tab=${t.key}` })),
+            ...(g.extra ? [{ key: `extra:${g.extra.href}`, label: g.extra.label, href: g.extra.href }] : []),
+          ],
+        })).filter((g) => g.items.length > 0)}
+      />
+      {/* 탭을 3묶음으로 — 처음 쓰는 담당자가 "먼저 해야 할 것"을 구분하도록 (P28). 폰에서는 위 셀렉트가 대신한다 (P31) */}
+      <nav className="hidden flex-col gap-1.5 rounded-xl border bg-background p-3 sm:flex" aria-label="운영 설정 메뉴">
         {SETTING_GROUPS.map((g) => {
           const items = visibleTabs.filter((t) => g.keys.includes(t.key));
           if (items.length === 0 && !g.extra) return null;

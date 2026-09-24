@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { CheckCircle2, Circle, FileCheck2, Link2, Mail, MessageSquare, Phone, RefreshCw, Search, Undo2, UserCheck, UserSearch, Users } from 'lucide-react';
@@ -22,7 +22,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { mentorLabel } from '@/lib/utils/labels';
 import { formatDate, formatKRW } from '@/lib/utils/format';
@@ -60,30 +59,100 @@ function Chips({ items, tone = 'muted', max }: { items: string[]; tone?: 'muted'
 
 /**
  * URL 검색 파라미터와 동기화되는 상태 (`?q=` `?filter=`) — 대시보드 카드 링크로 필터된 목록에 바로 들어올 수 있게 (P30).
- * 갱신은 router.replace(히스토리 누적 없음). 다른 파라미터(tab 등)는 보존한다.
+ * (P31) 로컬 상태는 즉시 갱신해 목록을 바로 필터하고, URL 은 300ms 디바운스 후 `window.history.replaceState` 로만 바꾼다
+ * (키 입력마다 router.replace 하면 서버 왕복·리렌더로 폰에서 입력이 끊긴다). 다른 파라미터(tab 등)는 보존한다.
+ * Next 14 는 history.replaceState 를 라우터와 동기화하므로 useSearchParams 도 함께 갱신된다.
  */
 function useUrlParam(key: string, fallback = ''): [string, (v: string) => void] {
-  const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
   const fromUrl = params.get(key) ?? fallback;
   const [value, setValue] = useState(fromUrl);
+  /** 마지막으로 우리가 URL 에 밀어 넣은 값 — 이 값으로 되돌아오는 URL 변경은 로컬 입력을 덮어쓰지 않는다 */
+  const pushed = useRef(fromUrl);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    setValue(fromUrl);
+    if (fromUrl !== pushed.current) {
+      pushed.current = fromUrl;
+      setValue(fromUrl);
+    }
   }, [fromUrl]);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
   const update = useCallback(
     (v: string) => {
       setValue(v);
-      const next = new URLSearchParams(params.toString());
-      if (v && v !== fallback) next.set(key, v);
-      else next.delete(key);
-      const qs = next.toString();
-      router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => {
+        const next = new URLSearchParams(window.location.search);
+        if (v && v !== fallback) next.set(key, v);
+        else next.delete(key);
+        const qs = next.toString();
+        pushed.current = v && v !== fallback ? v : fallback;
+        window.history.replaceState(window.history.state, '', qs ? `${pathname}?${qs}` : pathname);
+      }, 300);
     },
-    [key, fallback, params, pathname, router],
+    [key, fallback, pathname],
   );
   return [value, update];
 }
+
+/**
+ * (P31) 멘토 선택 리스트 — 수동 검색·재배정 팝업 공용. 이름/분야 검색 + 라디오 선택, 이 그룹 매칭 인원이 적은 멘토가 위.
+ * 그룹 지정이 다른 멘토는 비활성(서버 게이트와 같은 기준). autoFocus 는 두지 않는다(폰에서 키보드가 시트를 밀어 올림).
+ */
+function MentorPickList({ mentors, groupId, excludeMentorId, pick, onPick, query, onQuery }: { mentors: MentorMatchRow[]; groupId: string; excludeMentorId?: string | null; pick: string | null; onPick: (id: string) => void; query: string; onQuery: (q: string) => void }) {
+  const candidates = useMemo(() => {
+    const q = query.trim();
+    return mentors
+      .filter((m) => m.mentorId !== excludeMentorId)
+      .map((m) => ({
+        m,
+        inGroup: m.mentees.filter((c) => c.groupId === groupId && !c.withdrawn).length,
+        eligible: m.designatedGroupIds.length === 0 || m.designatedGroupIds.includes(groupId),
+      }))
+      .filter((x) => !q || x.m.mentorName.includes(q) || (x.m.organization ?? '').includes(q) || x.m.expertise.some((e) => e.includes(q)))
+      .sort((a, b) => Number(b.eligible) - Number(a.eligible) || a.inGroup - b.inGroup || a.m.mentorName.localeCompare(b.m.mentorName, 'ko'));
+  }, [mentors, groupId, excludeMentorId, query]);
+  return (
+    <>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input value={query} onChange={(e) => onQuery(e.target.value)} placeholder="멘토명 · 소속 · 분야 검색" className="h-10 pl-8 sm:h-9" />
+      </div>
+      <div className="max-h-[50vh] overflow-y-auto rounded-lg border">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-muted/60">
+            <tr className="text-left text-muted-foreground">
+              <th className="w-8 px-2 py-1.5" />
+              <th className="px-2 py-1.5">멘토명</th>
+              <th className="px-2 py-1.5 text-right whitespace-nowrap">이 그룹 매칭</th>
+              <th className="hidden px-2 py-1.5 md:table-cell">분야</th>
+            </tr>
+          </thead>
+          <tbody>
+            {candidates.length === 0 && <tr><td colSpan={4} className="px-2 py-4 text-center text-muted-foreground">해당하는 멘토가 없습니다.</td></tr>}
+            {candidates.map(({ m, inGroup, eligible }) => (
+              <tr key={m.mentorId} className={cn('cursor-pointer border-t hover:bg-accent/40', pick === m.mentorId && 'bg-brand-pink/10', !eligible && 'opacity-50')} onClick={() => eligible && onPick(m.mentorId)}>
+                <td className="px-2 py-2 text-center"><input type="radio" name="mentor-pick" className="h-5 w-5 accent-primary sm:h-4 sm:w-4" checked={pick === m.mentorId} disabled={!eligible} onChange={() => onPick(m.mentorId)} aria-label={m.mentorName} /></td>
+                <td className="px-2 py-2">
+                  <span className="font-medium">{m.mentorName}</span>
+                  {m.organization && <span className="ml-1 text-muted-foreground">{m.organization}</span>}
+                  {!eligible ? <span className="ml-1 text-[10px] text-violet-700">그룹 지정 외 ({m.designatedGroupNames.join('/')})</span> : m.designatedGroupNames.length > 0 && <span className="ml-1 text-[10px] text-violet-700">지정 {m.designatedGroupNames.join('/')}</span>}
+                  <div className="mt-0.5 md:hidden"><Chips items={m.expertise} max={4} /></div>
+                </td>
+                <td className="px-2 py-2 text-right tabular-nums">{inGroup}</td>
+                <td className="hidden px-2 py-2 md:table-cell"><Chips items={m.expertise} max={10} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
+}
+
+/** (P31) 팝업 하단 고정 버튼 영역 — 본문이 길어도 확인 버튼이 항상 보인다 */
+const STICKY_FOOTER = 'sticky bottom-0 z-10 -mb-4 gap-2 border-t bg-background pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 sm:-mb-6 sm:pb-6';
 
 /** 현재 목록 URL 을 `?from=` 으로 붙여 케이스 상세의 "← 목록으로"가 이 화면(탭·필터 포함)으로 돌아오게 한다 (P30) */
 function useCaseHref(caseHrefBase: string): (caseId: string) => string {
@@ -131,7 +200,7 @@ export function PaymentDocSetButton({ mentorId, mentorName, state, readOnly = fa
         disabled={readOnly || pending}
         onClick={() => setOpen(true)}
         title={`지급서류 ${state} = ${DOC_STATE_DESC[state]}${readOnly ? '' : ' — 누르면 변경 팝업'}`}
-        className={cn('inline-flex items-center justify-center rounded-md border font-bold', size === 'xs' ? 'h-6 min-w-[2rem] px-1.5 text-[11px]' : 'h-7 min-w-[2.5rem] px-2 text-xs', cls, readOnly && 'cursor-default')}
+        className={cn('inline-flex items-center justify-center rounded-md border font-bold', size === 'xs' ? 'h-8 min-w-[2.25rem] px-1.5 text-[11px] sm:h-6 sm:min-w-[2rem]' : 'h-9 min-w-[2.75rem] px-2 text-xs sm:h-7 sm:min-w-[2.5rem]', cls, readOnly && 'cursor-default')}
       >
         {state}
       </button>
@@ -183,7 +252,7 @@ export function MentorReviewButton({ mentor, groups, currentGroupId }: { mentor:
   };
   return (
     <>
-      <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-[11px]" onClick={() => setOpen(true)} title="그룹별 운영사 평가·메모 (멘토 본인 비공개, 멘토 정보에 누적)">
+      <Button size="sm" variant="outline" className="h-9 gap-1 px-2 text-[11px] sm:h-7" onClick={() => setOpen(true)} title="그룹별 운영사 평가·메모 (멘토 본인 비공개, 멘토 정보에 누적)">
         <MessageSquare className="h-3.5 w-3.5" /> 운영사 평가{mentor.reviewAvg !== null ? ` ${mentor.reviewAvg}` : ''}{mentor.reviews.length > 0 ? ` (${mentor.reviews.length})` : ''}
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
@@ -196,13 +265,13 @@ export function MentorReviewButton({ mentor, groups, currentGroupId }: { mentor:
             <div className="flex flex-wrap items-end gap-2">
               <label className="flex flex-col gap-1 text-xs">
                 <span className="text-muted-foreground">그룹</span>
-                <select value={groupId} onChange={(e) => setGroupId(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm">
+                <select value={groupId} onChange={(e) => setGroupId(e.target.value)} className="h-10 rounded-md border bg-background px-2 text-base sm:h-9 sm:text-sm">
                   {groups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-xs">
                 <span className="text-muted-foreground">평점</span>
-                <select value={rating} onChange={(e) => setRating(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm">
+                <select value={rating} onChange={(e) => setRating(e.target.value)} className="h-10 rounded-md border bg-background px-2 text-base sm:h-9 sm:text-sm">
                   <option value="">없음</option>
                   {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n}점</option>)}
                 </select>
@@ -243,6 +312,7 @@ export function MentorMatchList({ rows, groups, currentGroupId = null, caseHrefB
   const { confirm, dialog: confirmDialog } = useConfirm();
   const [reassign, setReassign] = useState<{ caseId: string; menteeLabel: string; currentMentorId: string; currentMentorName: string; groupId: string; groupName: string } | null>(null);
   const [newMentorId, setNewMentorId] = useState<string | undefined>();
+  const [reassignQuery, setReassignQuery] = useState('');
 
   const filtered = useMemo(() => {
     const q = query.trim();
@@ -344,7 +414,7 @@ export function MentorMatchList({ rows, groups, currentGroupId = null, caseHrefB
                     <th className="hidden px-2 py-1 md:table-cell">확인 여부</th>
                     <th className="px-2 py-1">컨설팅 진행현황</th>
                     <th className="px-2 py-1 text-center" title="- 관리 안 함 / X 관리하지만 미수령 / O 수령">지급서류</th>
-                    <th className="px-2 py-1">배정 관리</th>
+                    <th className="hidden px-2 py-1 md:table-cell">배정 관리</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -353,6 +423,15 @@ export function MentorMatchList({ rows, groups, currentGroupId = null, caseHrefB
                       <td className="px-2 py-1.5"><RankBadge rank={c.rank} /></td>
                       <td className="px-2 py-1.5">
                         <Link href={caseHref(c.caseId)} className="font-medium text-primary hover:underline">{c.label}</Link>
+                        {/* (P31) 폰: 배정 관리 버튼을 멘티 셀 아래로 (표 가로폭 절약) */}
+                        <div className="mt-1.5 flex gap-1 md:hidden">
+                          <Button size="sm" variant="outline" className="h-9 gap-1 px-2 text-[11px]" disabled={!c.canRecall || pending} onClick={() => void recall(c.caseId, c.label, m.mentorName)}>
+                            <Undo2 className="h-3 w-3" /> 회수
+                          </Button>
+                          <Button size="sm" variant="outline" className="h-9 gap-1 px-2 text-[11px]" disabled={!c.canReassign || pending} onClick={() => { setReassign({ caseId: c.caseId, menteeLabel: c.label, currentMentorId: m.mentorId, currentMentorName: m.mentorName, groupId: c.groupId, groupName: c.groupName ?? '-' }); setNewMentorId(undefined); setReassignQuery(''); }}>
+                            <RefreshCw className="h-3 w-3" /> 재배정
+                          </Button>
+                        </div>
                       </td>
                       <td className="px-2 py-1.5 whitespace-nowrap">{c.groupName ?? '-'}</td>
                       <td className="hidden px-2 py-1.5 whitespace-nowrap md:table-cell">{c.matchMethod ? MATCH_METHOD_LABELS[c.matchMethod] : '-'}</td>
@@ -367,12 +446,12 @@ export function MentorMatchList({ rows, groups, currentGroupId = null, caseHrefB
                           <PaymentDocSetButton mentorId={m.mentorId} mentorName={m.mentorName} state={m.paymentDocState} />
                         </td>
                       )}
-                      <td className="px-2 py-1.5 whitespace-nowrap">
+                      <td className="hidden px-2 py-1.5 whitespace-nowrap md:table-cell">
                         <div className="flex gap-1">
-                          <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-[11px]" disabled={!c.canRecall || pending} title={c.canRecall ? '배정을 해제하고 등록 단계로' : '회차가 시작되어 회수할 수 없습니다 — 재배정 또는 케이스 상세의 강제 중도 종료를 사용'} onClick={() => void recall(c.caseId, c.label, m.mentorName)}>
+                          <Button size="sm" variant="outline" className="h-9 gap-1 px-2 text-[11px] md:h-7" disabled={!c.canRecall || pending} title={c.canRecall ? '배정을 해제하고 등록 단계로' : '회차가 시작되어 회수할 수 없습니다 — 재배정 또는 케이스 상세의 강제 중도 종료를 사용'} onClick={() => void recall(c.caseId, c.label, m.mentorName)}>
                             <Undo2 className="h-3 w-3" /> 멘토 회수
                           </Button>
-                          <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-[11px]" disabled={!c.canReassign || pending} title={c.canReassign ? '다른 멘토로 즉시 교체(잔여 회차 승계)' : '이 단계에서는 재배정할 수 없습니다'} onClick={() => { setReassign({ caseId: c.caseId, menteeLabel: c.label, currentMentorId: m.mentorId, currentMentorName: m.mentorName, groupId: c.groupId, groupName: c.groupName ?? '-' }); setNewMentorId(undefined); }}>
+                          <Button size="sm" variant="outline" className="h-9 gap-1 px-2 text-[11px] md:h-7" disabled={!c.canReassign || pending} title={c.canReassign ? '다른 멘토로 즉시 교체(잔여 회차 승계)' : '이 단계에서는 재배정할 수 없습니다'} onClick={() => { setReassign({ caseId: c.caseId, menteeLabel: c.label, currentMentorId: m.mentorId, currentMentorName: m.mentorName, groupId: c.groupId, groupName: c.groupName ?? '-' }); setNewMentorId(undefined); setReassignQuery(''); }}>
                             <RefreshCw className="h-3 w-3" /> 멘토 재배정
                           </Button>
                         </div>
@@ -387,31 +466,18 @@ export function MentorMatchList({ rows, groups, currentGroupId = null, caseHrefB
       ))}
 
       <Dialog open={!!reassign} onOpenChange={(o) => { if (!o) setReassign(null); }}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>멘토 재배정</DialogTitle>
             <DialogDescription>{reassign?.menteeLabel} 멘티({reassign?.groupName})를 다른 멘토로 교체합니다. 진행한 회차는 그대로 두고 잔여 회차를 새 멘토가 승계합니다. 괄호 안 숫자는 이 그룹에서 현재 담당 중인 멘티 수이며, 라운드별 정원(매칭 규칙)을 넘거나 다른 그룹에만 지정된 멘토는 선택할 수 없습니다.</DialogDescription>
           </DialogHeader>
-          <Select value={newMentorId} onValueChange={setNewMentorId}>
-            <SelectTrigger><SelectValue placeholder="새 멘토 선택" /></SelectTrigger>
-            <SelectContent>
-              {rows
-                .filter((x) => x.mentorId !== reassign?.currentMentorId)
-                .map((x) => {
-                  const inGroup = reassign ? x.mentees.filter((c) => c.groupId === reassign.groupId && !c.withdrawn).length : x.mentees.length;
-                  const eligible = !reassign || x.designatedGroupIds.length === 0 || x.designatedGroupIds.includes(reassign.groupId);
-                  return (
-                    <SelectItem key={x.mentorId} value={x.mentorId} disabled={!eligible}>
-                      {mentorLabel(x.mentorName, inGroup)}
-                      {!eligible ? ` · 다른 그룹 지정(${x.designatedGroupNames.join('/')})` : x.designatedGroupNames.length ? ` · 지정 ${x.designatedGroupNames.join('/')}` : ''}
-                    </SelectItem>
-                  );
-                })}
-            </SelectContent>
-          </Select>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setReassign(null)} disabled={pending}>취소</Button>
-            <Button onClick={() => void doReassign()} disabled={pending || !newMentorId}>{pending ? '재배정 중…' : '재배정'}</Button>
+          {/* (P31) Radix Select 대신 수동 검색과 같은 검색형 리스트 — 폰에서 긴 드롭다운 대신 검색·탭 */}
+          {reassign && (
+            <MentorPickList mentors={rows} groupId={reassign.groupId} excludeMentorId={reassign.currentMentorId} pick={newMentorId ?? null} onPick={setNewMentorId} query={reassignQuery} onQuery={setReassignQuery} />
+          )}
+          <DialogFooter className={STICKY_FOOTER}>
+            <Button className="h-10 sm:h-9" variant="outline" onClick={() => setReassign(null)} disabled={pending}>취소</Button>
+            <Button className="h-10 sm:h-9" onClick={() => void doReassign()} disabled={pending || !newMentorId}>{pending ? '재배정 중…' : '재배정'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -432,9 +498,9 @@ export function MentorProgressTable({ rows, caseHrefBase = '/nextlab/cases', sho
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-3 rounded-xl border border-sky-300 bg-sky-100 px-4 py-2.5 text-sm dark:border-sky-800 dark:bg-sky-950/40">
         <span className="font-semibold text-sky-950 dark:text-sky-100">멘토 {rows.length}명 · 담당 멘티 {rows.reduce((a, m) => a + m.mentees.length, 0)}명</span>
-        <div className="relative ml-auto">
+        <div className="relative w-full sm:ml-auto sm:w-auto">
           <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="멘토 이름 검색" className="h-9 w-44 bg-background pl-8" />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="멘토 이름 검색" className="h-10 w-full bg-background pl-8 sm:h-9 sm:w-44" />
         </div>
       </div>
       <div className="overflow-x-auto rounded-xl border bg-background">
@@ -568,8 +634,8 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
         } catch (err) {
           failures.push(`${r0.menteeName}: ${err instanceof Error ? err.message : String(err)}`);
         }
+        // (P31) 건별 토스트 대신 팝업 안 진행 막대만 갱신
         setBulkProgress({ done: i + 1, total: targets.length });
-        toast({ title: `일괄 확정 진행 중 ${i + 1}/${targets.length}` });
       }
       setBulkProgress(null);
       setBulkOpen(false);
@@ -582,18 +648,6 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
       router.refresh();
     });
   };
-  const manualCandidates = useMemo(() => {
-    if (!manualFor) return [];
-    const q = manualQuery.trim();
-    return mentors
-      .map((m) => ({
-        m,
-        inGroup: m.mentees.filter((c) => c.groupId === manualFor.groupId && !c.withdrawn).length,
-        eligible: m.designatedGroupIds.length === 0 || m.designatedGroupIds.includes(manualFor.groupId),
-      }))
-      .filter((x) => !q || x.m.mentorName.includes(q) || x.m.expertise.some((e) => e.includes(q)))
-      .sort((a, b) => Number(b.eligible) - Number(a.eligible) || a.inGroup - b.inGroup || a.m.mentorName.localeCompare(b.m.mentorName, 'ko'));
-  }, [mentors, manualFor, manualQuery]);
   const doManual = async () => {
     if (!manualFor || !manualPick) return;
     const target = mentors.find((m) => m.mentorId === manualPick);
@@ -647,7 +701,100 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
         희망 멘토(엑셀 &lsquo;재배치 희망여부&rsquo;)가 후보 자격(그룹 지정·라운드 정원)이면 등록 시 자동 확정됩니다. 아니면 희망분야 <b>1순위 → 2순위 → …</b> 순서로 후보 멘토 최대 3명이 추천되며(높은 순위 일치 우선) [매칭 확정]을 누르면 배정됩니다.
         추천 3명이 모두 맞지 않으면 [수동 검색]으로 멘토를 직접 골라 매칭하세요. 방식 = 자동(멘티 희망) / 추천 / 수동. 추천 옆 <b>(n)</b>은 그 멘토의 현재 확정 멘티 수입니다.
       </p>
-      <div className="overflow-x-auto rounded-xl border bg-background">
+      {/* (P31) 폰: 카드 리스트 — 멘티명·희망분야·추천 3개(세로)·전체폭 [매칭 확정]·[수동 검색]. 표는 md 이상에서만 */}
+      <ul className="flex flex-col gap-2 md:hidden">
+        {filtered.length === 0 && (
+          <li className="rounded-xl border bg-background p-3">
+            {rows.length === 0 ? (
+              <EmptyState icon={Users} title="등록된 멘티가 없습니다" hint="회원 명단 › 회원 등록에서 멘티를 등록하거나 엑셀로 일괄 등록하세요." action={<Link href="/nextlab/roster?tab=register&reg=mentee" className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground">멘티 등록</Link>} />
+            ) : (
+              <EmptyState compact icon={Search} title="조건에 맞는 멘티가 없습니다" hint="필터를 [전체]로 바꾸거나 검색어를 지워 보세요." action={<button type="button" className="text-xs font-semibold text-primary underline" onClick={() => { setQuery(''); setFilter('all'); }}>필터·검색 초기화</button>} />
+            )}
+          </li>
+        )}
+        {bulkable.length > 0 && filtered.length > 0 && (
+          <li className="flex items-center gap-2 px-1 text-xs text-muted-foreground">
+            <input type="checkbox" className="h-5 w-5 accent-primary" aria-label="추천 있는 미배정 멘티 전체 선택" checked={bulkable.every((r) => checked.has(r.caseId))} onChange={(e) => setChecked(e.target.checked ? new Set(bulkable.map((r) => r.caseId)) : new Set())} />
+            추천 있는 미배정 멘티 전체 선택 ({bulkable.length})
+          </li>
+        )}
+        {filtered.map((r) => {
+          const unassigned = !r.mentorId;
+          const canBulk = r.canConfirm && unassigned && r.recommendations.length > 0;
+          const menteePhone = (r as { menteePhone?: string | null }).menteePhone ?? null;
+          return (
+            <li key={r.caseId} className={cn('rounded-xl border bg-background p-3', r.withdrawn && 'opacity-60')}>
+              <div className="flex items-start gap-2">
+                {canBulk ? (
+                  <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-primary" aria-label={`${r.menteeName} 일괄 확정 대상 선택`} checked={checked.has(r.caseId)} onChange={(e) => setChecked((prev) => { const n = new Set(prev); if (e.target.checked) n.add(r.caseId); else n.delete(r.caseId); return n; })} />
+                ) : <span className="w-5 shrink-0" />}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <RankBadge rank={r.rank} />
+                    <Link href={caseHref(r.caseId)} className="text-sm font-semibold text-primary hover:underline">{r.label}</Link>
+                    <span className="text-[11px] text-muted-foreground">{r.groupName ?? '-'}</span>
+                    <StatusBadge status={r.status} short />
+                    {menteePhone && <ContactLinks phone={menteePhone} name={r.menteeName} size="xs" />}
+                  </div>
+                  <div className="mt-1"><Chips items={r.needs} tone="amber" max={6} /></div>
+                  {r.preferredMentor && <p className="mt-0.5 text-[11px] text-muted-foreground">희망 멘토: {r.preferredMentor}</p>}
+                </div>
+              </div>
+              {unassigned ? (
+                <div className="mt-2 flex flex-col gap-2">
+                  {r.recommendations.length > 0 ? (
+                    r.recommendations.map((rec) => (
+                      <div key={rec.mentorId} className="rounded-lg border border-dashed p-2 text-[11px]">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="rounded bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">추천 {rec.rank}</span>
+                          <MentorName id={rec.mentorId} name={rec.mentorName} count={rec.mentorActive} caseHrefBase={caseHrefBase} className="text-xs" />
+                          <span className="rounded bg-sky-100 px-1.5 py-0.5 font-semibold text-sky-900 dark:bg-sky-950 dark:text-sky-200">{Math.round(rec.score)}점</span>
+                        </div>
+                        {rec.rationale && <p className="mt-1 text-muted-foreground">{rec.rationale}</p>}
+                        <div className="mt-1"><Chips items={rec.expertise} max={6} /></div>
+                        {r.canConfirm && (
+                          <Button size="sm" variant="outline" className="mt-2 h-10 w-full text-xs" disabled={pending} onClick={() => void confirm(r.caseId, rec.mentorId, rec.mentorName, r.menteeName)}>
+                            매칭 확정
+                          </Button>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                      미배정 · 추천 없음
+                      {r.canConfirm && (
+                        <button type="button" disabled={pending} className="inline-flex h-9 items-center gap-1 rounded-md border px-2 text-[11px] font-semibold text-foreground hover:bg-accent disabled:opacity-50" onClick={() => start(async () => { const res = await rebuildRecommendationsAction(r.caseId); toast(res.ok ? { title: res.count > 0 ? `후보 ${res.count}명을 추천했습니다.` : '조건에 맞는 미배정 멘토가 없습니다. 수동 검색을 이용하세요.' } : { title: res.error, variant: 'destructive' }); if (res.ok) router.refresh(); })}>
+                          <RefreshCw className="h-3 w-3" /> 추천 다시 계산
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {r.canConfirm && (
+                    <Button size="sm" variant="secondary" className="h-10 w-full gap-1 text-xs" disabled={pending} onClick={() => { setManualFor(r); setManualPick(null); setManualQuery(''); }}>
+                      <UserSearch className="h-3.5 w-3.5" /> 수동 검색
+                    </Button>
+                  )}
+                </div>
+              ) : (
+                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+                  <span className="inline-flex items-center gap-1">
+                    <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
+                    <MentorName id={r.mentorId} name={r.mentorName ?? '-'} count={r.mentorActive} caseHrefBase={caseHrefBase} className="text-xs" />
+                  </span>
+                  {r.matchMethod && (
+                    <span className={cn('rounded px-1.5 py-0.5 font-semibold', r.matchMethod === 'auto_preferred' ? 'bg-brand-coral/15 text-brand-coral' : r.matchMethod === 'recommended' ? 'bg-amber-100 text-amber-800' : 'bg-muted text-foreground')}>{MATCH_METHOD_LABELS[r.matchMethod]}</span>
+                  )}
+                  {r.assignedAt && <span className="text-muted-foreground">{formatDate(r.assignedAt)}</span>}
+                  <ConfirmMark at={r.confirmedAt} />
+                  {r.surveyDone && <span className="text-muted-foreground">만족도 완료</span>}
+                  <button type="button" className={cn(PINK_BTN, 'ml-auto h-9')} onClick={() => setPairsFor(r)}>배정</button>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <div className="hidden overflow-x-auto rounded-xl border bg-background md:block">
         <table className="w-full text-xs">
           <thead>
             <tr className="border-b text-left text-muted-foreground">
@@ -655,6 +802,7 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
                 {bulkable.length > 0 && (
                   <input
                     type="checkbox"
+                    className="h-5 w-5 accent-primary sm:h-4 sm:w-4"
                     aria-label="추천 있는 미배정 멘티 전체 선택"
                     checked={bulkable.every((r) => checked.has(r.caseId))}
                     onChange={(e) => setChecked(e.target.checked ? new Set(bulkable.map((r) => r.caseId)) : new Set())}
@@ -693,6 +841,7 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
                     {canBulk && (
                       <input
                         type="checkbox"
+                        className="h-5 w-5 accent-primary sm:h-4 sm:w-4"
                         aria-label={`${r.menteeName} 일괄 확정 대상 선택`}
                         checked={checked.has(r.caseId)}
                         onChange={(e) => setChecked((prev) => { const n = new Set(prev); if (e.target.checked) n.add(r.caseId); else n.delete(r.caseId); return n; })}
@@ -702,6 +851,8 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
                   <td className="px-3 py-2"><RankBadge rank={r.rank} /></td>
                   <td className="px-3 py-2">
                     <Link href={caseHref(r.caseId)} className="font-medium text-primary hover:underline">{r.label}</Link>
+                    {/* (P31) 멘티 휴대폰이 행에 실리면 연락 아이콘 — 데이터 확장 전까지는 가드 */}
+                    <ContactLinks phone={(r as { menteePhone?: string | null }).menteePhone} name={r.menteeName} size="xs" className="ml-1" />
                     <div className="mt-1"><Chips items={r.needs} tone="amber" max={6} /></div>
                     {r.preferredMentor && <p className="mt-0.5 text-[11px] text-muted-foreground">희망 멘토: {r.preferredMentor}</p>}
                   </td>
@@ -864,46 +1015,18 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
               {manualFor?.groupName ?? '-'} 라운드 · 멘토 한 명을 선택해 [매칭(배정) 하기]. 이 그룹의 매칭 인원이 적은 멘토가 위로 옵니다. 그룹 지정이 다른 멘토와 정원 초과는 서버에서 거부됩니다.
             </DialogDescription>
           </DialogHeader>
-          <div className="relative">
-            <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={manualQuery} onChange={(e) => setManualQuery(e.target.value)} placeholder="멘토명 · 분야 검색" className="h-9 pl-8" autoFocus />
-          </div>
           {manualFor && (
             <div className="mb-1 flex flex-wrap items-center gap-1 text-[11px]">
               <span className="text-muted-foreground">멘티 희망분야:</span>
               <Chips items={manualFor.needs} tone="amber" max={6} />
             </div>
           )}
-          <div className="max-h-[50vh] overflow-y-auto rounded-lg border">
-            <table className="w-full text-xs">
-              <thead className="sticky top-0 bg-muted/60">
-                <tr className="text-left text-muted-foreground">
-                  <th className="w-8 px-2 py-1.5" />
-                  <th className="px-2 py-1.5">멘토명</th>
-                  <th className="px-2 py-1.5 text-right whitespace-nowrap">이 그룹 매칭 멘티</th>
-                  <th className="px-2 py-1.5">분야</th>
-                </tr>
-              </thead>
-              <tbody>
-                {manualCandidates.length === 0 && <tr><td colSpan={4} className="px-2 py-4 text-center text-muted-foreground">해당하는 멘토가 없습니다.</td></tr>}
-                {manualCandidates.map(({ m, inGroup, eligible }) => (
-                  <tr key={m.mentorId} className={cn('cursor-pointer border-t hover:bg-accent/40', manualPick === m.mentorId && 'bg-brand-pink/10', !eligible && 'opacity-50')} onClick={() => eligible && setManualPick(m.mentorId)}>
-                    <td className="px-2 py-1.5 text-center"><input type="radio" name="manual-mentor" checked={manualPick === m.mentorId} disabled={!eligible} onChange={() => setManualPick(m.mentorId)} aria-label={m.mentorName} /></td>
-                    <td className="px-2 py-1.5 whitespace-nowrap">
-                      <span className="font-medium">{m.mentorName}</span>
-                      {m.organization && <span className="ml-1 text-muted-foreground">{m.organization}</span>}
-                      {!eligible && <span className="ml-1 text-[10px] text-violet-700">그룹 지정 외 ({m.designatedGroupNames.join('/')})</span>}
-                    </td>
-                    <td className="px-2 py-1.5 text-right tabular-nums">{inGroup}</td>
-                    <td className="px-2 py-1.5"><Chips items={m.expertise} max={10} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setManualFor(null)} disabled={pending}>취소</Button>
-            <Button className="bg-brand-pink text-white hover:bg-brand-pink/90" onClick={() => void doManual()} disabled={pending || !manualPick}>
+          {manualFor && (
+            <MentorPickList mentors={mentors} groupId={manualFor.groupId} pick={manualPick} onPick={setManualPick} query={manualQuery} onQuery={setManualQuery} />
+          )}
+          <DialogFooter className={STICKY_FOOTER}>
+            <Button className="h-10 sm:h-9" variant="outline" onClick={() => setManualFor(null)} disabled={pending}>취소</Button>
+            <Button className="h-10 bg-brand-pink text-white hover:bg-brand-pink/90 sm:h-9" onClick={() => void doManual()} disabled={pending || !manualPick}>
               <FileCheck2 className="mr-1 h-4 w-4" />{pending ? '매칭 중…' : '매칭(배정) 하기'}
             </Button>
           </DialogFooter>

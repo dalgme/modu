@@ -10,6 +10,7 @@ import { DELAY_LABELS } from '@/lib/reports/delays-shared';
 import { previewDelayNudgeAction, sendDelayNudgeAction, type NudgePreviewMentor } from '@/lib/reports/delay-actions';
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
 import { EmptyState } from '@/components/common/empty-state';
+import { ContactLinks } from '@/components/common/contact-links';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
@@ -85,7 +86,7 @@ export function DelayList({ items, caseHrefBase, canNudge, lastNudges = {} }: { 
           <span className="text-xs text-muted-foreground">
             멘토 책임 지연(첫 회차 없음·장기 무진행·보완 지연)을 선택하면 멘토별로 묶어 독려 문자를 1건씩 보냅니다. 보내기 전에 문안을 확인합니다.
           </span>
-          <Button size="sm" className="ml-auto gap-1" disabled={pending || selectedIds.length === 0} onClick={openPreview}>
+          <Button size="sm" className="ml-auto h-10 gap-1 sm:h-9" disabled={pending || selectedIds.length === 0} onClick={openPreview}>
             <BellRing className="h-4 w-4" /> 독려 문자 ({selectedIds.length})
           </Button>
         </div>
@@ -98,19 +99,21 @@ export function DelayList({ items, caseHrefBase, canNudge, lastNudges = {} }: { 
                 <th className="px-3 py-2">
                   <input
                     type="checkbox"
+                    className="h-5 w-5 accent-primary sm:h-4 sm:w-4"
                     aria-label="전체 선택"
                     checked={nudgeable.length > 0 && nudgeable.every((i) => selected.has(i.caseId))}
                     onChange={(e) => setSelected(e.target.checked ? new Set(nudgeable.map((i) => i.caseId)) : new Set())}
                   />
                 </th>
               )}
+              {/* (P31) 폰에서는 그룹·회차·최근 독려 열을 숨긴다 (멘티 셀에 그룹, 멘토 셀에 최근 독려를 접어 표시) */}
               <th className="px-3 py-2">멘티 (이름/소속)</th>
-              <th className="px-3 py-2">그룹</th>
+              <th className="hidden px-3 py-2 md:table-cell">그룹</th>
               <th className="px-3 py-2">지연 종류</th>
               <th className="px-3 py-2 text-right">경과</th>
-              <th className="px-3 py-2 text-right">회차</th>
+              <th className="hidden px-3 py-2 text-right md:table-cell">회차</th>
               <th className="px-3 py-2">담당 멘토</th>
-              <th className="px-3 py-2 whitespace-nowrap">최근 독려</th>
+              <th className="hidden px-3 py-2 whitespace-nowrap md:table-cell">최근 독려</th>
             </tr>
           </thead>
           <tbody>
@@ -125,6 +128,7 @@ export function DelayList({ items, caseHrefBase, canNudge, lastNudges = {} }: { 
                       {nudge && (
                         <input
                           type="checkbox"
+                          className="h-5 w-5 accent-primary sm:h-4 sm:w-4"
                           checked={selected.has(i.caseId)}
                           onChange={() =>
                             setSelected((prev) => {
@@ -143,15 +147,23 @@ export function DelayList({ items, caseHrefBase, canNudge, lastNudges = {} }: { 
                     <Link href={`${caseHrefBase}/${i.caseId}`} className="hover:underline">
                       {menteeLabel(i.ownerName, i.businessName)}
                     </Link>
+                    <div className="text-[11px] font-normal text-muted-foreground md:hidden">{i.groupName ?? '-'} · 회차 {i.roundsDone}/{i.requiredRounds}</div>
                   </td>
-                  <td className="px-3 py-2 text-xs">{i.groupName ?? '-'}</td>
+                  <td className="hidden px-3 py-2 text-xs md:table-cell">{i.groupName ?? '-'}</td>
                   <td className="px-3 py-2">
                     <Badge className={`text-[10px] font-semibold ${KIND_TONE[i.kind]}`} variant="outline">{DELAY_LABELS[i.kind]}</Badge>
                   </td>
                   <td className="px-3 py-2 text-right font-semibold tabular-nums text-destructive">{i.days}일</td>
-                  <td className="px-3 py-2 text-right tabular-nums">{i.roundsDone}/{i.requiredRounds}</td>
-                  <td className="px-3 py-2 text-xs">{i.mentorName ?? <span className="text-muted-foreground">미배정</span>}</td>
-                  <td className="px-3 py-2 text-xs whitespace-nowrap">
+                  <td className="hidden px-3 py-2 text-right tabular-nums md:table-cell">{i.roundsDone}/{i.requiredRounds}</td>
+                  <td className="px-3 py-2 text-xs">
+                    <span className="inline-flex flex-wrap items-center gap-1">
+                      {i.mentorName ?? <span className="text-muted-foreground">미배정</span>}
+                      {/* (P31) 멘토 휴대폰이 실리면 전화·문자 아이콘 — delays.ts 가 mentorPhone 을 채우기 전까지 가드 */}
+                      <ContactLinks phone={(i as { mentorPhone?: string | null }).mentorPhone} name={i.mentorName ?? undefined} size="xs" />
+                    </span>
+                    {last && <div className="mt-0.5 text-[11px] text-muted-foreground md:hidden">최근 독려 {md(last)}</div>}
+                  </td>
+                  <td className="hidden px-3 py-2 text-xs whitespace-nowrap md:table-cell">
                     {last ? (
                       <span className={lastRecent ? 'font-semibold text-amber-700' : 'text-muted-foreground'} title={formatDate(last)}>
                         {md(last)}{lastRecent ? ` (${daysAgo(last)}일 전)` : ''}

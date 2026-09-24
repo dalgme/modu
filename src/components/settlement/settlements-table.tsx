@@ -107,15 +107,16 @@ export function SettlementsTable({
         />
       )}
       {selectable && (
-        <div className="flex flex-wrap items-end gap-2 rounded-xl border bg-background p-3">
+        // (P31) 폰에서는 선택 바를 하단 탭바 위에 고정 — 표를 스크롤해도 선택 합계·[품의 편성]이 보인다
+        <div className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom))] z-30 flex flex-wrap items-end gap-2 rounded-xl border bg-background p-3 shadow-lg md:static md:shadow-none">
           <div className="text-sm">
             선택 <b>{selected.size}</b>건 · 지급총액 <b className="tabular-nums">{formatKRW(total.gross)}</b> · 원천징수 <span className="tabular-nums">{formatKRW(total.withholding)}</span> · 실지급{' '}
             <b className="tabular-nums text-primary">{formatKRW(total.net)}</b>
             {docsMissing.length > 0 && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">서류 미비 {docsMissingNames.length}명 포함</span>}
           </div>
-          <div className="ml-auto flex flex-wrap items-end gap-2">
+          <div className="flex w-full flex-wrap items-end gap-2 sm:ml-auto sm:w-auto">
             {draftBatches.length > 0 && (
-              <select value={target} onChange={(e) => setTarget(e.target.value)} className="h-9 rounded-md border bg-background px-2 text-sm" disabled={pending} aria-label="편성 대상 품의">
+              <select value={target} onChange={(e) => setTarget(e.target.value)} className="h-10 w-full rounded-md border bg-background px-2 text-base sm:h-9 sm:w-auto sm:text-sm" disabled={pending} aria-label="편성 대상 품의">
                 <option value="new">새 품의</option>
                 {draftBatches.map((b) => (
                   <option key={b.id} value={b.id}>
@@ -124,8 +125,8 @@ export function SettlementsTable({
                 ))}
               </select>
             )}
-            {target === 'new' && <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="품의 제목 (예: 2026-10 1차 지급 품의)" aria-label="품의 제목" className="w-64" disabled={pending} />}
-            <Button onClick={() => setConfirmOpen(true)} disabled={pending || selected.size === 0 || (target === 'new' && !title.trim())} className="gap-1">
+            {target === 'new' && <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="품의 제목 (예: 2026-10 1차 지급 품의)" aria-label="품의 제목" className="w-full sm:w-64" disabled={pending} />}
+            <Button onClick={() => setConfirmOpen(true)} disabled={pending || selected.size === 0 || (target === 'new' && !title.trim())} className="h-10 w-full gap-1 sm:h-9 sm:w-auto">
               <FolderPlus className="h-4 w-4" /> 품의 편성
             </Button>
           </div>
@@ -142,6 +143,7 @@ export function SettlementsTable({
                   <th className="px-3 py-2">
                     <input
                       type="checkbox"
+                      className="h-5 w-5 accent-primary sm:h-4 sm:w-4"
                       aria-label="전체 선택"
                       checked={allSelectable.length > 0 && allSelectable.every((s) => selected.has(s.id))}
                       onChange={(e) => setSelected(e.target.checked ? new Set(allSelectable.map((s) => s.id)) : new Set())}
@@ -172,7 +174,7 @@ export function SettlementsTable({
                 <tr key={s.id} className="border-b last:border-0">
                   {selectable && (
                     <td className="px-3 py-2">
-                      <input type="checkbox" checked={selected.has(s.id)} disabled={s.status !== 'pending'} onChange={() => toggle(s.id)} aria-label={`${s.mentorName} · ${s.businessName} 선택`} />
+                      <input type="checkbox" className="h-5 w-5 accent-primary sm:h-4 sm:w-4" checked={selected.has(s.id)} disabled={s.status !== 'pending'} onChange={() => toggle(s.id)} aria-label={`${s.mentorName} · ${s.businessName} 선택`} />
                     </td>
                   )}
                   <td className="px-3 py-2 font-medium">

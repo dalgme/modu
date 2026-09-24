@@ -5,13 +5,19 @@ import { AppHeader } from '@/components/common/app-header';
 import { ScopeSwitcher } from '@/components/common/scope-switcher';
 import { NextlabNav } from '@/components/nextlab/nextlab-nav';
 import { GRADE_LABELS } from '@/lib/auth/capabilities';
-import { MobileTabBar } from '@/components/common/mobile-tab-bar';
-import { Coins, FileSpreadsheet, LayoutDashboard, MessageSquare, Users } from 'lucide-react';
+import { StaffMobileTabs } from '@/components/nav/staff-mobile-tabs';
+import { countPendingInbox } from '@/lib/data/requests';
+import { countUnreadOperatorRequests } from '@/lib/data/operator-requests';
 
 export default async function NextlabLayout({ children }: { children: React.ReactNode }) {
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
-  const groups = await listMyGroups(ctx.programId, { id: profile.id, role: ctx.role, isPlatformAdmin: false });
+  // (P31) 하단 탭 [요청] 배지 = 요청함 대기 + 발주처 요청 미확인 (count 쿼리 2개 — 게시판 처리 대기 탭과 같은 기준)
+  const [groups, pendingInbox, unreadOpReq] = await Promise.all([
+    listMyGroups(ctx.programId, { id: profile.id, role: ctx.role, isPlatformAdmin: false }),
+    countPendingInbox(ctx.programId, ctx.supportTypeId ?? undefined).catch(() => 0),
+    countUnreadOperatorRequests(ctx.programId).catch(() => 0),
+  ]);
   return (
     <div className="min-h-screen bg-muted/20">
       <AppHeader
@@ -32,16 +38,9 @@ export default async function NextlabLayout({ children }: { children: React.Reac
           옵저버(현황 확인·자문) 계정입니다. 열람과 종합결과리포트 생성만 가능하고, 변경 작업은 제한됩니다.
         </p>
       )}
-      <div className="mx-auto max-w-6xl px-4 py-6 pb-24 md:pb-6">{children}</div>
-      <MobileTabBar
-        tabs={[
-          { href: '/nextlab/dashboard', label: '홈', icon: LayoutDashboard },
-          { href: '/nextlab/roster', label: '회원', icon: Users },
-          { href: '/nextlab/reports', label: '리포트', icon: FileSpreadsheet },
-          { href: '/nextlab/board', label: '게시판', icon: MessageSquare },
-          { href: '/nextlab/settlements', label: '정산', icon: Coins },
-        ]}
-      />
+      {/* (P31) 하단 탭바(3.5rem)+safe-area 만큼 콘텐츠 하단 여백 */}
+      <div className="mx-auto max-w-6xl px-4 py-6 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6">{children}</div>
+      <StaffMobileTabs role="nextlab" pendingCount={pendingInbox + unreadOpReq} />
     </div>
   );
 }

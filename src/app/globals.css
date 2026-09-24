@@ -109,6 +109,15 @@
   }
 }
 
+/* (P31) 폰(<640px)에서는 text-xs/text-sm 유틸리티가 위 기본값을 덮어써도 16px 을 강제 — iOS 포커스 확대 원천 차단 */
+@media (max-width: 639px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* 앵커(#rounds 등) 이동 시 고정 헤더+탭에 가려지지 않게 (P28) */
 html {
   scroll-padding-top: 7.5rem;
@@ -121,11 +130,10 @@ html {
   display: none;
 }
 
-/* PWA 세이프에어리어 (노치·홈 인디케이터) — 가로/하단 여백 */
+/* PWA 세이프에어리어 (노치) — 가로 여백. 하단 여백은 (P31) 각 레이아웃의 콘텐츠 pb-[calc(5rem+env(safe-area-inset-bottom))] 와 하단 탭바가 담당하므로 body 에서는 뺀다(중복 여백 제거) */
 @supports (padding: max(0px)) {
   body {
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
-    padding-bottom: env(safe-area-inset-bottom);
   }
 }
