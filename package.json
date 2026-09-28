@@ -6,12 +6,13 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint && bash scripts/check-brand-strings.sh",
+    "lint": "next lint && bash scripts/check-brand-strings.sh && node scripts/check-rsc-props.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "lint:brand": "bash scripts/check-brand-strings.sh"
+    "lint:brand": "bash scripts/check-brand-strings.sh",
+    "lint:rsc": "node scripts/check-rsc-props.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
