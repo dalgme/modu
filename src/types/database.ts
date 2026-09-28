@@ -659,6 +659,66 @@ export type Database = {
           },
         ];
       };
+      error_reports: {
+        Row: {
+          alerted_at: string | null;
+          created_at: string;
+          digest: string | null;
+          id: string;
+          ip_hash: string | null;
+          message: string | null;
+          path: string | null;
+          program_id: string | null;
+          role: string | null;
+          scope: string | null;
+          user_agent: string | null;
+          user_id: string | null;
+        };
+        Insert: {
+          alerted_at?: string | null;
+          created_at?: string;
+          digest?: string | null;
+          id?: string;
+          ip_hash?: string | null;
+          message?: string | null;
+          path?: string | null;
+          program_id?: string | null;
+          role?: string | null;
+          scope?: string | null;
+          user_agent?: string | null;
+          user_id?: string | null;
+        };
+        Update: {
+          alerted_at?: string | null;
+          created_at?: string;
+          digest?: string | null;
+          id?: string;
+          ip_hash?: string | null;
+          message?: string | null;
+          path?: string | null;
+          program_id?: string | null;
+          role?: string | null;
+          scope?: string | null;
+          user_agent?: string | null;
+          user_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'error_reports_program_id_fkey';
+            columns: ['program_id'];
+            isOneToOne: false;
+            referencedRelation: 'programs';
+            referencedColumns: ['id'];
+          },
+          {
+            foreignKeyName: 'error_reports_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       faqs: {
         Row: {
           answer: string;

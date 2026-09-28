@@ -12,7 +12,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "lint:brand": "bash scripts/check-brand-strings.sh",
-    "lint:rsc": "node scripts/check-rsc-props.mjs"
+    "lint:rsc": "node scripts/check-rsc-props.mjs",
+    "smoke": "playwright test"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
@@ -53,6 +54,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.1",
     "@types/react": "^18",

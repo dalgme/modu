@@ -1,6 +1,7 @@
 import { requireStaff } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { AppHeader } from '@/components/common/app-header';
+import { SafeSlot } from '@/components/common/safe-slot';
 import { NextlabNav } from '@/components/nextlab/nextlab-nav';
 import { InstitutionNav } from '@/components/nav/institution-nav';
 import { GRADE_LABELS } from '@/lib/auth/capabilities';
@@ -17,19 +18,27 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const scopeGroups = groups.map((g) => ({ id: g.group.id, code: g.group.code, name: g.group.name, caseCount: g.caseCount, ended: g.group.status !== 'active', mine: g.mine }));
   return (
     <div className="min-h-screen bg-muted/20">
-      <AppHeader
-        name={profile.name}
-        role={profile.role}
-        branding={ctx.branding}
-        context={{ programName: ctx.program.name, groupName: ctx.group?.name ?? null }}
-        gradeLabel={ctx.grade && ctx.grade !== 'pl' ? GRADE_LABELS[ctx.grade] : null}
-      />
+      <SafeSlot name="header">
+        <AppHeader
+          name={profile.name}
+          role={profile.role}
+          branding={ctx.branding}
+          context={{ programName: ctx.program.name, groupName: ctx.group?.name ?? null }}
+          gradeLabel={ctx.grade && ctx.grade !== 'pl' ? GRADE_LABELS[ctx.grade] : null}
+        />
+      </SafeSlot>
       {profile.role === 'nextlab' && <NextlabNav />}
       {profile.role === 'institution' && <InstitutionNav />}
-      <ScopeSwitcher groups={scopeGroups} currentGroupId={ctx.supportTypeId} emptyHref={profile.role === 'nextlab' ? '/nextlab/settings?tab=groups' : undefined} />
+      <SafeSlot name="scope-switcher">
+        <ScopeSwitcher groups={scopeGroups} currentGroupId={ctx.supportTypeId} emptyHref={profile.role === 'nextlab' ? '/nextlab/settings?tab=groups' : undefined} />
+      </SafeSlot>
       <div className="mx-auto max-w-6xl px-4 py-6 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6">{children}</div>
       {/* (P31) 문자 발송 등 공용 화면에서도 역할별 하단 탭바 유지 */}
-      {(profile.role === 'nextlab' || profile.role === 'institution') && <StaffMobileTabs role={profile.role} />}
+      {(profile.role === 'nextlab' || profile.role === 'institution') && (
+        <SafeSlot name="mobile-tabs">
+          <StaffMobileTabs role={profile.role} />
+        </SafeSlot>
+      )}
     </div>
   );
 }

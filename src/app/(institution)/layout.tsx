@@ -2,6 +2,7 @@ import { requireInstitution } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { listMyGroups } from '@/lib/programs/data';
 import { AppHeader } from '@/components/common/app-header';
+import { SafeSlot } from '@/components/common/safe-slot';
 import { ScopeSwitcher } from '@/components/common/scope-switcher';
 import { InstitutionNav } from '@/components/nav/institution-nav';
 import { StaffMobileTabs } from '@/components/nav/staff-mobile-tabs';
@@ -12,20 +13,26 @@ export default async function InstitutionLayout({ children }: { children: React.
   const groups = await listMyGroups(ctx.programId, { id: profile.id, role: ctx.role, isPlatformAdmin: false });
   return (
     <div className="min-h-screen bg-muted/20">
-      <AppHeader
-        name={profile.name}
-        role={profile.role}
-        branding={ctx.branding}
-        context={{ programName: ctx.program.name, groupName: ctx.group?.name ?? null }}
-      />
+      <SafeSlot name="header">
+        <AppHeader
+          name={profile.name}
+          role={profile.role}
+          branding={ctx.branding}
+          context={{ programName: ctx.program.name, groupName: ctx.group?.name ?? null }}
+        />
+      </SafeSlot>
       <InstitutionNav />
-      <ScopeSwitcher
-        groups={groups.map((g) => ({ id: g.group.id, code: g.group.code, name: g.group.name, caseCount: g.caseCount, ended: g.group.status !== 'active', mine: g.mine }))}
-        currentGroupId={ctx.supportTypeId}
-      />
+      <SafeSlot name="scope-switcher">
+        <ScopeSwitcher
+          groups={groups.map((g) => ({ id: g.group.id, code: g.group.code, name: g.group.name, caseCount: g.caseCount, ended: g.group.status !== 'active', mine: g.mine }))}
+          currentGroupId={ctx.supportTypeId}
+        />
+      </SafeSlot>
       <div className="mx-auto max-w-6xl px-4 py-6 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6">{children}</div>
       {/* (P31) 발주처 하단 탭바 — 홈·리포트·정산·요청·더보기 */}
-      <StaffMobileTabs role="institution" />
+      <SafeSlot name="mobile-tabs">
+        <StaffMobileTabs role="institution" />
+      </SafeSlot>
     </div>
   );
 }

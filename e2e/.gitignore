@@ -1,0 +1,5 @@
+# 스모크 실행 산출물 (globalSetup 이 생성) — 커밋 금지
+.auth/
+.smoke-seed.json
+playwright-report/
+test-results/

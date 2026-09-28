@@ -1,5 +1,7 @@
 {
-  "regions": ["icn1"],
+  "regions": [
+    "icn1"
+  ],
   "crons": [
     {
       "path": "/api/cron/dispatch-notifications",
@@ -16,6 +18,10 @@
     {
       "path": "/api/cron/survey-reminders",
       "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/error-alert",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

@@ -84,3 +84,36 @@ curl -X POST https://<배포주소>/api/setup \
 - 정산서·보고서 PDF 는 서버리스 Chromium 콜드스타트로 첫 호출이 10~20초 걸릴 수 있다(`maxDuration = 60`).
 - PDF 생성 실패는 회차 저장·정산 확정을 막지 않고 감사로그(`round.report_render_failed`, `settlement.confirmed.statement=failed`)에 남는다.
 - 알림 이벤트별 on/off 설정과 레거시 `/admin/settings/features` 정리는 P8 이후 과제.
+
+## 7. 운영 중 사고 대응 (P34, 2026-09-28 장애 이후)
+
+### 7-1. 증상별 첫 조치 (5분 안에)
+| 증상 | 먼저 할 것 |
+|---|---|
+| 로그인 후 영문 "Application error… Digest: 숫자" | **즉시 되돌리기(7-2)** → 그다음 원인 조사. Digest 숫자를 Claude 세션에 알려주면 Vercel 로그에서 바로 찾는다 |
+| 특정 화면만 "화면을 불러오지 못했습니다"(한국어 안내) | 한 화면의 문제. 다른 화면은 정상. 오류 코드와 화면 주소를 전달 |
+| 담당자 휴대폰에 "플랫폼 화면 오류 N건" 문자 | `/platform/system` 최근 오류 표 확인 → 같은 화면에서 반복되면 7-2 |
+| 사이트 자체가 안 열림(연결 실패) | Vercel 상태 페이지(vercel-status.com)·Supabase 상태 확인. 우리 코드 문제가 아닐 수 있음 |
+
+### 7-2. 즉시 되돌리기 (Instant Rollback) — 원인 몰라도 먼저
+1. https://vercel.com/dalgmes-projects/modu 접속 → **Deployments** 탭.
+2. 현재 Production(맨 위) 바로 아래, 마지막으로 정상이었던 배포의 `…` 메뉴 → **Instant Rollback** → 확인. 30초 안에 이전 버전으로 돌아간다.
+3. DB 는 건드리지 않으므로 데이터 손실 없음. 단, 되돌린 버전이 **새 마이그레이션 이전 코드**면 새 컬럼을 모르는 상태로 돌아가는 것뿐이라 대부분 안전하다(신규 테이블을 쓰는 화면만 비어 보일 수 있음).
+4. Claude 세션에서도 가능: "직전 정상 배포로 롤백" 이라고 지시(Vercel MCP `request_rollback`).
+5. 원인 수정 후 정상 푸시가 새 Production 이 되면 롤백 상태는 자동 해제된다.
+
+### 7-3. 운영 반영 경로 (반드시 이 순서)
+```
+작업 브랜치 푸시 → Vercel Preview 배포 → GitHub Actions "smoke" 자동 실행(4개 역할 로그인·전 화면 열기)
+   → 초록(통과)일 때만 → git push origin HEAD:main → Production 배포 → smoke 가 Production 에 대해 한 번 더 실행
+```
+- 전제: Vercel 프로젝트 Settings → Git → **Production Branch = `main`**(2026-09-25 요청, 대시보드에서 변경).
+- smoke 가 빨간 X 면 main 에 올리지 않는다. 절차·시크릿은 `docs/SMOKE-TEST.md`.
+
+### 7-4. 자동 감시
+- **화면 오류 자동 보고**: 오류 화면(`error.tsx`)이 뜨면 `error_reports` 에 기록되고, Cron `/api/cron/error-alert`(5분마다)가 최근 15분 보고를 모아 플랫폼 관리자 휴대폰(+ 환경변수 `OPS_ALERT_PHONES` 의 번호)으로 문자 1통을 보낸다(30분 쿨다운). 보고 내역은 `/platform/system` 하단.
+- **외부 생존 감시(권장, 무료)**: UptimeRobot 등에서 `https://<도메인>/api/health` 를 5분 간격 HTTP 모니터로 등록하고 알림 이메일/문자를 설정한다. `ok:false` 또는 503 이면 DB 연결 실패.
+- **배포마다 자동 화면 점검**: 7-3 의 smoke. GitHub 저장소 Actions 탭에서 결과 확인.
+
+### 7-5. 장애 기록 남기기
+- 원인·영향 시간·조치·재발 방지를 CLAUDE.md §9 와 §11 에 날짜와 함께 남긴다(2026-09-28 항목 참고). 같은 유형의 코드 규칙은 `scripts/check-rsc-props.mjs` 처럼 lint 에 편입해 재발을 기계적으로 막는다.
