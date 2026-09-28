@@ -1,11 +1,12 @@
 import Link from 'next/link';
-import { AlertTriangle, ArrowRight, BookOpen, CalendarDays, CheckCircle2, ClipboardEdit, Coins, FileText, Mail, Phone, Users } from 'lucide-react';
+import { AlertTriangle, ArrowRight, BookOpen, CalendarDays, CheckCircle2, ClipboardEdit, Coins, FileText, Users } from 'lucide-react';
 
 import type { MentorDashboardData, MentorActionKey } from '@/lib/data/role-dashboard';
 import type { CaseListItem } from '@/lib/data/cases';
 import type { Branding } from '@/lib/programs/branding';
 import { CaseCard } from '@/components/cases/case-card';
 import { RoundDots } from '@/components/common/round-dots';
+import { MenteeContactLinks } from '@/components/mentor/mentee-contact-links';
 import { formatKRW } from '@/lib/utils/format';
 import { cn } from '@/lib/utils';
 
@@ -135,18 +136,7 @@ export function MentorDashboardV2({
                         {t.action.key === 'upcoming' && t.nextPlanned ? ` · ${fmtWhen(t.nextPlanned.startedAt)}` : ''}
                       </span>
                       <span className="text-[11px] leading-snug text-muted-foreground">{t.action.hint}</span>
-                      {(t.menteePhone || t.menteeEmail) && (
-                        <span className="flex flex-wrap gap-x-3 text-[11px] text-muted-foreground">
-                          {t.menteePhone && (
-                            <a href={`tel:${t.menteePhone.replace(/\D/g, '')}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-primary hover:underline"><Phone className="h-3 w-3" />{t.menteePhone}</a>
-                          )}
-                          {t.menteePhone && (
-                            <a href={`sms:${t.menteePhone.replace(/\D/g, '')}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-primary hover:underline">문자</a>
-                          )}
-                          {t.menteeEmail && <a href={`mailto:${t.menteeEmail}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 hover:underline"><Mail className="h-3 w-3" />{t.menteeEmail}</a>}
-                          <Link href={`/mentor/qna?tab=messages&case=${t.caseId}`} onClick={(e) => e.stopPropagation()} className="inline-flex items-center gap-1 text-primary hover:underline">메시지</Link>
-                        </span>
-                      )}
+                      {(t.menteePhone || t.menteeEmail) && <MenteeContactLinks phone={t.menteePhone} email={t.menteeEmail} caseId={t.caseId} />}
                     </span>
                     <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
                   </Link>

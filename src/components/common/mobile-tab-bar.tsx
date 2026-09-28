@@ -2,15 +2,34 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import type { LucideIcon } from 'lucide-react';
+import { CalendarDays, ClipboardList, Coins, FileText, Inbox, LayoutDashboard, MessageSquare, MessageSquareText, PenLine, UserCircle, Users, type LucideIcon } from 'lucide-react';
 
 import { MoreMenuSheet, type MoreMenuItem } from '@/components/common/more-menu-sheet';
 import { cn } from '@/lib/utils';
 
+/**
+ * 탭 아이콘은 **이름(문자열)** 로 받는다 — 레이아웃(서버 컴포넌트)이 lucide 컴포넌트 객체(forwardRef)를 props 로 넘기면
+ * "Functions cannot be passed directly to Client Components" 로 페이지 전체가 500 이 난다(2026-09-28 운영 장애). 매핑은 이 파일 안에서만.
+ */
+const TAB_ICONS = {
+  dashboard: LayoutDashboard,
+  calendar: CalendarDays,
+  coins: Coins,
+  message: MessageSquare,
+  'message-text': MessageSquareText,
+  user: UserCircle,
+  users: Users,
+  pen: PenLine,
+  clipboard: ClipboardList,
+  file: FileText,
+  inbox: Inbox,
+} satisfies Record<string, LucideIcon>;
+export type MobileTabIcon = keyof typeof TAB_ICONS;
+
 export interface MobileTab {
   href: string;
   label: string;
-  icon: LucideIcon;
+  icon: MobileTabIcon;
   /** (P31) 이 경로(접두)도 활성으로 본다 — 예: 매칭 탭에 /nextlab/cases */
   match?: string[];
   /** (P31) 미처리 건수 배지 (0 이면 표시 안 함) */
@@ -36,7 +55,7 @@ export function MobileTabBar({ tabs, hideOn = [], more }: { tabs: MobileTab[]; /
       <ul className="grid" style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
         {tabs.map((t) => {
           const active = isActive(t);
-          const Icon = t.icon;
+          const Icon = TAB_ICONS[t.icon];
           return (
             <li key={t.href}>
               <Link href={t.href} aria-current={active ? 'page' : undefined} className={cn('relative flex h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold', active ? 'text-primary' : 'text-muted-foreground')}>
