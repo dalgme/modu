@@ -98,6 +98,9 @@ npx playwright show-report e2e/playwright-report      # 결과 HTML 열기
 - **확실한 해결**: Vercel → 프로젝트 → Settings → Deployment Protection → **Protection Bypass for Automation** 에서 비밀값을 만들고
   GitHub 시크릿 `VERCEL_AUTOMATION_BYPASS_SECRET` 에 넣는다(워크플로·플레이라이트 설정은 이미 읽는다). 이 헤더가 붙은 요청은 검문 대상에서 빠진다.
   그래도 검문이 계속되면 Vercel → Firewall → **System Bypass Rules** 에 러너 UA(`HeadlessChrome`) 규칙을 추가한다.
+- **집계 규칙(run #14 이후)**: 검문(`x-vercel-mitigated`)으로 못 연 화면은 **실패가 아니라 건너뜀(skipped)** 으로 집계한다 — 앱 오류가 아니고,
+  검문은 한 번 걸리면 8분 넘게 유지돼 재시도로 풀리지 않았다. 리포트에서 skipped 수와 사유를 확인하고, 0이 아니면 그 화면은 사람이 한 번 열어 본다.
+  실패로 집계하려면 워크플로 env 에 `SMOKE_STRICT_EDGE=1`. 비밀값을 등록하면 검문 자체가 사라져 skipped 도 0이 된다.
 
 ### 7-2. "하이드레이션 불일치" 라고 나온다 (React #418 / #422 / #423 / #425)
 

@@ -177,6 +177,12 @@ export async function expectHealthyPage(page: Page, path: string): Promise<void>
     ]
       .filter(Boolean)
       .join(' · ');
+    if (h['x-vercel-mitigated'] && !process.env.SMOKE_STRICT_EDGE) {
+      // Vercel 시스템 DDoS 검문이 러너 IP 에 걸려 이 화면을 열 수 없었다 — 앱 오류가 아니라 환경 문제라 "건너뜀"으로 집계한다
+      // (run #13·#14: 검문이 8분 넘게 유지돼 재시도로는 풀리지 않았다). 리포트의 skipped 수와 사유로 남는다.
+      // 확실한 해결은 VERCEL_AUTOMATION_BYPASS_SECRET (docs/SMOKE-TEST.md §7-1). 엄격 모드(SMOKE_STRICT_EDGE=1)면 실패로 집계.
+      test.skip(true, `${path}: Vercel 시스템 검문(x-vercel-mitigated=${h['x-vercel-mitigated']})으로 열지 못함 — 앱 오류 아님, VERCEL_AUTOMATION_BYPASS_SECRET 등록 권장 [${diag}]`);
+    }
     const hint = looksEdge
       ? `Vercel 엣지 차단(요청 폭주) — 앱 오류 아님. docs/SMOKE-TEST.md §문제 해결 (재시도 ${edgeRetries}회 후에도 ${status}; workers/간격을 더 낮추거나 잠시 뒤 재실행) [${diag}]`
       : `앱은 403 을 내지 않으므로(권한 없음은 redirect) 엣지·미들웨어 차단을 의심 — docs/SMOKE-TEST.md §문제 해결 [${diag}]`;
