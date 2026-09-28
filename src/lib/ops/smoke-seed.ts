@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+
 import { createAdminClient } from '@/lib/supabase/admin';
 import { toStoredPhone } from '@/lib/auth/identifier';
 import { NOTIFICATION_EVENT_DEFS } from '@/lib/notifications/templates';
@@ -159,15 +161,30 @@ async function findAuthUserIdByEmail(admin: Admin, email: string): Promise<strin
   return null;
 }
 
+/** 현재 비밀번호로 로그인이 되는가 — 쿠키 없는 독립 클라이언트로 확인(세션은 만들자마자 버린다) */
+async function passwordWorks(email: string, password: string): Promise<boolean> {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anon) return false;
+  const probe = createSupabaseClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
+  const { data, error } = await probe.auth.signInWithPassword({ email, password });
+  if (error || !data.session) return false;
+  await probe.auth.signOut({ scope: 'local' }).catch(() => undefined);
+  return true;
+}
+
 async function ensureAccount(admin: Admin, programId: string, def: SmokeAccountDef, password: string): Promise<string> {
   const email = def.email.toLowerCase();
   const now = new Date().toISOString();
   let userId = await findAuthUserIdByEmail(admin, email);
 
   if (userId) {
-    // 비밀번호 재설정 + 이메일 확인 상태 보장
-    const { error } = await admin.auth.admin.updateUserById(userId, { password, email_confirm: true, user_metadata: { name: def.name } });
-    if (error) throw new Error(`${email} 비밀번호 재설정 실패: ${error.message}`);
+    // 비밀번호는 지금 값으로 로그인이 안 될 때만 재설정한다 — admin.updateUserById({ password }) 는 그 계정의 **기존 세션을 전부 무효화**하므로
+    // 동시에 도는 다른 스모크 실행(또는 사람이 열어 둔 점검 세션)을 깨뜨린다(2026-09-28 run #6·#7 발주처·운영사 전 화면 /login 튕김).
+    if (!(await passwordWorks(email, password))) {
+      const { error } = await admin.auth.admin.updateUserById(userId, { password, email_confirm: true, user_metadata: { name: def.name } });
+      if (error) throw new Error(`${email} 비밀번호 재설정 실패: ${error.message}`);
+    }
   } else {
     const { data, error } = await admin.auth.admin.createUser({ email, password, email_confirm: true, user_metadata: { name: def.name } });
     if (error || !data.user) throw new Error(`${email} 계정 생성 실패: ${error?.message ?? 'unknown'}`);

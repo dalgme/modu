@@ -61,6 +61,11 @@ export async function login(page: Page, email: string, password: string): Promis
   await page.getByRole('button', { name: '로그인' }).click();
   // 서버 액션 → redirect 체인(/hub → /hub/enter → 대시보드). 로그인 페이지를 벗어날 때까지 기다린다.
   await page.waitForURL((url) => !url.pathname.startsWith('/login'), { timeout: 45_000 }).catch(async () => {
+    const where = new URL(page.url()).pathname;
+    if (where.startsWith('/login/verify')) {
+      // P35-A 2단계 인증 화면 — 점검 계정은 문자 인증을 받을 수 없으므로 Vercel 환경변수 MFA_BYPASS_EMAILS 에 넣어야 한다
+      throw new Error(`로그인 실패(${email}): 2단계 인증(/login/verify) 화면에 멈춤 — Vercel 환경변수 MFA_BYPASS_EMAILS 에 점검 계정을 등록하세요 (docs/SMOKE-TEST.md §문제 해결)`);
+    }
     const alert = await page.locator('[role="alert"]').first().textContent().catch(() => null);
     throw new Error(`로그인 실패(${email}): ${alert?.trim() || '로그인 페이지에 머물러 있음'}`);
   });
@@ -121,9 +126,11 @@ export async function expectHealthyPage(page: Page, path: string): Promise<void>
   let errors = collectPageErrors(page);
   let status = 0;
   let edgeRetries = 0;
+  let lastHeaders: Record<string, string> = {};
   for (let attempt = 0; ; attempt += 1) {
     const res = await page.goto(path, { waitUntil: 'domcontentloaded' });
     status = res?.status() ?? 0;
+    lastHeaders = res ? await res.allHeaders().catch(() => ({})) : {};
     if (!EDGE_BLOCK_STATUS.has(status) || attempt >= EDGE_RETRY_WAITS.length) break;
     edgeRetries += 1;
     await sleep(EDGE_RETRY_WAITS[attempt] ?? 3_000);
@@ -137,9 +144,21 @@ export async function expectHealthyPage(page: Page, path: string): Promise<void>
 
   if (EDGE_BLOCK_STATUS.has(status)) {
     const looksEdge = EDGE_BLOCK_TEXT.test(body) || body.trim().length < 400;
+    // 차단 주체 진단: Vercel 은 차단 응답에 x-vercel-error(DEPLOYMENT_BLOCKED 등)·x-vercel-mitigated(challenge/deny)·x-vercel-id 를 붙인다.
+    // 앱(서버리스)이 낸 403 이면 이 헤더가 없고 Vercel 런타임 로그에 403 이 남는다.
+    const h = lastHeaders;
+    const diag = [
+      h['x-vercel-error'] ? `x-vercel-error=${h['x-vercel-error']}` : null,
+      h['x-vercel-mitigated'] ? `x-vercel-mitigated=${h['x-vercel-mitigated']}` : null,
+      h['x-vercel-id'] ? `x-vercel-id=${h['x-vercel-id']}` : null,
+      h['server'] ? `server=${h['server']}` : null,
+      `body="${body.replace(/\s+/g, ' ').trim().slice(0, 160)}"`,
+    ]
+      .filter(Boolean)
+      .join(' · ');
     const hint = looksEdge
-      ? `Vercel 엣지 차단(요청 폭주) — 앱 오류 아님. docs/SMOKE-TEST.md §문제 해결 (재시도 ${edgeRetries}회 후에도 ${status}; workers/간격을 더 낮추거나 잠시 뒤 재실행)`
-      : `앱은 403 을 내지 않으므로(권한 없음은 redirect) 엣지·미들웨어 차단을 의심 — docs/SMOKE-TEST.md §문제 해결`;
+      ? `Vercel 엣지 차단(요청 폭주) — 앱 오류 아님. docs/SMOKE-TEST.md §문제 해결 (재시도 ${edgeRetries}회 후에도 ${status}; workers/간격을 더 낮추거나 잠시 뒤 재실행) [${diag}]`
+      : `앱은 403 을 내지 않으므로(권한 없음은 redirect) 엣지·미들웨어 차단을 의심 — docs/SMOKE-TEST.md §문제 해결 [${diag}]`;
     expect.soft(status, `${path} 응답 상태 ${status}: ${hint}`).toBeLessThan(400);
   } else {
     expect.soft(status, `${path} 응답 상태`).toBeLessThan(400);

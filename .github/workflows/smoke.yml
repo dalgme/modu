@@ -27,9 +27,12 @@ on:
         required: true
         type: string
 
+# 전역 직렬화 — 작업 브랜치 푸시 + main 푸시가 배포 2개(Preview·Production)를 만들면 스모크 2건이 동시에 뜨는데,
+# 둘 다 같은 점검 계정 4개로 로그인하고 같은 시드를 돌려 서로의 세션을 깨뜨렸다(2026-09-28 run #6·#7: 시드의 비밀번호 재설정이
+# 먼저 로그인한 쪽의 세션을 무효화 → 발주처·운영사 화면 전부 /login 튕김). 한 번에 하나만 돌리고 나머지는 대기시킨다.
 concurrency:
-  group: smoke-${{ github.event.deployment_status.environment_url || github.event.deployment_status.target_url || inputs.base_url }}
-  cancel-in-progress: true
+  group: smoke
+  cancel-in-progress: false
 
 jobs:
   smoke:

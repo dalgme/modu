@@ -120,24 +120,32 @@ export function MentorDashboardV2({
               const s = KEY_STYLE[t.action.key];
               return (
                 <li key={t.caseId}>
-                  <Link href={t.action.href} className="flex gap-3 rounded-xl border-2 bg-background p-3 transition-colors hover:border-primary">
-                    <span className={cn('w-1.5 shrink-0 rounded-full', s.bar)} />
-                    <span className="flex min-w-0 flex-1 flex-col gap-1">
-                      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                        <span className="truncate font-semibold">{t.label}</span>
-                        <span className="text-[11px] text-muted-foreground">{t.groupName ?? ''}</span>
-                        <RoundDots done={t.roundsDone} required={t.requiredRounds} />
+                  {/* 카드 전체를 <a> 로 감싸면 안에 있는 연락 링크(<a tel:/sms:/mailto:>)가 중첩 앵커가 되어 브라우저가 DOM 을 쪼개고
+                      React 하이드레이션 오류(#418)가 난다(2026-09-28 스모크 12건). 링크 영역과 연락 링크를 형제로 둔다. */}
+                  <div className="flex flex-col rounded-xl border-2 bg-background transition-colors hover:border-primary">
+                    <Link href={t.action.href} className="flex gap-3 p-3">
+                      <span className={cn('w-1.5 shrink-0 rounded-full', s.bar)} />
+                      <span className="flex min-w-0 flex-1 flex-col gap-1">
+                        <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          <span className="truncate font-semibold">{t.label}</span>
+                          <span className="text-[11px] text-muted-foreground">{t.groupName ?? ''}</span>
+                          <RoundDots done={t.roundsDone} required={t.requiredRounds} />
+                        </span>
+                        <span className={cn('inline-flex w-fit items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold', s.chip)}>
+                          {t.action.urgent && <AlertTriangle className="h-3 w-3" />}
+                          {t.action.label}
+                          {t.action.key === 'upcoming' && t.nextPlanned ? ` · ${fmtWhen(t.nextPlanned.startedAt)}` : ''}
+                        </span>
+                        <span className="text-[11px] leading-snug text-muted-foreground">{t.action.hint}</span>
                       </span>
-                      <span className={cn('inline-flex w-fit items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold', s.chip)}>
-                        {t.action.urgent && <AlertTriangle className="h-3 w-3" />}
-                        {t.action.label}
-                        {t.action.key === 'upcoming' && t.nextPlanned ? ` · ${fmtWhen(t.nextPlanned.startedAt)}` : ''}
-                      </span>
-                      <span className="text-[11px] leading-snug text-muted-foreground">{t.action.hint}</span>
-                      {(t.menteePhone || t.menteeEmail) && <MenteeContactLinks phone={t.menteePhone} email={t.menteeEmail} caseId={t.caseId} />}
-                    </span>
-                    <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
-                  </Link>
+                      <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+                    </Link>
+                    {(t.menteePhone || t.menteeEmail) && (
+                      <div className="px-3 pb-3 pl-[1.75rem]">
+                        <MenteeContactLinks phone={t.menteePhone} email={t.menteeEmail} caseId={t.caseId} />
+                      </div>
+                    )}
+                  </div>
                 </li>
               );
             })}

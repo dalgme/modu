@@ -99,6 +99,8 @@ npx playwright show-report e2e/playwright-report      # 결과 HTML 열기
 - **흔한 원인**: **시간대**(서버는 UTC, 브라우저는 한국시간 — `new Date().getHours()` 처럼 로컬 시각을 쓰면 서버·브라우저 값이 다르다), 난수, `window` 유무로 갈리는 렌더.
 - **고치는 규칙**: 날짜·시각 표시는 `src/lib/utils/format.ts` 의 `formatDate/formatDateTime` 또는 `src/lib/utils/kst.ts`(KST 고정) 만 쓴다. 로컬 getter(`getHours/getDay/getDate/toLocaleDateString`)는 금지.
 - **리포트 읽기**: 실패 문구에 처음 3개 오류 메시지가 붙는다. 오류 코드 링크(`react.dev/errors/418`)를 열면 React 설명이 나온다.
+- **중첩 앵커도 같은 오류(#418)를 낸다**: 카드 전체를 `<Link>`(=`<a>`)로 감싸고 그 안에 전화·문자·메일 `<a>` 를 넣으면 브라우저가 DOM 을 쪼개
+  서버 HTML 과 달라진다(2026-09-28 멘토 대시보드 12건). 연락 링크는 카드 링크의 **형제**로 둔다(`mentor-dashboard-v2.tsx`).
 
 ### 7-3. 비밀값이 빠졌을 때 보이는 문구
 
@@ -109,6 +111,18 @@ npx playwright show-report e2e/playwright-report      # 결과 HTML 열기
 | `[smoke-seed] SMOKE_SEED_TOKEN 없음 — 계정이 이미 있다고 가정` | GitHub Secrets 에 토큰 없음(경고) | 계정이 이미 있으면 무시 가능 |
 | `globalSetup 로그인 실패` / `로그인 페이지에 머물러 있음` | 비밀번호 불일치·계정 비활성 | 두 곳의 `SMOKE_PASSWORD` 가 같은지 확인 |
 | `로그인 후 비밀번호 변경 화면으로 이동` | 시드가 안 돌았음(토큰 없이 실행) | `SMOKE_SEED_TOKEN` 넣고 재실행 |
+
+### 7-5. 발주처·운영사 화면만 전부 "로그인 페이지로 튕김(세션 없음)" (2026-09-28 run #6·#7)
+- 원인: 작업 브랜치 푸시 + main 푸시 = 배포 2개 → 스모크 2건이 **동시에** 같은 점검 계정으로 돌았다. 각 실행의 시드가 계정 비밀번호를 다시 설정했는데,
+  Supabase 의 `admin.updateUserById({ password })` 는 그 계정의 **기존 세션을 전부 무효화**한다 → 먼저 로그인한 실행의 발주처·운영사 세션이 끊겼다
+  (멘토·멘티는 두 번째 시드 이후에 로그인해 무사했다).
+- 조치(코드): 시드는 지금 비밀번호로 로그인이 안 될 때만 재설정 · 워크플로 `concurrency.group: smoke` 로 한 번에 한 실행만(나머지는 대기).
+- 사람이 점검 세션을 열어 둔 상태에서도 시드가 세션을 끊지 않는다.
+
+### 7-6. "2단계 인증(/login/verify) 화면에 멈춤"
+- P35-A 담당자 2단계 인증이 켜진 배포(문자 발송 설정 있음)에서는 발주처·운영사 점검 계정이 문자 인증번호를 받을 수 없다.
+- 조치: Vercel 환경변수 `MFA_BYPASS_EMAILS=smoke-institution@modu.test,smoke-nextlab@modu.test` (Production·Preview 모두) → 재배포. 우회는 감사 로그 `auth.mfa_bypassed` 에 남는다.
+- 문자 발송 설정이 없는 배포(현재)는 2단계 인증을 건너뛰므로(`auth.mfa_skipped_no_sms`) 이 변수 없이도 통검한다.
 
 ### 7-4. 리포트 아티팩트가 너무 크다
 

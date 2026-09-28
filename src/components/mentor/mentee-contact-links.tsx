@@ -5,8 +5,8 @@ import { Mail, Phone } from 'lucide-react';
 
 /**
  * 멘토 대시보드 "지금 할 일" 카드 안의 멘티 연락 링크(전화·문자·메일·메시지).
- * 카드 전체가 링크라 클릭 전파를 막아야 하는데, 서버 컴포넌트(mentor-dashboard-v2)에서는 onClick 을 붙일 수 없어
- * ("Event handlers cannot be passed to Client Component props" → 페이지 500) 이 부분만 클라이언트로 분리했다.
+ * 서버 컴포넌트(mentor-dashboard-v2)에서는 onClick 을 붙일 수 없어("Event handlers cannot be passed to Client Component props" → 페이지 500)
+ * 이 부분만 클라이언트로 분리했다. ⚠ <a> 안에 넣지 말 것 — 중첩 앵커는 하이드레이션 오류(#418)가 난다. 카드 링크의 형제로 배치한다.
  */
 export function MenteeContactLinks({ phone, email, caseId }: { phone: string | null; email: string | null; caseId: string }) {
   const stop = (e: React.MouseEvent) => e.stopPropagation();
