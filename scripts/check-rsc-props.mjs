@@ -11,6 +11,10 @@
  *  2) 서버 파일에서 JSX 요소(호스트 요소·클라이언트 컴포넌트)에 `onXxx={` 인라인 핸들러를 쓰면 오류.
  *     (예외: 서버 액션 함수를 `action=`/`formAction=` 로 넘기는 것은 허용 — on* 만 검사)
  *  3) 서버 파일에서 React 훅(useState/useEffect/…)을 호출하면 오류.
+ *  4) 서버 파일이 'use client' 파일에서 컴포넌트가 아닌 값(상수 배열·함수 — PascalCase 가 아닌 이름)을 import 하면 오류.
+ *     클라이언트 모듈의 export 는 서버에서 "클라이언트 참조 프록시"라 `.find()`·호출 시 500
+ *     ("Attempted to call find() from the server but find is on the client", 2026-09-23~28 /nextlab/settings 7건).
+ *     `import type` 은 무관. 상수는 서버·클라이언트 중립 파일(src/lib/…)로 옮긴다.
  * 종료 코드: 위반 0건이면 0, 아니면 1.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -39,6 +43,24 @@ for (const [f, s] of src) {
 }
 const clientComps = new Set([...defs].filter(([, f]) => isClient(f)).map(([n]) => n));
 
+// 4) 클라이언트 파일 경로 해석 — '@/x/y' → src/x/y(.tsx|.ts|/index.tsx), './x' → 상대
+import { dirname, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
+const resolveImport = (fromFile, spec) => {
+  let base;
+  if (spec.startsWith('@/')) base = join(ROOT, spec.slice(2));
+  else if (spec.startsWith('.')) base = resolve(dirname(fromFile), spec);
+  else return null;
+  for (const cand of [base + '.tsx', base + '.ts', join(base, 'index.tsx'), join(base, 'index.ts')]) if (existsSync(cand)) return cand;
+  return null;
+};
+const isClientFile = (f) => {
+  if (!f) return false;
+  if (src.has(f)) return isClient(f);
+  if (f.endsWith('.ts')) return false; // .ts 는 수집 대상이 아니므로 직접 읽는다
+  return false;
+};
+
 const HOOK_RE = /\buse(State|Effect|Ref|Router|Pathname|SearchParams|Transition|Memo|Callback|FormStatus|FormState|Reducer|LayoutEffect|Context)\s*\(/g;
 const violations = [];
 
@@ -48,6 +70,20 @@ for (const [f, s] of src) {
 
   // 3) 훅
   for (const m of s.matchAll(HOOK_RE)) violations.push(`${f}:${lineOf(m.index)}  서버 컴포넌트에서 훅 ${m[0].trim()} 호출 — 'use client' 파일로 분리`);
+
+  // 4) 클라이언트 파일에서 컴포넌트 아닌 값 import
+  for (const m of s.matchAll(/import\s*(type\s+)?\{([^}]*)\}\s*from\s*'([^']+)'/g)) {
+    if (m[1]) continue; // import type { … }
+    const target = resolveImport(f, m[3]);
+    if (!isClientFile(target)) continue;
+    for (let n of m[2].split(',')) {
+      n = n.trim();
+      if (!n || n.startsWith('type ')) continue;
+      n = n.split(/\s+as\s+/)[0].trim();
+      if (/^[A-Z][a-z]/.test(n)) continue; // PascalCase = 컴포넌트(허용)
+      violations.push(`${f}:${lineOf(m.index)}  'use client' 파일 ${m[3]} 에서 ${n} import — 서버에서는 클라이언트 참조 프록시(호출·.find() 시 500). 상수·함수는 중립 파일로 분리`);
+    }
+  }
 
   // import 한 컴포넌트 이름(아이콘·컴포넌트)
   const compNames = new Set();

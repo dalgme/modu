@@ -8,25 +8,11 @@ import { menteeLabel } from '@/lib/utils/labels';
 import type { CaseListItem } from '@/lib/data/cases';
 import type { SuccessionResult } from '@/lib/workflow/succession';
 import { succeedCasesV2Action } from '@/lib/workflow/succession-actions';
-import { CASE_STATUS_META, type CaseStatus } from '@/types/case-status';
+import { CASE_STATUS_META } from '@/types/case-status';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 
-export type SuccessionMode = 'succession' | 'relocation';
-export type SuccessionFilter = 'completed' | 'all' | 'withdrawn';
-
-/** 승계 원천 필터 칩 — 서버(설정 페이지)와 화면이 같은 상수를 읽는다 */
-export const SUCCESSION_FILTERS: { key: SuccessionFilter; label: string; statuses: CaseStatus[] | null }[] = [
-  { key: 'completed', label: '수료', statuses: ['settlement_pending', 'settlement_batched', 'closed'] },
-  { key: 'all', label: '전체', statuses: null },
-  { key: 'withdrawn', label: '중도 종료', statuses: ['withdrawn'] },
-];
-
-export interface SuccessorInfo {
-  caseId: string;
-  supportTypeName: string | null;
-  status: CaseStatus;
-}
+import { SUCCESSION_FILTERS, type SuccessionFilter, type SuccessionMode, type SuccessorInfo } from '@/lib/workflow/succession-shared';
 
 /**
  * 승계 개설 (P30) — [승계 | 재배치(탈락자)] 모드, 원천 그룹·상태 칩, 이미 승계된 케이스 배지, [같은 멘토 유지]·[필수서류 승계] 옵션 → 일괄 개설.
