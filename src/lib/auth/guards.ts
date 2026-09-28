@@ -6,6 +6,7 @@ import type { Tables } from '@/types/database';
 import { roleHome, type UserRole } from '@/lib/auth/roles';
 import { getImpersonation } from '@/lib/auth/impersonation';
 import { withProgramRole } from '@/lib/auth/program-role';
+import { mfaSatisfied } from '@/lib/auth/login-security';
 
 export type Profile = Tables<'users'>;
 
@@ -107,6 +108,8 @@ export const mentorOrNull = () => roleOrNull(['mentor']);
 export async function realRoleOrNull(allowed: UserRole[]): Promise<Profile | null> {
   const real = await getRealSessionProfile();
   if (!real || !real.is_active || real.must_change_password) return null;
+  // 2단계 인증 미통과 세션은 스태프 액션도 실행할 수 없다 (페이지 가드 requireRealRole 과 같은 판정, P35-A)
+  if (!(await mfaSatisfied(real.id, real.email))) return null;
   // 플랫폼 관리자가 대행 중이면 페이지 가드(requireRealRole)와 같은 규칙으로 대상 명의 판정 (P31 — 화면은 열리는데 액션만 실패하던 불일치 제거)
   if (real.is_platform_admin) {
     const imp = await getImpersonation();
@@ -157,6 +160,9 @@ export const MENTOR_ONLY_ERROR =
 async function requireRealRole(allowed: UserRole[]): Promise<Profile> {
   const real = await getRealSessionProfile();
   if (!real || !real.is_active) redirect('/login');
+  // 2단계 인증(P35-A) — 실행자(실제 신원) 기준. 대행 중이면 실행자는 이미 통과한 세션이다.
+  // 신뢰 기기 쿠키가 유효하면 mfaSatisfied 가 통과시키며 modu_mfa 를 심는다.
+  if (!(await mfaSatisfied(real.id, real.email))) redirect('/login/verify');
   if (real.must_change_password) redirect('/change-password');
   if (real.is_platform_admin) {
     const imp = await getImpersonation();
@@ -193,6 +199,7 @@ export async function requireMentee(): Promise<Profile> {
 export async function requirePlatformAdmin(): Promise<Profile> {
   const real = await getRealSessionProfile();
   if (!real || !real.is_active) redirect('/login');
+  if (!(await mfaSatisfied(real.id, real.email))) redirect('/login/verify'); // 2단계 인증(P35-A)
   if (real.must_change_password) redirect('/change-password');
   if (!real.is_platform_admin) redirect('/hub');
   return real;

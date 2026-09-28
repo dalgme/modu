@@ -8,9 +8,10 @@
 
 | 파일 | 역할 |
 |---|---|
-| `../playwright.config.ts` | 수집 규칙 `e2e/**/*.smoke.ts`, chromium + 모바일(iPhone 13 에뮬레이션, chromium) 2 프로젝트, 실패 시 스크린샷·트레이스 보관 |
+| `../playwright.config.ts` | 수집 규칙 `e2e/**/*.smoke.ts`, chromium + 모바일(iPhone 13 에뮬레이션, chromium) 2 프로젝트, 워커 2·파일 안 순차(엣지 차단 완화), 실패 시 스크린샷·재시도 1회째 트레이스 |
 | `global-setup.ts` | ① `SMOKE_SEED_TOKEN` 이 있으면 `POST /api/ops/smoke-seed` 호출(계정·행사·케이스 보장, 케이스 id 를 `.smoke-seed.json`·`SMOKE_CASE_ID` 로 전달) ② 역할 4개 로그인 → `.auth/{role}.json` storageState 저장 |
-| `helpers.ts` | `login()`, `expectHealthyPage()`(상태<400 · 오류 문구 없음 · 로그인 튕김 없음 · pageerror 0건), 케이스 링크 탐색, 시드 결과 읽기 |
+| `helpers.ts` | `login()`, `expectHealthyPage()`(상태<400 · 오류 문구 없음 · 로그인 튕김 없음 · pageerror 0건, 403/429 는 3초·8초 재시도 후 "엣지 차단" 문구, 하이드레이션 오류 분류), 케이스 링크 탐색, 시드 결과 읽기 |
+| `bypass.ts` | `VERCEL_AUTOMATION_BYPASS_SECRET` → `x-vercel-protection-bypass` 헤더(설정·globalSetup·시드 호출 공용, P35-D) |
 | `pages.ts` | 역할별 화면 목록 — 내비 컴포넌트·탭 상수에서 추출. **화면/탭을 추가하면 여기도 추가** |
 | `{institution,nextlab,mentor,mentee}.smoke.ts` | 역할별 화면 전수 열람 |
 | `public.smoke.ts` | `/api/health`·`/guide.html`·로그인 폼·공개 페이지·보호 화면의 로그인 유도 |

@@ -5,6 +5,7 @@ import { z } from 'zod';
 
 import { getRealSessionProfile } from '@/lib/auth/guards';
 import { createStaffOrMentorAccount, phoneTempPassword } from '@/lib/auth/admin-accounts';
+import { revokeTrustedDevices } from '@/lib/auth/login-security';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ROUND_REPORT_TEMPLATE_KEY } from '@/lib/documents/round-report';
 import { FEATURE_KEYS } from '@/lib/platform/features';
@@ -411,6 +412,19 @@ export async function platformResetPasswordAction(userId: string): Promise<Resul
   await auditUser(op.id, 'platform.account.reset_password', userId, { role: u.role });
   revalidateUsers();
   return { ok: true, tempPassword };
+}
+
+/** 신뢰 기기 해제 (P35-A) — 그 계정의 "30일 기억" 기기를 전부 무효화. 다음 로그인부터 문자 인증번호를 다시 묻는다. 감사 auth.trusted_device_revoked */
+export async function revokeTrustedDevicesAction(userId: string): Promise<Result<{ count: number }>> {
+  const op = await platformAdmin();
+  if ('error' in op) return { ok: false, error: op.error };
+  const admin = createAdminClient();
+  const { data: u } = await admin.from('users').select('id').eq('id', userId).maybeSingle();
+  if (!u) return { ok: false, error: '계정을 찾을 수 없습니다.' };
+  const count = await revokeTrustedDevices(userId);
+  await auditUser(op.id, 'auth.trusted_device_revoked', userId, { count });
+  revalidateUsers();
+  return { ok: true, count };
 }
 
 /** 활성/비활성 — 비활성 계정은 모든 행사에서 로그인이 막힌다. 본인·다른 플랫폼 관리자는 여기서 못 막는다(플랫폼 관리자 탭에서 해제 후). */

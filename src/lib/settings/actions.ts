@@ -11,6 +11,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import { policyFromParams } from '@/lib/settlement/compute';
 import { ROUND_REPORT_TEMPLATE_KEY, templateHasSign } from '@/lib/documents/round-report';
+import { normalizeEmail, normalizePhone } from '@/lib/utils/phone';
 import type { Json } from '@/types/database';
 
 /**
@@ -73,6 +74,14 @@ const programSchema = z.object({
   starts_on: z.string().trim().optional().transform((v) => v || null),
   ends_on: z.string().trim().optional().transform((v) => v || null),
   default_required_rounds: z.coerce.number().int().min(1).max(20),
+  // (P35-B) 개인정보 보존기간(사업 종료 후 N년, 1~10) + 보호책임자 연락망 (발주처 보호책임자 · 운영사 PL)
+  retention_years: z.coerce.number().int().min(1, '보존기간은 1~10년 사이여야 합니다.').max(10, '보존기간은 1~10년 사이여야 합니다.').default(5),
+  officer_client_name: z.string().trim().max(60).optional().transform((v) => v || null),
+  officer_client_phone: z.string().trim().max(30).optional().transform((v) => v || null),
+  officer_client_email: z.string().trim().max(120).optional().transform((v) => v || null),
+  officer_operator_name: z.string().trim().max(60).optional().transform((v) => v || null),
+  officer_operator_phone: z.string().trim().max(30).optional().transform((v) => v || null),
+  officer_operator_email: z.string().trim().max(120).optional().transform((v) => v || null),
 });
 
 export async function updateProgramAction(input: unknown): Promise<Result> {
@@ -80,11 +89,23 @@ export async function updateProgramAction(input: unknown): Promise<Result> {
   if ('error' in op) return { ok: false, error: op.error };
   const parsed = programSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? '입력값을 확인하세요.' };
+  const { officer_client_name, officer_client_phone, officer_client_email, officer_operator_name, officer_operator_phone, officer_operator_email, ...columns } = parsed.data;
+  for (const [label, raw] of [['발주처 보호책임자', officer_client_phone], ['운영사 PL', officer_operator_phone]] as const) {
+    if (raw && !normalizePhone(raw)) return { ok: false, error: `${label} 휴대폰 번호 형식을 확인하세요.` };
+  }
+  for (const [label, raw] of [['발주처 보호책임자', officer_client_email], ['운영사 PL', officer_operator_email]] as const) {
+    if (raw && !z.string().email().safeParse(raw).success) return { ok: false, error: `${label} 이메일 형식을 확인하세요.` };
+  }
+  const privacy_officer = {
+    client: { name: officer_client_name, phone: normalizePhone(officer_client_phone) ?? null, email: officer_client_email ? normalizeEmail(officer_client_email) : null },
+    operator: { name: officer_operator_name, phone: normalizePhone(officer_operator_phone) ?? null, email: officer_operator_email ? normalizeEmail(officer_operator_email) : null },
+  };
+  const update = { ...columns, privacy_officer: privacy_officer as Json };
   const admin = createAdminClient();
   const { data: before } = await admin.from('programs').select('*').eq('id', op.programId).maybeSingle();
-  const { error } = await admin.from('programs').update(parsed.data).eq('id', op.programId);
+  const { error } = await admin.from('programs').update(update).eq('id', op.programId);
   if (error) return { ok: false, error: error.message };
-  await audit(op.id, op.programId, 'program', before, parsed.data, op.programId);
+  await audit(op.id, op.programId, 'program', before, update, op.programId);
   revalidateAll();
   revalidatePath('/', 'layout');
   return { ok: true };

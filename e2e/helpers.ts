@@ -79,35 +79,83 @@ export function collectPageErrors(page: Page): string[] {
 
 const FATAL_TEXT = /Application error|server-side exception|client-side exception|Digest:/;
 
+/** (P35-D) 엣지 차단으로 보는 상태 — 앱은 403 을 내지 않는다(권한 없음은 redirect). 429 는 레이트리밋. */
+const EDGE_BLOCK_STATUS = new Set([403, 429]);
+/** 403/429 재시도 대기(ms) — 3초, 8초 후 최대 2회 */
+const EDGE_RETRY_WAITS = [3_000, 8_000];
+/** Vercel 엣지 차단 화면·응답에 흔한 문구 */
+const EDGE_BLOCK_TEXT = /Access Denied|blocked|Too Many Requests|rate limit|vercel/i;
+/** React 하이드레이션 오류 코드 — 서버 HTML 과 클라이언트 렌더가 다를 때(대개 시간대·난수·window 분기) */
+const HYDRATION_RE = /Minified React error #(418|422|423|425)\b|Hydration failed|hydrat/i;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/** 화면 사이 200~400ms 간격 — 러너 IP 의 요청 폭주로 엣지가 403 을 내는 것을 막는다 (P35-D) */
+export async function paceRequests(): Promise<void> {
+  await sleep(200 + Math.floor(Math.random() * 200));
+}
+
+/** pageerror 목록을 하이드레이션/그 외로 나눠 사람이 읽을 문구로 */
+export function describePageErrors(errors: string[]): string {
+  const hydration = errors.filter((e) => HYDRATION_RE.test(e));
+  const other = errors.filter((e) => !HYDRATION_RE.test(e));
+  const head = (list: string[]) => list.slice(0, 3).map((m) => `  - ${m.replace(/\s+/g, ' ').slice(0, 300)}`).join('\n');
+  const parts: string[] = [];
+  if (hydration.length) parts.push(`하이드레이션 불일치 ${hydration.length}건(서버/클라이언트 렌더 차이 — 보통 시간대·난수·window 분기; React #418/#422/#423/#425). src/lib/utils/kst.ts 의 KST 고정 유틸을 쓰는지 확인:\n${head(hydration)}`);
+  if (other.length) parts.push(`페이지 런타임 오류 ${other.length}건:\n${head(other)}`);
+  return parts.join('\n');
+}
+
 /**
  * 경로로 이동한 뒤 화면이 "건강한지" 판정한다.
  *  (a) 응답 상태 < 400
  *  (b) 본문에 Next.js 오류 화면 문구("Application error", "server-side exception", "Digest:")가 없을 것
  *  (c) 로그인 페이지로 튕기지 않았을 것
- *  (d) 페이지 런타임 오류(pageerror) 0건
+ *  (d) 페이지 런타임 오류(pageerror) 0건 — 하이드레이션 오류(React #418/#422/#423/#425)는 따로 분류해 보고한다
  * 리다이렉트(권한 없는 탭 → 대시보드 등)는 정상으로 본다 — 목적은 500·크래시 탐지다.
+ * (P35-D) 403/429 는 앱이 아니라 Vercel 엣지 차단(요청 폭주)일 수 있어 3초·8초 대기 후 최대 2회 재시도하고,
+ * 그래도 막히면 오류 문구에 "엣지 차단 — 앱 오류 아님" 을 명시한다.
  */
 export async function expectHealthyPage(page: Page, path: string): Promise<void> {
-  const errors = collectPageErrors(page);
-  const res = await page.goto(path, { waitUntil: 'domcontentloaded' });
+  await paceRequests();
+  let errors = collectPageErrors(page);
+  let status = 0;
+  let edgeRetries = 0;
+  for (let attempt = 0; ; attempt += 1) {
+    const res = await page.goto(path, { waitUntil: 'domcontentloaded' });
+    status = res?.status() ?? 0;
+    if (!EDGE_BLOCK_STATUS.has(status) || attempt >= EDGE_RETRY_WAITS.length) break;
+    edgeRetries += 1;
+    await sleep(EDGE_RETRY_WAITS[attempt] ?? 3_000);
+    errors = collectPageErrors(page); // 차단 화면의 오류는 버리고 다시 모은다
+  }
   // 스트리밍 RSC/클라이언트 하이드레이션까지 잠깐 기다린다(네트워크 idle 은 폴링 때문에 안 될 수 있어 실패해도 넘어감)
   await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => undefined);
 
-  const status = res?.status() ?? 0;
-  expect.soft(status, `${path} 응답 상태`).toBeLessThan(400);
-
   const finalPath = new URL(page.url()).pathname;
+  const body = (await page.locator('body').innerText().catch(() => '')) ?? '';
+
+  if (EDGE_BLOCK_STATUS.has(status)) {
+    const looksEdge = EDGE_BLOCK_TEXT.test(body) || body.trim().length < 400;
+    const hint = looksEdge
+      ? `Vercel 엣지 차단(요청 폭주) — 앱 오류 아님. docs/SMOKE-TEST.md §문제 해결 (재시도 ${edgeRetries}회 후에도 ${status}; workers/간격을 더 낮추거나 잠시 뒤 재실행)`
+      : `앱은 403 을 내지 않으므로(권한 없음은 redirect) 엣지·미들웨어 차단을 의심 — docs/SMOKE-TEST.md §문제 해결`;
+    expect.soft(status, `${path} 응답 상태 ${status}: ${hint}`).toBeLessThan(400);
+  } else {
+    expect.soft(status, `${path} 응답 상태`).toBeLessThan(400);
+  }
+
   expect.soft(finalPath, `${path} → 로그인 페이지로 튕김(세션 없음)`).not.toMatch(/^\/login/);
 
-  const body = (await page.locator('body').innerText().catch(() => '')) ?? '';
   const fatal = body.match(FATAL_TEXT);
   expect.soft(fatal, `${path} 오류 화면 문구: ${fatal?.[0] ?? ''}`).toBeNull();
 
-  expect.soft(errors, `${path} 페이지 런타임 오류`).toEqual([]);
+  expect.soft(errors.length, `${path} ${describePageErrors(errors)}`).toBe(0);
 
   // soft 로 모아서 한 번에 보고 — 하나라도 있으면 여기서 실패로 마감
   if (test.info().errors.length > 0) {
-    throw new Error(`${path} 화면 점검 실패 (status=${status}, final=${finalPath}, pageerrors=${errors.length})`);
+    const detail = errors.length ? `\n${describePageErrors(errors)}` : '';
+    throw new Error(`${path} 화면 점검 실패 (status=${status}, final=${finalPath}, pageerrors=${errors.length}${edgeRetries ? `, 엣지 재시도=${edgeRetries}` : ''})${detail}`);
   }
 }
 

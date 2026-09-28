@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { recordSecurityEventSafe } from '@/lib/ops/security-events';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import { listProgramMembers } from '@/lib/data/members';
 import { listProgramMentors } from '@/lib/data/mentors';
@@ -198,5 +199,7 @@ export async function GET(request: Request): Promise<Response> {
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, sheetWithMeta(header, rows, { 범위: `${ctx.program.name} · ${scopeLabel}`, 필터: filter, extra: [['건수', rows.length]] }), sheetName(title));
+  // (P35-B) 대량 반출 이벤트 — 같은 사용자 10분 내 5회 이상이면 Cron 이 warn 으로 승격
+  await recordSecurityEventSafe({ kind: 'export', severity: 'info', userId: profile.id, path: '/api/nextlab/roster-export', detail: { route: 'roster-export', tab, rows: rows.length, program_id: ctx.programId } });
   return xlsxResponse(workbookBuffer(wb), excelFileName(ctx.program.name, ctx.group?.name ?? null, title));
 }

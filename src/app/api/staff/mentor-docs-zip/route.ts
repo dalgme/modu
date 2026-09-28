@@ -5,6 +5,7 @@ import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
 import { denyUnless } from '@/lib/auth/capabilities';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { recordSecurityEventSafe } from '@/lib/ops/security-events';
 import { contentDisposition } from '@/lib/http/download';
 
 export const dynamic = 'force-dynamic';
@@ -89,6 +90,8 @@ export async function GET(): Promise<Response> {
   });
   if (auditError) console.error('docs zip audit failed:', auditError.message);
 
+  // (P35-B) 대량 반출 이벤트
+  await recordSecurityEventSafe({ kind: 'export', severity: 'info', userId: profile.id, path: '/api/staff/mentor-docs-zip', detail: { route: 'mentor-docs-zip', files: added, mentors: ids.length, program_id: ctx.programId } });
   const buf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
   const filename = `${ctx.program.name}_멘토서류_${new Date().toISOString().slice(0, 10)}.zip`;
   return new Response(new Uint8Array(buf), {

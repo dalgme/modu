@@ -9,6 +9,7 @@ import { loadMatchingLists } from '@/lib/data/matching-lists';
 import { listDelayedCases } from '@/lib/reports/delays';
 import { computeBudgetOverview } from '@/lib/reports/budget';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { recordSecurityEventSafe } from '@/lib/ops/security-events';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import { contentDisposition } from '@/lib/http/download';
 
@@ -59,6 +60,8 @@ export async function GET(request: Request): Promise<Response> {
     caseExtras,
   });
   const filename = reportFileName(ctx.program.name, tab, m, scopeName);
+  // (P35-B) 대량 반출 이벤트
+  await recordSecurityEventSafe({ kind: 'export', severity: 'info', userId: profile.id, path: '/api/reports/export', detail: { route: 'reports-export', tab, rows: cases.length, program_id: ctx.programId } });
   return new Response(new Uint8Array(buf), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

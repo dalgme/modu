@@ -10,19 +10,20 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
+import { kstTodayYmd, toKstParts } from '@/lib/utils/kst';
 
-const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 const pad = (n: number) => String(n).padStart(2, '0');
 
-/** ISO → KST 날짜·시각(10분 단위로 내림) — 회차는 항상 한국시간 기준으로 다룬다 (P31) */
+/** ISO → KST 날짜·시각(10분 단위로 내림) — 회차는 항상 한국시간 기준으로 다룬다 (P31, 공용 유틸 `kst.ts` 로 통일 P35-D) */
 function kstParts(iso: string): { date: string; time: string } {
-  const d = new Date(new Date(iso).getTime() + KST_OFFSET_MS);
-  const minutes = Math.floor(d.getUTCMinutes() / 10) * 10;
-  return { date: d.toISOString().slice(0, 10), time: `${pad(d.getUTCHours())}:${pad(minutes)}` };
+  const p = toKstParts(iso);
+  if (!p) return { date: '', time: '' };
+  const minutes = Math.floor(p.mm / 10) * 10;
+  return { date: `${p.y}-${pad(p.m)}-${pad(p.d)}`, time: `${pad(p.hh)}:${pad(minutes)}` };
 }
 
 function todayKst(): string {
-  return kstParts(new Date().toISOString()).date;
+  return kstTodayYmd();
 }
 
 /** 이전 회차 정보 — 방법·장소·시간을 기본값으로 이어받는다 (P31) */
@@ -157,7 +158,7 @@ export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOp
   }
 
   const d = new Date(`${date}T00:00:00+09:00`);
-  const dateLabel = Number.isNaN(d.getTime()) ? date : `${Number(date.slice(5, 7))}월 ${Number(date.slice(8, 10))}일 (${WEEKDAYS[new Date(d.getTime() + KST_OFFSET_MS).getUTCDay()]})`;
+  const dateLabel = Number.isNaN(d.getTime()) ? date : `${Number(date.slice(5, 7))}월 ${Number(date.slice(8, 10))}일 (${WEEKDAYS[toKstParts(d)?.weekday ?? 0]})`;
 
   return (
     <div className="flex flex-col gap-4 rounded-xl border bg-background p-4 shadow-sm">

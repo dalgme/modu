@@ -659,6 +659,100 @@ export type Database = {
           },
         ];
       };
+      backup_runs: {
+        Row: {
+          bytes: number | null;
+          error: string | null;
+          finished_at: string | null;
+          id: string;
+          kind: string;
+          pruned_at: string | null;
+          started_at: string;
+          started_by: string | null;
+          status: string;
+          storage_path: string | null;
+          tables: Json;
+        };
+        Insert: {
+          bytes?: number | null;
+          error?: string | null;
+          finished_at?: string | null;
+          id?: string;
+          kind?: string;
+          pruned_at?: string | null;
+          started_at?: string;
+          started_by?: string | null;
+          status?: string;
+          storage_path?: string | null;
+          tables?: Json;
+        };
+        Update: {
+          bytes?: number | null;
+          error?: string | null;
+          finished_at?: string | null;
+          id?: string;
+          kind?: string;
+          pruned_at?: string | null;
+          started_at?: string;
+          started_by?: string | null;
+          status?: string;
+          storage_path?: string | null;
+          tables?: Json;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'backup_runs_started_by_fkey';
+            columns: ['started_by'];
+            isOneToOne: false;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      security_events: {
+        Row: {
+          alerted_at: string | null;
+          created_at: string;
+          detail: Json;
+          id: string;
+          ip_hash: string | null;
+          kind: string;
+          path: string | null;
+          severity: string;
+          user_id: string | null;
+        };
+        Insert: {
+          alerted_at?: string | null;
+          created_at?: string;
+          detail?: Json;
+          id?: string;
+          ip_hash?: string | null;
+          kind: string;
+          path?: string | null;
+          severity?: string;
+          user_id?: string | null;
+        };
+        Update: {
+          alerted_at?: string | null;
+          created_at?: string;
+          detail?: Json;
+          id?: string;
+          ip_hash?: string | null;
+          kind?: string;
+          path?: string | null;
+          severity?: string;
+          user_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'security_events_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       error_reports: {
         Row: {
           alerted_at: string | null;
@@ -816,6 +910,88 @@ export type Database = {
           {
             foreignKeyName: 'inquiries_mentee_id_fkey';
             columns: ['mentee_id'];
+            isOneToOne: false;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      login_attempts: {
+        Row: {
+          created_at: string;
+          id: string;
+          identifier_hash: string;
+          ip_hash: string | null;
+          reason: string | null;
+          success: boolean;
+          user_agent: string | null;
+          user_id: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          id?: string;
+          identifier_hash: string;
+          ip_hash?: string | null;
+          reason?: string | null;
+          success?: boolean;
+          user_agent?: string | null;
+          user_id?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          identifier_hash?: string;
+          ip_hash?: string | null;
+          reason?: string | null;
+          success?: boolean;
+          user_agent?: string | null;
+          user_id?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'login_attempts_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
+      login_otps: {
+        Row: {
+          attempts: number;
+          code_hash: string;
+          consumed_at: string | null;
+          created_at: string;
+          expires_at: string;
+          id: string;
+          ip_hash: string | null;
+          user_id: string;
+        };
+        Insert: {
+          attempts?: number;
+          code_hash: string;
+          consumed_at?: string | null;
+          created_at?: string;
+          expires_at: string;
+          id?: string;
+          ip_hash?: string | null;
+          user_id: string;
+        };
+        Update: {
+          attempts?: number;
+          code_hash?: string;
+          consumed_at?: string | null;
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          ip_hash?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'login_otps_user_id_fkey';
+            columns: ['user_id'];
             isOneToOne: false;
             referencedRelation: 'users';
             referencedColumns: ['id'];
@@ -2240,6 +2416,9 @@ export type Database = {
           operator_contact: string | null;
           operator_name: string;
           notification_settings: Json;
+          privacy_officer: Json;
+          retention_notice_sent_at: string | null;
+          retention_years: number;
           operator_signup_code: string | null;
           operator_short: string | null;
           round_report_policy: Json;
@@ -2272,6 +2451,9 @@ export type Database = {
           operator_contact?: string | null;
           operator_name: string;
           notification_settings?: Json;
+          privacy_officer?: Json;
+          retention_notice_sent_at?: string | null;
+          retention_years?: number;
           operator_signup_code?: string | null;
           operator_short?: string | null;
           round_report_policy?: Json;
@@ -2304,6 +2486,9 @@ export type Database = {
           operator_contact?: string | null;
           operator_name?: string;
           notification_settings?: Json;
+          privacy_officer?: Json;
+          retention_notice_sent_at?: string | null;
+          retention_years?: number;
           operator_signup_code?: string | null;
           operator_short?: string | null;
           round_report_policy?: Json;
@@ -3439,6 +3624,50 @@ export type Database = {
           },
         ];
       };
+      trusted_devices: {
+        Row: {
+          created_at: string;
+          expires_at: string;
+          id: string;
+          ip_hash: string | null;
+          last_used_at: string | null;
+          revoked_at: string | null;
+          token_hash: string;
+          user_agent: string | null;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          expires_at: string;
+          id?: string;
+          ip_hash?: string | null;
+          last_used_at?: string | null;
+          revoked_at?: string | null;
+          token_hash: string;
+          user_agent?: string | null;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          expires_at?: string;
+          id?: string;
+          ip_hash?: string | null;
+          last_used_at?: string | null;
+          revoked_at?: string | null;
+          token_hash?: string;
+          user_agent?: string | null;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: 'trusted_devices_user_id_fkey';
+            columns: ['user_id'];
+            isOneToOne: false;
+            referencedRelation: 'users';
+            referencedColumns: ['id'];
+          },
+        ];
+      };
       users: {
         Row: {
           activated_at: string | null;
@@ -3504,7 +3733,14 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      list_public_tables: {
+        Args: Record<PropertyKey, never>;
+        Returns: {
+          table_name: string;
+          pk_columns: string[];
+          row_estimate: number;
+        }[];
+      };
     };
     Enums: {
       case_status:

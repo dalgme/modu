@@ -8,6 +8,7 @@ import { CaseCard } from '@/components/cases/case-card';
 import { RoundDots } from '@/components/common/round-dots';
 import { MenteeContactLinks } from '@/components/mentor/mentee-contact-links';
 import { formatKRW } from '@/lib/utils/format';
+import { kstWhen } from '@/lib/utils/kst';
 import { cn } from '@/lib/utils';
 
 /**
@@ -29,11 +30,8 @@ const KEY_STYLE: Record<MentorActionKey, { bar: string; chip: string }> = {
   inactive: { bar: 'bg-muted-foreground/30', chip: 'bg-muted text-muted-foreground' },
 };
 
-const fmtWhen = (iso: string) => {
-  const d = new Date(iso);
-  const day = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
-  return `${d.getMonth() + 1}/${d.getDate()}(${day}) ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-};
+// KST 고정 (P35-D) — 서버(UTC) 렌더에서도 한국 시각 'M/D(요일) HH:mm'
+const fmtWhen = (iso: string) => kstWhen(iso) || '-';
 
 function Chip({ icon: Icon, label, value, tone = 'default', href }: { icon: typeof Users; label: string; value: string | number; tone?: 'default' | 'warn' | 'good'; href?: string }) {
   const cls = cn(

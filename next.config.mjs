@@ -6,6 +6,8 @@ const nextConfig = {
     return [{ source: '/admin/settings/features', destination: '/nextlab/settings', permanent: false }];
   },
   experimental: {
+    // (P35-B) src/instrumentation.ts — 서버 기동 시 권한 거부 → 보안 이벤트 리스너 등록
+    instrumentationHook: true,
     // 멘토링 사진 등 파일 업로드 서버 액션 본문 크기 상향
     serverActions: {
       bodySizeLimit: '20mb',

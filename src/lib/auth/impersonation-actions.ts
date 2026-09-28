@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { getRealSessionProfile } from '@/lib/auth/guards';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logAudit } from '@/lib/workflow/audit';
+import { recordSecurityEventSafe } from '@/lib/ops/security-events';
 import {
   VIEW_AS_COOKIE,
   allowedTargetRoles,
@@ -123,6 +124,8 @@ export async function startViewAsAction(targetUserId: string, opts: ViewAsOption
     entityId: target.id,
     metadata: { target_name: target.name, target_role: target.role, actor_platform_admin: isAdmin, case_id: caseId },
   });
+  // (P35-B) 보안 이벤트 — 대행 시작은 정상 업무지만 콘솔에서 한눈에 보이도록 info 로 남긴다
+  await recordSecurityEventSafe({ kind: 'impersonation', severity: 'info', userId: real.id, detail: { target_id: target.id, target_role: target.role, program_id: programId ?? null, platform_admin: isAdmin } });
 
   // 관리자는 허브로 — 대상의 행사 멤버십에 따라 자동 진입·라우팅된다.
   if (isAdmin) redirect('/hub');

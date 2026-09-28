@@ -1,23 +1,25 @@
-import { format, parseISO } from 'date-fns';
+import { DATE_ONLY_RE, toKstParts } from '@/lib/utils/kst';
 
-/** ISO 문자열/Date → 'yyyy.MM.dd' */
-export function formatDate(value: string | null | undefined): string {
+const pad2 = (n: number) => String(n).padStart(2, '0');
+
+/**
+ * ISO 문자열/Date → 'yyyy.MM.dd' — **KST 고정**(P35-D). 서버(UTC)·브라우저(KST) 어디서 렌더해도 같은 문자열이라
+ * 하이드레이션 불일치가 없고, 서버 컴포넌트에서도 한국 날짜로 나온다.
+ * 'YYYY-MM-DD' 만 있는 값(date 컬럼: starts_on·ends_on·effective_from 등)은 시각이 없으므로 그대로 y.m.d 로 표시한다.
+ */
+export function formatDate(value: string | Date | null | undefined): string {
   if (!value) return '-';
-  try {
-    return format(typeof value === 'string' ? parseISO(value) : value, 'yyyy.MM.dd');
-  } catch {
-    return '-';
-  }
+  const p = toKstParts(value);
+  return p ? `${p.y}.${pad2(p.m)}.${pad2(p.d)}` : '-';
 }
 
-/** ISO 문자열 → 'yyyy.MM.dd HH:mm' */
-export function formatDateTime(value: string | null | undefined): string {
+/** ISO 문자열/Date → 'yyyy.MM.dd HH:mm' — KST 고정. 'YYYY-MM-DD' 만 있는 값은 날짜만 표시 */
+export function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return '-';
-  try {
-    return format(parseISO(value), 'yyyy.MM.dd HH:mm');
-  } catch {
-    return '-';
-  }
+  const p = toKstParts(value);
+  if (!p) return '-';
+  if (typeof value === 'string' && DATE_ONLY_RE.test(value)) return `${p.y}.${pad2(p.m)}.${pad2(p.d)}`;
+  return `${p.y}.${pad2(p.m)}.${pad2(p.d)} ${pad2(p.hh)}:${pad2(p.mm)}`;
 }
 
 /**
@@ -40,8 +42,6 @@ export function parseWallClock(
     minute: Number(m[5]),
   };
 }
-
-const pad2 = (n: number) => String(n).padStart(2, '0');
 
 /** 벽시계 시각 → 'yyyy.MM.dd HH:mm' (타임존 변환 없음). visited_at 표시용. */
 export function formatWallClock(value: string | null | undefined): string {

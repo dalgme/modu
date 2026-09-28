@@ -27,6 +27,7 @@ import {
   type MemberActionState,
   type StaffGroupsInfo,
 } from '@/lib/auth/member-actions';
+import { kstMd } from '@/lib/utils/kst';
 import { ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
 import { GRADE_LABELS, STAFF_GRADES, type StaffGrade } from '@/lib/auth/capabilities';
 import { cn } from '@/lib/utils';
@@ -982,7 +983,7 @@ export function MembersManager({
                             )}
                           </div>
                           <span className="text-[10px] text-muted-foreground">
-                            {m.guideSentAt ? `안내 발송 ${new Date(m.guideSentAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' })}` : '안내 미발송'}
+                            {m.guideSentAt ? `안내 발송 ${kstMd(m.guideSentAt)}` : '안내 미발송'}
                           </span>
                         </div>
                       </TableCell>

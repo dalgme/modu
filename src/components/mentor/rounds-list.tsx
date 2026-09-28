@@ -12,14 +12,11 @@ import { SignaturePad } from '@/components/common/signature-pad';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { formatDateTime } from '@/lib/utils/format';
+import { kstHm, kstYmd } from '@/lib/utils/kst';
 
+/** ISO → KST 일자·시각 — 저장은 UTC 순간, 입력·표시는 한국 벽시계 (P35-D: 로컬 getter 금지) */
 function toLocalParts(iso: string): { date: string; time: string } {
-  const d = new Date(iso);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return {
-    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
-    time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
-  };
+  return { date: kstYmd(iso), time: kstHm(iso) };
 }
 
 /** 계획(미보고) 회차 일정 수정 (P20) — 일자·시각(10분 단위)·유형·장소 */

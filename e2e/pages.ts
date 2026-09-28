@@ -54,8 +54,10 @@ export const INSTITUTION_PAGES: readonly string[] = [
   '/institution/settlements?tab=forecast',
   '/institution/mentors',
   '/institution/requests',
+  // 구 현황판 경로 — 리포트 [진행현황] 탭으로 redirect 되는지(404 아님) 확인 (P35-D)
   '/institution/mentee-board',
   '/institution/mentor-board',
+  '/institution/reports?tab=cases&view=mentor',
   '/admin/settings/sms',
   '/institution/guide',
   '/institution/install',

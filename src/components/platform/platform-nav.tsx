@@ -13,6 +13,7 @@ const TABS = [
   { href: '/platform/admins', label: '플랫폼 관리자' },
   { href: '/platform/audit', label: '통합 감사로그' },
   { href: '/platform/system', label: '시스템 상태' },
+  { href: '/platform/security', label: '보안 이벤트' },
 ];
 
 /** 플랫폼 통합관리 콘솔 상단 탭 — 보라색 계열로 행사 안 화면(주황)과 구분한다 */

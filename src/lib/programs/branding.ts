@@ -23,7 +23,12 @@ export interface Branding {
   logoPath: string | null;
   smsFooter: string;
   emailSubjectPrefix: string;
+  /** (P35-B) 개인정보 보존기간 — 사업 종료 후 N년. 처리방침·멘티 동의문·보존 만료 알림이 읽는다 (programs.retention_years, 기본 5) */
+  retentionYears: number;
 }
+
+/** 보존기간 기본값(년) — 2026-09-28 사용자 결정 "사업 종료 후 5년". DB 기본값(0087)과 같다. */
+export const DEFAULT_RETENTION_YEARS = 5;
 
 /** 컨텍스트가 없을 때(허브·로그인) 쓰는 플랫폼 기본 브랜드 */
 export const PLATFORM_BRANDING: Branding = {
@@ -41,6 +46,7 @@ export const PLATFORM_BRANDING: Branding = {
   logoPath: null,
   smsFooter: '',
   emailSubjectPrefix: '',
+  retentionYears: DEFAULT_RETENTION_YEARS,
 };
 
 export function brandingFromProgram(p: Tables<'programs'>): Branding {
@@ -59,6 +65,7 @@ export function brandingFromProgram(p: Tables<'programs'>): Branding {
     logoPath: p.logo_path,
     smsFooter: p.sms_footer ?? '',
     emailSubjectPrefix: p.email_subject_prefix ?? `[${p.name}]`,
+    retentionYears: Number.isFinite(p.retention_years) && p.retention_years > 0 ? p.retention_years : DEFAULT_RETENTION_YEARS,
   };
 }
 

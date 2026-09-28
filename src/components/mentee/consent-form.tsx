@@ -17,8 +17,8 @@ function SubmitButton({ disabled }: { disabled: boolean }) {
   );
 }
 
-/** 멘티 개인정보 동의 폼 (P28 — 멘토링 운영 기준 문안, 기관명은 행사 설정에서) */
-export function ConsentForm({ programName, clientName, operatorName }: { programName: string; clientName: string; operatorName: string }) {
+/** 멘티 개인정보 동의 폼 (P28 — 멘토링 운영 기준 문안, 기관명은 행사 설정에서 · P35-B 보존기간 = 행사 설정 retention_years, 기본 5년) */
+export function ConsentForm({ programName, clientName, operatorName, retentionYears = 5 }: { programName: string; clientName: string; operatorName: string; retentionYears?: number }) {
   const [agreed, setAgreed] = useState(false);
   // 대행 중 제출 등 서버가 돌려준 오류를 폼 아래에 표시 (P31)
   const [state, formAction] = useFormState(agreePrivacy, undefined);
@@ -35,7 +35,7 @@ export function ConsentForm({ programName, clientName, operatorName }: { program
           <p className="mt-3 font-medium text-foreground">2. 수집·이용 목적</p>
           <p>{programName} 멘토링 운영 — 멘토 매칭·배정, 회차 일정 안내와 진행 기록, 확인 서명·만족도 조사, 멘토 정산 증빙, 운영 통계·결과 보고({clientName} 제출), 문자·이메일 안내.</p>
           <p className="mt-3 font-medium text-foreground">3. 보유·이용 기간</p>
-          <p>사업 종료 후 관련 법령·정산 규정에 따른 보관 기간(기본 3년) 경과 시 파기합니다.</p>
+          <p>사업 종료 후 {retentionYears}년(관련 법령이 더 길게 정한 경우 그에 따름)간 보유하며, 기간 경과 시 지체 없이 파기합니다. 개인정보처리방침과 같은 기준입니다.</p>
           <p className="mt-3 font-medium text-foreground">4. 제3자 제공</p>
           <p>담당 멘토(이름·연락처·아이템·팀 정보)와 발주기관 {clientName}(진행현황·결과) 범위에서 제공되며, 그 밖에는 제공하지 않습니다. 운영은 {operatorName}이 담당합니다.</p>
           <p className="mt-3 font-medium text-foreground">5. 동의 거부 권리</p>

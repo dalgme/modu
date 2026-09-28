@@ -5,6 +5,7 @@ import { searchPlatformUsers } from '@/lib/platform/data';
 import { ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
 import { PlatformUserActions } from '@/components/platform/user-actions';
 import { ViewAsStartButton } from '@/components/nextlab/view-as-start-button';
+import { RevokeDevicesButton } from '@/components/platform/revoke-devices-button';
 import { formatDate } from '@/lib/utils/format';
 
 export const dynamic = 'force-dynamic';
@@ -98,7 +99,11 @@ export default async function Page({ searchParams }: { searchParams: { q?: strin
                 </td>
                 <td className="px-3 py-2">
                   {u.is_platform_admin ? (
-                    <p className="text-xs text-muted-foreground">통합관리 전용 계정 — 행사 소속 없음</p>
+                    <div className="flex flex-col items-start gap-2">
+                      <p className="text-xs text-muted-foreground">통합관리 전용 계정 — 행사 소속 없음</p>
+                      {/* 2단계 인증 신뢰 기기(30일 기억) 해제 — 기기 분실·의심 접속 시 (P35-A) */}
+                      <RevokeDevicesButton userId={u.id} userName={u.name} />
+                    </div>
                   ) : (
                     <div className="flex flex-col items-start gap-2">
                       {/* 대행 진입 — 그 계정 명의로 화면을 그대로 본다. 종료는 상단 배너의 [대행 종료]. */}
@@ -106,6 +111,10 @@ export default async function Page({ searchParams }: { searchParams: { q?: strin
                         <ViewAsStartButton targetUserId={u.id} targetName={u.name} size="sm" variant="outline" label="화면 보기(대행)" />
                       )}
                       <PlatformUserActions userId={u.id} isActive={u.is_active} isSelf={u.id === me.id} isPlatformAdmin={u.is_platform_admin} memberOf={u.programs.map((p) => ({ id: p.id, role: p.role }))} programs={programs} defaultRole={u.role} />
+                      {/* 발주처·운영사 계정의 2단계 인증 신뢰 기기 해제 (멘토·멘티는 대상이 아니라 기기가 없다) (P35-A) */}
+                      {(u.role === 'institution' || u.role === 'nextlab' || u.programs.some((p) => p.role === 'institution' || p.role === 'nextlab')) && (
+                        <RevokeDevicesButton userId={u.id} userName={u.name} />
+                      )}
                     </div>
                   )}
                 </td>

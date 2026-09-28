@@ -105,6 +105,15 @@ export interface GrantHolder {
   role: UserRole;
   grade: StaffGrade | null;
   grants: CapabilityKey[];
+  /** (P35-B) 권한 거부 이벤트 기록용 — ProgramContext 가 채운다. 없으면 이벤트에 행사 id 만 빠진다 */
+  programId?: string;
+}
+
+/** (P35-B) denyUnless 가 거부할 때 호출되는 리스너 (서버 기동 시 src/instrumentation.ts 가 등록) */
+export type DenyListener = (holder: GrantHolder | null, key: CapabilityKey) => void;
+let denyListener: DenyListener | null = null;
+export function setDenyListener(fn: DenyListener | null): void {
+  denyListener = fn;
 }
 
 export function hasCapability(h: GrantHolder | null | undefined, key: CapabilityKey): boolean {
@@ -116,6 +125,15 @@ export function hasCapability(h: GrantHolder | null | undefined, key: Capability
 /** 서버 액션용 — 권한이 없으면 안내 문구, 있으면 null */
 export function denyUnless(h: GrantHolder | null | undefined, key: CapabilityKey): string | null {
   if (hasCapability(h, key)) return null;
+  // (P35-B) 권한 거부를 보안 이벤트로 남긴다 — 이 모듈은 클라이언트 공용이라 서버 모듈을 직접 import 하지 않고,
+  // src/instrumentation.ts 가 서버 기동 시 등록한 리스너를 호출한다. 리스너 오류는 거부 판정에 영향을 주지 않는다.
+  if (denyListener) {
+    try {
+      denyListener(h ?? null, key);
+    } catch {
+      /* ignore */
+    }
+  }
   const label = CAPABILITIES.find((c) => c.key === key)?.label ?? key;
   const grade = h?.grade ? GRADE_LABELS[h.grade] : '현재 등급';
   return `${grade}에게는 '${label}' 권한이 없습니다. 메인 담당자(PL)에게 요청하세요.`;

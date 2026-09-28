@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 
 import { chromium, type FullConfig } from '@playwright/test';
 
+import { EXTRA_HEADERS } from './bypass';
 import { AUTH_DIR, ROLE_HOME, SEED_RESULT_PATH, SMOKE_EMAILS, SMOKE_PASSWORD, SMOKE_ROLES, authStatePath, login } from './helpers';
 
 /**
@@ -14,13 +15,14 @@ import { AUTH_DIR, ROLE_HOME, SEED_RESULT_PATH, SMOKE_EMAILS, SMOKE_PASSWORD, SM
 export default async function globalSetup(config: FullConfig): Promise<void> {
   const baseURL = config.projects[0]?.use.baseURL ?? process.env.SMOKE_BASE_URL;
   if (!baseURL) throw new Error('SMOKE_BASE_URL 환경변수가 필요합니다. 예) SMOKE_BASE_URL=https://modu-dalgmes-projects.vercel.app');
-  if (!SMOKE_PASSWORD) throw new Error('SMOKE_PASSWORD 환경변수가 필요합니다(점검 계정 4개 공통 비밀번호).');
+  if (!SMOKE_PASSWORD) throw new Error('SMOKE_PASSWORD 환경변수가 필요합니다(점검 계정 4개 공통 비밀번호). GitHub Actions 라면 저장소 Secrets 에 SMOKE_PASSWORD 가 비어 있는 것 — docs/SMOKE-TEST.md §4-3.');
+  if (EXTRA_HEADERS) console.log('[smoke] VERCEL_AUTOMATION_BYPASS_SECRET 감지 — 모든 요청에 x-vercel-protection-bypass 헤더를 붙입니다.');
 
   // 1) 시드
   const token = process.env.SMOKE_SEED_TOKEN;
   if (token) {
     const url = new URL('/api/ops/smoke-seed', baseURL).toString();
-    const res = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } });
+    const res = await fetch(url, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', ...(EXTRA_HEADERS ?? {}) } });
     const body = (await res.json().catch(() => null)) as { ok?: boolean; error?: string; caseId?: string | null; programId?: string; warnings?: string[] } | null;
     if (!res.ok || !body?.ok) {
       throw new Error(`스모크 시드 실패 (${res.status}): ${body?.error ?? '응답 없음'}`);
@@ -40,7 +42,7 @@ export default async function globalSetup(config: FullConfig): Promise<void> {
   const failures: string[] = [];
   try {
     for (const role of SMOKE_ROLES) {
-      const context = await browser.newContext({ baseURL, locale: 'ko-KR', timezoneId: 'Asia/Seoul' });
+      const context = await browser.newContext({ baseURL, locale: 'ko-KR', timezoneId: 'Asia/Seoul', extraHTTPHeaders: EXTRA_HEADERS });
       const page = await context.newPage();
       const failedMarker = `${authStatePath(role)}.failed`;
       try {

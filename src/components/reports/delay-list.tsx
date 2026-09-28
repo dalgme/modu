@@ -16,6 +16,7 @@ import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
 import { menteeLabel } from '@/lib/utils/labels';
 import { formatDate } from '@/lib/utils/format';
+import { kstMd } from '@/lib/utils/kst';
 
 const MENTOR_KINDS: DelayKind[] = ['no_round', 'stalled', 'revision'];
 /** 이 기간 안에 같은 멘토에게 다시 보내면 경고 */
@@ -30,10 +31,7 @@ const KIND_TONE: Record<DelayKind, string> = {
 };
 
 const daysAgo = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
-const md = (iso: string) => {
-  const d = new Date(iso);
-  return `${d.getMonth() + 1}/${d.getDate()}`;
-};
+const md = (iso: string) => kstMd(iso); // KST 고정 (P35-D)
 
 /**
  * 지연 케이스 목록 (P22·P30) — 운영사는 멘토 책임 지연을 선택해 독려 문자 발송(미리보기 → 확인 → 발송).

@@ -42,6 +42,8 @@ jobs:
       SMOKE_BASE_URL: ${{ github.event.deployment_status.environment_url || github.event.deployment_status.target_url || inputs.base_url }}
       SMOKE_PASSWORD: ${{ secrets.SMOKE_PASSWORD }}
       SMOKE_SEED_TOKEN: ${{ secrets.SMOKE_SEED_TOKEN }}
+      # (선택) Vercel Deployment Protection 우회 — 프로젝트 Settings → Deployment Protection → Protection Bypass for Automation 의 값
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       CI: 'true'
     steps:
       - name: 점검 대상 출력

@@ -11,7 +11,7 @@ export default async function ConsentPage() {
   const b = ctx.branding;
   return (
     <main className="flex min-h-[70vh] items-center justify-center">
-      <ConsentForm programName={b.programName} clientName={b.clientName} operatorName={b.operatorName} />
+      <ConsentForm programName={b.programName} clientName={b.clientName} operatorName={b.operatorName} retentionYears={b.retentionYears} />
     </main>
   );
 }

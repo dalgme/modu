@@ -1,0 +1,66 @@
+# DB 2차 백업 (P35-B, 선택) — docs/BACKUP-RESTORE.md §5
+#
+# 무엇을 하나: 주 1회(월 KST 04:00) GitHub Actions 러너가 `pg_dump` 로 운영 DB 전체(스키마+데이터)를 덤프하고
+# `gpg --symmetric`(AES-256) 으로 암호화해 워크플로 아티팩트로 90일 보관한다. 플랫폼 자체 백업(Supabase 스토리지)과 **다른 장소**에 두는 것이 목적.
+#
+# 설정 (없으면 워크플로는 조용히 스킵된다)
+#  - GitHub 시크릿 SUPABASE_DB_URL : Supabase 대시보드 → Project Settings → Database → Connection string (URI, **Session pooler 또는 Direct**, 비밀번호 포함)
+#      예) postgresql://postgres.xxxx:PASSWORD@aws-0-ap-northeast-2.pooler.supabase.com:5432/postgres
+#  - GitHub 시크릿 BACKUP_PASSPHRASE : 아티팩트 복호화 암호(길게). 잃어버리면 아티팩트를 열 수 없다.
+#
+# 복원: 아티팩트 내려받기 → `gpg --decrypt modu-YYYY-MM-DD.sql.gpg > dump.sql` → 검토 후 `psql "$DB_URL" -f dump.sql`(새 프로젝트/브랜치 DB 에서 먼저 리허설).
+
+name: DB backup (pg_dump, weekly)
+
+on:
+  schedule:
+    - cron: '0 19 * * 0' # 일요일 UTC 19:00 = 월요일 KST 04:00
+  workflow_dispatch:
+
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      BACKUP_PASSPHRASE: ${{ secrets.BACKUP_PASSPHRASE }}
+    steps:
+      - name: 시크릿 확인 (없으면 스킵)
+        id: check
+        run: |
+          if [ -z "${SUPABASE_DB_URL}" ] || [ -z "${BACKUP_PASSPHRASE}" ]; then
+            echo "::warning::SUPABASE_DB_URL 또는 BACKUP_PASSPHRASE 시크릿이 없어 2차 백업을 건너뜁니다 (docs/BACKUP-RESTORE.md §5)"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: PostgreSQL 클라이언트 설치 (pg_dump 16)
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-16 || sudo apt-get install -y -qq postgresql-client
+          pg_dump --version
+
+      - name: pg_dump → gpg 암호화
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          DATE=$(TZ=Asia/Seoul date +%F)
+          # --no-owner --no-privileges: 다른 프로젝트로 복원할 때 역할 불일치 오류 방지. public 스키마 + private 헬퍼 함수 포함, Supabase 내부 스키마 제외.
+          pg_dump "${SUPABASE_DB_URL}" --no-owner --no-privileges --format=plain \
+            --schema=public --schema=private \
+            > "modu-${DATE}.sql"
+          ls -la "modu-${DATE}.sql"
+          gpg --batch --yes --symmetric --cipher-algo AES256 --passphrase "${BACKUP_PASSPHRASE}" --output "modu-${DATE}.sql.gpg" "modu-${DATE}.sql"
+          shred -u "modu-${DATE}.sql"
+          echo "DUMP_FILE=modu-${DATE}.sql.gpg" >> "$GITHUB_ENV"
+
+      - name: 아티팩트 업로드 (90일 보관)
+        if: steps.check.outputs.skip == 'false'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.DUMP_FILE }}
+          path: ${{ env.DUMP_FILE }}
+          retention-days: 90
+          if-no-files-found: error

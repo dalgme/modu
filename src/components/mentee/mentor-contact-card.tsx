@@ -2,11 +2,12 @@ import { Mail, Phone, CalendarClock, MessageSquare } from 'lucide-react';
 import Link from 'next/link';
 
 import type { MenteeDashboardExtra } from '@/lib/data/role-dashboard';
+import { KST_WEEKDAYS, toKstParts } from '@/lib/utils/kst';
 
+// KST 고정 (P35-D) — 서버(UTC) 렌더에서도 한국 시각
 const fmtWhen = (iso: string) => {
-  const d = new Date(iso);
-  const day = ['일', '월', '화', '수', '목', '금', '토'][d.getDay()];
-  return `${d.getMonth() + 1}월 ${d.getDate()}일(${day}) ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  const p = toKstParts(iso);
+  return p ? `${p.m}월 ${p.d}일(${KST_WEEKDAYS[p.weekday]}) ${String(p.hh).padStart(2, '0')}:${String(p.mm).padStart(2, '0')}` : '-';
 };
 
 /** 멘티 대시보드 — 담당 멘토 연락처 + 다음 컨설팅 일정 (P28). 전화·이메일은 바로 걸 수 있는 링크 */

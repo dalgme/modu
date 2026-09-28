@@ -4,6 +4,7 @@ import JSZip from 'jszip';
 import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { recordSecurityEventSafe } from '@/lib/ops/security-events';
 import { contentDisposition } from '@/lib/http/download';
 
 export const dynamic = 'force-dynamic';
@@ -73,6 +74,8 @@ export async function GET(request: Request): Promise<Response> {
     metadata: { files: added },
   });
 
+  // (P35-B) 대량 반출 이벤트
+  await recordSecurityEventSafe({ kind: 'export', severity: 'info', userId: profile.id, path: '/api/staff/case-docs-zip', detail: { route: 'case-docs-zip', files: added, case_id: caseId, program_id: ctx.programId } });
   const buf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
   const filename = `${safe(c.owner_name)}_${safe(c.business_name)}_서류일체_${new Date().toISOString().slice(0, 10)}.zip`;
   return new Response(new Uint8Array(buf), {

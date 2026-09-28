@@ -84,6 +84,36 @@ npx playwright show-report e2e/playwright-report      # 결과 HTML 열기
 
 `SMOKE_SEED_TOKEN` 을 빼면 시드를 건너뛰고 계정이 이미 있다고 가정한다.
 
-## 7. 화면을 추가했을 때
+## 7. 문제 해결 (P35-D — 첫 실제 실행에서 겪은 것)
+
+### 7-1. 403 이 여러 화면에서 한꺼번에 뜬다 (Vercel 엣지 차단)
+
+- **증상**: `/hub?pick=1`·`/nextlab/dashboard`·`/mentor/*` 등 수십 화면이 status 403 인데, Vercel 런타임 로그에는 403 이 한 건도 없다.
+- **원인**: 앱이 아니라 **Vercel 엣지(DDoS 완화·봇 차단)** 가 GitHub 러너 한 IP 에서 쏟아지는 동시 요청을 막은 것. 이 앱은 권한이 없으면 403 대신 대시보드로 redirect 하므로 **앱이 403 을 내는 일은 없다.**
+- **로봇이 하는 일**: 403/429 를 받으면 3초·8초 쉬고 최대 2회 다시 연다. 그래도 막히면 실패 문구에 **"Vercel 엣지 차단(요청 폭주) — 앱 오류 아님"** 이라고 적는다. 워커 2개·파일 안 순차·화면 사이 0.2~0.4초 간격으로 요청 속도를 낮춰 두었다.
+- **그래도 반복되면**: ① 잠시 뒤 Actions → Run workflow 로 재실행 ② `playwright.config.ts` 의 `workers` 를 1 로 ③ Vercel → Settings → Deployment Protection → **Protection Bypass for Automation** 에서 비밀값을 만들어 GitHub Secrets 와 로컬 환경변수에 `VERCEL_AUTOMATION_BYPASS_SECRET` 로 넣는다(워크플로 env 에 한 줄 추가 필요). 이 값이 있으면 모든 요청에 `x-vercel-protection-bypass` 헤더가 붙어 배포 보호를 켜도 점검이 돌아간다.
+
+### 7-2. "하이드레이션 불일치" 라고 나온다 (React #418 / #422 / #423 / #425)
+
+- **뜻**: 서버가 만든 HTML 과 브라우저가 다시 그린 화면이 다르다. 화면은 대개 보이지만 콘솔 오류가 나고, 심하면 화면 일부가 사라진다.
+- **흔한 원인**: **시간대**(서버는 UTC, 브라우저는 한국시간 — `new Date().getHours()` 처럼 로컬 시각을 쓰면 서버·브라우저 값이 다르다), 난수, `window` 유무로 갈리는 렌더.
+- **고치는 규칙**: 날짜·시각 표시는 `src/lib/utils/format.ts` 의 `formatDate/formatDateTime` 또는 `src/lib/utils/kst.ts`(KST 고정) 만 쓴다. 로컬 getter(`getHours/getDay/getDate/toLocaleDateString`)는 금지.
+- **리포트 읽기**: 실패 문구에 처음 3개 오류 메시지가 붙는다. 오류 코드 링크(`react.dev/errors/418`)를 열면 React 설명이 나온다.
+
+### 7-3. 비밀값이 빠졌을 때 보이는 문구
+
+| 로그 문구 | 뜻 | 조치 |
+|---|---|---|
+| `SMOKE_PASSWORD 환경변수가 필요합니다` | GitHub Secrets 에 `SMOKE_PASSWORD` 없음 | §4-3 |
+| `스모크 시드 실패 (403)` | Vercel 의 `SMOKE_SEED_TOKEN` 이 비었거나 GitHub 값과 다름, 또는 재배포 전 | §4-2 → 재배포 |
+| `[smoke-seed] SMOKE_SEED_TOKEN 없음 — 계정이 이미 있다고 가정` | GitHub Secrets 에 토큰 없음(경고) | 계정이 이미 있으면 무시 가능 |
+| `globalSetup 로그인 실패` / `로그인 페이지에 머물러 있음` | 비밀번호 불일치·계정 비활성 | 두 곳의 `SMOKE_PASSWORD` 가 같은지 확인 |
+| `로그인 후 비밀번호 변경 화면으로 이동` | 시드가 안 돌았음(토큰 없이 실행) | `SMOKE_SEED_TOKEN` 넣고 재실행 |
+
+### 7-4. 리포트 아티팩트가 너무 크다
+
+트레이스는 **재시도 1회째에만** 남기도록 줄였다(`trace: 'on-first-retry'`, 첫 실행분 256MB → 수십 MB). 스크린샷은 실패 화면만, 비디오는 없다.
+
+## 8. 화면을 추가했을 때
 
 새 메뉴·탭을 만들었으면 `e2e/pages.ts` 의 역할별 목록에 경로를 한 줄 추가한다. 목록에 없는 화면은 점검되지 않는다.

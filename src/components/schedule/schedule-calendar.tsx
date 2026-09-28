@@ -8,22 +8,23 @@ import type { ScheduleEvent } from '@/lib/data/schedule';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { menteeLabel } from '@/lib/utils/labels';
+import { KST_WEEKDAYS, calendarYmd, kstHm, kstMd, kstWeekdayLabel, kstYmd, toKstCalendar } from '@/lib/utils/kst';
 
 type View = 'month' | 'week' | 'day';
 
 const DAY_MS = 24 * 3600 * 1000;
-const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
+const WEEKDAYS = KST_WEEKDAYS;
 
-function ymd(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-function hm(iso: string): string {
-  const d = new Date(iso);
-  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}
-function startOfWeek(d: Date): Date {
-  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  return new Date(x.getTime() - x.getDay() * DAY_MS);
+/**
+ * 달력의 날짜 산술은 전부 **KST 고정** (P35-D). `anchor` 등 "달력 날짜" Date 는 `toKstCalendar` 로 만든 값
+ * (UTC 필드 = KST 날짜) 이라 `getUTC*` 로 읽는다 — 서버(UTC)·브라우저(KST) 어디서 렌더해도 같은 HTML 이 나와
+ * 하이드레이션 불일치가 없다. 로컬 getter(`getDate()` 등) 는 쓰지 않는다.
+ */
+const ymd = calendarYmd;
+const hm = kstHm;
+function startOfWeek(cal: Date): Date {
+  const x = Date.UTC(cal.getUTCFullYear(), cal.getUTCMonth(), cal.getUTCDate());
+  return new Date(x - cal.getUTCDay() * DAY_MS);
 }
 
 /** 이벤트 상태: 완료(보고서 등록) / 예약(미래) / 실행(지난 일정, 보고서 대기) */
@@ -45,7 +46,7 @@ const STATUS_LABEL = { done: '완료', planned: '예약', pending: '보고서 �
  */
 export function ScheduleCalendar({ events, caseHrefBase, eventHref }: { events: ScheduleEvent[]; caseHrefBase?: string; /** 케이스 id 와 무관한 고정 이동 링크 (멘티: 회차 확인 화면) */ eventHref?: string }) {
   const [view, setView] = useState<View>('month');
-  const [anchor, setAnchor] = useState(() => new Date());
+  const [anchor, setAnchor] = useState(() => toKstCalendar(Date.now()));
   // 폰에서는 월 격자가 너무 좁아 주 보기로 시작 (P28)
   useEffect(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 640) setView('week');
@@ -58,7 +59,7 @@ export function ScheduleCalendar({ events, caseHrefBase, eventHref }: { events: 
   const byDate = useMemo(() => {
     const m = new Map<string, ScheduleEvent[]>();
     for (const e of events) {
-      const key = ymd(new Date(e.startedAt));
+      const key = kstYmd(e.startedAt);
       (m.get(key) ?? m.set(key, []).get(key)!).push(e);
     }
     return m;
@@ -66,22 +67,22 @@ export function ScheduleCalendar({ events, caseHrefBase, eventHref }: { events: 
 
   const move = (dir: -1 | 1) => {
     const d = new Date(anchor);
-    if (view === 'month') d.setMonth(d.getMonth() + dir);
-    else if (view === 'week') d.setDate(d.getDate() + 7 * dir);
-    else d.setDate(d.getDate() + dir);
+    if (view === 'month') d.setUTCMonth(d.getUTCMonth() + dir);
+    else if (view === 'week') d.setUTCDate(d.getUTCDate() + 7 * dir);
+    else d.setUTCDate(d.getUTCDate() + dir);
     setAnchor(d);
   };
 
   const title =
     view === 'month'
-      ? `${anchor.getFullYear()}년 ${anchor.getMonth() + 1}월`
+      ? `${anchor.getUTCFullYear()}년 ${anchor.getUTCMonth() + 1}월`
       : view === 'week'
         ? (() => {
             const s = startOfWeek(anchor);
             const e = new Date(s.getTime() + 6 * DAY_MS);
-            return `${s.getMonth() + 1}/${s.getDate()} ~ ${e.getMonth() + 1}/${e.getDate()}`;
+            return `${s.getUTCMonth() + 1}/${s.getUTCDate()} ~ ${e.getUTCMonth() + 1}/${e.getUTCDate()}`;
           })()
-        : `${anchor.getFullYear()}년 ${anchor.getMonth() + 1}월 ${anchor.getDate()}일 (${WEEKDAYS[anchor.getDay()]})`;
+        : `${anchor.getUTCFullYear()}년 ${anchor.getUTCMonth() + 1}월 ${anchor.getUTCDate()}일 (${WEEKDAYS[anchor.getUTCDay()]})`;
 
   const EventChip = ({ e, full = false }: { e: ScheduleEvent; full?: boolean }) => {
     const st = statusOf(e);
@@ -101,7 +102,7 @@ export function ScheduleCalendar({ events, caseHrefBase, eventHref }: { events: 
     return caseHrefBase ? <Link href={`${caseHrefBase}/${e.caseId}`}>{inner}</Link> : eventHref ? <Link href={eventHref}>{inner}</Link> : inner;
   };
 
-  const today = ymd(new Date());
+  const today = kstYmd(Date.now());
 
   return (
     <div className="flex flex-col gap-3">
@@ -112,7 +113,7 @@ export function ScheduleCalendar({ events, caseHrefBase, eventHref }: { events: 
           <ul className="flex flex-col gap-1">
             {upcoming.map((e) => (
               <li key={e.id} className="flex flex-wrap items-center gap-x-2 text-sm">
-                <span className="tabular-nums font-semibold">{new Date(e.startedAt).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric', weekday: 'short' })} {hm(e.startedAt)}</span>
+                <span className="tabular-nums font-semibold">{kstMd(e.startedAt)}({kstWeekdayLabel(e.startedAt)}) {hm(e.startedAt)}</span>
                 <EventChip e={e} full />
               </li>
             ))}
@@ -122,7 +123,7 @@ export function ScheduleCalendar({ events, caseHrefBase, eventHref }: { events: 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-1.5">
           <Button size="sm" variant="outline" onClick={() => move(-1)} aria-label="이전"><ChevronLeft className="h-4 w-4" /></Button>
-          <Button size="sm" variant="outline" onClick={() => setAnchor(new Date())}>오늘</Button>
+          <Button size="sm" variant="outline" onClick={() => setAnchor(toKstCalendar(Date.now()))}>오늘</Button>
           <Button size="sm" variant="outline" onClick={() => move(1)} aria-label="다음"><ChevronRight className="h-4 w-4" /></Button>
           <span className="ml-2 text-base font-bold">{title}</span>
         </div>
@@ -142,7 +143,7 @@ export function ScheduleCalendar({ events, caseHrefBase, eventHref }: { events: 
       </div>
 
       {view === 'month' && (() => {
-        const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+        const first = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1));
         const gridStart = startOfWeek(first);
         const cells = Array.from({ length: 42 }, (_, i) => new Date(gridStart.getTime() + i * DAY_MS));
         return (
@@ -155,12 +156,12 @@ export function ScheduleCalendar({ events, caseHrefBase, eventHref }: { events: 
             <div className="grid grid-cols-7">
               {cells.map((d) => {
                 const key = ymd(d);
-                const inMonth = d.getMonth() === anchor.getMonth();
+                const inMonth = d.getUTCMonth() === anchor.getUTCMonth();
                 const dayEvents = byDate.get(key) ?? [];
                 return (
                   <div key={key} className={cn('min-h-[84px] border-b border-r p-1 last:border-r-0', !inMonth && 'bg-muted/30 text-muted-foreground', key === today && 'bg-primary/5')}>
                     <button type="button" onClick={() => { setAnchor(new Date(d)); setView('day'); }} className={cn('mb-1 inline-flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold hover:bg-accent', key === today && 'bg-primary text-primary-foreground')}>
-                      {d.getDate()}
+                      {d.getUTCDate()}
                     </button>
                     <div className="flex flex-col gap-0.5">
                       {dayEvents.slice(0, 3).map((e) => <EventChip key={e.id} e={e} />)}
@@ -188,8 +189,8 @@ export function ScheduleCalendar({ events, caseHrefBase, eventHref }: { events: 
               const dayEvents = byDate.get(key) ?? [];
               return (
                 <div key={key} className={cn('rounded-xl border-2 bg-background p-3', key === today && 'border-primary/50')}>
-                  <p className={cn('mb-1.5 text-sm font-bold', d.getDay() === 0 && 'text-red-600', d.getDay() === 6 && 'text-blue-600')}>
-                    {d.getMonth() + 1}/{d.getDate()} ({WEEKDAYS[d.getDay()]}){key === today && <span className="ml-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">오늘</span>}
+                  <p className={cn('mb-1.5 text-sm font-bold', d.getUTCDay() === 0 && 'text-red-600', d.getUTCDay() === 6 && 'text-blue-600')}>
+                    {d.getUTCMonth() + 1}/{d.getUTCDate()} ({WEEKDAYS[d.getUTCDay()]}){key === today && <span className="ml-1 rounded bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground">오늘</span>}
                   </p>
                   {dayEvents.length === 0 ? (
                     <p className="text-xs text-muted-foreground">일정 없음</p>

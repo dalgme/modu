@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+import { EXTRA_HEADERS } from './e2e/bypass';
+
 /**
  * 배포 화면 스모크 점검 (P34-A) — `npm run smoke`.
  *
@@ -9,15 +11,18 @@ import { defineConfig, devices } from '@playwright/test';
  * 스펙 파일은 `e2e/*.smoke.ts` 만 수집한다(vitest 는 `src/**\/*.test.ts` 만 보므로 충돌 없음).
  * 브라우저는 chromium 하나만 설치하면 된다 — 모바일 프로젝트도 chromium 으로 iPhone 13 뷰포트·터치를 에뮬레이션한다.
  */
+
 export default defineConfig({
   testDir: 'e2e',
   testMatch: '**/*.smoke.ts',
   globalSetup: './e2e/global-setup.ts',
-  timeout: 90_000,
+  timeout: 120_000,
   expect: { timeout: 15_000 },
   retries: 1,
-  workers: process.env.CI ? 2 : undefined,
-  fullyParallel: true,
+  // (P35-D) 첫 실제 실행에서 러너 IP 의 동시 요청 폭주를 Vercel 엣지가 403 으로 막았다(앱 로그엔 없음).
+  // 워커 2 + 파일 안 순차 실행 + 화면 사이 짧은 간격(helpers.ts) 으로 요청 속도를 낮춘다.
+  workers: 2,
+  fullyParallel: false,
   // 산출물은 e2e/ 아래(e2e/.gitignore 로 제외) — 저장소 루트를 더럽히지 않는다
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'e2e/playwright-report' }]],
   outputDir: 'e2e/test-results',
@@ -26,10 +31,13 @@ export default defineConfig({
     locale: 'ko-KR',
     timezoneId: 'Asia/Seoul',
     screenshot: 'only-on-failure',
-    trace: 'retain-on-failure',
+    // 트레이스는 재시도 1회째만 — retain-on-failure 는 리포트 아티팩트가 256MB 까지 커졌다 (P35-D)
+    trace: 'on-first-retry',
     video: 'off',
     actionTimeout: 20_000,
     navigationTimeout: 45_000,
+    // (P35-D) VERCEL_AUTOMATION_BYPASS_SECRET 이 있으면 Deployment Protection 우회 헤더 — e2e/bypass.ts
+    extraHTTPHeaders: EXTRA_HEADERS,
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },

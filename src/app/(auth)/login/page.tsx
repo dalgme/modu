@@ -23,10 +23,13 @@ function SubmitButton() {
 export default function LoginPage({
   searchParams,
 }: {
-  searchParams?: { changed?: string; reset?: string };
+  searchParams?: { changed?: string; reset?: string; mfa?: string };
 }) {
   const [state, formAction] = useFormState<ActionState, FormData>(signIn, undefined);
-  const notice = searchParams?.reset
+  // 잠금 안내(signIn 의 lockoutMessage)·MFA 실패 안내는 아래 state.error 영역에 그대로 표시된다 (P35-A)
+  const notice = searchParams?.mfa === 'failed'
+    ? '2단계 인증번호를 여러 번 틀려 로그아웃되었습니다. 다시 로그인해 새 인증번호를 받으세요.'
+    : searchParams?.reset
     ? '비밀번호가 재설정되었습니다. 새 비밀번호로 로그인하세요.'
     : searchParams?.changed
       ? '비밀번호가 변경되었습니다. 새 비밀번호로 로그인하세요.'
