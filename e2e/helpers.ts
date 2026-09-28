@@ -93,7 +93,7 @@ const EDGE_RETRY_WAITS = [3_000, 8_000];
  * 러너 IP 의 요청 폭주에 1분 안팎 켜졌다 풀린다(2026-09-28 run #10: 9화면 연속 403). 헤드리스 브라우저는 검문을 통과할 수 없으니
  * 풀릴 때까지 길게 쉬었다가 다시 연다. 근본 해결은 Vercel "Protection Bypass for Automation" 비밀값(VERCEL_AUTOMATION_BYPASS_SECRET).
  */
-const CHALLENGE_RETRY_WAITS = [20_000, 40_000, 60_000];
+const CHALLENGE_RETRY_WAITS = [15_000, 30_000, 45_000];
 /** 화면 로드마다 이미지·폰트·미디어 요청을 끊어 러너 IP 의 요청 수를 줄인다(폭주 완화 트리거 방지). JS·CSS·RSC 는 그대로. */
 const DROP_RESOURCE_TYPES = new Set(['image', 'font', 'media']);
 const routedPages = new WeakSet<Page>();
@@ -151,7 +151,10 @@ export async function expectHealthyPage(page: Page, path: string): Promise<void>
     const waits = lastHeaders['x-vercel-mitigated'] ? CHALLENGE_RETRY_WAITS : EDGE_RETRY_WAITS;
     if (attempt >= waits.length) break;
     edgeRetries += 1;
-    await sleep(waits[attempt] ?? 3_000);
+    const wait = waits[attempt] ?? 3_000;
+    // 검문 대기가 테스트 타임아웃(120초)을 잡아먹지 않도록 그만큼 늘린다(run #13: 대기 합계가 타임아웃을 넘겨 실패로 집계)
+    test.info().setTimeout(test.info().timeout + wait + 15_000);
+    await sleep(wait);
     errors = collectPageErrors(page); // 차단 화면의 오류는 버리고 다시 모은다
   }
   // 스트리밍 RSC/클라이언트 하이드레이션까지 잠깐 기다린다(네트워크 idle 은 폴링 때문에 안 될 수 있어 실패해도 넘어감)
