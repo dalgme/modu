@@ -88,6 +88,20 @@ const FATAL_TEXT = /Application error|server-side exception|client-side exceptio
 const EDGE_BLOCK_STATUS = new Set([403, 429]);
 /** 403/429 재시도 대기(ms) — 3초, 8초 후 최대 2회 */
 const EDGE_RETRY_WAITS = [3_000, 8_000];
+/**
+ * Vercel 시스템 DDoS 완화(응답 헤더 `x-vercel-mitigated: challenge`, 본문 "Vercel 보안 검문소 / 브라우저를 확인하고 있습니다")는
+ * 러너 IP 의 요청 폭주에 1분 안팎 켜졌다 풀린다(2026-09-28 run #10: 9화면 연속 403). 헤드리스 브라우저는 검문을 통과할 수 없으니
+ * 풀릴 때까지 길게 쉬었다가 다시 연다. 근본 해결은 Vercel "Protection Bypass for Automation" 비밀값(VERCEL_AUTOMATION_BYPASS_SECRET).
+ */
+const CHALLENGE_RETRY_WAITS = [20_000, 40_000, 60_000];
+/** 화면 로드마다 이미지·폰트·미디어 요청을 끊어 러너 IP 의 요청 수를 줄인다(폭주 완화 트리거 방지). JS·CSS·RSC 는 그대로. */
+const DROP_RESOURCE_TYPES = new Set(['image', 'font', 'media']);
+const routedPages = new WeakSet<Page>();
+async function dropHeavyAssets(page: Page): Promise<void> {
+  if (routedPages.has(page)) return;
+  routedPages.add(page);
+  await page.route('**/*', (route) => (DROP_RESOURCE_TYPES.has(route.request().resourceType()) ? route.abort() : route.continue())).catch(() => undefined);
+}
 /** Vercel 엣지 차단 화면·응답에 흔한 문구 */
 const EDGE_BLOCK_TEXT = /Access Denied|blocked|Too Many Requests|rate limit|vercel/i;
 /** React 하이드레이션 오류 코드 — 서버 HTML 과 클라이언트 렌더가 다를 때(대개 시간대·난수·window 분기) */
@@ -97,7 +111,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** 화면 사이 200~400ms 간격 — 러너 IP 의 요청 폭주로 엣지가 403 을 내는 것을 막는다 (P35-D) */
 export async function paceRequests(): Promise<void> {
-  await sleep(200 + Math.floor(Math.random() * 200));
+  await sleep(500 + Math.floor(Math.random() * 400));
 }
 
 /** pageerror 목록을 하이드레이션/그 외로 나눠 사람이 읽을 문구로 */
@@ -122,6 +136,7 @@ export function describePageErrors(errors: string[]): string {
  * 그래도 막히면 오류 문구에 "엣지 차단 — 앱 오류 아님" 을 명시한다.
  */
 export async function expectHealthyPage(page: Page, path: string): Promise<void> {
+  await dropHeavyAssets(page);
   await paceRequests();
   let errors = collectPageErrors(page);
   let status = 0;
@@ -131,9 +146,12 @@ export async function expectHealthyPage(page: Page, path: string): Promise<void>
     const res = await page.goto(path, { waitUntil: 'domcontentloaded' });
     status = res?.status() ?? 0;
     lastHeaders = res ? await res.allHeaders().catch(() => ({})) : {};
-    if (!EDGE_BLOCK_STATUS.has(status) || attempt >= EDGE_RETRY_WAITS.length) break;
+    if (!EDGE_BLOCK_STATUS.has(status)) break;
+    // 시스템 완화 검문(challenge)은 길게, 그 밖의 403/429 는 짧게 재시도
+    const waits = lastHeaders['x-vercel-mitigated'] ? CHALLENGE_RETRY_WAITS : EDGE_RETRY_WAITS;
+    if (attempt >= waits.length) break;
     edgeRetries += 1;
-    await sleep(EDGE_RETRY_WAITS[attempt] ?? 3_000);
+    await sleep(waits[attempt] ?? 3_000);
     errors = collectPageErrors(page); // 차단 화면의 오류는 버리고 다시 모은다
   }
   // 스트리밍 RSC/클라이언트 하이드레이션까지 잠깐 기다린다(네트워크 idle 은 폴링 때문에 안 될 수 있어 실패해도 넘어감)

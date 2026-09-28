@@ -92,6 +92,12 @@ npx playwright show-report e2e/playwright-report      # 결과 HTML 열기
 - **원인**: 앱이 아니라 **Vercel 엣지(DDoS 완화·봇 차단)** 가 GitHub 러너 한 IP 에서 쏟아지는 동시 요청을 막은 것. 이 앱은 권한이 없으면 403 대신 대시보드로 redirect 하므로 **앱이 403 을 내는 일은 없다.**
 - **로봇이 하는 일**: 403/429 를 받으면 3초·8초 쉬고 최대 2회 다시 연다. 그래도 막히면 실패 문구에 **"Vercel 엣지 차단(요청 폭주) — 앱 오류 아님"** 이라고 적는다. 워커 2개·파일 안 순차·화면 사이 0.2~0.4초 간격으로 요청 속도를 낮춰 두었다.
 - **그래도 반복되면**: ① 잠시 뒤 Actions → Run workflow 로 재실행 ② `playwright.config.ts` 의 `workers` 를 1 로 ③ Vercel → Settings → Deployment Protection → **Protection Bypass for Automation** 에서 비밀값을 만들어 GitHub Secrets 와 로컬 환경변수에 `VERCEL_AUTOMATION_BYPASS_SECRET` 로 넣는다(워크플로 env 에 한 줄 추가 필요). 이 값이 있으면 모든 요청에 `x-vercel-protection-bypass` 헤더가 붙어 배포 보호를 켜도 점검이 돌아간다.
+- **정체 확인(2026-09-28 run #10)**: 오류 문구의 `[x-vercel-mitigated=challenge · body="브라우저를 확인하고 있습니다 Vercel 보안 검문소 …"]` 는
+  Vercel **시스템 DDoS 완화**가 러너 IP 를 검문한 것이다(앱·미들웨어 아님, 프로젝트 방화벽 설정도 아님). 1분 안팎 켜졌다 풀린다.
+  헬퍼는 이 헤더를 보면 20·40·60초를 쉬었다가 다시 열고, 이미지·폰트·미디어 요청은 끊어 요청 수를 줄인다.
+- **확실한 해결**: Vercel → 프로젝트 → Settings → Deployment Protection → **Protection Bypass for Automation** 에서 비밀값을 만들고
+  GitHub 시크릿 `VERCEL_AUTOMATION_BYPASS_SECRET` 에 넣는다(워크플로·플레이라이트 설정은 이미 읽는다). 이 헤더가 붙은 요청은 검문 대상에서 빠진다.
+  그래도 검문이 계속되면 Vercel → Firewall → **System Bypass Rules** 에 러너 UA(`HeadlessChrome`) 규칙을 추가한다.
 
 ### 7-2. "하이드레이션 불일치" 라고 나온다 (React #418 / #422 / #423 / #425)
 
