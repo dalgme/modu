@@ -26,6 +26,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { FieldExampleButton } from '@/components/sms/field-example-button';
 
 const STORAGE_KEY = (role: LoginGuideRole) => `modu:login-guide-template:${role}`;
 
@@ -281,6 +282,7 @@ export function LoginGuideDialog({
                       <th className="whitespace-nowrap px-3 py-1.5 font-semibold">필드</th>
                       <th className="px-3 py-1.5 font-semibold">의미</th>
                       <th className="px-3 py-1.5 font-semibold">예시값{previewRecipient ? ` (${previewRecipient.name})` : ''}</th>
+                      <th className="whitespace-nowrap px-3 py-1.5 font-semibold">사용 예시</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -295,6 +297,9 @@ export function LoginGuideDialog({
                           </td>
                           <td className="px-3 py-1.5">{f.label} — <span className="text-muted-foreground">{f.desc}</span></td>
                           <td className="px-3 py-1.5 text-muted-foreground">{v || <i>{f.blankWhenEmpty ? '(값 없음 — 빈칸)' : '(값 없음 — "-")'}{f.optional ? ' · 이 필드만 있는 줄은 생략' : ''}</i>}</td>
+                          <td className="whitespace-nowrap px-3 py-1.5">
+                            <FieldExampleButton kind="login" fieldKey={f.key} fieldLabel={f.label} />
+                          </td>
                         </tr>
                       );
                     })}

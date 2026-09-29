@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { formatDate } from '@/lib/utils/format';
+import { FilePreviewButton } from '@/components/files/file-preview';
 
 /**
  * 멘티 관련 서류 첨부 — 운영사·멘티는 업로드 시 "멘토 공개" 체크로 공개/비공개를 정한다.
@@ -78,6 +79,7 @@ export function CaseDocumentsPanel({
                   ) : (
                     <span className="truncate">{d.name}</span>
                   )}
+                  <FilePreviewButton docId={d.id} name={d.name} size="xs" />
                   <span className="text-xs text-muted-foreground">{formatDate(d.createdAt)}</span>
                   {viewerRole !== 'mentor' && (
                     <span className={d.mentorVisible ? 'rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] text-emerald-800' : 'rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800'}>

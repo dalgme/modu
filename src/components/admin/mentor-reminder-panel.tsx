@@ -6,6 +6,8 @@ import { CalendarClock, RotateCcw, Save, Send, Sparkles, Users } from 'lucide-re
 
 import { clearMentorReminderGroupAction, saveMentorReminderSettingAction, sendMentorReminderNowAction, defaultMentorReminderTemplateAction } from '@/lib/notifications/sms-admin-actions';
 import type { EligibleMentor, ReminderSetting } from '@/lib/notifications/mentor-weekly-reminder';
+import { MENTOR_REMINDER_FIELDS, renderMentorReminder } from '@/lib/sms/mentor-reminder-template';
+import { FieldExampleButton } from '@/components/sms/field-example-button';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -27,17 +29,9 @@ export interface ReminderScope {
   coveredGroups: string[];
 }
 
-/** 리마인더 문구 자동 기입 필드 — 서버 치환(`renderMentorReminder`)이 지원하는 4개만 */
-const REMINDER_FIELDS = [
-  { key: 'program', label: '행사명', desc: '지금 운영 중인 행사(사업) 이름' },
-  { key: 'group', label: '그룹명', desc: '사업 그룹 이름 (넣으면 그룹마다 한 통씩, 빼면 멘토마다 한 통으로 합쳐 발송)' },
-  { key: 'mentor', label: '멘토 이름', desc: '문자를 받는 멘토 이름' },
-  { key: 'companies', label: '보고서 남은 멘티', desc: '회차·보고서가 아직 남은 담당 멘티 이름 (여러 명이면 쉼표로 이어서)' },
-] as const;
-
-function render(template: string, vars: { program: string; group: string; mentor: string; companies: string[] }): string {
-  return template.split('{program}').join(vars.program).split('{group}').join(vars.group).split('{mentor}').join(vars.mentor).split('{companies}').join(vars.companies.join(', '));
-}
+/** 리마인더 문구 자동 기입 필드·치환 — 서버 발송과 같은 중립 모듈(`mentor-reminder-template.ts`) */
+const REMINDER_FIELDS = MENTOR_REMINDER_FIELDS;
+const render = renderMentorReminder;
 
 /**
  * 멘토 리마인더 문자 설정 패널 (문자 페이지 [멘토 리마인더] 미니탭, P29).
@@ -221,13 +215,21 @@ export function MentorReminderPanel({ scopes, programName, initialScope, canEdit
                   </button>
                 ))}
               </div>
-              <ul className="grid gap-0.5 text-[11px] text-muted-foreground sm:grid-cols-2">
-                {REMINDER_FIELDS.map((f) => (
-                  <li key={f.key}>
-                    <b className="font-semibold text-foreground/80">{f.label}</b> — {f.desc}
-                  </li>
-                ))}
-              </ul>
+              {/* 자동 기입 필드 안내 — 필드별 [예시] 버튼(입력 ↔ 실제 문자 대조 팝업) */}
+              <div className="rounded-md border bg-background">
+                <p className="border-b px-2.5 py-1.5 text-[11px] font-semibold">자동 기입 필드 안내</p>
+                <ul className="divide-y text-[11px]">
+                  {REMINDER_FIELDS.map((f) => (
+                    <li key={f.key} className="flex min-w-0 items-start justify-between gap-2 px-2.5 py-1.5">
+                      <span className="min-w-0 text-muted-foreground">
+                        <b className="font-semibold text-foreground/80">{f.label}</b>{' '}
+                        <code className="font-mono text-primary">{`{${f.key}}`}</code> — {f.desc}
+                      </span>
+                      <FieldExampleButton kind="reminder" fieldKey={f.key} fieldLabel={f.label} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           </div>
           <div className="rounded-lg border bg-muted/40 p-3">

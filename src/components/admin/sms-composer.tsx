@@ -21,6 +21,7 @@ import { estimateSmsCost } from '@/lib/notifications/sms-cost';
 import { formatKRW } from '@/lib/utils/format';
 import { normalizePhone } from '@/lib/utils/phone';
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
+import { FieldExampleButton } from '@/components/sms/field-example-button';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -498,13 +499,14 @@ export function SmsComposer({
           <details className="group rounded-md border bg-background" open>
             <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold">자동 기입 필드 안내</summary>
             <div className="overflow-x-auto border-t">
-              <table className="w-full min-w-[540px] text-xs">
+              <table className="w-full min-w-[600px] text-xs">
                 <thead className="bg-muted/50 text-left text-muted-foreground">
                   <tr>
                     <th className="whitespace-nowrap px-3 py-1.5 font-semibold">필드 버튼</th>
                     <th className="px-3 py-1.5 font-semibold">자동으로 들어가는 내용</th>
                     <th className="px-3 py-1.5 font-semibold">예시</th>
                     <th className="whitespace-nowrap px-3 py-1.5 font-semibold">적용 대상</th>
+                    <th className="whitespace-nowrap px-3 py-1.5 font-semibold">사용 예시</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -517,7 +519,7 @@ export function SmsComposer({
                       </td>
                       <td className="px-3 py-1.5">
                         {f.desc}
-                        {f.optional && <span className="block text-[11px] text-muted-foreground">값이 없으면 이 필드만 있는 줄은 빠집니다</span>}
+                        {f.optional && <span className="block text-[11px] text-muted-foreground">이 정보가 없는 사람에게는 이 필드만 있는 줄이 빠집니다</span>}
                       </td>
                       <td className="px-3 py-1.5 text-muted-foreground">{f.sample}</td>
                       <td className="whitespace-nowrap px-3 py-1.5">
@@ -530,15 +532,31 @@ export function SmsComposer({
                           {f.target}
                         </span>
                       </td>
+                      <td className="whitespace-nowrap px-3 py-1.5">
+                        <FieldExampleButton kind="bulk" fieldKey={f.key} fieldLabel={f.label} />
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <p className="border-t px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-              값이 없는 선택 필드(소속·그룹명·담당 멘티/멘토·하단 문구)만 있는 줄은 통째로 빠집니다. 멘토만·멘티만 필드는 다른 역할에게는 &lsquo;-&rsquo; 로 들어갑니다(그 필드만 있는 줄이면 줄째 빠짐).
-              예시는 설명용 가짜 값이며, 실제 발송 문구는 발송 확인창에서 첫 수신자 기준으로 확인할 수 있습니다.
-            </p>
+            {/* 줄 생략·'-' 규칙 쉬운 말 안내 — 실제 동작은 renderBulkSms(= renderLoginGuide) 그대로 */}
+            <ul className="flex flex-col gap-1 border-t px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+              <li>
+                • 받는 사람에게 없는 정보는 <b className="font-semibold text-foreground/80">그 줄이 문자에서 자동으로 빠집니다.</b> (예: 소속이 없는 사람에게는
+                &lsquo;소속: …&rsquo; 줄이 아예 나가지 않습니다) — 소속·그룹명·담당 멘티·담당 멘토·하단 문구가 해당됩니다.
+              </li>
+              <li>• 다만 이름처럼 항상 있는 정보와 같은 줄에 쓰면 줄은 그대로 나가고, 비어 있는 자리에만 &lsquo;-&rsquo; 가 들어갑니다. (하단 문구는 &lsquo;-&rsquo; 없이 비워 둡니다)</li>
+              <li>
+                • &lsquo;멘토만&rsquo; 표시된 칸은 멘토에게만, &lsquo;멘티만&rsquo; 표시된 칸은 멘티에게만 채워집니다. 다른 사람에게는 빈 정보로 보아 위와 같이 줄이
+                빠지거나 &lsquo;-&rsquo; 로 나갑니다.
+              </li>
+              <li>• 각 줄의 [예시] 버튼을 누르면 쓰는 방법과 실제로 받게 될 문자를 나란히 볼 수 있습니다.</li>
+              <li>
+                • 표의 예시는 설명을 위한 가짜 이름입니다. 실제로 나갈 문자는 아래 [발송] 버튼을 누르면 뜨는 확인 창에서 첫 번째 받는 사람 기준으로 미리 볼 수
+                있습니다.
+              </li>
+            </ul>
           </details>
         </div>
       </div>

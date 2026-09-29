@@ -12,6 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
+import { FileActions } from '@/components/files/file-preview';
 
 const FIELDS: { key: keyof Omit<ObservationContent, 'overall_rating'>; label: string; rows: number; required?: boolean }[] = [
   { key: 'summary', label: '멘토링 총평', rows: 5, required: true },
@@ -34,7 +35,7 @@ export function ObservationForm({
 }: {
   caseId: string;
   initial: ObservationContent;
-  file: { name: string; url: string | null } | null;
+  file: { id: string; name: string; url: string | null } | null;
   editable: boolean;
   uploadGate?: { ok: boolean; hint: string };
 }) {
@@ -73,20 +74,19 @@ export function ObservationForm({
   return (
     <div className="flex flex-col gap-4">
       {file && (
-        <p className="flex items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2 text-sm">
           <FileText className="h-4 w-4" />
-          현재 제출본:{' '}
-          <a href={file.url ?? '#'} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">
-            {file.name}
-          </a>
-        </p>
+          현재 제출본: <b className="min-w-0 truncate">{file.name}</b>
+          <FileActions docId={file.id} name={file.name} className="ml-auto" />
+        </div>
       )}
       {editable && (
         <div className={`flex flex-col gap-2 rounded-lg border p-3 ${uploadOk ? 'border-primary/40 bg-primary/5' : 'bg-muted/30'}`}>
           <p className="text-sm font-semibold">관찰의견서 파일 업로드 {file && <span className="text-xs font-normal text-muted-foreground">(다시 올리면 기존 파일과 교체)</span>}</p>
           {!uploadOk && (
-            <p className="inline-flex items-start gap-1.5 text-xs text-muted-foreground">
-              <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {uploadGate.hint}
+            // 잠금 안내 = 바이올렛 배경 + 기본(12px)보다 2pt 크게(15px) — 2026-09-30
+            <p role="note" className="inline-flex items-start gap-1.5 rounded-lg bg-violet-100 px-3 py-2 text-[15px] font-medium leading-snug text-violet-900 dark:bg-violet-950/60 dark:text-violet-100">
+              <Lock className="mt-0.5 h-4 w-4 shrink-0" /> {uploadGate.hint}
             </p>
           )}
           <div className="flex flex-wrap items-center gap-2">

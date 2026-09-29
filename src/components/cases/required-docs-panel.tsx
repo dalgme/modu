@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { formatDate } from '@/lib/utils/format';
+import { FilePreviewButton } from '@/components/files/file-preview';
 
 /**
  * 그룹별 필수서류 슬롯 (docs §5-3) — 슬롯마다 업로드. req1 은 단일본(재업로드 시 교체), req 는 누적.
@@ -90,6 +91,7 @@ export function RequiredDocsPanel({ caseId, slots, viewerRole, canUpload }: { ca
                       ) : (
                         <span className="truncate">{d.name}</span>
                       )}
+                      <FilePreviewButton docId={d.id} name={d.name} size="xs" />
                       <span className="text-xs text-muted-foreground">{formatDate(d.createdAt)}</span>
                       {viewerRole !== 'mentor' && <span className={`rounded-full px-2 py-0.5 text-[11px] ${d.mentorVisible ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>{d.mentorVisible ? '멘토 공개' : '비공개'}</span>}
                     </span>

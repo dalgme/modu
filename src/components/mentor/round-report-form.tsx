@@ -56,6 +56,8 @@ export function RoundReportForm({
   const [result, setResult] = useState(edit?.result ?? '');
   const reportRef = useRef<HTMLInputElement>(null);
   const photosRef = useRef<HTMLInputElement>(null);
+  // 회차 행의 [보고서 업로드] 팝업(2026-09-30)은 파일 하나만 받는다 — 주제·결과·사진·웹 작성 없음
+  const fileOnly = dialog && !edit;
 
   const submit = () => {
     start(async () => {
@@ -131,7 +133,9 @@ export function RoundReportForm({
       ) : (
         <p className="text-sm font-semibold">{edit ? `${roundNo}회차 — 보고서 내용·사진 추가` : `${roundNo}회차 — 2단계 · 실서류(보고서) 등록`}</p>
       )}
-      {edit ? (
+      {fileOnly ? (
+        <p className="text-xs text-muted-foreground">이 회차의 보고서 파일 하나만 올리면 됩니다. 올린 뒤 이 회차는 이행으로 인정되어 정산에 포함됩니다.</p>
+      ) : edit ? (
         <p className="text-[11px] text-muted-foreground">주제·{edit.kind === 'web' ? '내용·' : ''}결과를 고치고 사진을 더 올릴 수 있습니다. 일시·방법·보고서 파일은 바꿀 수 없습니다(멘티 서명·정산 전까지).</p>
       ) : (
       <div className="flex gap-2 text-sm">
@@ -143,10 +147,12 @@ export function RoundReportForm({
         </button>
       </div>
       )}
+      {!fileOnly && (
       <div className="flex flex-col gap-1">
         <Label htmlFor={`rr-topic-${logId}`}>주제</Label>
         <Input id={`rr-topic-${logId}`} value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="이번 회차 주제" />
       </div>
+      )}
       {kind === 'web' ? (
         <div className="flex flex-col gap-1">
           <Label htmlFor={`rr-content-${logId}`}>컨설팅 내용 *</Label>
@@ -200,6 +206,10 @@ export function RoundReportForm({
           )}
         </div>
       )}
+      {fileOnly ? (
+        <p className="text-[11px] text-muted-foreground">보고서 파일 20MB 이하 · PDF · HWP · Word · 이미지</p>
+      ) : (
+      <>
       <div className="flex flex-col gap-1">
         <Label htmlFor={`rr-result-${logId}`}>결과·다음 회차 계획</Label>
         <Textarea id={`rr-result-${logId}`} rows={3} value={result} onChange={(e) => setResult(e.target.value)} />
@@ -209,6 +219,8 @@ export function RoundReportForm({
         <Input ref={photosRef} type="file" accept="image/*" multiple />
         <p className="text-[11px] text-muted-foreground">사진 최대 10장 · 장당 10MB · 보고서 파일 20MB 이하</p>
       </div>
+      </>
+      )}
       <div className="flex justify-end gap-2">
         <Button size="sm" variant="outline" onClick={() => setOpen(false)} disabled={pending}>
           취소

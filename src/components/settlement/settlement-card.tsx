@@ -6,6 +6,7 @@ import { SETTLEMENT_STATUS_LABELS } from '@/lib/data/settlements';
 import { canCancelSettlement } from '@/lib/workflow/transitions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SettlementSummary } from '@/components/settlement/settlement-summary';
+import { FilePreviewButton } from '@/components/files/file-preview';
 import { CancelSettlementButton, ResettlePartialButton } from '@/components/settlement/cancel-settlement-button';
 import { formatDateTime } from '@/lib/utils/format';
 
@@ -86,6 +87,7 @@ export function SettlementCard({
                 ) : (
                   d.name
                 )}
+                <FilePreviewButton docId={d.id} name={d.name} size="xs" />
                 <span className="text-xs text-muted-foreground">{formatDateTime(d.createdAt)}</span>
               </li>
             ))}

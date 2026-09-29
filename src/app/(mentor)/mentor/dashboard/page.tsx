@@ -5,6 +5,7 @@ import { markAssignmentsConfirmed } from '@/lib/matching/auto-match';
 import { listMentorEndedCases } from '@/lib/data/cases';
 import { loadMentorDashboard } from '@/lib/data/role-dashboard';
 import { MentorDashboardV2 } from '@/components/mentor/mentor-dashboard-v2';
+import { BundleDownloadButton } from '@/components/files/bundle-download-button';
 import { listMyOpenSurveys } from '@/lib/surveys/campaigns';
 import { OpenSurveysCard } from '@/components/surveys/open-surveys-card';
 import { getMentorDocStatusForMentor } from '@/lib/mentor-docs/data';
@@ -64,6 +65,11 @@ export default async function Page() {
       <OpenSurveysCard surveys={openSurveys} />
       <MentorOnboarding items={onboarding} />
       <MentorDashboardV2 name={profile.name} data={dash} endedCases={endedCases} basePath="/mentor/cases" branding={ctx.branding} guideHref="/mentor/guide" scheduleHref="/mentor/schedule" settlementsHref="/mentor/settlements" />
+      {/* ③ 내 폴더(멘토명/멘티명/보고서·관찰의견서) 전체 ZIP (2026-09-30) */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-4 py-3 text-sm">
+        <span className="text-muted-foreground">담당했던 멘티의 회차 보고서·관찰의견서를 &quot;멘토명/멘티명&quot; 폴더로 한 번에 받습니다.</span>
+        <BundleDownloadButton scope="mentor" id={profile.id} label="내 보고서 전체 ZIP" />
+      </div>
     </main>
   );
 }

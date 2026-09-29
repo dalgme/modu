@@ -18,6 +18,8 @@ import { RoundsList } from '@/components/mentor/rounds-list';
 import { SettlementCard } from '@/components/settlement/settlement-card';
 import { CaseEndPanel } from '@/components/settlement/case-end-panel';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { FileActions } from '@/components/files/file-preview';
+import { BundleDownloadButton } from '@/components/files/bundle-download-button';
 
 export const maxDuration = 60;
 
@@ -64,14 +66,16 @@ export default async function Page({ params }: { params: { id: string } }) {
           </CardContent>
         </Card>
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">관찰의견서</CardTitle>
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+            <CardTitle className="text-base">[{item.owner_name}] 멘티 관찰의견서</CardTitle>
+            <BundleDownloadButton scope="case" id={item.id} label="보고서·관찰의견서 ZIP" />
           </CardHeader>
           <CardContent className="text-sm">
             {obsFile ? (
-              <a href={obsFile.url ?? '#'} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">
-                {obsFile.name}
-              </a>
+              <div className="flex flex-wrap items-center gap-2">
+                <b className="min-w-0 truncate">{obsFile.name}</b>
+                <FileActions docId={obsFile.id} name={obsFile.name} />
+              </div>
             ) : (
               <p className="text-muted-foreground">아직 제출되지 않았습니다.</p>
             )}

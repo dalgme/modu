@@ -7,7 +7,7 @@
  * `{caseId}` 는 시드 케이스 id(또는 목록 링크에서 찾은 id)로 치환된다.
  */
 
-export const REPORT_TAB_KEYS = ['overview', 'trend', 'cases', 'mentors', 'groups', 'settlement', 'survey'] as const;
+export const REPORT_TAB_KEYS = ['overview', 'trend', 'cases', 'mentors', 'groups', 'settlement', 'survey', 'files'] as const;
 export const SETTINGS_TAB_KEYS = ['program', 'groups', 'rates', 'withholding', 'budget', 'matching', 'gates', 'reports', 'survey', 'mentor-docs', 'notifications', 'tags', 'permissions', 'succession', 'audit'] as const;
 export const ROSTER_TAB_KEYS = ['mentee', 'mentor', 'mentee-match', 'mentor-match', 'institution', 'nextlab', 'register'] as const;
 export const BOARD_TAB_KEYS = ['requests', 'all', 'inquiries', 'qna', 'messages', 'faq'] as const;

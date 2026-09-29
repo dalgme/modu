@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import type { CaseStatus } from '@/types/case-status';
 import { sendSms } from '@/lib/notifications/provider';
 import { menteeLabel } from '@/lib/utils/labels';
+import { renderMentorReminder } from '@/lib/sms/mentor-reminder-template';
 
 /**
  * 멘토 리마인더(진행 독려) 문자 — P29: 행사·그룹별 설정.
@@ -70,14 +71,8 @@ export function effectiveSettingForGroup(settings: ReminderSetting[], supportTyp
   return settings.find((s) => s.supportTypeId === supportTypeId) ?? settings.find((s) => s.supportTypeId === null) ?? null;
 }
 
-/** 템플릿 치환: {program} {group} {mentor} {companies} */
-export function renderMentorReminder(template: string, vars: { program: string; group: string; mentor: string; companies: string[] }): string {
-  return template
-    .split('{program}').join(vars.program)
-    .split('{group}').join(vars.group)
-    .split('{mentor}').join(vars.mentor)
-    .split('{companies}').join(vars.companies.join(', '));
-}
+/** 템플릿 치환: {program} {group} {mentor} {companies} — 설정 패널 미리보기와 같은 중립 모듈의 함수 */
+export { renderMentorReminder };
 
 /**
  * 설정 한 행이 커버하는 그룹 목록.

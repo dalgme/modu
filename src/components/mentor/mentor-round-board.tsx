@@ -10,6 +10,7 @@ import { roundModeLabel, roundReportFileName } from '@/lib/workflow/round-report
 import { RoundForm, type LastRoundDefaults, type ParticipantOption } from '@/components/mentor/round-form';
 import { RoundReportForm } from '@/components/mentor/round-report-form';
 import { CollectSignature, PlannedRoundEditor } from '@/components/mentor/rounds-list';
+import { FileActions } from '@/components/files/file-preview';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
@@ -130,13 +131,9 @@ export function MentorRoundBoard({
                   <span className="tabular-nums">{Number(r.amount_snapshot).toLocaleString('ko-KR')}원</span>
                   <span className="text-muted-foreground">/</span>
                   {reported ? (
-                    r.report?.url ? (
-                      <a href={r.report.url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 hover:underline">
-                        <FileText className="h-3 w-3" /> 보고서 등록됨
-                      </a>
-                    ) : (
-                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">보고서 등록됨</span>
-                    )
+                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">
+                      <FileText className="h-3 w-3" /> 보고서 등록됨
+                    </span>
                   ) : future ? (
                     <span className="rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">예정 (진행 전)</span>
                   ) : (
@@ -150,6 +147,8 @@ export function MentorRoundBoard({
                   {r.locked && <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><Lock className="h-3 w-3" /> 정산 포함</span>}
                 </span>
                 <span className="ml-auto flex flex-wrap items-center gap-1.5">
+                  {/* ① 회차별 보고서 파일 — 웹 미리보기·개별 다운로드 (2026-09-30) */}
+                  {r.report && <FileActions docId={r.report.id} name={r.report.name} />}
                   {editable && (
                     <Button
                       size="sm"
@@ -192,9 +191,9 @@ export function MentorRoundBoard({
                   {r.content && <p className="whitespace-pre-wrap">{r.content}</p>}
                   {r.result && <p className="whitespace-pre-wrap text-muted-foreground">결과: {r.result}</p>}
                   {r.report && (
-                    <a href={r.report.url ?? '#'} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
-                      <FileText className="h-4 w-4" /> {r.report.name}
-                    </a>
+                    <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                      <FileText className="h-4 w-4" /> 저장 파일명: <b className="text-foreground">{r.report.name}</b>
+                    </p>
                   )}
                   {r.photos.length > 0 && (
                     <div className="flex flex-wrap gap-2">
@@ -207,14 +206,6 @@ export function MentorRoundBoard({
                     </div>
                   )}
                   <div className="flex flex-wrap items-center gap-2">
-                    {editable && reported && !r.mentee_signed_at && !r.locked && own && (
-                      <RoundReportForm
-                        caseId={caseId}
-                        logId={r.id}
-                        roundNo={r.round_no}
-                        edit={{ kind: r.report_kind === 'file' ? 'file' : 'web', topic: r.topic ?? '', content: r.content ?? '', result: r.result ?? '', place: r.place ?? '' }}
-                      />
-                    )}
                     {signEnabled && editable && reported && !r.mentee_signed_at && !r.locked && <CollectSignature caseId={caseId} logId={r.id} roundNo={r.round_no} />}
                     {canDelete && (
                       <Button size="sm" variant="ghost" className="gap-1 text-status-rejected" disabled={pending} onClick={() => remove(r)}>

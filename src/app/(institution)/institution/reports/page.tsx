@@ -7,6 +7,7 @@ import { computeBudgetOverview } from '@/lib/reports/budget';
 import { listDelayedCases } from '@/lib/reports/delays';
 import { computeMonthlyTrend } from '@/lib/reports/trend';
 import { REPORT_TABS, ReportsBody, type ReportTab } from '@/components/reports/reports-body';
+import { loadReportFiles } from '@/lib/data/report-files';
 
 export const dynamic = 'force-dynamic';
 
@@ -30,6 +31,7 @@ export default async function Page({ searchParams }: { searchParams: SP }) {
   // 발주처에는 운영사 평가(메모·작성자)를 내려보내지 않는다 — 열을 숨기는 것과 별개로 페이로드에서 제거
   const mentorProgress = tab === 'cases' && searchParams.view === 'mentor' ? (await loadMatchingLists(ctx.programId, groupId)).mentorRows.map((r) => ({ ...r, reviews: [], reviewAvg: null })) : undefined;
   const filtered = tab === 'cases' ? filterAndSortCases(cases, searchParams) : cases;
+  const reportFiles = tab === 'files' ? await loadReportFiles(ctx.programId, groupId) : undefined;
   return (
     <main className="flex flex-col gap-5">
       <div>
@@ -37,6 +39,7 @@ export default async function Page({ searchParams }: { searchParams: SP }) {
         <p className="mt-1 text-sm text-muted-foreground">{ctx.program.name}{ctx.group ? ` · ${ctx.group.name}` : ' · 행사 전체'} — 실시간 진행현황과 성과·정산 집계. 기간은 아래 칩에서 바꿉니다.</p>
       </div>
       <ReportsBody
+        reportFiles={reportFiles}
         m={m}
         tab={tab}
         base="/institution"

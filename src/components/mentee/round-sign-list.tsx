@@ -9,6 +9,7 @@ import { SignaturePad } from '@/components/common/signature-pad';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { formatDateTime } from '@/lib/utils/format';
+import { FilePreviewButton } from '@/components/files/file-preview';
 
 /** 멘티 회차 확인·서명 목록 — 회차 내용을 확인하고 캔버스 서명으로 확인한다(회차당 1회). */
 export function RoundSignList({ caseId, rounds, signEnabled = true }: { caseId: string; rounds: RoundItem[]; signEnabled?: boolean }) {
@@ -74,7 +75,8 @@ export function RoundSignList({ caseId, rounds, signEnabled = true }: { caseId: 
                 </a>
               ) : (
                 r.report.name
-              )}
+              )}{' '}
+              <FilePreviewButton docId={r.report.id} name={r.report.name} size="xs" />
             </p>
           )}
           {r.photos.length > 0 && (

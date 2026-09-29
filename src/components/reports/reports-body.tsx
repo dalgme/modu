@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { AlertTriangle, ClipboardList, Coins, LayoutDashboard, Layers, Smile, TrendingUp, Users } from 'lucide-react';
+import { AlertTriangle, ClipboardList, Coins, FolderDown, LayoutDashboard, Layers, Smile, TrendingUp, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 import { ExcelButton } from '@/components/common/excel-button';
@@ -25,6 +25,8 @@ import { SubTabs } from '@/components/common/sub-tabs';
 import { MentorName } from '@/components/common/mentor-name';
 import type { Branding } from '@/lib/programs/branding';
 import { formatKRW } from '@/lib/utils/format';
+import type { ReportFilesData } from '@/lib/data/report-files';
+import { ReportFilesPanel } from '@/components/reports/report-files-panel';
 
 /** 리포트 탭 (P26-03: 잔여 과업 탭 제거 — 지연 케이스는 개요로, 잔여 회차 표는 진행현황과 중복) */
 export const REPORT_TABS = [
@@ -35,6 +37,8 @@ export const REPORT_TABS = [
   { key: 'groups', label: '그룹 실적', icon: Layers },
   { key: 'settlement', label: '정산', icon: Coins },
   { key: 'survey', label: '만족도', icon: Smile },
+  // (2026-09-30) 회차 보고서·관찰의견서 미리보기·다운로드 4가지(회차별·멘토-멘티·멘토별·라운드별)
+  { key: 'files', label: '보고서 파일', icon: FolderDown },
 ] as const satisfies readonly { key: string; label: string; icon: LucideIcon }[];
 export type ReportTab = (typeof REPORT_TABS)[number]['key'];
 
@@ -60,6 +64,7 @@ export function ReportsBody({
   trendYear = null,
   caseFilterMentors,
   totalCases,
+  reportFiles,
 }: {
   m: ProgramMetrics;
   tab: ReportTab;
@@ -88,6 +93,8 @@ export function ReportsBody({
   trendYear?: number | null;
   /** 진행현황 탭 필터의 멘토 선택지 (있으면 CaseFilters 를 그린다) */
   caseFilterMentors?: { id: string; name: string }[];
+  /** [보고서 파일] 탭 데이터 (2026-09-30) */
+  reportFiles?: ReportFilesData;
 }) {
   const reportsHref = `${base}/reports`;
   const periodQs = period?.from || period?.to ? `${period.from ? `&from=${period.from}` : ''}${period.to ? `&to=${period.to}` : ''}` : '';
@@ -106,12 +113,12 @@ export function ReportsBody({
               종합결과리포트 →
             </Link>
           )}
-          <ExcelButton href={`${exportHref}${exportHref.includes('?') ? '&' : '?'}tab=${tab}${groupQs}${trendYear ? `&year=${trendYear}` : ''}${casesView === 'mentor' ? '&view=mentor' : ''}`} />
+          {tab !== 'files' && <ExcelButton href={`${exportHref}${exportHref.includes('?') ? '&' : '?'}tab=${tab}${groupQs}${trendYear ? `&year=${trendYear}` : ''}${casesView === 'mentor' ? '&view=mentor' : ''}`} />}
         </div>
       </div>
 
       {/* 기간 칩 (P30) — 회차 = 보고서 등록일 · 정산 = 확정일 · 케이스 신규/종결 = 등록일/종결일 */}
-      {periodPresets.length > 0 && tab !== 'trend' && (
+      {periodPresets.length > 0 && tab !== 'trend' && tab !== 'files' && (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="font-semibold text-muted-foreground">기간</span>
           {periodPresets.map((pp) => {
@@ -135,6 +142,8 @@ export function ReportsBody({
           ))}
         </div>
       )}
+
+      {tab === 'files' && reportFiles && <ReportFilesPanel data={reportFiles} />}
 
       {tab === 'overview' && (
         <div className="flex flex-col gap-4">

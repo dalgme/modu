@@ -1,5 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // (2026-09-30) 한글(HWP) 미리보기 라이브러리 hwp.js 가 Node 전용 'fs' 를 import 한다 — 브라우저 번들에서는 빈 모듈로 대체
+  webpack(config, { isServer }) {
+    if (!isServer) config.resolve.fallback = { ...(config.resolve.fallback ?? {}), fs: false };
+    return config;
+  },
   // 구 경로 리다이렉트 (P32) — 붙임서식 노출 토글 페이지(/admin/settings/features)는 폐지, 운영 설정으로 보낸다.
   // (기능 플래그는 플랫폼 콘솔 행사 상세 [기능 활성화] 로 이전됨 — P15/P26)
   async redirects() {

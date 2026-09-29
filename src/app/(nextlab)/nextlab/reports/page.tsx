@@ -8,6 +8,7 @@ import { listDelayedCases } from '@/lib/reports/delays';
 import { listLastNudges } from '@/lib/reports/delay-nudges';
 import { computeMonthlyTrend } from '@/lib/reports/trend';
 import { REPORT_TABS, ReportsBody, type ReportTab } from '@/components/reports/reports-body';
+import { loadReportFiles } from '@/lib/data/report-files';
 
 export const dynamic = 'force-dynamic';
 
@@ -33,6 +34,7 @@ export default async function Page({ searchParams }: { searchParams: SP }) {
   const filtered = tab === 'cases' ? filterAndSortCases(cases, searchParams) : cases;
   // 진행현황 표 필터가 엑셀에도 그대로 반영되도록 (P31)
   const exportQs = new URLSearchParams(Object.entries({ status: searchParams.status, mentor: searchParams.mentor, q: searchParams.q, sort: searchParams.sort }).filter(([, v]) => !!v) as [string, string][]).toString();
+  const reportFiles = tab === 'files' ? await loadReportFiles(ctx.programId, groupId) : undefined;
   return (
     <main className="flex flex-col gap-5">
       <div>
@@ -40,6 +42,7 @@ export default async function Page({ searchParams }: { searchParams: SP }) {
         <p className="mt-1 text-sm text-muted-foreground">{ctx.program.name}{ctx.group ? ` · ${ctx.group.name}` : ' · 행사 전체'} — 개요 · 진행현황(멘티/멘토) · 성과평가 · 정산 · 월별 추이. 범위는 상단 [범위]에서, 기간은 아래 칩에서 바꿉니다.</p>
       </div>
       <ReportsBody
+        reportFiles={reportFiles}
         m={m}
         tab={tab}
         base="/nextlab"

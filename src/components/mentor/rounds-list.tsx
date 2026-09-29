@@ -9,6 +9,7 @@ import { deleteRoundAction, collectRoundSignatureAction, updatePlannedRoundActio
 import { correctRoundAction } from '@/lib/workflow/round-correction-actions';
 import { RoundReportForm } from '@/components/mentor/round-report-form';
 import { PastScheduleNotice } from '@/components/mentor/round-form';
+import { FileActions } from '@/components/files/file-preview';
 import { SignaturePad } from '@/components/common/signature-pad';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -321,10 +322,9 @@ export function RoundsList({
           {r.content && <p className="mt-1 whitespace-pre-wrap text-sm">{r.content}</p>}
           {r.result && <p className="mt-1 whitespace-pre-wrap text-sm text-muted-foreground">결과: {r.result}</p>}
           {r.report && (
-            <p className="mt-2 text-sm">
-              <a href={r.report.url ?? '#'} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline">
-                <FileText className="h-4 w-4" /> {r.report.name}
-              </a>
+            <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+              <span className="inline-flex items-center gap-1 font-medium"><FileText className="h-4 w-4 text-primary" /> {r.report.name}</span>
+              <FileActions docId={r.report.id} name={r.report.name} />
             </p>
           )}
           {r.photos.length > 0 && (
