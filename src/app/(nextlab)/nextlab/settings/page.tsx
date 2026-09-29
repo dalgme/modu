@@ -24,6 +24,10 @@ import { AuditTable } from '@/components/audit/audit-table';
 import { SettingsTabSelect } from '@/components/nav/settings-tab-select';
 import { BudgetForm } from '@/components/settings/budget-form';
 import { MatchingRulesForm } from '@/components/settings/matching-rules-form';
+import { FilePolicyForm } from '@/components/settings/file-policy-form';
+import { parseFilePolicy } from '@/lib/files/business-plan-shared';
+import { hasCapability } from '@/lib/auth/capabilities';
+import { SmsApiSection } from '@/components/settings/sms-api-section';
 
 export const dynamic = 'force-dynamic';
 
@@ -38,18 +42,20 @@ const TABS = [
   { key: 'reports', label: '보고서 양식' },
   { key: 'survey', label: '만족도 양식' },
   { key: 'mentor-docs', label: '멘토 서류 수령' },
+  { key: 'files', label: '파일 보안' },
   { key: 'tags', label: '키워드 사전' },
   { key: 'permissions', label: '담당 권한' },
   { key: 'succession', label: '승계 개설' },
   { key: 'audit', label: '감사 로그' },
+  { key: 'sms-api', label: '문자 API' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
 /** 설정 탭 묶음 — 필수 준비(운영 시작 전) / 운영 정책 / 관리 */
 const SETTING_GROUPS: { label: string; keys: string[]; extra?: { href: string; label: string } }[] = [
   { label: '필수 준비', keys: ['program', 'groups', 'rates', 'matching'] },
-  { label: '운영 정책', keys: ['withholding', 'budget', 'gates', 'reports', 'survey', 'mentor-docs', 'tags'], extra: { href: '/admin/settings/sms?tab=auto', label: '문자 자동발송' } },
-  { label: '관리', keys: ['permissions', 'succession', 'audit'], extra: { href: '/nextlab/settings/sms-api', label: '문자 API' } },
+  { label: '운영 정책', keys: ['withholding', 'budget', 'gates', 'reports', 'survey', 'mentor-docs', 'files', 'tags'], extra: { href: '/admin/settings/sms?tab=auto', label: '문자 자동발송' } },
+  { label: '관리', keys: ['permissions', 'succession', 'audit', 'sms-api'] },
 ];
 
 /** 운영 설정 (docs/MODU-DESIGN.md §16) — 탭별 서버 렌더. 승계 개설·감사 로그도 미니탭 (P20) */
@@ -125,6 +131,8 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     }
     body = <MentorDocChecklistManager scopes={scopes} />;
   }
+  // (2026-09-30) 멘티 사업계획서 다운로드 허용 — 기본 비허용(멘토는 미리보기만)
+  if (tab === 'files') body = <FilePolicyForm businessPlanDownload={parseFilePolicy(ctx.program.file_policy).businessPlanDownload} canEdit={hasCapability(ctx, 'settings')} />;
   if (tab === 'tags') body = <TagsManager tags={await listTags(ctx.programId)} />;
   if (tab === 'permissions') body = <StaffPermissionsForm override={ctx.program.staff_permissions} canEdit={!ctx.grade || ctx.grade === 'pl'} />;
   if (tab === 'succession') {
@@ -158,6 +166,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
       </div>
     );
   }
+  if (tab === 'sms-api') body = <SmsApiSection programId={ctx.programId} programName={ctx.program.name} />;
   if (tab === 'audit') {
     // 기간·수행자·구분·대상 id 서버 필터 + 페이지 (P31)
     const aq = parseAuditQuery(searchParams);

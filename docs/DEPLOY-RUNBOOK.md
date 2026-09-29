@@ -67,7 +67,7 @@ curl -X POST https://<배포주소>/api/setup \
 | 6 | 멘티 로그인 → `/mentee/rounds` 확인 서명 → PDF 에 서명 반영 | |
 | 7 | 멘토 관찰의견서 작성 → 종결 요청 → 운영사 검수 승인 → 정산 스냅샷·정산서 PDF | |
 | 8 | `/nextlab/settlements` 품의 편성 → 제출 → 발주처 `/institution/settlements` 정산 확인 → 케이스 `closed` | |
-| 9 | 문자 1건: `/nextlab/settings/sms-api` 에 솔라피 키 등록(비밀번호 재인증) → "내 휴대폰으로 테스트" | |
+| 9 | 문자 1건: 운영 설정 › 관리 › 문자 API(`/nextlab/settings?tab=sms-api`) 에 솔라피 키 등록(비밀번호 재인증) → "내 휴대폰으로 테스트" | |
 | 10 | 역할 격리: 멘토 계정으로 `/nextlab/*` 접근 시 리다이렉트, 발주처 계정으로 설정 저장 액션 실패, 다른 행사 케이스 URL 직접 접근 시 404 | |
 | 11 | Cron: Vercel → Cron Jobs 에 3개 등록 확인, `dispatch-notifications` 수동 실행 시 200 | |
 | 12 | `/api/setup` 재호출 시 409 (BOOTSTRAP_TOKEN 삭제 후 403) | |

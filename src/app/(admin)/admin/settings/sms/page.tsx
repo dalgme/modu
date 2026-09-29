@@ -175,7 +175,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             <div className="rounded-lg border border-status-rejected/40 bg-status-rejected/5 p-4 text-sm">
               <p className="font-medium text-status-rejected">플랫폼 공통 문자 API 가 설정되지 않았습니다.</p>
               <p className="mt-1 text-muted-foreground">
-                행사별 문자 API 를 <Link href="/nextlab/settings/sms-api" className="underline">운영 설정 › 문자 API</Link>에 등록하면 그 발신번호로 발송됩니다. 플랫폼 공통 발송이 필요하면 플랫폼 관리자에게 문의하세요.
+                행사별 문자 API 를 <Link href="/nextlab/settings?tab=sms-api" className="underline">운영 설정 › 문자 API</Link>에 등록하면 그 발신번호로 발송됩니다. 플랫폼 공통 발송이 필요하면 플랫폼 관리자에게 문의하세요.
               </p>
             </div>
           )}

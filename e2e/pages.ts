@@ -8,13 +8,13 @@
  */
 
 export const REPORT_TAB_KEYS = ['overview', 'trend', 'cases', 'mentors', 'groups', 'settlement', 'survey', 'files'] as const;
-export const SETTINGS_TAB_KEYS = ['program', 'groups', 'rates', 'withholding', 'budget', 'matching', 'gates', 'reports', 'survey', 'mentor-docs', 'notifications', 'tags', 'permissions', 'succession', 'audit'] as const;
+export const SETTINGS_TAB_KEYS = ['program', 'groups', 'rates', 'withholding', 'budget', 'matching', 'gates', 'reports', 'survey', 'mentor-docs', 'files', 'notifications', 'tags', 'permissions', 'succession', 'audit', 'sms-api'] as const;
 export const ROSTER_TAB_KEYS = ['mentee', 'mentor', 'mentee-match', 'mentor-match', 'institution', 'nextlab', 'register'] as const;
 export const BOARD_TAB_KEYS = ['requests', 'all', 'inquiries', 'qna', 'messages', 'faq'] as const;
 export const REVIEW_TAB_KEYS = ['pending', 'revision', 'mentor-input'] as const;
 export const SETTLEMENT_TAB_KEYS = ['pending', 'all', 'tax'] as const;
 export const SCHEDULE_TAB_KEYS = ['today', 'calendar', 'mentor', 'detail'] as const;
-export const SMS_TAB_KEYS = ['send', 'reminder', 'scheduled', 'history'] as const;
+export const SMS_TAB_KEYS = ['send', 'reminder', 'scheduled', 'history', 'auto'] as const;
 
 const withTabs = (base: string, keys: readonly string[]) => keys.map((k) => `${base}?tab=${k}`);
 
@@ -29,6 +29,10 @@ export const NEXTLAB_PAGES: readonly string[] = [
   ...withTabs('/nextlab/review', REVIEW_TAB_KEYS),
   '/nextlab/roster',
   ...withTabs('/nextlab/roster', ROSTER_TAB_KEYS),
+  // 파일 관리 (2026-09-30) — 좌측 메뉴 2개
+  '/nextlab/files',
+  '/nextlab/files?menu=plans',
+  '/nextlab/files?menu=payment',
   '/nextlab/schedule',
   ...withTabs('/nextlab/schedule', SCHEDULE_TAB_KEYS),
   '/nextlab/board',
@@ -38,7 +42,6 @@ export const NEXTLAB_PAGES: readonly string[] = [
   '/nextlab/surveys',
   '/nextlab/settings',
   ...withTabs('/nextlab/settings', SETTINGS_TAB_KEYS),
-  '/nextlab/settings/sms-api',
   '/admin/settings/sms',
   ...withTabs('/admin/settings/sms', SMS_TAB_KEYS),
   '/nextlab/cases/new',

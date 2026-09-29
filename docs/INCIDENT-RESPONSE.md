@@ -61,7 +61,7 @@
 | ④ | **Instant Rollback** — 최근 배포가 원인(새 화면에서 남의 정보가 보임 등) | 배포 후 발생한 사고 | Vercel → Deployments → 직전 정상 배포 → Instant Rollback(`DEPLOY-RUNBOOK.md §7`) |
 | ⑤ | **키 로테이션** — 침입 성공·키 유출 의심 | 서버 침입·키 노출 | 순서: `VIEW_AS_SECRET` → `CRON_SECRET` → Supabase 서비스롤·anon 키 → 재배포 → Supabase Auth "Sign out all users" → `SMS_KEK`(마지막, 구 KEK 90일 보관) → 행사별 문자 API 키 재등록(`SECURITY-POLICY.md §5-7·§8-3`) |
 | ⑥ | **백업 보호** — 사고 이전 백업의 존재·크기·해시 확인, 30일 자동 삭제 대상에서 제외 표시 | 데이터 변조·삭제 의심 | `/platform/security` 백업 표 · `scripts/restore-backup.mjs --list`(`BACKUP-RESTORE.md`) |
-| ⑦ | **행사별 문자 API 일시 해제** — 문자 API 를 통한 대량 오발송 의심 | 문자 관련 사고 | `/nextlab/settings/sms-api` [해제] |
+| ⑦ | **행사별 문자 API 일시 해제** — 문자 API 를 통한 대량 오발송 의심 | 문자 관련 사고 | 운영 설정 › 관리 › 문자 API(`/nextlab/settings?tab=sms-api`) [해제] |
 | ⑧ | 잠금·차단으로 정상 업무가 멈춘 담당자에게 상황·예상 복구 시각 통보 | 항상 | 전화·문자(사고 내용은 말하지 않는다) |
 
 - **판단이 서지 않으면 잠근다.** 잠금은 되돌릴 수 있고 유출은 되돌릴 수 없다.

@@ -40,7 +40,7 @@ export async function saveSmsCredentialsAction(formData: FormData): Promise<Resu
     actorId: g.id,
   });
   if (!r.ok) return r;
-  revalidatePath('/nextlab/settings/sms-api');
+  revalidatePath('/nextlab/settings');
   return { ok: true, message: `저장되었습니다. (API 키 ${r.apiKeyHint}…, 발신번호 …${r.senderHint})` };
 }
 
@@ -54,7 +54,7 @@ export async function disableSmsCredentialsAction(formData: FormData): Promise<R
     return { ok: false, error: re.error };
   }
   await disableProgramSms(g.programId, g.id);
-  revalidatePath('/nextlab/settings/sms-api');
+  revalidatePath('/nextlab/settings');
   return { ok: true, message: '행사 문자 API 를 비활성화했습니다.' };
 }
 
@@ -68,6 +68,6 @@ export async function testSmsAction(): Promise<Result> {
   if (!creds || creds.source !== 'program') return { ok: false, error: '행사 문자 API 가 설정되지 않았거나 복호화에 실패했습니다.' };
   const r = await sendSolapiSms(phone, '[문자 API 연결 테스트] 이 문자가 도착하면 행사 문자 설정이 정상입니다.', { creds });
   await markSmsVerified(g.programId, g.id, r.ok, r.ok ? { providerId: r.providerId } : { error: r.error });
-  revalidatePath('/nextlab/settings/sms-api');
+  revalidatePath('/nextlab/settings');
   return r.ok ? { ok: true, message: '테스트 문자를 발송했습니다. 휴대폰을 확인하세요.' } : { ok: false, error: `발송 실패: ${r.error}` };
 }
