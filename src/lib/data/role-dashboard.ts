@@ -141,7 +141,7 @@ function decideAction(c: CaseListItem, rounds: RoundLite[], nextPlanned: RoundLi
     return { key: 'plan_next', label: `${done + 1}회차 일정 등록`, hint: `필수 ${c.requiredRounds}회 중 ${done}회 이행. 다음 회차 일정을 등록하세요.`, href: `${href}#rounds`, urgent: false };
   }
   if (!hasObservation) {
-    return { key: 'observation', label: '관찰의견서 작성', hint: '필수 회차를 모두 이행했습니다. 관찰의견서를 작성하면 종결을 요청할 수 있습니다.', href: `${href}#observation`, urgent: true };
+    return { key: 'observation', label: '관찰의견서 업로드', hint: '필수 회차를 모두 이행했습니다. 관찰의견서 파일을 올리면 종결을 요청할 수 있습니다.', href: `${href}#observation`, urgent: true };
   }
   return { key: 'closure', label: '종결 요청', hint: '관찰의견서가 준비됐습니다. [종결 요청]을 누르면 운영사 검수 후 정산이 확정됩니다.', href: `${href}#requests`, urgent: true };
 }
@@ -153,7 +153,8 @@ export async function loadMentorDashboard(mentorId: string, programId: string, s
   const admin = createAdminClient();
   const [logs, { data: obs }, policy, { data: settled }, { data: extRows }] = await Promise.all([
     loadLogs(ids),
-    ids.length ? admin.from('observation_reports').select('case_id, content').in('case_id', ids) : Promise.resolve({ data: [] as { case_id: string; content: unknown }[] }),
+    // 관찰의견서 = 업로드 파일(documents.observation_report)만 인정 (2026-09-30 웹 작성 폐지)
+    ids.length ? admin.from('documents').select('case_id').eq('doc_key', 'observation_report').in('case_id', ids) : Promise.resolve({ data: [] as { case_id: string }[] }),
     signaturePolicyByGroup(programId, cases.map((c) => c.support_type_id)),
     ids.length ? admin.from('settlements').select('case_id, net').eq('mentor_id', mentorId).in('case_id', ids).neq('status', 'canceled') : Promise.resolve({ data: [] as { case_id: string; net: number }[] }),
     // 승인된 추가 회차 — 보고서 등록 현황의 총회차에 포함 (getRoundAllowance 와 같은 규칙)
@@ -161,14 +162,7 @@ export async function loadMentorDashboard(mentorId: string, programId: string, s
   ]);
   const extraByCase = new Map<string, number>();
   for (const r of extRows ?? []) extraByCase.set(r.case_id, (extraByCase.get(r.case_id) ?? 0) + Number(r.extra_rounds ?? 0));
-  const hasObs = new Set(
-    (obs ?? [])
-      .filter((o) => {
-        const content = (o.content ?? {}) as { summary?: unknown };
-        return typeof content.summary === 'string' && content.summary.trim().length > 0;
-      })
-      .map((o) => o.case_id),
-  );
+  const hasObs = new Set((obs ?? []).map((o) => o.case_id));
   const now = Date.now();
   const logsByCase = new Map<string, LogRow[]>();
   for (const l of logs) (logsByCase.get(l.case_id) ?? logsByCase.set(l.case_id, []).get(l.case_id)!).push(l);

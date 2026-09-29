@@ -2,20 +2,20 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { ChevronDown, ChevronUp, FileText, Lock, PenLine, Trash2 } from 'lucide-react';
+import { FileText, Lock, Trash2 } from 'lucide-react';
 
 import type { RoundItem } from '@/lib/data/rounds';
 import { deleteRoundAction, deletePlannedRoundAction } from '@/lib/workflow/mentor-actions';
 import { roundModeLabel, roundReportFileName } from '@/lib/workflow/round-report-name';
 import { RoundForm, type LastRoundDefaults, type ParticipantOption } from '@/components/mentor/round-form';
 import { RoundReportForm } from '@/components/mentor/round-report-form';
-import { CollectSignature, PlannedRoundEditor } from '@/components/mentor/rounds-list';
+import { PlannedRoundEditor } from '@/components/mentor/rounds-list';
 import { FileActions } from '@/components/files/file-preview';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { kstHm, kstMd, toKstParts } from '@/lib/utils/kst';
+import { kstHm, kstMd, kstYmd, toKstParts } from '@/lib/utils/kst';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'] as const;
 
@@ -30,7 +30,8 @@ function durationLabel(startedAt: string, endedAt: string): string {
 /**
  * 멘토 케이스 화면의 회차 표 (2026-09-29) — 회차마다 한 줄.
  *  - 미등록 행: [N차 예정 등록] 버튼 → 레이어 팝업(RoundForm). 번호는 서버가 순서대로 매기므로 다음 차례 행만 눌린다
- *  - 등록 행: "N회차" 박스 + 방법 / 날짜 / 시간 / 금액 / 보고서 현황 + [일정 수정] [보고서 업로드] (+ 상세 펼치기)
+ *  - 등록 행: "N회차" 박스 + 방법 / 날짜 / 시간 / 금액 / 보고서 현황 + [일정 수정] [보고서 업로드] / 보고서 등록 후 [미리보기]·[다운로드]·[보고서 수정 업로드]
+ *    + 아래줄 바이올렛 "저장 파일명·최초/수정 등록일" (2026-09-30: 상세·현장 서명·서명 대기 표시 제거)
  * 버튼 조건은 서버 게이트와 같다: 일정 수정·삭제 = 보고서 전·정산 전·본인 회차(updatePlannedRound), 보고서 업로드 = 진행 시각이 지난 회차(registerRoundReport).
  */
 export function MentorRoundBoard({
@@ -39,7 +40,6 @@ export function MentorRoundBoard({
   rounds,
   maxRounds,
   editable,
-  signEnabled,
   viewerMentorId,
   rates,
   participantOptions,
@@ -50,7 +50,6 @@ export function MentorRoundBoard({
   rounds: RoundItem[];
   maxRounds: number;
   editable: boolean;
-  signEnabled: boolean;
   viewerMentorId: string;
   rates: { online: number | null; offline: number | null };
   participantOptions: ParticipantOption[];
@@ -59,7 +58,6 @@ export function MentorRoundBoard({
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
-  const [expanded, setExpanded] = useState<string | null>(null);
   const [editing, setEditing] = useState<RoundItem | null>(null);
   const byNo = new Map(rounds.map((r) => [r.round_no, r]));
   const rowCount = Math.max(maxRounds, rounds.length ? rounds[rounds.length - 1]!.round_no : 0);
@@ -108,10 +106,11 @@ export function MentorRoundBoard({
           const own = r.mentor_id === viewerMentorId;
           const canEditSchedule = editable && !reported && !r.locked && own;
           const canUpload = editable && !reported && !r.locked && !future && own;
+          // 등록된 보고서 수정 업로드 — 정산 전·본인 회차 (replaceRoundReport 서버 게이트와 같은 조건)
+          const canReplace = editable && reported && !r.locked && own;
           const canDelete = editable && !r.locked && own && (r.id === last?.id || !reported);
-          const participants = (Array.isArray(r.participants) ? r.participants : []) as { name: string; role: string }[];
           const weekday = WEEKDAYS[toKstParts(r.started_at)?.weekday ?? 0];
-          const open = expanded === r.id;
+          const modified = r.report?.updatedAt && Math.abs(new Date(r.report.updatedAt).getTime() - new Date(r.report.createdAt).getTime()) > 60_000 ? r.report.updatedAt : null;
           return (
             <li key={r.id} className={cn('rounded-lg border bg-background p-2.5', reported && 'border-emerald-300/70')}>
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -139,22 +138,17 @@ export function MentorRoundBoard({
                   ) : (
                     <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">보고서 대기</span>
                   )}
-                  {signEnabled && reported && (r.mentee_signed_at ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] text-emerald-800"><PenLine className="h-3 w-3" /> 멘티 서명</span>
-                  ) : (
-                    <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">서명 대기</span>
-                  ))}
                   {r.locked && <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><Lock className="h-3 w-3" /> 정산 포함</span>}
                 </span>
                 <span className="ml-auto flex flex-wrap items-center gap-1.5">
-                  {/* ① 회차별 보고서 파일 — 웹 미리보기·개별 다운로드 (2026-09-30) */}
+                  {/* 회차별 보고서 파일 — 웹 미리보기·개별 다운로드 */}
                   {r.report && <FileActions docId={r.report.id} name={r.report.name} />}
-                  {editable && (
+                  {editable && !reported && (
                     <Button
                       size="sm"
                       variant="outline"
                       disabled={!canEditSchedule || pending}
-                      title={canEditSchedule ? undefined : reported ? '보고서를 올린 회차는 일정을 바꿀 수 없습니다. 바꿔야 하면 운영사에 정정을 요청하세요.' : '이 회차는 수정할 수 없습니다.'}
+                      title={canEditSchedule ? undefined : '이 회차는 수정할 수 없습니다.'}
                       onClick={() => setEditing(r)}
                     >
                       일정 수정
@@ -176,45 +170,33 @@ export function MentorRoundBoard({
                       </Button>
                     )
                   )}
-                  <Button size="sm" variant="ghost" className="gap-0.5 px-2 text-xs" aria-expanded={open} onClick={() => setExpanded(open ? null : r.id)}>
-                    상세 {open ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-                  </Button>
+                  {canReplace && (
+                    <RoundReportForm
+                      caseId={caseId}
+                      logId={r.id}
+                      roundNo={r.round_no}
+                      dialog
+                      replace
+                      triggerLabel="보고서 수정 업로드"
+                      savedNameBase={roundReportFileName({ mentorName: r.mentorName, menteeName, roundNo: r.round_no, mode: r.mode })}
+                    />
+                  )}
+                  {canDelete && (
+                    <Button size="sm" variant="ghost" className="px-2 text-status-rejected" disabled={pending} onClick={() => remove(r)} title={`${r.round_no}회차 삭제`} aria-label={`${r.round_no}회차 삭제`}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </span>
               </div>
-              {open && (
-                <div className="mt-2 flex flex-col gap-2 border-t pt-2 text-sm">
-                  {r.place && <p className="text-muted-foreground">{r.mode === 'online' ? '온라인 도구' : '장소'}: {r.place}</p>}
-                  {participants.length > 0 && (
-                    <p className="text-xs text-muted-foreground">참가자: {participants.map((p) => `${p.name}${p.role === 'member' ? '(팀원)' : '(대표)'}`).join(' · ')}</p>
-                  )}
-                  {r.topic && <p className="font-medium">{r.topic}</p>}
-                  {r.content && <p className="whitespace-pre-wrap">{r.content}</p>}
-                  {r.result && <p className="whitespace-pre-wrap text-muted-foreground">결과: {r.result}</p>}
-                  {r.report && (
-                    <p className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                      <FileText className="h-4 w-4" /> 저장 파일명: <b className="text-foreground">{r.report.name}</b>
-                    </p>
-                  )}
-                  {r.photos.length > 0 && (
-                    <div className="flex flex-wrap gap-2">
-                      {r.photos.map((p) =>
-                        p.url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <a key={p.id} href={p.url} target="_blank" rel="noreferrer"><img src={p.url} alt={p.name} className="h-20 w-20 rounded-md object-cover" /></a>
-                        ) : null,
-                      )}
-                    </div>
-                  )}
-                  <div className="flex flex-wrap items-center gap-2">
-                    {signEnabled && editable && reported && !r.mentee_signed_at && !r.locked && <CollectSignature caseId={caseId} logId={r.id} roundNo={r.round_no} />}
-                    {canDelete && (
-                      <Button size="sm" variant="ghost" className="gap-1 text-status-rejected" disabled={pending} onClick={() => remove(r)}>
-                        <Trash2 className="h-4 w-4" /> 회차 삭제
-                      </Button>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-muted-foreground">진행 멘토 {r.mentorName ?? '-'}</p>
-                </div>
+              {/* 저장 파일명·최초/수정 등록일 (2026-09-30) — 바이올렛 배경 */}
+              {r.report && (
+                <p className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-md bg-violet-100 px-3 py-1.5 text-xs text-violet-950 dark:bg-violet-950/50 dark:text-violet-100">
+                  <span className="inline-flex min-w-0 items-center gap-1">
+                    <FileText className="h-3.5 w-3.5 shrink-0" /> 저장 파일명: <b className="break-all">{r.report.name}</b>
+                  </span>
+                  <span className="tabular-nums">최초 등록일 {kstYmd(r.report.createdAt)} {kstHm(r.report.createdAt)}</span>
+                  {modified && <span className="tabular-nums">수정 등록일 {kstYmd(modified)} {kstHm(modified)}</span>}
+                </p>
               )}
             </li>
           );

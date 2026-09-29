@@ -65,7 +65,12 @@ export function MentorRequests({
         <Button variant="outline" disabled={!canRequestExtension || pendingExtension || pending} onClick={() => setPanel(panel === 'extension' ? null : 'extension')} className="gap-1">
           <PlusCircle className="h-4 w-4" /> {pendingExtension ? '추가 회차 요청 대기 중' : '추가 회차 요청'}
         </Button>
-        <Button variant="outline" disabled={!canRequestWithdrawal || pendingWithdrawal || pending} onClick={() => setPanel(panel === 'withdrawal' ? null : 'withdrawal')} className="gap-1 text-destructive">
+        {/* 중도 종료 요청 = 빨간 계열 버튼 (2026-09-30 가독성) */}
+        <Button
+          disabled={!canRequestWithdrawal || pendingWithdrawal || pending}
+          onClick={() => setPanel(panel === 'withdrawal' ? null : 'withdrawal')}
+          className="gap-1 bg-red-600 font-semibold text-white shadow-sm hover:bg-red-700 focus-visible:ring-red-500 disabled:bg-red-300 disabled:text-white dark:bg-red-700 dark:hover:bg-red-600"
+        >
           <LogOut className="h-4 w-4" /> {pendingWithdrawal ? '중도 종료 요청 대기 중' : '중도 종료 요청'}
         </Button>
       </div>

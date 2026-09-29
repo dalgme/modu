@@ -25,6 +25,9 @@ export interface ObservationContent {
   overall_rating: number | null; // 1~5
 }
 
+/** 관찰의견서 웹 작성 폐지 (2026-09-30) — 종결 요청·준비 판정은 업로드 파일만 인정한다 */
+export const OBSERVATION_WEB_DISABLED = true;
+
 const EMPTY: ObservationContent = { summary: '', strengths: '', weaknesses: '', recommendations: '', next_steps: '', overall_rating: null };
 
 export function normalizeObservation(raw: unknown): ObservationContent {
@@ -43,6 +46,11 @@ export function normalizeObservation(raw: unknown): ObservationContent {
 
 /** 관찰의견서 웹 작성본 임시 저장 (담당 멘토) */
 export async function saveObservationDraft(caseId: string, mentorId: string, content: ObservationContent): Promise<WorkflowResult> {
+  // (2026-09-30) 관찰의견서 웹 작성 폐지 — 파일 업로드만. observation_reports 는 임시 필드로 보존(0088 주석)
+  void caseId;
+  void mentorId;
+  void content;
+  if (OBSERVATION_WEB_DISABLED) return { ok: false, error: '관찰의견서는 파일 업로드로만 제출합니다. [파일 업로드]를 이용하세요.' };
   const admin = createAdminClient();
   const { data: c } = await admin.from('cases').select('id, status').eq('id', caseId).maybeSingle();
   if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
@@ -152,7 +160,8 @@ export async function checkClosureReadiness(caseId: string): Promise<{ ok: boole
   const unreported = rounds.filter((r) => !r.report_registered_at).map((r) => r.round_no);
   if (unreported.length > 0) return { ok: false, hint: `보고서가 없는 회차(${unreported.join('·')}회차)가 있습니다. 각 회차의 [보고서 업로드]를 완료하세요.`, ...base };
   const content = obs ? normalizeObservation(obs.content) : EMPTY;
-  if (!(content.summary.trim().length > 0 || !!obsFile)) return { ok: false, hint: '관찰의견서 총평을 작성(임시 저장)하거나 완성본을 올리면 종결을 요청할 수 있습니다.', ...base };
+  const webOk = !OBSERVATION_WEB_DISABLED && content.summary.trim().length > 0;
+  if (!(webOk || !!obsFile)) return { ok: false, hint: '관찰의견서 파일을 올리면 종결을 요청할 수 있습니다.', ...base };
   const policy = (program?.closure_policy ?? {}) as { require_mentee_signature?: boolean; require_group_docs?: boolean };
   if (policy.require_mentee_signature && rounds.some((r) => !r.mentee_signed_at)) return { ok: false, hint: '이 행사는 모든 회차에 멘티 확인 서명이 있어야 종결을 요청할 수 있습니다. 서명이 없는 회차를 확인하세요.', ...base };
   if (policy.require_group_docs) {
@@ -206,8 +215,8 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
   }
 
   const content = obs ? normalizeObservation(obs.content) : EMPTY;
-  const hasWeb = content.summary.trim().length > 0;
-  if (!hasWeb && !obsFile) return { ok: false, error: '관찰의견서를 작성(총평 필수)하거나 완성본 파일을 올린 뒤 종결을 요청하세요.' };
+  const hasWeb = !OBSERVATION_WEB_DISABLED && content.summary.trim().length > 0;
+  if (!hasWeb && !obsFile) return { ok: false, error: '관찰의견서 파일을 올린 뒤 종결을 요청하세요.' };
   // 우선순위 (P31): 업로드된 완성본이 웹 작성본(updated_at)보다 나중에 올라왔으면 그 파일을 유지하고 PDF 를 다시 만들지 않는다.
   // 반대(웹 작성본이 더 최신)면 기존처럼 웹 작성본으로 PDF 를 생성해 단일본을 교체한다.
   const fileAt = obsFile ? Math.max(new Date(obsFile.created_at).getTime(), new Date(obsFile.updated_at).getTime()) : 0;

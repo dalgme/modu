@@ -180,36 +180,42 @@ export function MentorDashboardV2({
                 <li key={t.caseId}>
                   {/* 카드 전체를 <a> 로 감싸면 안에 있는 연락 링크(<a tel:/sms:/mailto:>)가 중첩 앵커가 되어 브라우저가 DOM 을 쪼개고
                       React 하이드레이션 오류(#418)가 난다(2026-09-28 스모크 12건). 링크 영역과 연락 링크를 형제로 둔다. */}
-                  <div className={cn('flex h-full flex-col rounded-xl border-2 bg-background transition-colors hover:border-primary', t.action.key === 'inactive' && 'opacity-70')}>
-                    <Link href={t.action.href} className="flex flex-1 gap-3 p-3">
-                      <span className={cn('w-1.5 shrink-0 rounded-full', s.bar)} />
-                      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                            <span className="truncate font-semibold">{t.label}</span>
-                            <span className="text-[11px] text-muted-foreground">{t.groupName ?? ''}</span>
-                          </div>
-                          <StatusBadge status={t.status} branding={branding} short className="shrink-0" />
+                  {/* (2026-09-30) 가독성 카드: 머리(멘티명·그룹·단계) → 지금 할 일 강조 상자 → 진행 현황 → 연락처·바로가기 */}
+                  <div className={cn('flex h-full flex-col overflow-hidden rounded-2xl border bg-background shadow-sm transition-shadow hover:shadow-md', t.action.key === 'inactive' && 'opacity-70')}>
+                    <span className={cn('h-1.5 w-full', s.bar)} aria-hidden />
+                    <Link href={t.action.href} className="flex flex-1 flex-col gap-3 p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-lg font-bold leading-tight">{t.label}</p>
+                          {t.groupName && <span className="mt-1 inline-block rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{t.groupName}</span>}
                         </div>
-                        <span className={cn('inline-flex w-fit items-center gap-1 rounded-md px-2 py-0.5 text-xs font-bold', s.chip)}>
-                          {t.action.urgent && <AlertTriangle className="h-3 w-3" />}
-                          {t.action.label}
+                        <StatusBadge status={t.status} branding={branding} short className="shrink-0" />
+                      </div>
+                      <div className={cn('flex flex-col gap-1 rounded-xl px-3 py-2.5', s.chip)}>
+                        <span className="inline-flex items-center gap-1.5 text-sm font-bold">
+                          {t.action.urgent && <AlertTriangle className="h-4 w-4" />}
+                          지금 할 일 · {t.action.label}
                           {t.action.key === 'upcoming' && t.nextPlanned ? ` · ${fmtWhen(t.nextPlanned.startedAt)}` : ''}
                         </span>
-                        <span className="text-[11px] leading-snug text-muted-foreground">{t.action.hint}</span>
-                        {/* 진행 표시 — 옛 '담당 멘티 전체' 카드의 단계 막대 + 회차 ①②③④ (이행 = 보고서 등록 기준) */}
+                        <span className="text-xs leading-snug opacity-90">{t.action.hint}</span>
+                      </div>
+                      {/* 진행 표시 — 단계 막대 + 회차 ①②③④ (이행 = 보고서 등록 기준) */}
+                      <div className="flex flex-col gap-2 rounded-xl border border-dashed px-3 py-2.5">
                         <ProcessStepBar status={t.status} compact />
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                           <RoundDots done={t.roundsDone} required={t.requiredRounds} />
                           <span className="tabular-nums">
-                            이행 {t.roundsDone}/{t.requiredRounds}회{t.extraRounds > 0 ? ` (추가 ${t.extraRounds}회 승인)` : ''}
+                            보고서 <b className="text-base text-foreground">{t.roundsDone}</b>
+                            <span className="text-muted-foreground"> / {t.requiredRounds}회{t.extraRounds > 0 ? ` (추가 ${t.extraRounds}회 승인)` : ''}</span>
                           </span>
                         </div>
                       </div>
-                      <ArrowRight className="mt-1 h-4 w-4 shrink-0 text-muted-foreground" />
+                      <span className="inline-flex items-center gap-1 self-end text-xs font-semibold text-primary">
+                        멘티 화면으로 <ArrowRight className="h-3.5 w-3.5" />
+                      </span>
                     </Link>
                     {(t.menteePhone || t.menteeEmail) && (
-                      <div className="px-3 pb-3 pl-[1.75rem]">
+                      <div className="border-t bg-muted/30 px-4 py-2">
                         <MenteeContactLinks phone={t.menteePhone} email={t.menteeEmail} caseId={t.caseId} />
                       </div>
                     )}

@@ -4,7 +4,7 @@ import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { FileUp, ImagePlus } from 'lucide-react';
 
-import { registerRoundReportAction, updateRoundAction } from '@/lib/workflow/mentor-actions';
+import { registerRoundReportAction, replaceRoundReportAction, updateRoundAction } from '@/lib/workflow/mentor-actions';
 import { stageUpload, type StagedFile } from '@/lib/storage/browser-upload';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -32,6 +32,7 @@ export function RoundReportForm({
   dialog = false,
   triggerLabel,
   savedNameBase,
+  replace = false,
 }: {
   caseId: string;
   logId: string;
@@ -42,6 +43,8 @@ export function RoundReportForm({
   triggerLabel?: string;
   /** 저장 파일명 안내 — "멘토-멘티-N회차-방법" (확장자는 고른 파일에서). 실제 이름은 서버가 같은 규칙(roundReportFileName)으로 붙인다 */
   savedNameBase?: string;
+  /** 등록된 보고서 파일 교체(수정 등록, 2026-09-30) — 파일 하나만 받아 replaceRoundReportAction 으로 바꾼다 */
+  replace?: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -87,7 +90,9 @@ export function RoundReportForm({
           return;
         }
         const photos = (await Promise.all(picked.map((f) => stageUpload(f, 'photos')))).map((s) => s.stagingPath);
-        const r = edit
+        const r = replace
+          ? await replaceRoundReportAction({ caseId, logId, reportFile: reportFile! })
+          : edit
           ? await updateRoundAction({ caseId, logId, place: edit.place, topic, content: kind === 'web' ? content : undefined, result, photoPaths: photos })
           : await registerRoundReportAction({
               caseId,
@@ -102,7 +107,7 @@ export function RoundReportForm({
           toast({ title: r.error, variant: 'destructive' });
           return;
         }
-        toast({ title: edit ? `${roundNo}회차 보고서 내용을 수정했습니다.` : `${roundNo}회차 보고서를 등록했습니다.` });
+        toast({ title: replace ? `${roundNo}회차 보고서를 새 파일로 바꿨습니다.` : edit ? `${roundNo}회차 보고서 내용을 수정했습니다.` : `${roundNo}회차 보고서를 등록했습니다.` });
         setOpen(false);
         router.refresh();
       } catch (err) {
@@ -112,7 +117,11 @@ export function RoundReportForm({
     });
   };
 
-  const trigger = edit ? (
+  const trigger = replace ? (
+    <Button size="sm" variant="outline" onClick={() => setOpen(true)} className="gap-1">
+      <FileUp className="h-4 w-4" /> {triggerLabel ?? '보고서 수정 업로드'}
+    </Button>
+  ) : edit ? (
     <Button size="sm" variant="outline" onClick={() => setOpen(true)} className="gap-1">
       <ImagePlus className="h-4 w-4" /> 내용·사진 추가
     </Button>
@@ -127,14 +136,14 @@ export function RoundReportForm({
     <div className={dialog ? 'flex flex-col gap-3' : 'mt-2 flex flex-col gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3'}>
       {dialog ? (
         <DialogHeader>
-          <DialogTitle className="text-base">{edit ? `${roundNo}회차 — 보고서 내용·사진 추가` : `${roundNo}회차 보고서 업로드`}</DialogTitle>
+          <DialogTitle className="text-base">{replace ? `${roundNo}회차 보고서 수정 업로드` : edit ? `${roundNo}회차 — 보고서 내용·사진 추가` : `${roundNo}회차 보고서 업로드`}</DialogTitle>
           <DialogDescription className="sr-only">회차 보고서 파일과 사진을 올립니다.</DialogDescription>
         </DialogHeader>
       ) : (
         <p className="text-sm font-semibold">{edit ? `${roundNo}회차 — 보고서 내용·사진 추가` : `${roundNo}회차 — 2단계 · 실서류(보고서) 등록`}</p>
       )}
       {fileOnly ? (
-        <p className="text-xs text-muted-foreground">이 회차의 보고서 파일 하나만 올리면 됩니다. 올린 뒤 이 회차는 이행으로 인정되어 정산에 포함됩니다.</p>
+        <p className="text-xs text-muted-foreground">{replace ? '고친 보고서 파일을 올리면 기존 파일과 바뀝니다. 최초 등록일은 그대로 두고 수정 등록일이 기록됩니다.' : '이 회차의 보고서 파일 하나만 올리면 됩니다. 올린 뒤 이 회차는 이행으로 인정되어 정산에 포함됩니다.'}</p>
       ) : edit ? (
         <p className="text-[11px] text-muted-foreground">주제·{edit.kind === 'web' ? '내용·' : ''}결과를 고치고 사진을 더 올릴 수 있습니다. 일시·방법·보고서 파일은 바꿀 수 없습니다(멘티 서명·정산 전까지).</p>
       ) : (

@@ -6,12 +6,11 @@ import { requireMentor } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { getCaseById, getCaseStatusHistory, listMentorCases, listPredecessorCases } from '@/lib/data/cases';
 import { menteeLabel } from '@/lib/utils/labels';
-import { getObservationReport, getObservationReportFile, getRoundAllowance, listPendingRequestsForCase, listRounds } from '@/lib/data/rounds';
+import { getObservationReportFile, getRoundAllowance, listPendingRequestsForCase, listRounds } from '@/lib/data/rounds';
 import { listTeamMembers } from '@/lib/data/team-members';
 import { listCaseDocuments, listRequiredDocSlots } from '@/lib/workflow/case-documents';
 import { RequiredDocsPanel } from '@/components/cases/required-docs-panel';
-import { checkClosureReadiness, normalizeObservation } from '@/lib/workflow/closure';
-import { resolveRoundReportPolicy } from '@/lib/documents/round-report';
+import { checkClosureReadiness } from '@/lib/workflow/closure';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { MentorCaseNextStep } from '@/components/mentor/mentor-case-next-step';
 import { resolveRate, kstDate } from '@/lib/settlement/rates';
@@ -39,13 +38,12 @@ export default async function Page({ params }: { params: { id: string } }) {
   if (!item || item.program_id !== ctx.programId || item.mentorId !== profile.id) notFound();
 
   const today = kstDate(new Date());
-  const [history, predecessors, rounds, allowance, obs, obsFile, requests, docs, online, offline, settlements, statements, estimates, slots, readiness, reportPolicy, lastReview, siblings] = await Promise.all([
+  const [history, predecessors, rounds, allowance, obsFile, requests, docs, online, offline, settlements, statements, estimates, slots, readiness, lastReview, siblings] = await Promise.all([
     getCaseStatusHistory(item.id),
     // 이전 단계 케이스는 다른 배정이라 RLS 로 못 읽는다 — 요약(그룹·멘토·회차)만 service_role 로 읽어 링크 없이 표시 (P30). 접근 근거 = 이 케이스의 담당 멘토(위 notFound 가드)
     listPredecessorCases(item.id, { admin: true }),
     listRounds(item.id),
     getRoundAllowance(item.id),
-    getObservationReport(item.id),
     getObservationReportFile(item.id),
     listPendingRequestsForCase(item.id),
     listCaseDocuments(item.id, 'mentor'),
@@ -56,7 +54,6 @@ export default async function Page({ params }: { params: { id: string } }) {
     estimateSettlements(item.id, profile.id),
     listRequiredDocSlots(item.id, 'mentor'),
     checkClosureReadiness(item.id),
-    resolveRoundReportPolicy(item.program_id, item.support_type_id),
     // 보완 요청 사유 — 운영사 검수 기록(reviews) 최신 1건
     createAdminClient().from('reviews').select('result, comment, created_at').eq('case_id', item.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     // 이 멘토의 다른 담당 멘티(같은 행사, 활성 배정) — 이전/다음 이동 (P31)
@@ -86,8 +83,8 @@ export default async function Page({ params }: { params: { id: string } }) {
 
   const maxRounds = item.requiredRounds + allowance.approvedExtra;
   const roundsEditable = canTransition('submit_round', item.status);
-  const observation = normalizeObservation(obs?.content ?? {});
-  const hasObservation = observation.summary.trim().length > 0 || !!obsFile;
+  // 관찰의견서 = 업로드 파일만 인정 (2026-09-30 웹 작성 폐지)
+  const hasObservation = !!obsFile;
   // 버튼 조건 = 서버 게이트(requestClosure)와 같은 함수 (P28) — 보고서 등록 기준 회차·서명/필수서류 정책 포함
   const closureOk = readiness.ok;
   const closureHint = readiness.hint;
@@ -144,27 +141,27 @@ export default async function Page({ params }: { params: { id: string } }) {
           pendingWithdrawal={requests.withdrawals.some((r) => r.status === 'pending')}
         />
 
-        <Card id="rounds" className="scroll-mt-36">
-          <CardHeader className="space-y-1">
-            <CardTitle className="flex flex-wrap items-baseline gap-x-2 text-base">
-              {item.owner_name} 멘티 {ctx.group?.round_label ?? '컨설팅'}
-              <span className="text-xs font-normal text-muted-foreground">
+        {/* [OOO] 멘티 컨설팅 — 코발트블루 배경 기반 박스 (2026-09-30) */}
+        <Card id="rounds" className="scroll-mt-36 overflow-hidden border-[#0047AB]/40 bg-[#0047AB]/[0.04] dark:bg-[#0047AB]/10">
+          <CardHeader className="space-y-1 bg-[#0047AB] text-white">
+            <CardTitle className="flex flex-wrap items-baseline gap-x-2 text-base text-white">
+              [{item.owner_name}] 멘티 {ctx.group?.round_label ?? '컨설팅'}
+              <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-normal text-white/90">
                 등록 {rounds.length} / {maxRounds}회 · 보고서 {reported}건
                 {allowance.approvedExtra > 0 && ` · 추가 ${allowance.approvedExtra}회 승인`}
               </span>
             </CardTitle>
-            <p className="text-xs text-muted-foreground">
-              회차마다 [N차 예정 등록]으로 일정을 먼저 등록하고, 멘토링을 마친 뒤 그 회차의 [보고서 업로드]를 하면 이행으로 인정되어 정산에 포함됩니다. 보고서 파일 이름은 ‘멘토명-멘티명-회차-온/오프라인’으로 자동 저장됩니다.
+            <p className="text-xs text-white/85">
+              회차마다 [N차 예정 등록]으로 일정을 먼저 등록하고, 멘토링을 마친 뒤 그 회차의 [보고서 업로드]를 하면 이행으로 인정되어 정산에 포함됩니다. 보고서를 고쳐야 하면 [보고서 수정 업로드]로 다시 올리세요. 파일 이름은 ‘멘토명-멘티명-회차-온/오프라인’으로 자동 저장됩니다.
             </p>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-4">
             <MentorRoundBoard
               caseId={item.id}
               menteeName={item.owner_name}
               rounds={rounds}
               maxRounds={maxRounds}
               editable={roundsEditable}
-              signEnabled={reportPolicy.menteeConfirmSignature}
               viewerMentorId={profile.id}
               rates={{ online: online?.unitPrice ?? null, offline: offline?.unitPrice ?? null }}
               participantOptions={participantOptions}
@@ -183,7 +180,7 @@ export default async function Page({ params }: { params: { id: string } }) {
             <p className="text-xs text-muted-foreground">멘티당 1건 · 파일 업로드로 제출합니다. 계획된 회차의 보고서를 모두 올리면 [파일 업로드]가 열리고, 종결 요청 시 운영사에 제출됩니다.</p>
           </CardHeader>
           <CardContent>
-            <ObservationForm caseId={item.id} initial={observation} file={obsFile} editable={roundsEditable} uploadGate={obsGate} />
+            <ObservationForm caseId={item.id} file={obsFile} editable={roundsEditable} uploadGate={obsGate} />
           </CardContent>
         </Card>
 

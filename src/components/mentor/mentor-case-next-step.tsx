@@ -68,8 +68,8 @@ export function MentorCaseNextStep(p: {
         desc = `필수 ${p.required}회 중 ${p.reported}회 이행(보고서 기준)${p.maxRounds > p.required ? ` · 추가 회차 승인으로 최대 ${p.maxRounds}회` : ''}.`;
         anchor = '#rounds';
       } else if (!p.hasObservation) {
-        title = '관찰의견서를 작성하세요';
-        desc = '필수 회차를 모두 이행했습니다. 관찰의견서(멘티당 1건)를 쓰면 종결을 요청할 수 있습니다.';
+        title = '관찰의견서 파일을 올리세요';
+        desc = '필수 회차를 모두 이행했습니다. 관찰의견서 파일(멘티당 1건)을 [파일 업로드]로 올리면 종결을 요청할 수 있습니다.';
         anchor = '#observation';
         tone = 'action';
       } else if (p.closureOk) {

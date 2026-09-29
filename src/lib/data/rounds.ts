@@ -8,7 +8,8 @@ export type RoundRow = Tables<'mentoring_logs'>;
 export interface RoundItem extends RoundRow {
   mentorName: string | null;
   photos: { id: string; url: string | null; name: string }[];
-  report: { id: string; url: string | null; name: string } | null;
+  /** 회차 보고서 파일 — createdAt = 최초 등록, updatedAt = 마지막 수정 등록(교체) */
+  report: { id: string; url: string | null; name: string; createdAt: string; updatedAt: string | null } | null;
   /** 정산에 포함되어 잠김 */
   locked: boolean;
 }
@@ -26,7 +27,7 @@ export async function listRounds(caseId: string): Promise<RoundItem[]> {
   const keys = [...ids.map(photoDocKey), ...ids.map(reportDocKey)];
   const mentorIds = Array.from(new Set(rows.map((r) => r.mentor_id)));
   const [{ data: docs }, { data: mentors }] = await Promise.all([
-    supabase.from('documents').select('id, doc_key, doc_name, storage_path').eq('case_id', caseId).in('doc_key', keys),
+    supabase.from('documents').select('id, doc_key, doc_name, storage_path, created_at, updated_at').eq('case_id', caseId).in('doc_key', keys),
     supabase.from('users').select('id, name').in('id', mentorIds),
   ]);
   const mentorName = new Map((mentors ?? []).map((m) => [m.id, m.name]));
@@ -38,7 +39,7 @@ export async function listRounds(caseId: string): Promise<RoundItem[]> {
       photoDocs.map(async (d) => ({ id: d.id, name: d.doc_name, url: await createCaseScopedSignedUrl('photos', caseId, d.storage_path, 600) })),
     );
     const report = reportDoc
-      ? { id: reportDoc.id, name: reportDoc.doc_name, url: await createCaseScopedSignedUrl('documents', caseId, reportDoc.storage_path, 600, reportDoc.doc_name) }
+      ? { id: reportDoc.id, name: reportDoc.doc_name, url: await createCaseScopedSignedUrl('documents', caseId, reportDoc.storage_path, 600, reportDoc.doc_name), createdAt: reportDoc.created_at, updatedAt: reportDoc.updated_at ?? null }
       : null;
     out.push({ ...r, mentorName: mentorName.get(r.mentor_id) ?? null, photos, report, locked: r.settlement_id !== null });
   }

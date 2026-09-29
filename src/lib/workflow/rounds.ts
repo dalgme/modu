@@ -413,6 +413,70 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
   return { ok: true, caseId: log.case_id };
 }
 
+/**
+ * 등록된 회차 보고서 파일 교체 (2026-09-30) — 멘토가 보고서를 고쳐 다시 올린다.
+ * 회차 일시·방법·단가·보고서 등록일(report_registered_at = 최초 등록일)은 그대로 두고, 파일만 바꾼다(documents.updated_at = 수정 등록일).
+ * 정산에 포함된 회차·다른 멘토의 회차는 교체할 수 없다. 새 파일을 먼저 저장하고 성공했을 때만 이전 파일을 지운다.
+ */
+export async function replaceRoundReport(input: { logId: string; mentorId: string; caseId?: string; reportFile: { stagingPath: string; fileName: string; mimeType: string } }): Promise<WorkflowResult> {
+  const admin = createAdminClient();
+  const { data: log } = await admin
+    .from('mentoring_logs')
+    .select('id, case_id, mentor_id, round_no, mode, settlement_id, report_registered_at, cases!inner(status, program_id, owner_name)')
+    .eq('id', input.logId)
+    .maybeSingle();
+  if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
+  if (input.caseId && log.case_id !== input.caseId) return { ok: false, error: '이 케이스의 회차가 아닙니다.' };
+  if (log.mentor_id !== input.mentorId) return { ok: false, error: '다른 멘토가 진행한 회차의 보고서는 바꿀 수 없습니다.' };
+  if (log.settlement_id) return { ok: false, error: '정산에 포함된 회차는 보고서를 바꿀 수 없습니다.' };
+  if (!log.report_registered_at) return { ok: false, error: '아직 보고서가 등록되지 않은 회차입니다. [보고서 업로드]를 이용하세요.' };
+  const c = log.cases as unknown as { status: string; program_id: string; owner_name: string | null };
+  const denied = assertTransition('submit_round', c.status as never);
+  if (denied) return { ok: false, error: denied };
+  if (!isStaging(input.reportFile.stagingPath)) return { ok: false, error: '잘못된 업로드 경로입니다.' };
+  const bad = validateReportFile(input.reportFile.fileName, input.reportFile.mimeType);
+  if (bad) return { ok: false, error: bad };
+
+  const { data: mentorRow } = await admin.from('users').select('name').eq('id', log.mentor_id).maybeSingle();
+  const reportName = roundReportFileName({ mentorName: mentorRow?.name, menteeName: c.owner_name, roundNo: log.round_no, mode: log.mode, originalName: input.reportFile.fileName });
+  const moved = await moveStaging('documents', log.case_id, input.reportFile.stagingPath, REPORT_MAX_BYTES);
+  if (!moved.ok) return { ok: false, error: moved.error };
+  const { data: old } = await admin.from('documents').select('id, storage_path').eq('case_id', log.case_id).eq('doc_key', reportDocKey(log.id)).order('created_at');
+  const keep = (old ?? [])[0] ?? null;
+  const row = {
+    doc_name: reportName,
+    storage_path: moved.dest,
+    sha256: moved.sha256,
+    file_size: moved.size,
+    mime_type: input.reportFile.mimeType || moved.mime || 'application/octet-stream',
+    uploaded_by: input.mentorId,
+    uploaded_role: 'mentor' as const,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = keep
+    ? await admin.from('documents').update(row).eq('id', keep.id)
+    : await admin.from('documents').insert({ case_id: log.case_id, doc_key: reportDocKey(log.id), ...row });
+  if (error) {
+    await admin.storage.from('documents').remove([moved.dest]);
+    return { ok: false, error: `보고서 교체에 실패했습니다: ${error.message}` };
+  }
+  const stale = (old ?? []).map((d) => d.storage_path).filter((p) => p !== moved.dest);
+  if (stale.length > 0) await admin.storage.from('documents').remove(stale);
+  const extraIds = (old ?? []).slice(1).map((d) => d.id);
+  if (extraIds.length > 0) await admin.from('documents').delete().in('id', extraIds);
+  // 웹 작성 보고서였다면 이제 파일 보고서
+  await admin.from('mentoring_logs').update({ report_kind: 'file' }).eq('id', log.id);
+  await logAudit(admin, {
+    actorId: input.mentorId,
+    programId: c.program_id,
+    action: 'round.report_replaced',
+    entityType: 'mentoring_logs',
+    entityId: log.id,
+    metadata: { case_id: log.case_id, round_no: log.round_no, file_name: reportName },
+  });
+  return { ok: true, caseId: log.case_id };
+}
+
 /** 회차 수정(본문·장소·주제·결과·사진 추가). 일시·유형·단가는 잠금(정산 근거) — 잘못 등록했으면 삭제 후 재등록. */
 export async function updateRound(input: {
   logId: string;

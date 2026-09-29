@@ -5,7 +5,7 @@ import { revalidatePath } from 'next/cache';
 import { mentorOrNull, mentorOfCaseOrNull, getRealSessionProfile, MENTOR_ONLY_ERROR, NOT_ASSIGNED_ERROR } from '@/lib/auth/guards';
 import { getImpersonation } from '@/lib/auth/impersonation';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { submitRound, updateRound, deleteRound, updatePlannedRound, deletePlannedRound, registerRoundReport, type RoundInput, type RoundReportInput, type RoundResult } from '@/lib/workflow/rounds';
+import { submitRound, updateRound, deleteRound, updatePlannedRound, deletePlannedRound, registerRoundReport, replaceRoundReport, type RoundInput, type RoundReportInput, type RoundResult } from '@/lib/workflow/rounds';
 import type { ConsultingMode } from '@/lib/settlement/rates';
 import {
   normalizeObservation,
@@ -40,6 +40,15 @@ export async function registerRoundReportAction(input: { caseId: string } & Omit
   const profile = await mentorOfCaseOrNull(input.caseId);
   if (!profile) return { ok: false, error: (await mentorOrNull()) ? NOT_ASSIGNED_ERROR : MENTOR_ONLY_ERROR };
   const result = await registerRoundReport({ ...input, mentorId: profile.id });
+  if (result.ok) revalidate(input.caseId);
+  return result;
+}
+
+/** 멘토: 등록된 회차 보고서 파일 교체(수정 등록, 2026-09-30) */
+export async function replaceRoundReportAction(input: { caseId: string; logId: string; reportFile: { stagingPath: string; fileName: string; mimeType: string } }): Promise<WorkflowResult> {
+  const profile = await mentorOfCaseOrNull(input.caseId);
+  if (!profile) return { ok: false, error: (await mentorOrNull()) ? NOT_ASSIGNED_ERROR : MENTOR_ONLY_ERROR };
+  const result = await replaceRoundReport({ ...input, mentorId: profile.id });
   if (result.ok) revalidate(input.caseId);
   return result;
 }
