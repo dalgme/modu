@@ -1,9 +1,9 @@
 import Link from 'next/link';
-import { Briefcase, Building2, Download, GraduationCap, Link2, Network, UserPlus, Users } from 'lucide-react';
+import { Briefcase, Building2, Download, GraduationCap, Link2, Network, UserPlus, UserX, Users } from 'lucide-react';
 
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
-import { listProgramMembers } from '@/lib/data/members';
+import { isRosterActive, listProgramMembers, loadDeactivationInfo } from '@/lib/data/members';
 import { listRosterColumns } from '@/lib/data/roster-columns';
 import { listCases } from '@/lib/data/cases';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -16,7 +16,7 @@ import { RankUploadButton } from '@/components/nextlab/rank-upload';
 import { RosterValuesUploadButton } from '@/components/nextlab/roster-bulk-actions';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import type { MentorGroupInfo, Withholding } from '@/components/nextlab/mentor-group-controls';
-import { MembersManager, type MenteeProgressItem } from '@/components/nextlab/members-manager';
+import { InactiveMembersList, MembersManager, type InactiveMemberItem, type MenteeProgressItem } from '@/components/nextlab/members-manager';
 import { MentorDocReceiptsPanel } from '@/components/nextlab/mentor-doc-receipts-panel';
 import { RegisterPanel } from '@/components/nextlab/register-panel';
 import { REG_ROLES, type RegKey } from '@/lib/roster/register-roles';
@@ -35,17 +35,19 @@ const TABS = [
   { key: 'mentor-match', label: '멘토 매칭 리스트', icon: Network },
   { key: 'institution', label: '발주처', icon: Building2 },
   { key: 'nextlab', label: '운영사', icon: Briefcase },
+  { key: 'inactive', label: '비활성화', icon: UserX },
   { key: 'register', label: '회원 등록', icon: UserPlus },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
 
-/** 활성/비활성의 의미와 전환 방법 안내 (모든 명단 미니탭 상단) */
+/** 활성/비활성의 의미와 전환 방법 안내 (명단 미니탭 상단) */
 function ActiveHelp() {
   return (
     <div className="rounded-lg border border-sky-300 bg-sky-50/60 px-4 py-3 text-xs leading-relaxed text-sky-950 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-100">
-      <b>활성 / 비활성이란?</b> <b>활성</b> = 로그인과 행사 참여가 가능한 상태. <b>비활성</b> = 로그인이 차단된 상태(멘티 포기·중도 이탈 등) — 명단과 이력은 유지되며 진행현황에 <b className="text-destructive">비활성화</b>로 표시됩니다.
-      전환 방법: 각 회원 행의 <b>[정보 수정]</b> 을 열고 <b>[비활성화]/[활성화]</b> 버튼을 누르세요. (행사 소속만 빼려면 [소속 해제])
+      <b>활성 / 비활성이란?</b> 이 명단에는 <b>활성</b> 회원만 보입니다. <b>[이 행사에서 비활성화]</b>(멘티 포기·중도 이탈 등 — 이 행사 화면·배정·문자·조사 대상에서 빠짐, 다른 행사 로그인은 유지)나
+      <b> [계정 잠금]</b>(모든 행사 로그인 차단)을 하면 그 회원은 <b>[비활성화] 탭</b>으로 옮겨지고, 명단·이력 데이터는 그대로 남습니다.
+      전환 방법: 각 회원 행의 <b>[정보 수정]</b> 을 열고 버튼을 누르세요. 되돌리기는 <b>[비활성화] 탭</b>에서 합니다.
     </div>
   );
 }
@@ -63,7 +65,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     listProgramMembers(ctx.programId, ctx.supportTypeId),
     listRosterColumns(ctx.programId),
   ]);
-  const memberItems = members.map((m) => ({
+  const allItems = members.map((m) => ({
     id: m.id,
     email: m.email,
     name: m.name,
@@ -81,14 +83,18 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     is_active: m.is_active,
     must_change_password: m.must_change_password,
   }));
+  // 역할별 명단(멘티/멘토/발주처/운영사 탭)은 행사 소속 활성 + 계정 활성 회원만. 나머지는 [비활성화] 탭에만 나온다.
+  const memberItems = allItems.filter(isRosterActive);
+  const inactiveItems = allItems.filter((m) => !isRosterActive(m));
 
-  // 탭별 등록 인원 수 (행사 안 역할 기준) — 등록 직후 revalidate 로 즉시 갱신된다
-  const countOf = (role: string) => members.filter((m) => m.role === role).length;
+  // 탭별 인원 수 (행사 안 역할 기준, 활성만) — 등록·비활성화 직후 revalidate 로 즉시 갱신된다
+  const countOf = (role: string) => memberItems.filter((m) => m.role === role).length;
   const tabCounts: Partial<Record<TabKey, number>> = {
     mentee: countOf('mentee'),
     mentor: countOf('mentor'),
     institution: countOf('institution'),
     nextlab: countOf('nextlab'),
+    inactive: inactiveItems.length,
   };
 
   let body: React.ReactNode = null;
@@ -202,6 +208,25 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
           {roleLabel} 담당자를 관리합니다. {tab === 'nextlab' ? '등급(PL/PM/부PM/옵저버)·직위·담당역할은 [정보 수정]에서 바꿉니다.' : '직위·담당역할은 [정보 수정]에서 바꿉니다.'}
         </p>
         <MembersManager members={memberItems.filter((m) => m.role === tab)} rosterColumns={[]} rosterValues={{}} mode="staff" />
+      </>
+    );
+  }
+
+  if (tab === 'inactive') {
+    const info = await loadDeactivationInfo(ctx.programId, inactiveItems.map((m) => m.id));
+    const items: InactiveMemberItem[] = inactiveItems.map((m) => ({
+      ...m,
+      memberDeactivatedAt: info[m.id]?.memberAt ?? null,
+      removedFromProgram: info[m.id]?.removed ?? false,
+      accountLockedAt: info[m.id]?.accountAt ?? null,
+    }));
+    body = (
+      <>
+        <div className="rounded-lg border border-amber-300 bg-amber-50/70 px-4 py-3 text-xs leading-relaxed text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+          <b>비활성화된 회원</b> — 역할별 명단·인원 수·문자 대상에서 빠진 회원입니다. <b>이 행사 비활성화</b> = 이 행사에서만 제외(다른 행사 로그인 가능), <b>계정 잠금</b> = 모든 행사 로그인 차단. 둘 다 해당하면 둘 다 표시됩니다.
+          되돌리면 원래 역할의 명단 탭으로 돌아갑니다. 데이터(케이스·회차·이력)는 그대로 남아 있습니다.
+        </div>
+        <InactiveMembersList members={items} />
       </>
     );
   }

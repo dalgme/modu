@@ -40,6 +40,9 @@ export async function GET(request: Request): Promise<Response> {
   const staffRoles: ('nextlab' | 'institution')[] = kind === 'institution' ? ['institution'] : kind === 'nextlab' ? ['nextlab'] : ['nextlab', 'institution'];
   const [members, roster] = await Promise.all([listProgramMembers(ctx.programId, ctx.supportTypeId), listRosterColumns(ctx.programId)]);
   const active = (b: boolean) => (b ? '활성' : '비활성');
+  /** 명단 계정상태 — 행사 비활성화(program_members)·계정 잠금(users)을 구분해 표시 (회원 명단 [비활성화] 탭과 같은 기준) */
+  const memberStatus = (m: { memberActive: boolean; is_active: boolean }) =>
+    m.memberActive && m.is_active ? '활성' : [!m.memberActive ? '이 행사 비활성화' : null, !m.is_active ? '계정 잠금' : null].filter(Boolean).join(' · ');
   const scopeLabel = ctx.group ? ctx.group.name : '행사 전체';
   const customCols = (target: 'mentee' | 'mentor') => roster.columns.filter((c) => c.target === target);
   const customVals = (target: 'mentee' | 'mentor', userId: string) => customCols(target).map((c) => roster.values[`${c.id}:${userId}`] ?? '');
@@ -110,7 +113,7 @@ export async function GET(request: Request): Promise<Response> {
         const all = byMentee.get(m.id) ?? [];
         const cs = dedupe ? all.slice(0, 1) : all; // listCases 는 등록 최신순
         const custom = customVals('mentee', m.id);
-        if (cs.length === 0) return [[m.name, '', '', m.phone ?? '', m.email ?? '', '', '', '', '', '', '', '', '', '', '', '', active(m.is_active), '', ...custom]];
+        if (cs.length === 0) return [[m.name, '', '', m.phone ?? '', m.email ?? '', '', '', '', '', '', '', '', '', '', '', '', memberStatus(m), '', ...custom]];
         return cs.map((c) => {
           const p = profileByCase.get(c.id);
           return [
@@ -130,7 +133,7 @@ export async function GET(request: Request): Promise<Response> {
             c.status === 'withdrawn' ? '중도 종료(비활성화)' : CASE_STATUS_META[c.status].short,
             `${c.roundsDone}/${c.requiredRounds}`,
             c.mentorName ?? '',
-            active(m.is_active),
+            memberStatus(m),
             c.menteeLoginId ?? '',
             ...custom,
           ];
@@ -192,7 +195,7 @@ export async function GET(request: Request): Promise<Response> {
           m.note ?? '',
           grade ? GRADE_LABELS[grade] : '',
           ROLE_LABELS[m.role],
-          active(m.is_active),
+          memberStatus(m),
         ];
       });
   }

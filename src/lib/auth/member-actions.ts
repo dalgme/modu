@@ -13,8 +13,16 @@ import { createAccountSchema, inviteMenteeSchema } from '@/lib/validations/auth'
 import { contextOrNull } from '@/lib/programs/context';
 import { resolveUserByIdentifier, toStoredPhone } from '@/lib/auth/identifier';
 import { normalizeEmail, normalizePhone } from '@/lib/utils/phone';
-import { fetchAllIn } from '@/lib/supabase/paginate';
-import { LOGIN_GUIDE_SMS_ACTION } from '@/lib/data/members';
+import { LOGIN_GUIDE_SMS_ACTION, loadLoginGuideRecipients } from '@/lib/data/members';
+import {
+  defaultLoginGuideTemplate,
+  legacyHeadTemplate,
+  renderLoginGuide,
+  smsKind,
+  validateLoginGuideTemplate,
+  type LoginGuideContext,
+  type LoginGuideRecipient,
+} from '@/lib/sms/login-guide-template';
 import { resolveSmsCredentials } from '@/lib/sms/secrets';
 import { sendSolapiSms } from '@/lib/notifications/solapi';
 import type { UserRole } from '@/lib/auth/roles';
@@ -276,7 +284,7 @@ export async function setMemberActiveAction(
 
   revalidatePath('/nextlab/members');
   revalidatePath('/nextlab/roster');
-  return { ok: true, message: active ? '이 행사에서 활성화했습니다.' : `이 행사에서 비활성화했습니다.${lockAccount ? ' (계정 로그인도 차단)' : ' 로그인은 가능하며 다른 행사에는 영향이 없습니다.'}` };
+  return { ok: true, message: active ? '이 행사에서 활성화했습니다. 회원 명단의 역할별 탭으로 돌아갔습니다.' : `이 행사에서 비활성화했습니다. 회원 명단 > [비활성화] 탭으로 이동했습니다.${lockAccount ? ' (계정 로그인도 차단)' : ' 다른 행사에는 영향이 없습니다.'}` };
 }
 
 /**
@@ -307,7 +315,7 @@ export async function lockMemberAccountAction(
   await audit(programId, actor.id, locked ? 'account.deactivate' : 'account.activate', 'users', userId, {});
   revalidatePath('/nextlab/members');
   revalidatePath('/nextlab/roster');
-  return { ok: true, message: locked ? '계정을 잠갔습니다. 모든 행사에서 로그인이 차단됩니다.' : '계정 잠금을 해제했습니다.' };
+  return { ok: true, message: locked ? '계정을 잠갔습니다. 모든 행사에서 로그인이 차단되며 회원 명단 > [비활성화] 탭으로 이동했습니다.' : '계정 잠금을 해제했습니다.' };
 }
 
 /**
@@ -526,6 +534,7 @@ export async function removeMemberFromProgramAction(
   const { error } = await admin.from('program_members').update({ is_active: false, left_at: new Date().toISOString() }).eq('program_id', programId).eq('user_id', userId);
   if (error) return { ok: false, error: error.message };
   await audit(programId, actor.id, 'membership.remove', 'users', userId, {});
+  revalidatePath('/nextlab/roster');
   revalidatePath('/nextlab/members');
   return { ok: true, message: '이 행사 소속을 해제했습니다.' };
 }
@@ -778,84 +787,112 @@ export async function setRosterValueAction(
 
 /* ── 로그인 안내 문자 ───────────────────────────────────────────────────── */
 
+/** 로그인 안내 문자 공통 게이트 — 운영사 + sms 권한 + 행사 컨텍스트 */
+async function loginGuideGate(): Promise<{ ok: true; actorId: string; ctx: ProgramContext; base: string } | { ok: false; error: string }> {
+  const actor = await requireNextlab();
+  const ctx = await contextOrNull(actor);
+  if (!ctx) return { ok: false, error: '행사를 먼저 선택하세요.' };
+  const denied = denyUnless(ctx, 'sms');
+  if (denied) return { ok: false, error: denied };
+  const base = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
+  if (!base) return { ok: false, error: '앱 주소(NEXT_PUBLIC_APP_URL)가 설정되지 않아 링크를 만들 수 없습니다.' };
+  return { ok: true, actorId: actor.id, ctx, base };
+}
+
+function parseUserIds(raw: unknown): string[] | null {
+  if (!Array.isArray(raw)) return null;
+  const ids = raw.filter((x): x is string => typeof x === 'string' && /^[0-9a-f-]{36}$/i.test(x));
+  return ids.length === raw.length ? Array.from(new Set(ids)).slice(0, 2000) : null;
+}
+
+export type LoginGuidePreviewResult =
+  | { ok: true; context: LoginGuideContext; recipients: LoginGuideRecipient[] }
+  | { ok: false; error: string };
+
+/**
+ * 로그인 안내 문자 미리보기 데이터 — 다이얼로그가 열릴 때 호출(평범한 JSON).
+ * 발송 액션과 같은 로더(`loadLoginGuideRecipients`)를 쓰므로 미리보기 = 실제 발송 문구.
+ */
+export async function getLoginGuidePreviewAction(userIds: string[]): Promise<LoginGuidePreviewResult> {
+  const gate = await loginGuideGate();
+  if (!gate.ok) return gate;
+  const ids = parseUserIds(userIds);
+  if (!ids || ids.length === 0) return { ok: false, error: '발송할 회원을 선택하세요.' };
+  const { program, recipients } = await loadLoginGuideRecipients(gate.ctx.programId, gate.ctx.supportTypeId ?? null, ids);
+  if (!program) return { ok: false, error: '행사를 찾을 수 없습니다.' };
+  if (recipients.length === 0) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
+  return { ok: true, context: { programName: program.name, loginUrl: `${gate.base}/login`, footer: program.footer }, recipients };
+}
+
 /**
  * 선택 회원에게 로그인 안내 문자 발송 (행사별 문자 API → 플랫폼 폴백).
  * 명단 우선 등록 → 안내 문자 수신 → 첫 로그인(비밀번호 변경) 흐름의 두 번째 단계.
- * `{name}` 플레이스홀더는 회원 이름으로 치환된다. 발송 이력은 감사로그로 남아 명단에 표시된다.
+ * 문구 = `template`(자동화 필드 `{name}` `{login_url}` … — src/lib/sms/login-guide-template.ts) 을 수신자별로 렌더.
+ * template 이 없으면 역할별 기본 템플릿, 구 `message`(첫 줄만 직접 입력) 도 호환한다.
+ * 발송 대상 = 이 행사 소속·활성 + 계정 활성 + 휴대폰 보유. 발송 이력은 감사로그로 남아 명단에 표시된다.
  */
 export async function sendLoginGuideAction(
   _prev: MemberActionState,
   formData: FormData,
 ): Promise<MemberActionState> {
-  const actor = await requireNextlab();
-  {
-    const ctx = await contextOrNull(actor);
-    if (!ctx) return { ok: false, error: '행사를 먼저 선택하세요.' };
-    const denied = denyUnless(ctx, 'sms');
-    if (denied) return { ok: false, error: denied };
-  }
-  const programId = await currentProgramId(actor);
-  if (!programId) return { ok: false, error: '행사를 먼저 선택하세요.' };
-  let userIds: string[] = [];
+  const gate = await loginGuideGate();
+  if (!gate.ok) return gate;
+  const { actorId, ctx, base } = gate;
+  const programId = ctx.programId;
+  let ids: string[] | null = null;
   try {
-    userIds = JSON.parse(String(formData.get('userIds') ?? '[]'));
+    ids = parseUserIds(JSON.parse(String(formData.get('userIds') ?? '[]')));
   } catch {
-    return { ok: false, error: '대상 목록을 읽을 수 없습니다.' };
+    ids = null;
   }
-  if (!Array.isArray(userIds) || userIds.length === 0) return { ok: false, error: '발송할 회원을 선택하세요.' };
-  const customHead = String(formData.get('message') ?? '').trim();
+  if (!ids) return { ok: false, error: '대상 목록을 읽을 수 없습니다.' };
+  if (ids.length === 0) return { ok: false, error: '발송할 회원을 선택하세요.' };
 
-  const admin = createAdminClient();
-  const [{ data: program }, memberships] = await Promise.all([
-    admin.from('programs').select('name, sms_footer').eq('id', programId).maybeSingle(),
-    fetchAllIn<{ user_id: string; is_active: boolean }>(userIds, (chunk, from, to) => admin.from('program_members').select('user_id, is_active').eq('program_id', programId).in('user_id', chunk).range(from, to)),
-  ]);
+  const rawTemplate = formData.get('template');
+  const legacyHead = String(formData.get('message') ?? '').trim();
+  let template: string | null = null;
+  if (typeof rawTemplate === 'string' && rawTemplate.trim()) template = rawTemplate.replace(/\r\n?/g, '\n').trim();
+  else if (legacyHead) template = legacyHeadTemplate(legacyHead);
+  if (template !== null) {
+    const invalid = validateLoginGuideTemplate(template);
+    if (invalid) return { ok: false, error: invalid };
+  }
+
+  const { program, recipients } = await loadLoginGuideRecipients(programId, ctx.supportTypeId ?? null, ids);
   if (!program) return { ok: false, error: '행사를 찾을 수 없습니다.' };
-  const memberIds = new Set(memberships.filter((m) => m.is_active).map((m) => m.user_id));
-  const targets = userIds.filter((id) => memberIds.has(id));
-  if (targets.length === 0) return { ok: false, error: '이 행사 소속(활성) 회원이 아닙니다.' };
-  const users = await fetchAllIn<{ id: string; name: string; email: string | null; phone: string | null; must_change_password: boolean; is_active: boolean }>(targets, (chunk, from, to) =>
-    admin.from('users').select('id, name, email, phone, must_change_password, is_active').in('id', chunk).range(from, to),
-  );
-
-  const base = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
-  if (!base) return { ok: false, error: '앱 주소(NEXT_PUBLIC_APP_URL)가 설정되지 않아 링크를 만들 수 없습니다.' };
+  if (recipients.length === 0) return { ok: false, error: '이 행사 소속(활성) 회원이 아닙니다.' };
+  const context: LoginGuideContext = { programName: program.name, loginUrl: `${base}/login`, footer: program.footer };
   const creds = await resolveSmsCredentials(programId, 'send');
+
+  const sendable = recipients.filter((r) => r.skip === null);
+  const skipped = recipients.length - sendable.length + (ids.length - recipients.length);
+  const textOf = (r: LoginGuideRecipient) => renderLoginGuide(template ?? defaultLoginGuideTemplate(r.role), r, context);
+  const tooLong = sendable.find((r) => smsKind(textOf(r)) === 'TOO_LONG');
+  if (tooLong) return { ok: false, error: `${tooLong.name} 님 문자가 LMS 한도(2,000바이트)를 넘습니다. 문구를 줄여 주세요.` };
 
   let sent = 0;
   let failed = 0;
-  let skipped = 0;
-  const sendable = users.filter((u) => u.is_active && (normalizePhone(u.phone) ?? '').length >= 10);
-  skipped = users.length - sendable.length;
-  const buildText = (u: (typeof users)[number]) => {
-    const head = customHead
-      ? customHead.replaceAll('{name}', u.name)
-      : `[${program.name}] ${u.name}님, '${program.name}' 멘토링 플랫폼에 회원으로 등록되었습니다.`;
-    const lines = [head, `${base}/login`, `아이디: 이메일(${u.email ?? '-'}) 또는 휴대폰 번호`];
-    if (u.must_change_password) lines.push('임시 비밀번호: 본인 휴대폰 번호(숫자만). 첫 로그인 시 비밀번호를 변경해 주세요.');
-    if (program.sms_footer) lines.push(program.sms_footer);
-    return lines.join('\n');
-  };
   // (P31) 10명 단위 병렬 발송 — 수백 명도 서버 액션 시간 안에 끝난다. 실패는 건별로 집계
   const BATCH = 10;
-  const auditRows: { actor_id: string; program_id: string; action: string; entity_type: string; entity_id: string; metadata: { phone_last4: string } }[] = [];
+  const auditRows: { actor_id: string; program_id: string; action: string; entity_type: string; entity_id: string; metadata: { phone_last4: string; custom_template: boolean } }[] = [];
   for (let i = 0; i < sendable.length; i += BATCH) {
     const batch = sendable.slice(i, i + BATCH);
-    const results = await Promise.allSettled(batch.map((u) => sendSolapiSms(normalizePhone(u.phone)!, buildText(u), creds ? { creds } : {})));
-    results.forEach((r, idx) => {
-      const u = batch[idx]!;
-      if (r.status === 'fulfilled' && r.value.ok) {
+    const results = await Promise.allSettled(batch.map((r) => sendSolapiSms(normalizePhone(r.phone)!, textOf(r), creds ? { creds } : {})));
+    results.forEach((res, idx) => {
+      const r = batch[idx]!;
+      if (res.status === 'fulfilled' && res.value.ok) {
         sent += 1;
-        auditRows.push({ actor_id: actor.id, program_id: programId, action: LOGIN_GUIDE_SMS_ACTION, entity_type: 'users', entity_id: u.id, metadata: { phone_last4: normalizePhone(u.phone)!.slice(-4) } });
+        auditRows.push({ actor_id: actorId, program_id: programId, action: LOGIN_GUIDE_SMS_ACTION, entity_type: 'users', entity_id: r.id, metadata: { phone_last4: normalizePhone(r.phone)!.slice(-4), custom_template: template !== null } });
       } else failed += 1;
     });
   }
   // 발송 이력 = 명단의 '안내 발송됨' 표시 근거. insert 실패를 삼키지 않는다(§6-3).
   if (auditRows.length) {
-    const { error: auditError } = await admin.from('audit_logs').insert(auditRows);
+    const { error: auditError } = await createAdminClient().from('audit_logs').insert(auditRows);
     if (auditError) console.error('login guide audit insert failed:', auditError.message);
   }
   revalidatePath('/nextlab/members');
-  if (sent === 0) return { ok: false, error: `발송된 문자가 없습니다. (실패 ${failed} · 제외 ${skipped} — 비활성 계정·휴대폰 없음)` };
-  return { ok: true, message: `안내 문자 ${sent}건을 발송했습니다.${failed ? ` 실패 ${failed}건.` : ''}${skipped ? ` 제외 ${skipped}건(비활성·휴대폰 없음).` : ''}` };
+  revalidatePath('/nextlab/roster');
+  if (sent === 0) return { ok: false, error: `발송된 문자가 없습니다. (실패 ${failed} · 제외 ${skipped} — 비활성·계정 잠금·휴대폰 없음)` };
+  return { ok: true, message: `안내 문자 ${sent}건을 발송했습니다.${failed ? ` 실패 ${failed}건.` : ''}${skipped ? ` 제외 ${skipped}건(비활성·계정 잠금·휴대폰 없음).` : ''}` };
 }

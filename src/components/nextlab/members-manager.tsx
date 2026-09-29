@@ -21,13 +21,12 @@ import {
   addRosterColumnAction,
   deleteRosterColumnAction,
   setRosterValueAction,
-  sendLoginGuideAction,
   getStaffGroupsAction,
   setStaffGroupsAction,
   type MemberActionState,
   type StaffGroupsInfo,
 } from '@/lib/auth/member-actions';
-import { kstMd } from '@/lib/utils/kst';
+import { kstMd, kstYmd } from '@/lib/utils/kst';
 import { ROLE_LABELS, type UserRole } from '@/lib/auth/roles';
 import { GRADE_LABELS, STAFF_GRADES, type StaffGrade } from '@/lib/auth/capabilities';
 import { cn } from '@/lib/utils';
@@ -44,6 +43,7 @@ import { useConfirm } from '@/components/common/confirm-dialog';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { MentorGroupControls, type MentorGroupInfo } from '@/components/nextlab/mentor-group-controls';
 import { RankBadge } from '@/components/nextlab/matching-lists';
+import { LoginGuideDialog } from '@/components/nextlab/login-guide-dialog';
 import { Search } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
@@ -462,7 +462,7 @@ function RoleSelectForm({ member }: { member: MemberItem }) {
 function RemoveFromProgramForm({ member }: { member: MemberItem }) {
   const [state, action] = useFormState<MemberActionState, FormData>(removeMemberFromProgramAction, undefined);
   return (
-    <form action={action} onSubmit={(e) => { if (!confirm(`${member.name} 님의 이 행사 소속을 해제할까요? 계정과 다른 행사 활동은 유지됩니다.`)) e.preventDefault(); }}>
+    <form action={action} onSubmit={(e) => { if (!confirm(`${member.name} 님의 이 행사 소속을 해제할까요? 회원 명단 > 비활성화 탭으로 이동합니다. 계정과 다른 행사 활동은 유지됩니다.`)) e.preventDefault(); }}>
       <input type="hidden" name="userId" value={member.id} />
       <RowSubmit variant="outline">소속 해제</RowSubmit>
       {state?.ok === false && <span className="ml-1 text-xs text-destructive">{state.error}</span>}
@@ -479,41 +479,124 @@ function RowSubmit({ children, variant }: { children: string; variant?: 'outline
   );
 }
 
-/** 행사 범위 활성/비활성 (program_members.is_active) — 계정 잠금은 LockAccountForm (P31: 다른 행사 로그인은 막지 않는다) */
-function ToggleActiveForm({ member }: { member: MemberItem }) {
-  const [state, action] = useFormState<MemberActionState, FormData>(setMemberActiveAction, undefined);
+/** 비활성 구분 — 행사 비활성화(program_members.is_active=false) / 계정 잠금(users.is_active=false) */
+function inactiveKinds(m: Pick<MemberItem, 'memberActive' | 'is_active'>): ('member' | 'account')[] {
+  const out: ('member' | 'account')[] = [];
+  if (!m.memberActive) out.push('member');
+  if (!m.is_active) out.push('account');
+  return out;
+}
+
+/** 상태 배지 — 활성 / 이 행사 비활성화 / 계정 잠금 (둘 다면 둘 다) */
+function StatusBadges({ member, className }: { member: Pick<MemberItem, 'memberActive' | 'is_active'>; className?: string }) {
+  const kinds = inactiveKinds(member);
+  if (kinds.length === 0) return <Badge className={className}>활성</Badge>;
   return (
-    <form
-      action={action}
-      onSubmit={(e) => {
-        if (member.memberActive && !window.confirm(`${member.name} 회원을 이 행사에서 비활성화합니다. 명단·진행현황에 '비활성화'로 표시되고 이 행사 화면에 들어올 수 없습니다(데이터는 유지, 다시 활성화 가능). 다른 행사 로그인은 막지 않습니다. 계속할까요?`)) e.preventDefault();
-      }}
-    >
-      <input type="hidden" name="userId" value={member.id} />
-      <input type="hidden" name="active" value={member.memberActive ? 'false' : 'true'} />
-      <RowSubmit variant={member.memberActive ? 'destructive' : 'outline'}>
-        {member.memberActive ? '이 행사에서 비활성화' : '이 행사에서 활성화'}
-      </RowSubmit>
-      {state && 'error' in state && state.error && <p role="alert" className="mt-1 text-xs text-destructive">{state.error}</p>}
-    </form>
+    <>
+      {kinds.includes('member') && <Badge variant="destructive" className={className}>이 행사 비활성화</Badge>}
+      {kinds.includes('account') && <Badge variant="outline" className={cn('border-destructive/60 text-destructive', className)}>계정 잠금</Badge>}
+    </>
   );
 }
 
-/** 계정 잠금(users.is_active) — 모든 행사 로그인 차단. 테스트 계정 정리·퇴사 등 (P31) */
-function LockAccountForm({ member }: { member: MemberItem }) {
-  const [state, action] = useFormState<MemberActionState, FormData>(lockMemberAccountAction, undefined);
+/**
+ * 행사 범위 활성/비활성 (program_members.is_active) — 계정 잠금은 LockAccountForm (P31: 다른 행사 로그인은 막지 않는다).
+ * 비활성화하면 역할별 명단에서 빠지고 [비활성화] 탭으로 옮겨진다. 행이 사라지면서 컴포넌트가 언마운트되므로
+ * useFormState 대신 직접 호출 + 전역 토스트로 결과를 알린다.
+ */
+function ToggleActiveForm({ member }: { member: MemberItem }) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+  const { confirm: ask, dialog: confirmDialog } = useConfirm();
+  const activate = !member.memberActive;
+  const run = async () => {
+    if (!activate) {
+      const ok = await ask({
+        title: '이 행사에서 비활성화',
+        description: `${member.name} 회원을 이 행사에서 비활성화할까요?`,
+        impact: [
+          '회원 명단 > 비활성화 탭으로 이동합니다 (역할별 명단·인원 수에서 빠짐).',
+          '이 행사 화면에 들어올 수 없고 배정·문자·조사 대상에서 빠집니다.',
+          '데이터는 그대로 유지되며, 비활성화 탭에서 다시 활성화할 수 있습니다.',
+          '다른 행사 로그인은 막지 않습니다. (로그인 자체를 막으려면 [계정 잠금])',
+        ],
+        confirmLabel: '비활성화',
+        severity: 'danger',
+      });
+      if (!ok) return;
+    }
+    const fd = new FormData();
+    fd.set('userId', member.id);
+    fd.set('active', activate ? 'true' : 'false');
+    start(async () => {
+      const r = await setMemberActiveAction(undefined, fd);
+      if (r?.ok) {
+        setError(null);
+        toast({ title: r.message });
+      } else {
+        const msg = r?.ok === false ? r.error : '상태 변경에 실패했습니다.';
+        setError(msg);
+        toast({ title: msg, variant: 'destructive' });
+      }
+    });
+  };
   return (
-    <form
-      action={action}
-      onSubmit={(e) => {
-        if (member.is_active && !window.confirm(`${member.name} 계정을 잠급니다. 모든 행사에서 로그인이 차단됩니다(데이터 유지, 해제 가능). 계속할까요?`)) e.preventDefault();
-      }}
-    >
-      <input type="hidden" name="userId" value={member.id} />
-      <input type="hidden" name="locked" value={member.is_active ? 'true' : 'false'} />
-      <RowSubmit variant={member.is_active ? 'destructive' : 'outline'}>{member.is_active ? '계정 잠금' : '계정 잠금 해제'}</RowSubmit>
-      {state && 'error' in state && state.error && <p role="alert" className="mt-1 text-xs text-destructive">{state.error}</p>}
-    </form>
+    <div>
+      {confirmDialog}
+      <Button type="button" size="sm" variant={activate ? 'outline' : 'destructive'} disabled={pending} className="h-10 sm:h-9" onClick={() => void run()}>
+        {pending ? '처리 중…' : activate ? '이 행사에서 활성화' : '이 행사에서 비활성화'}
+      </Button>
+      {error && <p role="alert" className="mt-1 max-w-[240px] text-xs text-destructive">{error}</p>}
+    </div>
+  );
+}
+
+/** 계정 잠금(users.is_active) — 모든 행사 로그인 차단. 테스트 계정 정리·퇴사 등 (P31). 잠그면 [비활성화] 탭으로 이동 */
+function LockAccountForm({ member }: { member: MemberItem }) {
+  const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+  const { confirm: ask, dialog: confirmDialog } = useConfirm();
+  const lock = member.is_active;
+  const run = async () => {
+    if (lock) {
+      const ok = await ask({
+        title: '계정 잠금',
+        description: `${member.name} 계정을 잠글까요?`,
+        impact: [
+          '모든 행사에서 로그인이 차단됩니다.',
+          '회원 명단 > 비활성화 탭으로 이동합니다.',
+          '데이터는 유지되며, 비활성화 탭에서 잠금을 해제할 수 있습니다.',
+        ],
+        confirmLabel: '계정 잠금',
+        severity: 'danger',
+      });
+      if (!ok) return;
+    }
+    const fd = new FormData();
+    fd.set('userId', member.id);
+    fd.set('locked', lock ? 'true' : 'false');
+    start(async () => {
+      const r = await lockMemberAccountAction(undefined, fd);
+      if (r?.ok) {
+        setError(null);
+        toast({ title: r.message });
+      } else {
+        const msg = r?.ok === false ? r.error : '계정 상태 변경에 실패했습니다.';
+        setError(msg);
+        toast({ title: msg, variant: 'destructive' });
+      }
+    });
+  };
+  return (
+    <div>
+      {confirmDialog}
+      <Button type="button" size="sm" variant={lock ? 'destructive' : 'outline'} disabled={pending} className="h-10 sm:h-9" onClick={() => void run()}>
+        {pending ? '처리 중…' : lock ? '계정 잠금' : '계정 잠금 해제'}
+      </Button>
+      {error && <p role="alert" className="mt-1 max-w-[240px] text-xs text-destructive">{error}</p>}
+    </div>
   );
 }
 
@@ -648,39 +731,25 @@ function RosterColumnManager({ target, columns }: { target: UserRole; columns: R
   );
 }
 
-/** 선택 회원 로그인 안내 문자 발송 바 */
-function LoginGuideBar({ selected, onDone }: { selected: MemberItem[]; onDone: () => void }) {
-  const [state, action] = useFormState<MemberActionState, FormData>(sendLoginGuideAction, undefined);
-  const [showMessage, setShowMessage] = useState(false);
-  const lastState = useRef<MemberActionState>(undefined);
-  useEffect(() => {
-    if (state !== lastState.current && state?.ok) onDone();
-    lastState.current = state;
-  }, [state, onDone]);
-  const noPhone = selected.filter((m) => ((m.phone ?? '').replace(/\D/g, '').length < 10) || !m.is_active).length;
+/** 선택 회원 로그인 안내 문자 — 요약 바 + [미리보기·발송] 다이얼로그 (발송은 다이얼로그의 확인 버튼에서만) */
+function LoginGuideBar({ selected, role, onDone }: { selected: MemberItem[]; role: 'mentor' | 'mentee'; onDone: () => void }) {
+  const [open, setOpen] = useState(false);
+  const excluded = selected.filter((m) => (m.phone ?? '').replace(/\D/g, '').length < 10 || !m.is_active || !m.memberActive).length;
   return (
     <div className="flex flex-col gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2">
-      <form action={action} className="flex flex-wrap items-center gap-2">
-        <input type="hidden" name="userIds" value={JSON.stringify(selected.map((m) => m.id))} />
-        <span className="text-sm font-medium">{selected.length}명 선택됨{noPhone > 0 && <span className="ml-1 text-xs font-normal text-muted-foreground">(휴대폰 없음·비활성 {noPhone}명 제외)</span>}</span>
-        <RowSubmit>로그인 안내 문자 발송</RowSubmit>
-        <button type="button" className="text-xs text-muted-foreground underline" onClick={() => setShowMessage((v) => !v)}>
-          {showMessage ? '기본 문구 사용' : '문구 직접 쓰기'}
-        </button>
-        {showMessage && (
-          <textarea
-            name="message"
-            rows={2}
-            className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs"
-            placeholder={'첫 줄 문구를 직접 씁니다. {name} 은 회원 이름으로 바뀝니다. 로그인 주소·아이디 안내는 자동으로 뒤에 붙습니다.'}
-          />
-        )}
-      </form>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium">
+          {selected.length}명 선택됨
+          {excluded > 0 && <span className="ml-1 text-xs font-normal text-muted-foreground">(휴대폰 없음·비활성 {excluded}명 제외 예정)</span>}
+        </span>
+        <Button type="button" size="sm" className="h-10 sm:h-9" onClick={() => setOpen(true)}>
+          로그인 안내 문자 미리보기 · 발송
+        </Button>
+      </div>
       <p className="text-[11px] text-muted-foreground">
-        안내 문자에는 로그인 주소와 아이디(이메일·휴대폰), 비밀번호 미변경 회원에게는 임시 비밀번호 안내(휴대폰 번호)가 포함됩니다. 행사 문자 API 가 등록돼 있으면 그 발신번호로 발송됩니다.
+        미리보기 창에서 문구를 고치고(자동화 필드: 이름·아이디·로그인 주소·{role === 'mentor' ? '매칭 멘티' : '담당 멘토'} 등) 받는 사람별 실제 문자를 확인한 뒤 발송합니다. 행사 문자 API 가 등록돼 있으면 그 발신번호로 발송됩니다.
       </p>
-      {state?.ok === false && <p className="text-xs font-medium text-destructive">{state.error}</p>}
-      {state?.ok && <p className="text-xs font-medium text-status-approved">{state.message}</p>}
+      <LoginGuideDialog open={open} onOpenChange={setOpen} userIds={selected.map((m) => m.id)} role={role} onSent={onDone} />
     </div>
   );
 }
@@ -844,7 +913,7 @@ export function MembersManager({
         {(tab === 'mentor' || tab === 'mentee') && (
           selectedMembers.length > 0 ? (
             <>
-              <LoginGuideBar selected={selectedMembers} onDone={() => setSelected(new Set())} />
+              <LoginGuideBar selected={selectedMembers} role={tab} onDone={() => setSelected(new Set())} />
               {/* (P31) 일괄 작업 마운트 지점 — 다른 작업자가 실제 컴포넌트로 교체 */}
               <RosterBulkActions selectedIds={Array.from(selected)} kind={kind === 'staff' ? 'staff' : kind} groups={bulkGroups} onDone={() => setSelected(new Set())} />
             </>
@@ -929,9 +998,8 @@ export function MembersManager({
                         {/* (P31) 폰: 숨긴 역할·상태 열 요약 + 관리 버튼을 이름 아래에 */}
                         <div className="mt-1 flex flex-wrap items-center gap-1 md:hidden">
                           <Badge variant="secondary" className="text-[10px]">{ROLE_LABELS[m.role]}{m.role === 'nextlab' ? ` · ${GRADE_LABELS[(m.grade as StaffGrade | null) ?? 'pl']}` : ''}</Badge>
-                          {!m.is_active && <Badge variant="outline" className="text-[10px]">비활성</Badge>}
+                          {inactiveKinds(m).length > 0 && <StatusBadges member={m} className="text-[10px]" />}
                           {m.must_change_password && <Badge variant="outline" className="text-[10px]">비번변경대기</Badge>}
-                          {!m.memberActive && <span className="text-[10px] text-muted-foreground">소속 해제됨</span>}
                         </div>
                         <div className="mt-1.5 flex gap-1.5 md:hidden">
                           {(m.role === 'mentor' || m.role === 'mentee') && m.is_active && m.memberActive ? (
@@ -967,15 +1035,12 @@ export function MembersManager({
                           {m.primaryRole !== m.role && (
                             <span className="text-[10px] text-violet-700" title="계정 기본 역할과 다름 — 다른 행사에서는 이 역할로 활동">기본 {ROLE_LABELS[m.primaryRole]}</span>
                           )}
-                          {!m.memberActive && <span className="text-[10px] text-muted-foreground">소속 해제됨</span>}
                         </div>
                       </TableCell>
                       <TableCell className="hidden md:table-cell">
                         <div className="flex flex-col items-start gap-1">
                           <div className="flex flex-wrap gap-1">
-                            <Badge variant={m.is_active ? 'default' : 'outline'}>
-                              {m.is_active ? '활성' : '비활성'}
-                            </Badge>
+                            <StatusBadges member={m} />
                             {m.must_change_password && (
                               <Badge variant="outline" className="text-xs">
                                 비번변경대기
@@ -1003,7 +1068,7 @@ export function MembersManager({
                       {showProgress && (
                         <TableCell>
                           <div className="flex flex-col gap-1">
-                            {!m.is_active && (
+                            {inactiveKinds(m).length > 0 && (
                               <Badge variant="destructive" className="w-fit text-[10px]" title="비활성 회원 — 진행현황에 비활성화로 표시됩니다.">비활성화</Badge>
                             )}
                             {(progress?.[m.id] ?? []).map((p) => (
@@ -1102,3 +1167,127 @@ function MemberEditPanel({ member: m }: { member: MemberItem }) {
 }
 
 
+/** 비활성화 탭 행 — 비활성 구분·시각 (audit_logs 기반, 기록이 없으면 null) */
+export interface InactiveMemberItem extends MemberItem {
+  memberDeactivatedAt: string | null;
+  /** 마지막 기록이 [소속 해제]였는지 */
+  removedFromProgram: boolean;
+  accountLockedAt: string | null;
+}
+
+const INACTIVE_ROLE_FILTERS: { key: 'all' | UserRole; label: string }[] = [
+  { key: 'all', label: '전체' },
+  { key: 'mentee', label: '멘티' },
+  { key: 'mentor', label: '멘토' },
+  { key: 'institution', label: '발주처' },
+  { key: 'nextlab', label: '운영사' },
+];
+
+/**
+ * 회원 명단 > 비활성화 탭 — 이 행사에서 비활성화된 회원(program_members.is_active=false)과 계정 잠금 회원(users.is_active=false).
+ * 역할별 명단에는 나오지 않고 여기에만 모인다. [이 행사에서 활성화] / [계정 잠금 해제] 로 되돌린다.
+ */
+export function InactiveMembersList({ members }: { members: InactiveMemberItem[] }) {
+  const [query, setQuery] = useState('');
+  const [role, setRole] = useState<'all' | UserRole>('all');
+  const q = query.trim();
+  const qLower = q.toLowerCase();
+  const qDigits = q.replace(/\D/g, '');
+  const filtered = members
+    .filter((m) => role === 'all' || m.role === role)
+    .filter((m) => !q || m.name.includes(q) || (m.email ?? '').toLowerCase().includes(qLower) || (qDigits.length > 0 && (m.phone ?? '').replace(/\D/g, '').includes(qDigits)))
+    .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  const countOf = (r: 'all' | UserRole) => (r === 'all' ? members.length : members.filter((m) => m.role === r).length);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative w-full sm:w-auto">
+          <Search className="pointer-events-none absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="이름·이메일·휴대폰 검색" className="h-10 w-full pl-8 sm:h-9 sm:w-52" />
+        </div>
+        <div className="flex flex-wrap items-center gap-1 text-xs">
+          {INACTIVE_ROLE_FILTERS.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              onClick={() => setRole(f.key)}
+              className={cn('rounded-full border px-2.5 py-1.5 font-semibold sm:py-1', role === f.key ? 'border-primary bg-primary text-primary-foreground' : 'bg-background hover:bg-accent')}
+            >
+              {f.label} {countOf(f.key)}
+            </button>
+          ))}
+        </div>
+        <span className="text-xs text-muted-foreground">{filtered.length}명 · 가나다순</span>
+      </div>
+
+      <div className="overflow-x-auto rounded-lg border bg-card">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>이름</TableHead>
+              <TableHead className="whitespace-nowrap">역할</TableHead>
+              <TableHead className="hidden whitespace-nowrap md:table-cell">이메일/핸드폰</TableHead>
+              <TableHead className="whitespace-nowrap">비활성 구분</TableHead>
+              <TableHead className="text-right">되돌리기</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                  {members.length === 0 ? '비활성화된 회원이 없습니다.' : '조건에 맞는 회원이 없습니다.'}
+                </TableCell>
+              </TableRow>
+            ) : (
+              filtered.map((m) => (
+                <TableRow key={m.id}>
+                  <TableCell className="whitespace-nowrap font-medium">
+                    {m.name}
+                    {[m.organization, m.position].filter(Boolean).length > 0 && (
+                      <div className="text-[11px] font-normal text-muted-foreground">{[m.organization, m.position].filter(Boolean).join(' · ')}</div>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary" className="whitespace-nowrap">
+                      {ROLE_LABELS[m.role]}
+                      {m.role === 'nextlab' && <span className="ml-1 font-normal text-muted-foreground">· {GRADE_LABELS[(m.grade as StaffGrade | null) ?? 'pl']}</span>}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="hidden whitespace-nowrap text-xs text-muted-foreground md:table-cell">
+                    <div>{m.email ?? '-'}</div>
+                    <div>{m.phone ?? '-'}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-col items-start gap-1">
+                      {!m.memberActive && (
+                        <div className="flex flex-wrap items-center gap-1">
+                          <Badge variant="destructive" className="text-[10px]">이 행사 비활성화</Badge>
+                          <span className="text-[11px] text-muted-foreground">
+                            {m.memberDeactivatedAt ? `${kstYmd(m.memberDeactivatedAt)}${m.removedFromProgram ? ' · 소속 해제' : ''}` : '일자 기록 없음'}
+                          </span>
+                        </div>
+                      )}
+                      {!m.is_active && (
+                        <div className="flex flex-wrap items-center gap-1">
+                          <Badge variant="outline" className="border-destructive/60 text-[10px] text-destructive">계정 잠금</Badge>
+                          <span className="text-[11px] text-muted-foreground">{m.accountLockedAt ? kstYmd(m.accountLockedAt) : '일자 기록 없음'}</span>
+                        </div>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex flex-wrap items-start justify-end gap-2">
+                      {!m.memberActive && <ToggleActiveForm member={m} />}
+                      {!m.is_active && <LockAccountForm member={m} />}
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}

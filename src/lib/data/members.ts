@@ -7,6 +7,8 @@ import { mentorEligibleForGroup } from '@/lib/matching/eligibility';
 import { fetchAll, fetchAllIn } from '@/lib/supabase/paginate';
 import { listMentorDocStatus } from '@/lib/mentor-docs/data';
 import { normalizePhone } from '@/lib/utils/phone';
+import type { LoginGuideRecipient } from '@/lib/sms/login-guide-template';
+import { menteeOrg } from '@/lib/utils/labels';
 
 export interface MentorLoad {
   id: string;
@@ -270,3 +272,170 @@ export async function listSmsRecipients(programId: string, supportTypeId?: strin
       return r !== 0 ? r : a.name.localeCompare(b.name, 'ko');
     });
 }
+
+/* ── 비활성화 탭 (행사 비활성화·계정 잠금) ─────────────────────────────── */
+
+/** 회원이 일반 명단(멘티/멘토/발주처/운영사 탭)에 보이는지 — 행사 소속 활성 + 계정 활성 둘 다여야 한다 */
+export function isRosterActive(m: Pick<MemberRow, 'memberActive' | 'is_active'>): boolean {
+  return m.memberActive && m.is_active;
+}
+
+export interface DeactivationInfo {
+  /** 가장 최근 '이 행사 비활성화' 또는 '소속 해제' 시각 */
+  memberAt: string | null;
+  /** 마지막 기록이 소속 해제(membership.remove)였는지 */
+  removed: boolean;
+  /** 가장 최근 계정 잠금 시각 */
+  accountAt: string | null;
+}
+
+/**
+ * 비활성화 시각 — audit_logs 의 membership.deactivate / membership.remove / account.deactivate (행사 범위) 최신값.
+ * 비활성 회원만 넘기므로 조회량이 작다. 기록이 없으면(오래된 데이터·다른 경로) null.
+ */
+export async function loadDeactivationInfo(programId: string, userIds: string[]): Promise<Record<string, DeactivationInfo>> {
+  const out: Record<string, DeactivationInfo> = {};
+  if (userIds.length === 0) return out;
+  const admin = createAdminClient();
+  const rows = await fetchAllIn<{ entity_id: string | null; action: string; created_at: string }>(userIds, (chunk, from, to) =>
+    admin
+      .from('audit_logs')
+      .select('entity_id, action, created_at')
+      .eq('program_id', programId)
+      .eq('entity_type', 'users')
+      .in('action', ['membership.deactivate', 'membership.remove', 'account.deactivate'])
+      .in('entity_id', chunk)
+      .order('created_at', { ascending: false })
+      .range(from, to),
+  );
+  for (const r of rows) {
+    if (!r.entity_id) continue;
+    const info = (out[r.entity_id] ??= { memberAt: null, removed: false, accountAt: null });
+    if (r.action === 'account.deactivate') {
+      if (!info.accountAt || r.created_at > info.accountAt) info.accountAt = r.created_at;
+    } else if (!info.memberAt || r.created_at > info.memberAt) {
+      info.memberAt = r.created_at;
+      info.removed = r.action === 'membership.remove';
+    }
+  }
+  return out;
+}
+
+/* ── 로그인 안내 문자 수신자 (미리보기·발송 공용) ──────────────────────── */
+
+/**
+ * 로그인 안내 문자 치환 데이터 — 미리보기(서버 액션 → JSON)와 실제 발송이 같은 로더·같은 렌더 함수를 쓴다.
+ * 매칭 정보는 이 행사의 **활성** mentor_assignments 기준, supportTypeId(범위)가 있으면 그 그룹만.
+ * 이 행사 소속이 아닌 id 는 결과에서 빠진다(범위 강제). 발송 제외 사유는 `skip` 으로 표시.
+ */
+export async function loadLoginGuideRecipients(
+  programId: string,
+  supportTypeId: string | null,
+  userIds: string[],
+): Promise<{ program: { name: string; footer: string | null } | null; recipients: LoginGuideRecipient[] }> {
+  const admin = createAdminClient();
+  const ids = Array.from(new Set(userIds.filter((x) => typeof x === 'string' && x.length > 0)));
+  const [{ data: program }, memberships, groups] = await Promise.all([
+    admin.from('programs').select('name, sms_footer').eq('id', programId).maybeSingle(),
+    fetchAllIn<{ user_id: string; role: string; is_active: boolean }>(ids, (chunk, from, to) => admin.from('program_members').select('user_id, role, is_active').eq('program_id', programId).in('user_id', chunk).range(from, to)),
+    fetchAll<{ id: string; name: string }>((from, to) => admin.from('support_types').select('id, name').eq('program_id', programId).range(from, to)),
+  ]);
+  if (!program) return { program: null, recipients: [] };
+  const groupName = new Map(groups.map((g) => [g.id, g.name]));
+  const memberOf = new Map(memberships.map((m) => [m.user_id, m]));
+  const memberIds = ids.filter((id) => memberOf.has(id));
+  if (memberIds.length === 0) return { program: { name: program.name, footer: program.sms_footer ?? null }, recipients: [] };
+  const mentorIds = memberIds.filter((id) => memberOf.get(id)!.role === 'mentor');
+  const menteeIds = memberIds.filter((id) => memberOf.get(id)!.role === 'mentee');
+  const inScope = (stid: string | null | undefined) => !supportTypeId || stid === supportTypeId;
+
+  type CaseLite = { id: string; mentee_id: string | null; owner_name: string; business_name: string; phone: string | null; support_type_id: string };
+  const [users, mentorAssigns, menteeCases] = await Promise.all([
+    fetchAllIn<{ id: string; name: string; email: string | null; phone: string | null; must_change_password: boolean; is_active: boolean; organization: string | null }>(memberIds, (chunk, from, to) =>
+      admin.from('users').select('id, name, email, phone, must_change_password, is_active, organization').in('id', chunk).range(from, to),
+    ),
+    fetchAllIn<{ mentor_id: string; cases: CaseLite | null }>(mentorIds, (chunk, from, to) =>
+      admin.from('mentor_assignments').select('mentor_id, cases!inner(id, mentee_id, owner_name, business_name, phone, support_type_id, program_id)').in('mentor_id', chunk).eq('is_active', true).eq('cases.program_id', programId).range(from, to),
+    ),
+    fetchAllIn<CaseLite & { created_at: string }>(menteeIds, (chunk, from, to) =>
+      admin.from('cases').select('id, mentee_id, owner_name, business_name, phone, support_type_id, created_at').eq('program_id', programId).in('mentee_id', chunk).order('created_at', { ascending: false }).range(from, to),
+    ),
+  ]);
+  const scopedMenteeCases = menteeCases.filter((c) => inScope(c.support_type_id));
+  const menteeCaseIds = scopedMenteeCases.map((c) => c.id);
+  const menteeAssigns = await fetchAllIn<{ case_id: string; mentor_id: string }>(menteeCaseIds, (chunk, from, to) =>
+    admin.from('mentor_assignments').select('case_id, mentor_id').in('case_id', chunk).eq('is_active', true).range(from, to),
+  );
+  // 이름·휴대폰이 필요한 상대방 (멘토의 멘티 계정, 멘티의 멘토 계정)
+  const otherIds = Array.from(
+    new Set([
+      ...mentorAssigns.map((a) => a.cases?.mentee_id).filter((x): x is string => !!x),
+      ...menteeAssigns.map((a) => a.mentor_id),
+    ]),
+  );
+  const others = await fetchAllIn<{ id: string; name: string; phone: string | null }>(otherIds, (chunk, from, to) => admin.from('users').select('id, name, phone').in('id', chunk).range(from, to));
+  const otherById = new Map(others.map((o) => [o.id, o]));
+
+  const menteesOf = new Map<string, { name: string; phone: string | null }[]>();
+  const mentorGroups = new Map<string, Set<string>>();
+  for (const a of mentorAssigns) {
+    const c = a.cases;
+    if (!c || !inScope(c.support_type_id)) continue;
+    const u = c.mentee_id ? otherById.get(c.mentee_id) : undefined;
+    const list = menteesOf.get(a.mentor_id) ?? [];
+    list.push({ name: u?.name ?? c.owner_name, phone: u?.phone ?? c.phone ?? null });
+    menteesOf.set(a.mentor_id, list);
+    (mentorGroups.get(a.mentor_id) ?? mentorGroups.set(a.mentor_id, new Set()).get(a.mentor_id)!).add(c.support_type_id);
+  }
+  const mentorsOfCase = new Map<string, string[]>();
+  for (const a of menteeAssigns) (mentorsOfCase.get(a.case_id) ?? mentorsOfCase.set(a.case_id, []).get(a.case_id)!).push(a.mentor_id);
+
+  const byUser = new Map(users.map((u) => [u.id, u]));
+  const recipients: LoginGuideRecipient[] = [];
+  for (const id of memberIds) {
+    const u = byUser.get(id);
+    if (!u) continue;
+    const mem = memberOf.get(id)!;
+    const role = mem.role as UserRole;
+    let organization = u.organization;
+    let groupNames: string[] = [];
+    let mentees: { name: string; phone: string | null }[] = [];
+    const mentors: { name: string; phone: string | null }[] = [];
+    if (role === 'mentor') {
+      mentees = (menteesOf.get(id) ?? []).sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+      groupNames = Array.from(mentorGroups.get(id) ?? []).map((g) => groupName.get(g) ?? '').filter(Boolean);
+    } else if (role === 'mentee') {
+      const cs = scopedMenteeCases.filter((c) => c.mentee_id === id);
+      groupNames = Array.from(new Set(cs.map((c) => groupName.get(c.support_type_id) ?? '').filter(Boolean)));
+      // 닉네임(business_name)이 이름과 같으면 소속 없음으로 본다 (P27 표시 규칙)
+      if (!organization) organization = cs.map((c) => menteeOrg(c.owner_name, c.business_name)).find(Boolean) ?? null;
+      const seen = new Set<string>();
+      for (const c of cs) {
+        for (const mid of mentorsOfCase.get(c.id) ?? []) {
+          if (seen.has(mid)) continue;
+          seen.add(mid);
+          const m = otherById.get(mid);
+          if (m) mentors.push({ name: m.name, phone: m.phone });
+        }
+      }
+    }
+    if (groupNames.length === 0 && supportTypeId && groupName.has(supportTypeId) && (role === 'mentor' || role === 'mentee')) groupNames = [groupName.get(supportTypeId)!];
+    const skip: LoginGuideRecipient['skip'] = !mem.is_active ? 'inactive_member' : !u.is_active ? 'account_locked' : (normalizePhone(u.phone) ?? '').length < 10 ? 'no_phone' : null;
+    recipients.push({
+      id,
+      name: u.name,
+      role,
+      email: u.email,
+      phone: u.phone,
+      mustChangePassword: u.must_change_password,
+      organization,
+      groupNames,
+      mentees,
+      mentors,
+      skip,
+    });
+  }
+  recipients.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  return { program: { name: program.name, footer: program.sms_footer ?? null }, recipients };
+}
+
