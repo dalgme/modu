@@ -1,8 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // (2026-09-30) 한글(HWP) 미리보기 라이브러리 hwp.js 가 Node 전용 'fs' 를 import 한다 — 브라우저 번들에서는 빈 모듈로 대체
+  // pdf.js(pdfjs-dist, PDF 미리보기)는 Node 에서만 쓰는 canvas 모듈을 선택적으로 찾는다 — 브라우저 번들에서는 빈 모듈로 대체
   webpack(config, { isServer }) {
-    if (!isServer) config.resolve.fallback = { ...(config.resolve.fallback ?? {}), fs: false };
+    if (!isServer) config.resolve.fallback = { ...(config.resolve.fallback ?? {}), fs: false, canvas: false };
     return config;
   },
   // 구 경로 리다이렉트 (P32) — 붙임서식 노출 토글 페이지(/admin/settings/features)는 폐지, 운영 설정으로 보낸다.
@@ -18,7 +19,8 @@ const nextConfig = {
       bodySizeLimit: '20mb',
     },
     // Playwright(PDF 생성)는 번들링하지 않고 런타임 require (native 의존성)
-    serverComponentsExternalPackages: ['playwright-core', '@sparticuz/chromium'],
+    // word-extractor(Word DOC 글자 추출 미리보기, /api/files/doc/[id]/text)도 번들하지 않고 런타임 require
+    serverComponentsExternalPackages: ['playwright-core', '@sparticuz/chromium', 'word-extractor'],
     // @sparticuz/chromium 의 Chromium 바이너리(bin/*.br)는 코드 참조가 아니라
     // 데이터 파일이라 자동 추적에서 누락된다. PDF 생성 라우트에 강제 포함한다.
     // PDF 를 만드는 서버 액션이 호출되는 페이지 라우트 전부 (회차 보고서·관찰의견서·정산서):
