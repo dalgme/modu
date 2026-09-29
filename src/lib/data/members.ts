@@ -9,6 +9,8 @@ import { listMentorDocStatus } from '@/lib/mentor-docs/data';
 import { normalizePhone } from '@/lib/utils/phone';
 import type { LoginGuideRecipient } from '@/lib/sms/login-guide-template';
 import { menteeOrg } from '@/lib/utils/labels';
+import { FORCE_END_REQUIRED_STATUSES, requiresForceEnd, type ForceEndBlock } from '@/lib/workflow/force-end-rule';
+import type { CaseStatus } from '@/types/case-status';
 
 export interface MentorLoad {
   id: string;
@@ -439,3 +441,35 @@ export async function loadLoginGuideRecipients(
   return { program: { name: program.name, footer: program.sms_footer ?? null }, recipients };
 }
 
+
+/**
+ * (P36-2) 비활성화 대신 강제 종료가 필요한 멘티 — 이 행사에서 진행 중 상태이고 보고서 등록 회차가 1건 이상인 케이스.
+ * 반환: 멘티 id → 첫 번째 막는 케이스. 규칙은 `requiresForceEnd`(force-end-rule.ts) 하나 — 명단 버튼과 서버 게이트가 같이 쓴다.
+ */
+export async function loadForceEndBlocks(programId: string, userIds: string[]): Promise<Map<string, ForceEndBlock>> {
+  const out = new Map<string, ForceEndBlock>();
+  const ids = Array.from(new Set(userIds.filter(Boolean)));
+  if (ids.length === 0) return out;
+  const admin = createAdminClient();
+  const cases = await fetchAllIn<{ id: string; mentee_id: string | null; status: CaseStatus; support_types: { name: string } | null }>(ids, (chunk, from, to) =>
+    admin
+      .from('cases')
+      .select('id, mentee_id, status, support_types(name)')
+      .eq('program_id', programId)
+      .in('mentee_id', chunk)
+      .in('status', [...FORCE_END_REQUIRED_STATUSES])
+      .range(from, to),
+  );
+  if (cases.length === 0) return out;
+  const logs = await fetchAllIn<{ case_id: string }>(cases.map((c) => c.id), (chunk, from, to) =>
+    admin.from('mentoring_logs').select('case_id').in('case_id', chunk).not('report_registered_at', 'is', null).range(from, to),
+  );
+  const reported = new Map<string, number>();
+  for (const l of logs) reported.set(l.case_id, (reported.get(l.case_id) ?? 0) + 1);
+  for (const c of cases) {
+    if (!c.mentee_id || out.has(c.mentee_id)) continue;
+    const n = reported.get(c.id) ?? 0;
+    if (requiresForceEnd(c.status, n)) out.set(c.mentee_id, { caseId: c.id, reportedRounds: n, groupName: c.support_types?.name ?? null });
+  }
+  return out;
+}

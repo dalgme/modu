@@ -13,7 +13,8 @@ import { createAccountSchema, inviteMenteeSchema } from '@/lib/validations/auth'
 import { contextOrNull } from '@/lib/programs/context';
 import { resolveUserByIdentifier, toStoredPhone } from '@/lib/auth/identifier';
 import { normalizeEmail, normalizePhone } from '@/lib/utils/phone';
-import { LOGIN_GUIDE_SMS_ACTION, loadLoginGuideRecipients } from '@/lib/data/members';
+import { LOGIN_GUIDE_SMS_ACTION, loadForceEndBlocks, loadLoginGuideRecipients } from '@/lib/data/members';
+import { forceEndMessage } from '@/lib/workflow/force-end-rule';
 import {
   defaultLoginGuideTemplate,
   legacyHeadTemplate,
@@ -247,6 +248,14 @@ export async function inviteMenteeAction(
  * 비활성 = 이 행사에서 명단·배정·문자·조사 대상에서 빠지고 진행현황에 '비활성화'로 표시. 다른 행사 활동과 로그인에는 영향 없다.
  * 계정 자체를 잠그려면(로그인 차단) `lockMemberAccountAction` 을 쓴다.
  */
+/** (P36-2) 멘토링 1회 이상 진행된 멘티는 비활성화·계정 잠금·소속 해제 대신 강제 종료(멘티 중도 종료)로 — 막아야 하면 오류 문구 */
+async function forceEndDenied(programId: string, userId: string): Promise<string | null> {
+  const block = (await loadForceEndBlocks(programId, [userId])).get(userId);
+  if (!block) return null;
+  const { data: u } = await createAdminClient().from('users').select('name').eq('id', userId).maybeSingle();
+  return forceEndMessage(u?.name ?? null, block);
+}
+
 export async function setMemberActiveAction(
   _prev: MemberActionState,
   formData: FormData,
@@ -266,6 +275,8 @@ export async function setMemberActiveAction(
   if (!active) {
     const denied = await guardStaffChange(ctx, await membershipOf(programId, userId), userId, { demotes: true });
     if (denied) return { ok: false, error: denied };
+    const blocked = await forceEndDenied(programId, userId);
+    if (blocked) return { ok: false, error: blocked };
   }
 
   const admin = createAdminClient();
@@ -306,6 +317,8 @@ export async function lockMemberAccountAction(
   if (locked) {
     const denied = await guardStaffChange(ctx, await membershipOf(programId, userId), userId, { demotes: true });
     if (denied) return { ok: false, error: denied };
+    const blocked = await forceEndDenied(programId, userId);
+    if (blocked) return { ok: false, error: blocked };
   }
   const admin = createAdminClient();
   const { data: target } = await admin.from('users').select('is_platform_admin').eq('id', userId).maybeSingle();
@@ -528,6 +541,7 @@ export async function removeMemberFromProgramAction(
   if (!ctx || !programId || !userId || !(await assertMemberOfProgram(programId, userId))) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
   if (userId === actor.id) return { ok: false, error: '본인 소속은 해제할 수 없습니다.' };
   { const denied = await guardStaffChange(ctx, await membershipOf(programId, userId), userId, { demotes: true }); if (denied) return { ok: false, error: denied }; }
+  { const blocked = await forceEndDenied(programId, userId); if (blocked) return { ok: false, error: blocked }; }
   const admin = createAdminClient();
   const { count: activeAssign } = await admin.from('mentor_assignments').select('id, cases!inner(program_id)', { count: 'exact', head: true }).eq('mentor_id', userId).eq('is_active', true).eq('cases.program_id', programId);
   if ((activeAssign ?? 0) > 0) return { ok: false, error: '이 행사에서 활성 배정이 있는 멘토입니다. 먼저 배정을 교체·회수하세요.' };

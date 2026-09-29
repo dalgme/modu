@@ -3,7 +3,7 @@ import { Briefcase, Building2, Download, GraduationCap, Link2, Network, UserPlus
 
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
-import { isRosterActive, listProgramMembers, loadDeactivationInfo } from '@/lib/data/members';
+import { isRosterActive, listProgramMembers, loadDeactivationInfo, loadForceEndBlocks } from '@/lib/data/members';
 import { listRosterColumns } from '@/lib/data/roster-columns';
 import { listCases } from '@/lib/data/cases';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -65,6 +65,8 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     listProgramMembers(ctx.programId, ctx.supportTypeId),
     listRosterColumns(ctx.programId),
   ]);
+  // (P36-2) 멘토링 1회 이상 진행된 멘티는 비활성화 대신 강제 종료 — 서버 게이트와 같은 로더
+  const forceEnd = await loadForceEndBlocks(ctx.programId, members.filter((m) => m.role === 'mentee').map((m) => m.id));
   const allItems = members.map((m) => ({
     id: m.id,
     email: m.email,
@@ -82,6 +84,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     note: m.note,
     is_active: m.is_active,
     must_change_password: m.must_change_password,
+    forceEnd: forceEnd.get(m.id) ?? null,
   }));
   // 역할별 명단(멘티/멘토/발주처/운영사 탭)은 행사 소속 활성 + 계정 활성 회원만. 나머지는 [비활성화] 탭에만 나온다.
   const memberItems = allItems.filter(isRosterActive);

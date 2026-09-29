@@ -8,6 +8,8 @@ import { contextOrNull, type ProgramContext } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import type { UserRole } from '@/lib/auth/roles';
+import { loadForceEndBlocks } from '@/lib/data/members';
+import { forceEndMessage } from '@/lib/workflow/force-end-rule';
 
 /**
  * 회원 명단 일괄 작업 (P31) — 선택한 회원에게 단건 액션의 규칙을 그대로 반복 적용한다.
@@ -80,6 +82,8 @@ export async function bulkSetMemberActiveAction(userIds: string[], active: boole
   // 마지막 PL 판정용 — 이 행사의 운영사 담당자 전원
   const { data: staff } = await admin.from('program_members').select('user_id, role, grade, is_active').eq('program_id', g.ctx.programId).eq('role', 'nextlab');
   const staffAll = (staff ?? []) as MemberLite[];
+  // (P36-2) 멘토링 1회 이상 진행된 멘티는 비활성화 대신 강제 종료 — 단건 액션과 같은 규칙
+  const forceEnd = active ? new Map() : await loadForceEndBlocks(g.ctx.programId, ids);
   const failed: BulkItemResult[] = [];
   const audits: Parameters<typeof auditMany>[0] = [];
   let done = 0;
@@ -91,6 +95,8 @@ export async function bulkSetMemberActiveAction(userIds: string[], active: boole
     if (!active) {
       const guard = await staffGuard(g.ctx, m, staffAll.filter((s) => !deactivating.has(s.user_id)));
       if (guard) { failed.push({ userId: id, ok: false, error: guard }); continue; }
+      const block = forceEnd.get(id);
+      if (block) { failed.push({ userId: id, ok: false, error: forceEndMessage(null, block) }); continue; }
     }
     const { error } = await admin.from('program_members').update(active ? { is_active: true, left_at: null } : { is_active: false }).eq('program_id', g.ctx.programId).eq('user_id', id);
     if (error) { failed.push({ userId: id, ok: false, error: error.message }); continue; }

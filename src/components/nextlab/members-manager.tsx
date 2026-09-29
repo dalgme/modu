@@ -45,6 +45,7 @@ import { MentorGroupControls, type MentorGroupInfo } from '@/components/nextlab/
 import { RankBadge } from '@/components/nextlab/matching-lists';
 import { LoginGuideDialog } from '@/components/nextlab/login-guide-dialog';
 import { Search } from 'lucide-react';
+import { forceEndHref, type ForceEndBlock } from '@/lib/workflow/force-end-rule';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -83,6 +84,8 @@ export interface MemberItem {
   rank?: number | null;
   /** 멘토: 그룹 지정·원천징수 (정보 수정 패널, P27-14) */
   mentorGroups?: MentorGroupInfo[];
+  /** (P36-2) 멘티: 멘토링 1회 이상 진행된 진행 중 케이스 — 있으면 비활성화·잠금·소속 해제 대신 강제 종료 안내 */
+  forceEnd?: ForceEndBlock | null;
 }
 
 export interface RosterColumnItem {
@@ -1148,6 +1151,24 @@ export function MembersManager({
   );
 }
 
+/**
+ * (P36-2) 멘토링 1회 이상 진행된 멘티 — 비활성화·계정 잠금·소속 해제 버튼 대신 강제 종료(멘티 중도 종료) 경로를 안내한다.
+ * 조건은 서버 게이트와 같은 `requiresForceEnd`(force-end-rule.ts). 중도 종료 후에는 다시 비활성화 버튼이 나온다.
+ */
+function ForceEndNotice({ block }: { block: ForceEndBlock }) {
+  return (
+    <div className="flex w-full flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:w-auto sm:max-w-md dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
+      <span>
+        {block.groupName ? `${block.groupName} · ` : ''}멘토링 {block.reportedRounds}회 진행 — <b>비활성화할 수 없습니다.</b> 강제 종료(멘티 중도 종료)로
+        처리하면 이행 회차가 부분 정산된 뒤 비활성화할 수 있습니다.
+      </span>
+      <Button asChild size="sm" variant="outline" className="self-start border-amber-400">
+        <Link href={forceEndHref(block.caseId)}>강제 종료(중도 종료)로 처리</Link>
+      </Button>
+    </div>
+  );
+}
+
 /** 회원 편집 패널 본문 — 데스크톱은 표 안 행, 폰은 다이얼로그에서 같은 내용을 쓴다 (P31) */
 function MemberEditPanel({ member: m }: { member: MemberItem }) {
   return (
@@ -1156,9 +1177,15 @@ function MemberEditPanel({ member: m }: { member: MemberItem }) {
       {(m.role === 'nextlab' || m.role === 'institution') && <StaffGroupChips member={m} />}
       <div className="flex flex-wrap items-start gap-2 border-t pt-3">
         <RoleSelectForm member={m} />
-        {m.memberActive && <RemoveFromProgramForm member={m} />}
-        <ToggleActiveForm member={m} />
-        <LockAccountForm member={m} />
+        {m.forceEnd ? (
+          <ForceEndNotice block={m.forceEnd} />
+        ) : (
+          <>
+            {m.memberActive && <RemoveFromProgramForm member={m} />}
+            <ToggleActiveForm member={m} />
+            <LockAccountForm member={m} />
+          </>
+        )}
         <ResetPasswordForm member={m} />
         <DeleteMemberForm member={m} />
       </div>
