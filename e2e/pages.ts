@@ -13,6 +13,7 @@ export const ROSTER_TAB_KEYS = ['mentee', 'mentor', 'mentee-match', 'mentor-matc
 export const BOARD_TAB_KEYS = ['requests', 'all', 'inquiries', 'qna', 'messages', 'faq'] as const;
 export const REVIEW_TAB_KEYS = ['pending', 'revision', 'mentor-input'] as const;
 export const SETTLEMENT_TAB_KEYS = ['pending', 'all', 'tax'] as const;
+export const SCHEDULE_TAB_KEYS = ['today', 'calendar', 'mentor', 'detail'] as const;
 export const SMS_TAB_KEYS = ['send', 'reminder', 'scheduled', 'history'] as const;
 
 const withTabs = (base: string, keys: readonly string[]) => keys.map((k) => `${base}?tab=${k}`);
@@ -28,6 +29,8 @@ export const NEXTLAB_PAGES: readonly string[] = [
   ...withTabs('/nextlab/review', REVIEW_TAB_KEYS),
   '/nextlab/roster',
   ...withTabs('/nextlab/roster', ROSTER_TAB_KEYS),
+  '/nextlab/schedule',
+  ...withTabs('/nextlab/schedule', SCHEDULE_TAB_KEYS),
   '/nextlab/board',
   ...withTabs('/nextlab/board', BOARD_TAB_KEYS),
   '/nextlab/settlements',

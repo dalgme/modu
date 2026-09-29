@@ -8,7 +8,7 @@ import type { ScheduleEvent } from '@/lib/data/schedule';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { menteeLabel } from '@/lib/utils/labels';
-import { KST_WEEKDAYS, calendarYmd, kstHm, kstMd, kstWeekdayLabel, kstYmd, toKstCalendar } from '@/lib/utils/kst';
+import { KST_WEEKDAYS, calendarYmd, kstHm, kstMd, kstStartOfDay, kstWeekdayLabel, kstYmd, toKstCalendar } from '@/lib/utils/kst';
 
 type View = 'month' | 'week' | 'day';
 
@@ -44,9 +44,24 @@ const STATUS_LABEL = { done: '완료', planned: '예약', pending: '보고서 �
  * 컨설팅 스케줄 달력 (P20) — 월/주/일 보기. 멘토·멘티 화면 공용.
  * caseHrefBase 를 주면 이벤트 클릭 → 케이스 상세로 이동.
  */
-export function ScheduleCalendar({ events, caseHrefBase, eventHref }: { events: ScheduleEvent[]; caseHrefBase?: string; /** 케이스 id 와 무관한 고정 이동 링크 (멘티: 회차 확인 화면) */ eventHref?: string }) {
+export function ScheduleCalendar({
+  events,
+  caseHrefBase,
+  eventHref,
+  initialDate,
+  showRoundNo = false,
+}: {
+  events: ScheduleEvent[];
+  caseHrefBase?: string;
+  /** 케이스 id 와 무관한 고정 이동 링크 (멘티: 회차 확인 화면) */
+  eventHref?: string;
+  /** 처음 보여 줄 날짜 'YYYY-MM-DD'(KST) — 없으면 오늘. 운영사 멘토별 달력의 ?month= 용 */
+  initialDate?: string;
+  /** 일정 칩에 'n회차' 표시 (운영사 멘토별 달력) */
+  showRoundNo?: boolean;
+}) {
   const [view, setView] = useState<View>('month');
-  const [anchor, setAnchor] = useState(() => toKstCalendar(Date.now()));
+  const [anchor, setAnchor] = useState(() => toKstCalendar((initialDate && kstStartOfDay(initialDate)) || Date.now()));
   // 폰에서는 월 격자가 너무 좁아 주 보기로 시작 (P28)
   useEffect(() => {
     if (typeof window !== 'undefined' && window.innerWidth < 640) setView('week');
@@ -88,7 +103,7 @@ export function ScheduleCalendar({ events, caseHrefBase, eventHref }: { events: 
     const st = statusOf(e);
     const inner = (
       <span className={cn('block truncate rounded border px-1.5 py-0.5 text-[11px] leading-snug', STATUS_STYLE[st], full && 'flex flex-wrap items-center gap-1 px-2 py-1.5 text-xs')}>
-        <b>{hm(e.startedAt)}</b> {menteeLabel(e.ownerName, e.businessName)} · {e.mode === 'online' ? '온라인' : '오프라인'}
+        <b>{hm(e.startedAt)}</b> {menteeLabel(e.ownerName, e.businessName)}{showRoundNo && ` ${e.roundNo}회차`} · {e.mode === 'online' ? '온라인' : '오프라인'}
         {full && (
           <>
             <span>~{hm(e.endedAt)}</span>

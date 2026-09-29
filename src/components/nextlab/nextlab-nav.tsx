@@ -2,15 +2,17 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { CalendarDays, type LucideIcon } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { useScrollActiveTab } from '@/components/common/use-scroll-active-tab';
 
-const TABS: { href: string; label: string; match?: string[]; external?: boolean }[] = [
+const TABS: { href: string; label: string; match?: string[]; external?: boolean; icon?: LucideIcon }[] = [
   { href: '/nextlab/dashboard', label: '대시보드' },
   { href: '/nextlab/reports', label: '리포트' },
   { href: '/nextlab/review', label: '검수' },
   { href: '/nextlab/roster', label: '회원 명단', match: ['/nextlab/cases', '/nextlab/members', '/nextlab/view'] },
+  { href: '/nextlab/schedule', label: '스케줄', icon: CalendarDays },
   { href: '/nextlab/board', label: '게시판', match: ['/nextlab/requests'] },
   { href: '/nextlab/settlements', label: '정산·품의' },
   { href: '/nextlab/surveys', label: '조사' },
@@ -42,8 +44,10 @@ export function NextlabNav() {
               </a>
             );
           }
+          const Icon = t.icon;
           return (
-            <Link key={t.href} href={t.href} aria-current={active ? 'page' : undefined} className={cls}>
+            <Link key={t.href} href={t.href} aria-current={active ? 'page' : undefined} className={cn(cls, Icon && 'inline-flex items-center gap-1.5')}>
+              {Icon && <Icon className="h-4 w-4" aria-hidden />}
               {t.label}
             </Link>
           );
