@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
@@ -14,7 +14,6 @@ import { SurveyTemplatesManager } from '@/components/settings/survey-templates-m
 import { TagsManager } from '@/components/settings/tags-manager';
 import { StaffPermissionsForm } from '@/components/settings/staff-permissions-form';
 import { MentorDocChecklistManager, type MentorDocChecklistScope } from '@/components/settings/mentor-doc-checklist-manager';
-import { NotificationSettings } from '@/components/settings/notification-settings';
 import { getChecklistForScope } from '@/lib/mentor-docs/data';
 import { listSupportTypes } from '@/lib/programs/data';
 import { listCases, mapSuccessors } from '@/lib/data/cases';
@@ -39,7 +38,6 @@ const TABS = [
   { key: 'reports', label: '보고서 양식' },
   { key: 'survey', label: '만족도 양식' },
   { key: 'mentor-docs', label: '멘토 서류 수령' },
-  { key: 'notifications', label: '알림' },
   { key: 'tags', label: '키워드 사전' },
   { key: 'permissions', label: '담당 권한' },
   { key: 'succession', label: '승계 개설' },
@@ -50,12 +48,14 @@ type TabKey = (typeof TABS)[number]['key'];
 /** 설정 탭 묶음 — 필수 준비(운영 시작 전) / 운영 정책 / 관리 */
 const SETTING_GROUPS: { label: string; keys: string[]; extra?: { href: string; label: string } }[] = [
   { label: '필수 준비', keys: ['program', 'groups', 'rates', 'matching'] },
-  { label: '운영 정책', keys: ['withholding', 'budget', 'gates', 'reports', 'survey', 'mentor-docs', 'notifications', 'tags'] },
+  { label: '운영 정책', keys: ['withholding', 'budget', 'gates', 'reports', 'survey', 'mentor-docs', 'tags'], extra: { href: '/admin/settings/sms?tab=auto', label: '문자 자동발송' } },
   { label: '관리', keys: ['permissions', 'succession', 'audit'], extra: { href: '/nextlab/settings/sms-api', label: '문자 API' } },
 ];
 
 /** 운영 설정 (docs/MODU-DESIGN.md §16) — 탭별 서버 렌더. 승계 개설·감사 로그도 미니탭 (P20) */
 export default async function Page({ searchParams }: { searchParams: { tab?: string; source?: string; mode?: string; filter?: string; [k: string]: string | undefined } }) {
+  // (P36) 알림 on/off 는 문자 발송 › 자동발송 탭으로 이전 — 옛 링크 호환
+  if (searchParams.tab === 'notifications') redirect('/admin/settings/sms?tab=auto');
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
   const visibleTabs = TABS;
@@ -124,10 +124,6 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
       scopes.push({ id: sc.id, name: sc.name, enabled: c?.enabled ?? false, items: c?.items ?? [], defined: c ? c.defined : false });
     }
     body = <MentorDocChecklistManager scopes={scopes} />;
-  }
-  if (tab === 'notifications') {
-    // (P32) 알림 이벤트별 문자·알림톡 on/off — programs.notification_settings ({ event: false } 만 저장)
-    body = <NotificationSettings settings={(program.notification_settings ?? {}) as Record<string, boolean>} />;
   }
   if (tab === 'tags') body = <TagsManager tags={await listTags(ctx.programId)} />;
   if (tab === 'permissions') body = <StaffPermissionsForm override={ctx.program.staff_permissions} canEdit={!ctx.grade || ctx.grade === 'pl'} />;

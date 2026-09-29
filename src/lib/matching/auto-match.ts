@@ -7,6 +7,8 @@ import { resolveSmsCredentials } from '@/lib/sms/secrets';
 import { fieldMatches, mentorEligibleForGroup } from '@/lib/matching/eligibility';
 import { DEFAULT_MAX_MENTEES_PER_MENTOR } from '@/lib/matching/capacity';
 import { fetchAllIn } from '@/lib/supabase/paginate';
+import { loadNotificationSettings } from '@/lib/notifications/settings';
+import { autoSendEnabled, buildMatchedMentorLoginGuideText } from '@/lib/notifications/templates';
 
 /**
  * P24 자동 매칭 (2026-09-22) · P25 그룹(라운드) 단위 개정 (2026-09-23).
@@ -357,6 +359,8 @@ export async function afterAssignmentConfirmed(programId: string, mentorId: stri
  * supportTypeId 를 생략하면 행사 전체 기준(구 동작). 문자 실패는 본 작업을 막지 않는다(§6-5). 발송 여부는 mentor_assignments.notice_sent_at(배정 행 단위).
  */
 export async function notifyMentorsIfAllMatched(programId: string, supportTypeId?: string | null): Promise<{ sent: number }> {
+  // 행사별 자동발송 on/off (문자 발송 › 자동발송 탭). 꺼져 있으면 발송·기록 없음.
+  if (!autoSendEnabled(await loadNotificationSettings(programId), 'auto_login_guide_on_matched')) return { sent: 0 };
   const admin = createAdminClient();
   let openQ = admin.from('cases').select('id').eq('program_id', programId).in('status', [...OPEN_STATUSES]).limit(1);
   if (supportTypeId) openQ = openQ.eq('support_type_id', supportTypeId);
@@ -386,16 +390,9 @@ export async function notifyMentorsIfAllMatched(programId: string, supportTypeId
     const digits = (u.phone ?? '').replace(/\D/g, '');
     const rowIds = pending.filter((a) => a.mentor_id === u.id).map((a) => a.id);
     if (!u.is_active || digits.length < 10) continue;
-    const lines = [
-      `[${program.name}] ${u.name} 멘토님, 담당 멘티 배정이 확정되었습니다.`,
-      '플랫폼에 로그인하여 배정된 멘티를 확인해 주세요.',
-      base ? `${base}/login` : '',
-      `아이디: 이메일(${u.email ?? '-'}) 또는 휴대폰 번호`,
-    ].filter(Boolean);
-    if (u.must_change_password) lines.push('첫 로그인 시 비밀번호를 새로 설정해야 합니다. 임시 비밀번호는 등록 시 안내된 값(기본: 본인 휴대폰 번호 숫자)입니다.');
-    if (program.sms_footer) lines.push(program.sms_footer);
+    const text = buildMatchedMentorLoginGuideText({ programName: program.name, mentorName: u.name, email: u.email, appUrl: base, mustChangePassword: !!u.must_change_password, footer: program.sms_footer });
     try {
-      const r = await sendSolapiSms(digits, lines.join('\n'), creds ? { creds } : {});
+      const r = await sendSolapiSms(digits, text, creds ? { creds } : {});
       if (r.ok) {
         sent += 1;
         const { error } = await admin.from('mentor_assignments').update({ notice_sent_at: new Date().toISOString() }).in('id', rowIds);

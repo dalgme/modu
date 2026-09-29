@@ -3,6 +3,7 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendSolapiSms } from '@/lib/notifications/solapi';
 import { resolveSmsCredentials } from '@/lib/sms/secrets';
+import { buildSurveyAutoReminderText } from '@/lib/notifications/templates';
 import { aggregateAnswers, type QuestionAggregate, type SurveyQuestionRow } from '@/lib/surveys/validate';
 
 /**
@@ -101,14 +102,20 @@ const REMIND_AFTER_MS = 7 * 24 * 3600 * 1000;
 export async function sendAutoSurveyReminders(): Promise<{ scanned: number; sent: number; failed: number; skipped: number }> {
   const admin = createAdminClient();
   const cutoff = new Date(Date.now() - REMIND_AFTER_MS).toISOString();
-  const { data: cases } = await admin
+  // 자동발송 탭에서 이 자동 독려를 끈 행사(notification_settings.survey_reminder_auto = false)는 대상에서 뺀다 —
+  // 기록(survey_reminded_at)을 남기지 않으므로 다시 켜면 다음 점검 때 발송된다. 조회 실패 시 제외 없음(fail-open, 기존 동작).
+  const { data: offPrograms, error: offError } = await admin.from('programs').select('id').eq('notification_settings->>survey_reminder_auto', 'false');
+  if (offError) console.error('[survey-reminders] 자동발송 설정 조회 실패:', offError.message);
+  const offIds = (offPrograms ?? []).map((p) => p.id);
+  let casesQ = admin
     .from('cases')
     .select('id, program_id, owner_name, phone, status, survey_opened_at')
     .not('survey_opened_at', 'is', null)
     .lte('survey_opened_at', cutoff)
     .is('survey_reminded_at', null)
-    .neq('status', 'withdrawn')
-    .limit(200);
+    .neq('status', 'withdrawn');
+  if (offIds.length > 0) casesQ = casesQ.not('program_id', 'in', `(${offIds.join(',')})`);
+  const { data: cases } = await casesQ.limit(200);
   const list = cases ?? [];
   let sent = 0;
   let failed = 0;
@@ -136,7 +143,7 @@ export async function sendAutoSurveyReminders(): Promise<{ scanned: number; sent
       continue;
     }
     const p = programById.get(c.program_id);
-    const text = `[${p?.name ?? ''}] ${c.owner_name}님, 멘토링 만족도 조사가 아직 완료되지 않았습니다. 참여 부탁드립니다.\n${base}/mentee/survey (로그인 후 응답)${p?.sms_footer ? `\n${p.sms_footer}` : ''}`;
+    const text = buildSurveyAutoReminderText({ programName: p?.name ?? '', menteeName: c.owner_name, appUrl: base, footer: p?.sms_footer });
     try {
       const creds = await resolveSmsCredentials(c.program_id, 'send');
       const r = await sendSolapiSms(digits, text, creds ? { creds } : {});

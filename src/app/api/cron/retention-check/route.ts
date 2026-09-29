@@ -6,6 +6,7 @@ import { sendSms } from '@/lib/notifications/provider';
 import { normalizePhone } from '@/lib/utils/phone';
 import { DEFAULT_RETENTION_YEARS } from '@/lib/programs/branding';
 import { kstDateString as fmtDate, parsePrivacyOfficer, retentionExpiry } from '@/lib/ops/retention';
+import { autoSendEnabled, buildRetentionNoticeText } from '@/lib/notifications/templates';
 
 export const dynamic = 'force-dynamic';
 
@@ -19,7 +20,6 @@ function authorized(request: Request): boolean {
 const NOTICE_BEFORE_DAYS = 30;
 /** 같은 행사에 다시 알리는 최소 간격(일) */
 const RENOTIFY_DAYS = 30;
-const PLATFORM_NAME = '멘토링 운영관리 플랫폼';
 
 async function platformAdminPhones(): Promise<string[]> {
   const out = new Set<string>();
@@ -48,7 +48,7 @@ export async function GET(request: Request) {
   const admin = createAdminClient();
   const { data: programs, error } = await admin
     .from('programs')
-    .select('id, name, ends_on, retention_years, privacy_officer, retention_notice_sent_at, status')
+    .select('id, name, ends_on, retention_years, privacy_officer, retention_notice_sent_at, status, notification_settings')
     .not('ends_on', 'is', null);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
@@ -58,6 +58,8 @@ export async function GET(request: Request) {
   const notified: { programId: string; expiry: string; sent: number; recipients: number }[] = [];
 
   for (const p of programs ?? []) {
+    // 행사별 자동발송 on/off (문자 발송 › 자동발송 탭) — 끈 행사는 안내·기록 모두 생략
+    if (!autoSendEnabled(p.notification_settings, 'retention_notice')) continue;
     const expiry = retentionExpiry(p.ends_on, p.retention_years);
     if (!expiry || expiry.getTime() > horizon) continue;
     const lastNotice = p.retention_notice_sent_at ? new Date(p.retention_notice_sent_at).getTime() : 0;
@@ -70,12 +72,7 @@ export async function GET(request: Request) {
       if (ph) phones.add(ph);
     }
     const expired = expiry.getTime() <= now;
-    const text = [
-      `[${PLATFORM_NAME}] 개인정보 보존기간 만료 ${expired ? '경과' : '예정'} — 파기 검토 필요`,
-      `행사: ${p.name}`,
-      `보존 만료일: ${fmtDate(expiry)} (종료 후 ${p.retention_years ?? DEFAULT_RETENTION_YEARS}년)`,
-      '자동 파기는 되지 않습니다. 보호책임자·운영사 PL 이 파기 대상과 예외(정산 증빙)를 검토해 주세요.',
-    ].join('\n');
+    const text = buildRetentionNoticeText({ programName: p.name, expiry: fmtDate(expiry), expired, years: p.retention_years ?? DEFAULT_RETENTION_YEARS });
 
     let sent = 0;
     for (const to of Array.from(phones)) {

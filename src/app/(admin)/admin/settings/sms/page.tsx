@@ -8,13 +8,16 @@ import {
   getSolapiMessages,
 } from '@/lib/notifications/solapi';
 import { listSmsRecipients } from '@/lib/data/members';
-import { listEligibleMentors, listReminderSettings, previewEligibleForSetting, type EligibleMentor } from '@/lib/notifications/mentor-weekly-reminder';
+import { DEFAULT_MENTOR_REMINDER_TEMPLATE, WEEKDAY_LABELS, listEligibleMentors, listReminderSettings, previewEligibleForSetting, renderMentorReminder, type EligibleMentor } from '@/lib/notifications/mentor-weekly-reminder';
+import { alimtalkConfigured } from '@/lib/notifications/provider';
+import { AutoSendSettings } from '@/components/admin/auto-send-settings';
+import { buildAutoSendCatalog, type AutoSendChannel } from '@/components/admin/auto-send-catalog';
 import { listSupportTypes } from '@/lib/programs/data';
 import { denyUnless } from '@/lib/auth/capabilities';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { SubTabs } from '@/components/common/sub-tabs';
 import { MentorReminderPanel, type ReminderScope } from '@/components/admin/mentor-reminder-panel';
-import { BellRing, CalendarClock, History, Send } from 'lucide-react';
+import { BellRing, CalendarClock, History, Send, Zap } from 'lucide-react';
 import { listScheduledMessages } from '@/lib/data/scheduled-messages';
 import { SmsComposer } from '@/components/admin/sms-composer';
 import { SmsSendList } from '@/components/admin/sms-send-list';
@@ -38,6 +41,7 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
 
 const TABS = [
   { key: 'send', label: '문자 발송', icon: Send },
+  { key: 'auto', label: '자동발송', icon: Zap },
   { key: 'reminder', label: '멘토 리마인더', icon: BellRing },
   { key: 'scheduled', label: '예약 발송', icon: CalendarClock },
   { key: 'history', label: '발송 현황', icon: History },
@@ -86,6 +90,53 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   }
   const canEditReminder = canSend;
 
+  // 자동발송 (P36) — 업무 단계별 자동 문자 목록 + 행사 단위 on/off. 열람 = 이 페이지 접근자 전원, 저장 = 운영사 'settings' 권한.
+  let autoSend: React.ReactNode = null;
+  if (tab === 'auto') {
+    const admin = createAdminClient();
+    const [{ data: prow }, reminderSettings] = await Promise.all([
+      admin.from('programs').select('notification_settings').eq('id', ctx.programId).maybeSingle(),
+      listReminderSettings(ctx.programId),
+    ]);
+    const raw = prow?.notification_settings;
+    const settings: Record<string, boolean> = {};
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      for (const [k, v] of Object.entries(raw as Record<string, unknown>)) if (typeof v === 'boolean') settings[k] = v;
+    }
+    const common = reminderSettings.find((x) => x.supportTypeId === null) ?? null;
+    const groupRows = reminderSettings.filter((x) => x.supportTypeId !== null);
+    const hhmm = (h: number, m: number) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    const reminderStatus = [
+      common ? `행사 공통 ${common.enabled ? `켬 (매주 ${WEEKDAY_LABELS[common.weekday] ?? '-'} ${hhmm(common.sendHour, common.sendMinute)})` : '끔'}` : '행사 공통 미설정(미발송)',
+      groupRows.length > 0 ? `그룹별 설정 ${groupRows.length}개 (켬 ${groupRows.filter((x) => x.enabled).length})` : null,
+    ].filter(Boolean).join(' · ');
+    const rows = buildAutoSendCatalog({
+      branding: ctx.branding,
+      appUrl: (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, ''),
+      reminder: {
+        status: reminderStatus,
+        preview: renderMentorReminder(common?.template ?? DEFAULT_MENTOR_REMINDER_TEMPLATE, { program: ctx.program.name, group: ctx.group?.name ?? '그룹명', mentor: '홍길동', companies: ['김멘티', '이멘티'] }),
+      },
+    });
+    const alimtalk = alimtalkConfigured();
+    const channelLabels: Record<AutoSendChannel, string> = {
+      queue: alimtalk ? '알림톡 (실패 시 문자 대체)' : '문자 (알림톡 미연동 — 행사 문자 API → 플랫폼)',
+      direct: '문자 직발송 (행사 문자 API → 플랫폼)',
+      platform: '문자 직발송 (플랫폼 공통 발신)',
+    };
+    const canEditAuto = profile.role === 'nextlab' && denyUnless(ctx, 'settings') === null;
+    autoSend = (
+      <AutoSendSettings
+        rows={rows}
+        settings={settings}
+        canEdit={canEditAuto}
+        channelLabels={channelLabels}
+        scopeNote={ctx.group ? `지금 범위는 '${ctx.group.name}' 이지만, 자동발송 설정은 행사(${ctx.program.name}) 전체에 한 번에 적용됩니다. 그룹별로 다르게 둘 수 있는 것은 멘토 리마인더뿐입니다.` : null}
+        readOnlyReason={canEditAuto ? null : '열람 전용입니다. 설정 변경은 운영 설정 권한이 있는 운영사 담당자만 할 수 있습니다.'}
+      />
+    );
+  }
+
   const balanceText =
     balance && balance.ok ? `${balance.balance.toLocaleString()}원` : configured ? '조회 실패' : '-';
   const pointText = balance && balance.ok ? `포인트 ${balance.point.toLocaleString()}` : undefined;
@@ -96,7 +147,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
       <div>
         <h1 className="text-2xl font-semibold">문자 발송</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {ctx.program.name}{ctx.group ? ` · ${ctx.group.name}` : ' · 행사 전체'} — 회원에게 문자 발송 · 멘토 리마인더 자동 발송(그룹별) · 예약 · 발송 내역.
+          {ctx.program.name}{ctx.group ? ` · ${ctx.group.name}` : ' · 행사 전체'} — 회원에게 문자 발송 · 단계별 자동발송 설정 · 멘토 리마인더(그룹별) · 예약 · 발송 내역.
         </p>
       </div>
 
@@ -148,6 +199,18 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             </CardContent>
           </Card>
         </>
+      )}
+
+      {tab === 'auto' && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">자동발송 (업무 단계별)</CardTitle>
+            <p className="text-xs text-muted-foreground">
+              등록 → 매칭 → 회차 → 종결 → 정산 → 만족도 → 리마인더 → 시스템 순서로, 플랫폼이 자동으로 보내는 문자를 모두 모았습니다. 항목마다 발송 시점·수신자·채널을 확인하고 [문구 보기]로 실제 문구를 볼 수 있습니다.
+            </p>
+          </CardHeader>
+          <CardContent>{autoSend}</CardContent>
+        </Card>
       )}
 
       {tab === 'reminder' && (

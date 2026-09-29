@@ -4,7 +4,7 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { toStoredPhone } from '@/lib/auth/identifier';
-import { NOTIFICATION_EVENT_DEFS } from '@/lib/notifications/templates';
+import { AUTO_SEND_TOGGLE_KEYS } from '@/lib/notifications/templates';
 import { createCase, assignMentor } from '@/lib/workflow/cases';
 import { submitRound } from '@/lib/workflow/rounds';
 import { logAudit } from '@/lib/workflow/audit';
@@ -65,7 +65,8 @@ function kstToday(): string {
 /** 알림 이벤트 전부 off — 점검 행사에서는 어떤 알림도 큐에 들어가지 않는다 */
 function allNotificationsOff(): Json {
   const out: Record<string, boolean> = {};
-  for (const def of NOTIFICATION_EVENT_DEFS) out[def.key] = false;
+  // 큐 알림 23종 + 직발송 자동문자 스위치(P36) 전부 끔 — 점검 행사에서 실제 문자가 나가지 않게
+  for (const key of AUTO_SEND_TOGGLE_KEYS) out[key] = false;
   return out;
 }
 
