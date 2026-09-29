@@ -10,6 +10,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { fileExtension } from '@/lib/workflow/round-report-name';
 import { useToast } from '@/hooks/use-toast';
 
 /** 등록된 보고서의 내용·사진 추가 편집 (P31) — 일시·유형·보고서 파일은 바꾸지 않는다(updateRound) */
@@ -22,7 +24,25 @@ export interface RoundReportEdit {
 }
 
 /** 회차 2단계 — 실서류(멘토링 보고서) 등록. 웹 작성 또는 파일 업로드 + 사진. `edit` 가 있으면 등록본 내용·사진 추가 모드 */
-export function RoundReportForm({ caseId, logId, roundNo, edit = null }: { caseId: string; logId: string; roundNo: number; edit?: RoundReportEdit | null }) {
+export function RoundReportForm({
+  caseId,
+  logId,
+  roundNo,
+  edit = null,
+  dialog = false,
+  triggerLabel,
+  savedNameBase,
+}: {
+  caseId: string;
+  logId: string;
+  roundNo: number;
+  edit?: RoundReportEdit | null;
+  /** 회차 행의 버튼으로 레이어 팝업을 연다 (2026-09-29 멘토 회차 행) — false 면 기존처럼 제자리에서 펼친다 */
+  dialog?: boolean;
+  triggerLabel?: string;
+  /** 저장 파일명 안내 — "멘토-멘티-N회차-방법" (확장자는 고른 파일에서). 실제 이름은 서버가 같은 규칙(roundReportFileName)으로 붙인다 */
+  savedNameBase?: string;
+}) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
@@ -90,21 +110,27 @@ export function RoundReportForm({ caseId, logId, roundNo, edit = null }: { caseI
     });
   };
 
-  if (!open) {
-    return edit ? (
-      <Button size="sm" variant="outline" onClick={() => setOpen(true)} className="gap-1">
-        <ImagePlus className="h-4 w-4" /> 내용·사진 추가
-      </Button>
-    ) : (
-      <Button size="sm" onClick={() => setOpen(true)} className="gap-1">
-        <FileUp className="h-4 w-4" /> 보고서 등록 (2단계)
-      </Button>
-    );
-  }
+  const trigger = edit ? (
+    <Button size="sm" variant="outline" onClick={() => setOpen(true)} className="gap-1">
+      <ImagePlus className="h-4 w-4" /> 내용·사진 추가
+    </Button>
+  ) : (
+    <Button size="sm" onClick={() => setOpen(true)} className="gap-1">
+      <FileUp className="h-4 w-4" /> {triggerLabel ?? '보고서 등록 (2단계)'}
+    </Button>
+  );
+  if (!open && !dialog) return trigger;
 
-  return (
-    <div className="mt-2 flex flex-col gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
-      <p className="text-sm font-semibold">{edit ? `${roundNo}회차 — 보고서 내용·사진 추가` : `${roundNo}회차 — 2단계 · 실서류(보고서) 등록`}</p>
+  const body = (
+    <div className={dialog ? 'flex flex-col gap-3' : 'mt-2 flex flex-col gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3'}>
+      {dialog ? (
+        <DialogHeader>
+          <DialogTitle className="text-base">{edit ? `${roundNo}회차 — 보고서 내용·사진 추가` : `${roundNo}회차 보고서 업로드`}</DialogTitle>
+          <DialogDescription className="sr-only">회차 보고서 파일과 사진을 올립니다.</DialogDescription>
+        </DialogHeader>
+      ) : (
+        <p className="text-sm font-semibold">{edit ? `${roundNo}회차 — 보고서 내용·사진 추가` : `${roundNo}회차 — 2단계 · 실서류(보고서) 등록`}</p>
+      )}
       {edit ? (
         <p className="text-[11px] text-muted-foreground">주제·{edit.kind === 'web' ? '내용·' : ''}결과를 고치고 사진을 더 올릴 수 있습니다. 일시·방법·보고서 파일은 바꿀 수 없습니다(멘티 서명·정산 전까지).</p>
       ) : (
@@ -167,6 +193,11 @@ export function RoundReportForm({ caseId, logId, roundNo, edit = null }: { caseI
               onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
             />
           </div>
+          {savedNameBase && (
+            <p className="text-[11px] text-muted-foreground">
+              저장 파일명: <b className="text-foreground">{savedNameBase}{fileExtension(fileName)}</b> (자동 변환)
+            </p>
+          )}
         </div>
       )}
       <div className="flex flex-col gap-1">
@@ -187,5 +218,14 @@ export function RoundReportForm({ caseId, logId, roundNo, edit = null }: { caseI
         </Button>
       </div>
     </div>
+  );
+  if (!dialog) return body;
+  return (
+    <>
+      {trigger}
+      <Dialog open={open} onOpenChange={(o) => !pending && setOpen(o)}>
+        <DialogContent className="max-w-2xl">{body}</DialogContent>
+      </Dialog>
+    </>
   );
 }

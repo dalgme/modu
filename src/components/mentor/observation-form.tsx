@@ -2,7 +2,7 @@
 
 import { useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileText, Save, Upload } from 'lucide-react';
+import { ChevronDown, ChevronUp, FileText, Lock, Save, Upload } from 'lucide-react';
 
 import type { ObservationContent } from '@/lib/workflow/closure';
 import { saveObservationAction, uploadObservationAction } from '@/lib/workflow/mentor-actions';
@@ -21,23 +21,31 @@ const FIELDS: { key: keyof Omit<ObservationContent, 'overall_rating'>; label: st
   { key: 'next_steps', label: '향후 계획 · 연계 제안', rows: 3 },
 ];
 
-/** 관찰의견서 — 웹 작성(임시 저장) 또는 완성본 업로드. 종결 요청 시 PDF 단일본으로 확정된다. */
+/**
+ * 관찰의견서 — 기본은 **파일 업로드**(2026-09-29), 웹 작성은 보조(펼치기). 종결 요청 시 단일본으로 확정된다.
+ * [파일 업로드]는 계획 회차 보고서를 모두 올린 뒤에만 열린다 — `uploadGate` 는 서버 게이트(uploadObservationFile)와 같은 observationUploadGate 결과.
+ */
 export function ObservationForm({
   caseId,
   initial,
   file,
   editable,
+  uploadGate = { ok: true, hint: '' },
 }: {
   caseId: string;
   initial: ObservationContent;
   file: { name: string; url: string | null } | null;
   editable: boolean;
+  uploadGate?: { ok: boolean; hint: string };
 }) {
   const router = useRouter();
   const { toast } = useToast();
   const [pending, start] = useTransition();
   const [form, setForm] = useState<ObservationContent>(initial);
   const fileRef = useRef<HTMLInputElement>(null);
+  // 웹 작성은 보조 — 이미 작성한 내용이 있으면 펼친 상태로 시작
+  const [webOpen, setWebOpen] = useState(initial.summary.trim().length > 0);
+  const [picked, setPicked] = useState<string | null>(null);
 
   const save = () =>
     start(async () => {
@@ -61,6 +69,7 @@ export function ObservationForm({
     });
   };
 
+  const uploadOk = editable && uploadGate.ok;
   return (
     <div className="flex flex-col gap-4">
       {file && (
@@ -72,6 +81,40 @@ export function ObservationForm({
           </a>
         </p>
       )}
+      {editable && (
+        <div className={`flex flex-col gap-2 rounded-lg border p-3 ${uploadOk ? 'border-primary/40 bg-primary/5' : 'bg-muted/30'}`}>
+          <p className="text-sm font-semibold">관찰의견서 파일 업로드 {file && <span className="text-xs font-normal text-muted-foreground">(다시 올리면 기존 파일과 교체)</span>}</p>
+          {!uploadOk && (
+            <p className="inline-flex items-start gap-1.5 text-xs text-muted-foreground">
+              <Lock className="mt-0.5 h-3.5 w-3.5 shrink-0" /> {uploadGate.hint}
+            </p>
+          )}
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              ref={fileRef}
+              type="file"
+              accept=".pdf,.hwp,.hwpx,.doc,.docx"
+              className="max-w-xs"
+              disabled={pending || !uploadOk}
+              onChange={(e) => setPicked(e.target.files?.[0]?.name ?? null)}
+            />
+            <Button onClick={upload} disabled={pending || !uploadOk || !picked} className="gap-1">
+              <Upload className="h-4 w-4" /> {pending ? '올리는 중…' : '파일 업로드'}
+            </Button>
+          </div>
+          <p className="text-[11px] text-muted-foreground">PDF · HWP · Word 파일</p>
+        </div>
+      )}
+      <button
+        type="button"
+        onClick={() => setWebOpen((v) => !v)}
+        aria-expanded={webOpen}
+        className="inline-flex items-center gap-1 self-start text-xs font-medium text-muted-foreground hover:text-foreground"
+      >
+        {webOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />} 파일 대신 웹으로 작성하기 (선택)
+      </button>
+      {webOpen && (
+      <div className="flex flex-col gap-4 rounded-lg border p-3">
       {FIELDS.map((f) => (
         <div key={f.key} className="flex flex-col gap-1">
           <Label htmlFor={`obs-${f.key}`}>
@@ -103,17 +146,14 @@ export function ObservationForm({
         </div>
       </div>
       {editable && (
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
-          <Button onClick={save} disabled={pending} className="gap-1">
+        <div className="flex flex-wrap items-center gap-3 border-t pt-3">
+          <Button variant="outline" onClick={save} disabled={pending} className="gap-1">
             <Save className="h-4 w-4" /> 임시 저장
           </Button>
-          <div className="flex items-center gap-2">
-            <Input ref={fileRef} type="file" accept=".pdf,.hwp,.hwpx,.doc,.docx" className="max-w-xs" disabled={pending} />
-            <Button variant="outline" onClick={upload} disabled={pending} className="gap-1">
-              <Upload className="h-4 w-4" /> 완성본 업로드
-            </Button>
-          </div>
+          <span className="text-[11px] text-muted-foreground">웹 작성본은 종결 요청 때 PDF 로 만들어집니다. 파일을 올렸다면 올린 파일이 우선합니다.</span>
         </div>
+      )}
+      </div>
       )}
     </div>
   );

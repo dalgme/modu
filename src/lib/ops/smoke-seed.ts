@@ -19,7 +19,7 @@ import type { Json } from '@/types/database';
  * - 이 행사의 알림 이벤트는 전부 꺼서(`programs.notification_settings`) 문자·알림톡이 나가지 않게 한다.
  *   배정 안내 문자는 `mentor_assignments.notice_sent_at` 을 미리 채워 막는다.
  * - 서비스롤만 사용하고 **slug `smoke` 행사 밖의 데이터는 읽지도 쓰지도 않는다**(계정 조회는 고정 이메일 4개뿐).
- * - 기관명 리터럴 금지 규칙(§2-5)에 따라 실제 기관명은 쓰지 않는다 — 더미 "점검 발주처/점검 운영사".
+ * - 기관명 리터럴 금지 규칙(§2-5)에 따라 실제 기관명은 쓰지 않는다 — 더미 "연습용 발주처/연습용 운영사".
  */
 
 export const SMOKE_PROGRAM_SLUG = 'smoke';
@@ -75,13 +75,14 @@ function allNotificationsOff(): Json {
 // ---------------------------------------------------------------------------
 async function ensureProgram(admin: Admin): Promise<string> {
   const patch = {
-    name: '자동 점검(스모크)',
+    // 화면에 그대로 보이는 이름 — 운영 담당자가 알아보기 쉬운 말로 (내부 용어 '스모크' 금지, 2026-09-29)
+    name: '화면 점검용 연습 행사',
     status: 'active',
-    client_name: '점검 발주처',
-    client_short: '점검발주',
-    operator_name: '점검 운영사',
-    operator_short: '점검운영',
-    app_title: '자동 점검',
+    client_name: '연습용 발주처',
+    client_short: '연습발주',
+    operator_name: '연습용 운영사',
+    operator_short: '연습운영',
+    app_title: '연습 행사',
     default_required_rounds: 4,
     notification_settings: allNotificationsOff(),
   };
@@ -228,7 +229,7 @@ async function ensureAccount(admin: Admin, programId: string, def: SmokeAccountD
   if (def.role === 'mentor') {
     const { error: profileError } = await admin
       .from('mentor_profiles')
-      .upsert({ program_id: programId, user_id: userId, expertise: ['자동 점검'], regions: [], mentor_institution: '점검 멘토기관', note: '스모크 점검 계정' }, { onConflict: 'program_id,user_id' });
+      .upsert({ program_id: programId, user_id: userId, expertise: ['화면 점검'], regions: [], mentor_institution: '점검 멘토기관', note: '화면 점검용 연습 계정' }, { onConflict: 'program_id,user_id' });
     if (profileError) throw new Error(`${email} 멘토 프로필 실패: ${profileError.message}`);
   }
   return userId;

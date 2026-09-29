@@ -10,6 +10,7 @@ import { uploadFile, moveFile, sha256Hex } from '@/lib/storage/files';
 import { queueNotification } from '@/lib/workflow/notifications';
 import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
 import { getRoundAllowance } from '@/lib/data/rounds';
+import { observationUploadGate } from '@/lib/workflow/observation-rule';
 import { missingRequiredMenteeDocs } from '@/lib/workflow/case-documents';
 import { getBranding } from '@/lib/programs/data';
 import { fmt } from '@/lib/programs/branding';
@@ -64,11 +65,18 @@ export async function uploadObservationFile(
   if (!staging.stagingPath.startsWith('_staging/') || staging.stagingPath.includes('..')) return { ok: false, error: '잘못된 업로드 경로입니다.' };
   const admin = createAdminClient();
   // 상태 게이트 (P31) — 웹 작성본(saveObservationDraft)과 같은 조건: 종결 요청 가능 단계(진행 중·보완 요청) + 멘토 배정 단계
-  const { data: c } = await admin.from('cases').select('id, status').eq('id', caseId).maybeSingle();
+  const { data: c } = await admin.from('cases').select('id, status, support_type_id').eq('id', caseId).maybeSingle();
   if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
   if (!TRANSITIONS.request_closure.from.includes(c.status) && c.status !== 'mentor_assigned') {
     return { ok: false, error: '컨설팅 진행 중(또는 보완 요청) 단계에서만 관찰의견서를 올릴 수 있습니다.' };
   }
+  // (2026-09-29) 계획 회차 보고서를 모두 올린 뒤에만 업로드 — 멘토 화면 버튼 조건과 같은 함수
+  const [{ data: group }, { data: logs }] = await Promise.all([
+    admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle(),
+    admin.from('mentoring_logs').select('round_no, report_registered_at').eq('case_id', caseId).order('round_no'),
+  ]);
+  const gate = observationUploadGate(logs ?? [], group?.required_rounds ?? 0);
+  if (!gate.ok) return { ok: false, error: gate.hint };
   const basename = staging.stagingPath.split('/').pop();
   if (!basename) return { ok: false, error: '잘못된 업로드 경로입니다.' };
   const { data: blob } = await admin.storage.from('documents').download(staging.stagingPath);
@@ -142,7 +150,7 @@ export async function checkClosureReadiness(caseId: string): Promise<{ ok: boole
   if (assertTransition('request_closure', c.status)) return { ok: false, hint: '컨설팅 진행 중(또는 보완 요청) 단계에서만 종결을 요청할 수 있습니다.', ...base };
   if (rounds.length < required) return { ok: false, hint: `필수 회차 ${required}회 중 ${rounds.length}회 등록됨 — 회차를 모두 등록하세요.`, ...base };
   const unreported = rounds.filter((r) => !r.report_registered_at).map((r) => r.round_no);
-  if (unreported.length > 0) return { ok: false, hint: `보고서가 없는 회차(${unreported.join('·')}회차)가 있습니다. 각 회차의 [보고서 등록]을 완료하세요.`, ...base };
+  if (unreported.length > 0) return { ok: false, hint: `보고서가 없는 회차(${unreported.join('·')}회차)가 있습니다. 각 회차의 [보고서 업로드]를 완료하세요.`, ...base };
   const content = obs ? normalizeObservation(obs.content) : EMPTY;
   if (!(content.summary.trim().length > 0 || !!obsFile)) return { ok: false, hint: '관찰의견서 총평을 작성(임시 저장)하거나 완성본을 올리면 종결을 요청할 수 있습니다.', ...base };
   const policy = (program?.closure_policy ?? {}) as { require_mentee_signature?: boolean; require_group_docs?: boolean };
@@ -186,7 +194,7 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
   // 2단계(보고서) 미등록 회차가 있으면 종결 불가 — 정산은 보고서가 등록된 회차만 인정된다
   const unreported = rounds.filter((r) => !r.report_registered_at).map((r) => r.round_no);
   if (unreported.length > 0) {
-    return { ok: false, error: `보고서가 등록되지 않은 회차가 있습니다 (${unreported.join('·')}회차). 각 회차의 [보고서 등록]을 먼저 완료하세요.` };
+    return { ok: false, error: `보고서가 등록되지 않은 회차가 있습니다 (${unreported.join('·')}회차). 각 회차의 [보고서 업로드]를 먼저 완료하세요.` };
   }
   const policy = (program?.closure_policy ?? {}) as { require_mentee_signature?: boolean; require_group_docs?: boolean };
   if (policy.require_mentee_signature && rounds.some((r) => !r.mentee_signed_at)) {

@@ -19,8 +19,8 @@ import { canTransition } from '@/lib/workflow/transitions';
 import { CaseDetailShell } from '@/components/cases/case-detail-shell';
 import { CaseDetailBackNav } from '@/components/cases/case-detail-back-nav';
 import { CaseDocumentsPanel } from '@/components/cases/case-documents-panel';
-import { RoundForm } from '@/components/mentor/round-form';
-import { RoundsList } from '@/components/mentor/rounds-list';
+import { MentorRoundBoard } from '@/components/mentor/mentor-round-board';
+import { observationUploadGate } from '@/lib/workflow/observation-rule';
 import { ObservationForm } from '@/components/mentor/observation-form';
 import { MentorRequests } from '@/components/mentor/mentor-requests';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -91,6 +91,8 @@ export default async function Page({ params }: { params: { id: string } }) {
   const closureOk = readiness.ok;
   const closureHint = readiness.hint;
   const reported = rounds.filter((r) => r.report_registered_at).length;
+  // 관찰의견서 업로드 열림 = 계획 회차 보고서 전부 등록 (서버 uploadObservationFile 과 같은 함수)
+  const obsGate = observationUploadGate(rounds, item.requiredRounds);
   const revisionNote = item.status === 'revision_requested' && lastReview.data?.result === 'revision_requested' ? { comment: lastReview.data.comment, at: lastReview.data.created_at } : null;
 
   return (
@@ -142,39 +144,41 @@ export default async function Page({ params }: { params: { id: string } }) {
         />
 
         <Card id="rounds" className="scroll-mt-36">
-          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-            <div>
-              <CardTitle className="text-base">
-                {ctx.group?.round_label ?? '컨설팅'} 회차 {rounds.length} / {maxRounds}
-                {allowance.approvedExtra > 0 && <span className="ml-1 text-xs text-muted-foreground">(추가 {allowance.approvedExtra}회 승인)</span>}
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                ① [회차 등록]으로 일정·방법·참가자를 남기고(사전·사후 모두 가능) → ② 진행 후 그 회차의 [보고서 등록]까지 마쳐야 이행으로 인정되어 정산에 포함됩니다. 관찰의견서 제출 후 운영사 검수가 끝나면 정산이 확정됩니다.
-              </p>
-            </div>
-            {roundsEditable && (
-              <RoundForm
-                caseId={item.id}
-                nextRoundNo={rounds.length + 1}
-                maxRounds={maxRounds}
-                rates={{ online: online?.unitPrice ?? null, offline: offline?.unitPrice ?? null }}
-                participantOptions={participantOptions}
-                lastRound={lastRound}
-              />
-            )}
+          <CardHeader className="space-y-1">
+            <CardTitle className="flex flex-wrap items-baseline gap-x-2 text-base">
+              {item.owner_name} 멘티 {ctx.group?.round_label ?? '컨설팅'}
+              <span className="text-xs font-normal text-muted-foreground">
+                등록 {rounds.length} / {maxRounds}회 · 보고서 {reported}건
+                {allowance.approvedExtra > 0 && ` · 추가 ${allowance.approvedExtra}회 승인`}
+              </span>
+            </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              회차마다 [N차 예정 등록]으로 일정을 먼저 등록하고, 멘토링을 마친 뒤 그 회차의 [보고서 업로드]를 하면 이행으로 인정되어 정산에 포함됩니다. 보고서 파일 이름은 ‘멘토명-멘티명-회차-온/오프라인’으로 자동 저장됩니다.
+            </p>
           </CardHeader>
           <CardContent>
-            <RoundsList caseId={item.id} rounds={rounds} editable={roundsEditable} signEnabled={reportPolicy.menteeConfirmSignature} viewerMentorId={profile.id} />
+            <MentorRoundBoard
+              caseId={item.id}
+              menteeName={item.owner_name}
+              rounds={rounds}
+              maxRounds={maxRounds}
+              editable={roundsEditable}
+              signEnabled={reportPolicy.menteeConfirmSignature}
+              viewerMentorId={profile.id}
+              rates={{ online: online?.unitPrice ?? null, offline: offline?.unitPrice ?? null }}
+              participantOptions={participantOptions}
+              lastRound={lastRound}
+            />
           </CardContent>
         </Card>
 
         <Card id="observation" className="scroll-mt-36">
           <CardHeader>
-            <CardTitle className="text-base">관찰의견서 (멘티당 1건)</CardTitle>
-            <p className="text-xs text-muted-foreground">컨설팅을 마무리하며 작성합니다. 종결 요청 시 PDF 로 확정되어 운영사에 제출됩니다.</p>
+            <CardTitle className="text-base">{item.owner_name} 관찰의견서</CardTitle>
+            <p className="text-xs text-muted-foreground">멘티당 1건 · 파일 업로드로 제출합니다. 계획된 회차의 보고서를 모두 올리면 [파일 업로드]가 열리고, 종결 요청 시 운영사에 제출됩니다.</p>
           </CardHeader>
           <CardContent>
-            <ObservationForm caseId={item.id} initial={observation} file={obsFile} editable={roundsEditable} />
+            <ObservationForm caseId={item.id} initial={observation} file={obsFile} editable={roundsEditable} uploadGate={obsGate} />
           </CardContent>
         </Card>
 

@@ -9,6 +9,7 @@ import type { RoundParticipant } from '@/lib/workflow/rounds';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { kstTodayYmd, toKstParts } from '@/lib/utils/kst';
 
@@ -79,13 +80,27 @@ function plusMinutes(hhmm: string, add: number): string {
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
 }
 
+/** 지난 일시로 등록할 때의 안내 (2026-09-29) — 등록은 막지 않는다. 일정 수정 화면도 같은 문구를 쓴다 */
+export function PastScheduleNotice() {
+  return (
+    <p role="note" className="rounded-lg bg-violet-100 px-3 py-2 text-sm font-medium text-violet-900 dark:bg-violet-950/60 dark:text-violet-100">
+      날짜/시간이 이미 지난 일정을 등록합니다. 다음에는 [예약 일정/시간]을 미리 등록해 주세요.
+    </p>
+  );
+}
+
 /**
  * 회차 1단계 등록 (계획/실행) — 통계·정산의 기본데이터.
  * 일자·시간(10분 단위)·방법·참가자는 전부 클릭 선택, 장소만 직접 입력.
  * 사전(계획)·사후(실행) 등록 모두 가능하고, 보고서(실서류)는 2단계에서 등록한다.
  */
-export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOptions, lastRound = null }: {
+export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOptions, lastRound = null, triggerLabel, disabled = false, disabledHint }: {
   caseId: string;
+  /** 버튼 문구 (기본: "N차 예정 등록") — 회차 행마다 버튼을 두고 레이어 팝업으로 연다 (2026-09-29) */
+  triggerLabel?: string;
+  /** 앞 회차가 아직 없을 때 등 — 버튼만 보이고 눌리지 않는다 */
+  disabled?: boolean;
+  disabledHint?: string;
   nextRoundNo: number;
   maxRounds: number;
   rates: { online: number | null; offline: number | null };
@@ -142,34 +157,44 @@ export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOp
         toast({ title: r.error, variant: 'destructive' });
         return;
       }
-      toast({ title: `${r.roundNo}회차를 ${isPlan ? '계획으로 ' : ''}등록했습니다. 진행 후 [보고서 등록]으로 실서류를 등록하세요.` });
+      toast({ title: `${r.roundNo}회차를 ${isPlan ? '예정으로 ' : ''}등록했습니다. 진행 후 [보고서 업로드]로 보고서를 올리세요.` });
       setOpen(false);
       setPlace('');
       router.refresh();
     });
   };
 
-  if (!open) {
-    return (
-      <Button onClick={() => setOpen(true)} disabled={full} className="gap-1">
-        <Plus className="h-4 w-4" /> {full ? `회차 상한(${maxRounds}회) 도달` : `${nextRoundNo}회차 등록 (계획/실행)`}
-      </Button>
-    );
-  }
-
   const d = new Date(`${date}T00:00:00+09:00`);
   const dateLabel = Number.isNaN(d.getTime()) ? date : `${Number(date.slice(5, 7))}월 ${Number(date.slice(8, 10))}일 (${WEEKDAYS[toKstParts(d)?.weekday ?? 0]})`;
 
+  const blocked = disabled || full;
   return (
-    <div className="flex flex-col gap-4 rounded-xl border bg-background p-4 shadow-sm">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold">{nextRoundNo}회차 등록 — 1단계 · 계획/실행 정보</h3>
-        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${isPlan ? 'bg-sky-100 text-sky-800' : 'bg-emerald-100 text-emerald-800'}`}>
-          {isPlan ? '사전(계획) 등록' : '사후(실행) 등록'}
-        </span>
-      </div>
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        onClick={() => setOpen(true)}
+        disabled={blocked}
+        title={blocked ? (full ? `회차 상한(${maxRounds}회) 도달` : disabledHint) : undefined}
+        className="gap-1 border-dashed border-primary/60 text-primary hover:bg-primary/5"
+      >
+        <Plus className="h-4 w-4" /> {triggerLabel ?? `${nextRoundNo}차 예정 등록`}
+      </Button>
+      <Dialog open={open} onOpenChange={(o) => !pending && setOpen(o)}>
+        <DialogContent className="max-w-2xl">
+    <div className="flex flex-col gap-4">
+      <DialogHeader>
+        <div className="flex flex-wrap items-center gap-2">
+          <DialogTitle className="text-base">{nextRoundNo}회차 일정 등록</DialogTitle>
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${isPlan ? 'bg-sky-100 text-sky-800' : 'bg-emerald-100 text-emerald-800'}`}>
+            {isPlan ? '예약(사전) 등록' : '지난 일정(사후) 등록'}
+          </span>
+        </div>
+        <DialogDescription className="sr-only">일자·시간·방법·참가자·장소를 고르고 등록합니다.</DialogDescription>
+      </DialogHeader>
+      {!isPlan && <PastScheduleNotice />}
       <p className="text-xs text-muted-foreground">
-        일시·방법·참가자는 통계와 지급액 정산의 기본데이터입니다. 실서류(멘토링 보고서)는 진행 후 2단계 [보고서 등록]에서 올립니다.
+        일시·방법·참가자는 통계와 지급액 정산의 기본데이터입니다. 보고서는 멘토링을 진행한 뒤 이 회차 행의 [보고서 업로드]로 올립니다.
         {lastRound && <span className="ml-1 text-primary">이전 회차의 방법·시간·장소를 기본값으로 채웠습니다.</span>}
       </p>
 
@@ -259,9 +284,12 @@ export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOp
           취소
         </Button>
         <Button onClick={submit} disabled={pending}>
-          {pending ? '등록 중…' : isPlan ? '계획 등록' : '회차 등록'}
+          {pending ? '등록 중…' : isPlan ? '예정 등록' : '회차 등록'}
         </Button>
       </div>
     </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

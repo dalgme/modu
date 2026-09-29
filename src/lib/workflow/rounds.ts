@@ -10,6 +10,7 @@ import { resolveLimits, resolveRate, kstDate, type ConsultingMode } from '@/lib/
 import { getRoundAllowance, photoDocKey, reportDocKey } from '@/lib/data/rounds';
 import { renderRoundReport, resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import type { WorkflowResult } from '@/lib/workflow/cases';
+import { roundReportFileName } from '@/lib/workflow/round-report-name';
 
 /** 회차 참가자 (스냅샷 — 팀원 명단이 나중에 바뀌어도 회차 기록은 유지) */
 export interface RoundParticipant {
@@ -269,14 +270,14 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
   const admin = createAdminClient();
   const { data: log } = await admin
     .from('mentoring_logs')
-    .select('id, case_id, mentor_id, round_no, mode, started_at, ended_at, settlement_id, report_registered_at, cases!inner(status, program_id, support_type_id, mentee_id)')
+    .select('id, case_id, mentor_id, round_no, mode, started_at, ended_at, settlement_id, report_registered_at, cases!inner(status, program_id, support_type_id, mentee_id, owner_name)')
     .eq('id', input.logId)
     .maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
   if (log.mentor_id !== input.mentorId) return { ok: false, error: '이 회차의 담당 멘토가 아닙니다.' };
   if (log.settlement_id) return { ok: false, error: '정산에 포함된 회차입니다.' };
   if (log.report_registered_at) return { ok: false, error: '이미 보고서가 등록된 회차입니다.' };
-  const c = log.cases as unknown as { status: string; program_id: string; support_type_id: string; mentee_id: string | null };
+  const c = log.cases as unknown as { status: string; program_id: string; support_type_id: string; mentee_id: string | null; owner_name: string | null };
   const denied = assertTransition('submit_round', c.status as never);
   if (denied) return { ok: false, error: denied };
   if (new Date(log.started_at).getTime() > Date.now()) {
@@ -329,6 +330,9 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
   };
 
   if (input.reportFile) {
+    // 저장 파일명 = "멘토명-멘티명-회차-온/오프라인" + 원래 확장자 (2026-09-29) — 내려받을 때도 이 이름(서명 URL 다운로드명 = doc_name)
+    const { data: mentorRow } = await admin.from('users').select('name').eq('id', log.mentor_id).maybeSingle();
+    const reportName = roundReportFileName({ mentorName: mentorRow?.name, menteeName: c.owner_name, roundNo: log.round_no, mode: log.mode, originalName: input.reportFile.fileName });
     const moved = await moveStaging('documents', log.case_id, input.reportFile.stagingPath, REPORT_MAX_BYTES);
     if (!moved.ok) return { ok: false, error: moved.error };
     movedFiles.push({ bucket: 'documents', path: moved.dest });
@@ -337,7 +341,7 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
       .insert({
         case_id: log.case_id,
         doc_key: reportDocKey(log.id),
-        doc_name: input.reportFile.fileName || `${log.round_no}회차 보고서`,
+        doc_name: reportName,
         storage_path: moved.dest,
         sha256: moved.sha256,
         uploaded_by: input.mentorId,
@@ -428,7 +432,7 @@ export async function updateRound(input: {
   if (log.mentor_id !== input.mentorId) return { ok: false, error: '다른 멘토가 진행한 회차는 수정할 수 없습니다.' };
   if (log.settlement_id) return { ok: false, error: '정산에 포함된 회차는 수정할 수 없습니다.' };
   if (log.mentee_signed_at) return { ok: false, error: '멘티가 서명한 회차는 내용을 수정할 수 없습니다.' };
-  if (!log.report_registered_at) return { ok: false, error: '아직 보고서가 등록되지 않은 회차입니다. [보고서 등록]을 이용하세요.' };
+  if (!log.report_registered_at) return { ok: false, error: '아직 보고서가 등록되지 않은 회차입니다. [보고서 업로드]를 이용하세요.' };
   const c = log.cases as unknown as { status: string; program_id: string };
   const denied = assertTransition('submit_round', c.status as never);
   if (denied) return { ok: false, error: denied };

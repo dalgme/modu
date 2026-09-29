@@ -56,11 +56,11 @@ export function MentorCaseNextStep(p: {
         tone = 'action';
       } else if (p.nextPlanned) {
         title = `${p.nextPlanned.roundNo}회차 예정 · ${formatDateTime(p.nextPlanned.startedAt)}`;
-        desc = '진행 후 해당 회차의 [보고서 등록]을 눌러 2단계를 마무리하세요.';
+        desc = '진행 후 해당 회차 행의 [보고서 업로드]를 눌러 보고서를 올리세요.';
         anchor = '#rounds';
       } else if (p.planned === 0) {
         title = '첫 회차 일정을 등록하세요';
-        desc = '멘티와 일정을 잡고 [회차 등록]에서 일자·시간·방법·참가자를 남깁니다(사전 등록 가능).';
+        desc = '멘티와 일정을 잡고 회차 행의 [N차 예정 등록]에서 일자·시간·방법·참가자를 남깁니다(미리 등록 권장).';
         anchor = '#rounds';
         tone = 'action';
       } else if (p.reported < p.required) {

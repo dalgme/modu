@@ -131,8 +131,8 @@ export function MentorDashboardV2({
         </Link>
       </div>
 
-      {/* ① 요약 */}
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+      {/* ① 요약 — 보고서 등록 현황 카드는 문구가 길어 30% 넓게(1.3), 나머지 3장은 같은 폭(0.9)으로 줄여 한 줄 합계를 유지 */}
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-[9fr_13fr_9fr_9fr]">
         <Chip
           icon={Users}
           label="담당 멘티"
@@ -234,7 +234,7 @@ export function MentorDashboardV2({
           <Link href={scheduleHref} className="text-xs text-primary hover:underline">달력 전체 →</Link>
         </div>
         {data.upcoming.length === 0 ? (
-          <p className="text-sm text-muted-foreground">앞으로 7일 안에 등록된 컨설팅 일정이 없습니다. 케이스에서 [회차 등록]으로 계획을 남기면 여기에 표시됩니다.</p>
+          <p className="text-sm text-muted-foreground">앞으로 7일 안에 등록된 컨설팅 일정이 없습니다. 멘티 화면의 [N차 예정 등록]으로 일정을 남기면 여기에 표시됩니다.</p>
         ) : (
           <ul className="flex flex-col divide-y">
             {data.upcoming.map((e) => (
