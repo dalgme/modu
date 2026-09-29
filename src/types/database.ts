@@ -1484,6 +1484,51 @@ export type Database = {
           },
         ];
       };
+      mentor_payment_files: {
+        Row: {
+          created_at: string;
+          file_name: string;
+          file_size: number | null;
+          id: string;
+          mentor_id: string;
+          mime_type: string | null;
+          program_id: string;
+          sha256: string | null;
+          sort_order: number;
+          storage_path: string;
+          updated_at: string;
+          uploaded_by: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          file_name: string;
+          file_size?: number | null;
+          id?: string;
+          mentor_id: string;
+          mime_type?: string | null;
+          program_id: string;
+          sha256?: string | null;
+          sort_order?: number;
+          storage_path: string;
+          updated_at?: string;
+          uploaded_by?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          file_name?: string;
+          file_size?: number | null;
+          id?: string;
+          mentor_id?: string;
+          mime_type?: string | null;
+          program_id?: string;
+          sha256?: string | null;
+          sort_order?: number;
+          storage_path?: string;
+          updated_at?: string;
+          uploaded_by?: string | null;
+        };
+        Relationships: [];
+      };
       mentor_payment_docs: {
         Row: {
           bankbook_file_name: string | null;
@@ -2410,6 +2455,7 @@ export type Database = {
           email_subject_prefix: string | null;
           ends_on: string | null;
           features: Json;
+          file_policy: Json;
           id: string;
           logo_path: string | null;
           name: string;
@@ -2445,6 +2491,7 @@ export type Database = {
           email_subject_prefix?: string | null;
           ends_on?: string | null;
           features?: Json;
+          file_policy?: Json;
           id?: string;
           logo_path?: string | null;
           name: string;
@@ -2480,6 +2527,7 @@ export type Database = {
           email_subject_prefix?: string | null;
           ends_on?: string | null;
           features?: Json;
+          file_policy?: Json;
           id?: string;
           logo_path?: string | null;
           name?: string;
