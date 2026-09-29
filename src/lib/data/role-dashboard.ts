@@ -33,6 +33,8 @@ export interface MentorCaseTodo {
   statusLabel: string;
   roundsDone: number;
   requiredRounds: number;
+  /** 승인된 추가 회차 (round_extension_requests.status = approved 합계) */
+  extraRounds: number;
   menteePhone: string | null;
   menteeEmail: string | null;
   item: string | null;
@@ -51,6 +53,12 @@ export interface MentorDashboardData {
   /** 앞으로 7일 안의 계획 회차 (시간순) */
   upcoming: (RoundLite & { caseId: string; label: string })[];
   reportPendingCount: number;
+  /**
+   * 보고서 등록 현황 — "진행 중 담당 멘티"(= 대시보드 '담당 멘티 n명' 과 같은 집합: 배정 활성이면서
+   * 운영사 처리 중(registered·reassignment_pending·withdrawn)·정산 확정 이후(settlement_pending~closed)가 아닌 케이스) 기준.
+   * totalRounds = Σ(그룹 필수 회차 + 승인된 추가 회차), registered = Σ 케이스 누적 보고서 등록 회차(멘토 변경 전 회차 포함, §6-9).
+   */
+  reportSummary: { totalRounds: number; registered: number; caseCount: number };
   /** 보고서 등록됐지만 아직 정산 확정 전인 회차의 세전 합계 (예상, 미확정) */
   estimatedGross: number;
   confirmedNet: number;
@@ -114,7 +122,8 @@ function decideAction(c: CaseListItem, rounds: RoundLite[], nextPlanned: RoundLi
     case 'settlement_pending':
     case 'settlement_batched':
     case 'closed':
-      return { key: 'settled', label: c.status === 'closed' ? '종결 완료' : '정산 진행 중', hint: c.status === 'closed' ? '모든 과정이 끝났습니다.' : '검수가 끝나 정산이 확정되었습니다. 내 정산 내역에서 확인하세요.', href: '/mentor/settlements', urgent: false };
+      // 카드 클릭은 멘티(케이스) 화면으로 — 확정 정산은 케이스 화면의 '내 확정 정산' 카드와 [내 정산 내역]에서 본다
+      return { key: 'settled', label: c.status === 'closed' ? '종결 완료' : '정산 진행 중', hint: c.status === 'closed' ? '모든 과정이 끝났습니다.' : '검수가 끝나 정산이 확정되었습니다. 내 정산 내역에서 확인하세요.', href, urgent: false };
     default:
       break;
   }
@@ -142,12 +151,16 @@ export async function loadMentorDashboard(mentorId: string, programId: string, s
   const cases = await listMentorCases(mentorId, { programId, supportTypeId: supportTypeId ?? undefined });
   const ids = cases.map((c) => c.id);
   const admin = createAdminClient();
-  const [logs, { data: obs }, policy, { data: settled }] = await Promise.all([
+  const [logs, { data: obs }, policy, { data: settled }, { data: extRows }] = await Promise.all([
     loadLogs(ids),
     ids.length ? admin.from('observation_reports').select('case_id, content').in('case_id', ids) : Promise.resolve({ data: [] as { case_id: string; content: unknown }[] }),
     signaturePolicyByGroup(programId, cases.map((c) => c.support_type_id)),
     ids.length ? admin.from('settlements').select('case_id, net').eq('mentor_id', mentorId).in('case_id', ids).neq('status', 'canceled') : Promise.resolve({ data: [] as { case_id: string; net: number }[] }),
+    // 승인된 추가 회차 — 보고서 등록 현황의 총회차에 포함 (getRoundAllowance 와 같은 규칙)
+    ids.length ? admin.from('round_extension_requests').select('case_id, extra_rounds').eq('status', 'approved').in('case_id', ids) : Promise.resolve({ data: [] as { case_id: string; extra_rounds: number }[] }),
   ]);
+  const extraByCase = new Map<string, number>();
+  for (const r of extRows ?? []) extraByCase.set(r.case_id, (extraByCase.get(r.case_id) ?? 0) + Number(r.extra_rounds ?? 0));
   const hasObs = new Set(
     (obs ?? [])
       .filter((o) => {
@@ -174,6 +187,7 @@ export async function loadMentorDashboard(mentorId: string, programId: string, s
       statusLabel: CASE_STATUS_META[c.status].short,
       roundsDone: c.roundsDone,
       requiredRounds: c.requiredRounds,
+      extraRounds: extraByCase.get(c.id) ?? 0,
       menteePhone: c.phone || null,
       menteeEmail: c.email,
       item: c.item,
@@ -194,10 +208,17 @@ export async function loadMentorDashboard(mentorId: string, programId: string, s
     .map((l) => ({ ...toLite(l), caseId: l.case_id, label: labelOf.get(l.case_id) ?? '-' }))
     .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
 
+  // 진행 중 담당 멘티 = 운영사 처리 중·정산 확정 이후를 뺀 케이스 (대시보드 '담당 멘티 n명' 과 같은 기준)
+  const inProgress = todos.filter((t) => t.action.key !== 'inactive' && t.action.key !== 'settled');
   return {
     cases: todos,
     upcoming,
     reportPendingCount: todos.reduce((a, t) => a + t.reportPending.length, 0),
+    reportSummary: {
+      totalRounds: inProgress.reduce((a, t) => a + t.requiredRounds + t.extraRounds, 0),
+      registered: inProgress.reduce((a, t) => a + t.roundsDone, 0),
+      caseCount: inProgress.length,
+    },
     estimatedGross: logs.filter((l) => l.mentor_id === mentorId && l.report_registered_at && !l.settlement_id).reduce((a, l) => a + Number(l.amount_snapshot), 0),
     confirmedNet: (settled ?? []).reduce((a, s) => a + Number(s.net), 0),
   };

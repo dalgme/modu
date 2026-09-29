@@ -128,7 +128,8 @@ export default async function Page({ params }: { params: { id: string } }) {
         reportPending={rounds.filter((r) => !r.report_registered_at && new Date(r.started_at).getTime() <= Date.now()).map((r) => r.round_no)}
         nextPlanned={rounds.filter((r) => !r.report_registered_at && new Date(r.started_at).getTime() > Date.now()).map((r) => ({ roundNo: r.round_no, startedAt: r.started_at }))[0] ?? null}
       />
-      <CaseDetailShell item={item} history={history} predecessors={predecessors} predecessorLinks={false} branding={ctx.branding} basePath="/mentor/cases">
+      {/* 배치: 다음 할 일 배너 → (셸) 제목·단계 막대 → 멘티 정보 | 진행 이력(infoFirst) → 요청·종결 → 회차 → 관찰의견서 → 정산 → 서류 */}
+      <CaseDetailShell item={item} history={history} predecessors={predecessors} predecessorLinks={false} branding={ctx.branding} basePath="/mentor/cases" infoFirst>
         <div id="requests" className="scroll-mt-36" />
         <MentorRequests
           caseId={item.id}

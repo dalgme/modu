@@ -2,7 +2,7 @@ import { requireMentor } from '@/lib/auth/guards';
 import { getImpersonation } from '@/lib/auth/impersonation';
 import { requireContext } from '@/lib/programs/context';
 import { markAssignmentsConfirmed } from '@/lib/matching/auto-match';
-import { listMentorCases, listMentorEndedCases } from '@/lib/data/cases';
+import { listMentorEndedCases } from '@/lib/data/cases';
 import { loadMentorDashboard } from '@/lib/data/role-dashboard';
 import { MentorDashboardV2 } from '@/components/mentor/mentor-dashboard-v2';
 import { listMyOpenSurveys } from '@/lib/surveys/campaigns';
@@ -20,8 +20,8 @@ export default async function Page() {
   // P24: 멘토 본인이 로그인해 대시보드(배정 멘티)를 열람하면 매칭 리스트에 '확인' 표시. 대행 중에는 기록하지 않는다.
   if (!(await getImpersonation())) await markAssignmentsConfirmed(profile.id, ctx.programId);
   // 멘토는 여러 그룹의 멘티를 맡을 수 있으므로 대시보드는 행사 전체 케이스를 보여준다 (P28)
-  const [cases, dash, endedCases] = await Promise.all([
-    listMentorCases(profile.id, { programId: ctx.programId }),
+  // 담당 멘티 목록은 dash.cases(할 일 카드)로 통합 — 옛 '담당 멘티 전체' 목록 조회는 제거
+  const [dash, endedCases] = await Promise.all([
     loadMentorDashboard(profile.id, ctx.programId, null, '/mentor/cases'),
     listMentorEndedCases(profile.id, ctx.programId),
   ]);
@@ -63,7 +63,7 @@ export default async function Page() {
       )}
       <OpenSurveysCard surveys={openSurveys} />
       <MentorOnboarding items={onboarding} />
-      <MentorDashboardV2 name={profile.name} data={dash} cases={cases} endedCases={endedCases} basePath="/mentor/cases" branding={ctx.branding} guideHref="/mentor/guide" scheduleHref="/mentor/schedule" settlementsHref="/mentor/settlements" />
+      <MentorDashboardV2 name={profile.name} data={dash} endedCases={endedCases} basePath="/mentor/cases" branding={ctx.branding} guideHref="/mentor/guide" scheduleHref="/mentor/schedule" settlementsHref="/mentor/settlements" />
     </main>
   );
 }

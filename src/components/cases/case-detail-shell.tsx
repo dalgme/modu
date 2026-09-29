@@ -27,6 +27,7 @@ export function CaseDetailShell({
   branding,
   basePath,
   showLoginId = false,
+  infoFirst = false,
   children,
 }: {
   item: CaseListItem;
@@ -39,8 +40,26 @@ export function CaseDetailShell({
   branding: Branding;
   basePath: string;
   showLoginId?: boolean;
+  /**
+   * true 면 "멘티 정보 | 진행 이력" 줄을 역할별 패널(children) 위로 올린다 (멘토 케이스 화면).
+   * 이때 폰 요약 카드(연락처·담당 멘토)는 바로 아래 멘티 정보 카드와 겹치므로 생략한다. 기본 false = 기존 배치.
+   */
+  infoFirst?: boolean;
   children?: React.ReactNode;
 }) {
+  const infoRow = (
+    <div className="grid gap-5 lg:grid-cols-2">
+      <CaseDetailCard item={item} showLoginId={showLoginId} />
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">진행 이력</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <CaseTimeline status={item.status} history={history} branding={branding} />
+        </CardContent>
+      </Card>
+    </div>
+  );
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -58,38 +77,32 @@ export function CaseDetailShell({
       <ProcessStepBar status={item.status} branding={branding} />
 
       {/* (P31) 폰 요약 카드 — 멘티 연락처·담당 멘토를 헤더 바로 아래에 (정보 카드는 아래쪽에 있어 스크롤이 길다) */}
-      <div className="grid grid-cols-2 gap-2 rounded-xl border bg-background p-3 text-sm md:hidden">
-        <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground">멘티 연락처</span>
-          <span className="font-medium">{item.phone || '-'}</span>
-          <ContactLinks phone={item.phone} name={item.owner_name} size="sm" />
+      {!infoFirst && (
+        <div className="grid grid-cols-2 gap-2 rounded-xl border bg-background p-3 text-sm md:hidden">
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] text-muted-foreground">멘티 연락처</span>
+            <span className="font-medium">{item.phone || '-'}</span>
+            <ContactLinks phone={item.phone} name={item.owner_name} size="sm" />
+          </div>
+          <div className="flex flex-col gap-1">
+            <span className="text-[11px] text-muted-foreground">담당 멘토</span>
+            {item.mentorId && item.mentorName ? (
+              <>
+                <MentorName id={item.mentorId} name={item.mentorName} count={item.mentorActiveCount} caseHrefBase={basePath} />
+                <ContactLinks phone={(item as { mentorPhone?: string | null }).mentorPhone} name={item.mentorName} size="sm" />
+              </>
+            ) : (
+              <span className="text-muted-foreground">미배정</span>
+            )}
+          </div>
         </div>
-        <div className="flex flex-col gap-1">
-          <span className="text-[11px] text-muted-foreground">담당 멘토</span>
-          {item.mentorId && item.mentorName ? (
-            <>
-              <MentorName id={item.mentorId} name={item.mentorName} count={item.mentorActiveCount} caseHrefBase={basePath} />
-              <ContactLinks phone={(item as { mentorPhone?: string | null }).mentorPhone} name={item.mentorName} size="sm" />
-            </>
-          ) : (
-            <span className="text-muted-foreground">미배정</span>
-          )}
-        </div>
-      </div>
+      )}
+
+      {infoFirst && infoRow}
 
       {children}
 
-      <div className="grid gap-5 lg:grid-cols-2">
-        <CaseDetailCard item={item} showLoginId={showLoginId} />
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">진행 이력</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <CaseTimeline status={item.status} history={history} branding={branding} />
-          </CardContent>
-        </Card>
-      </div>
+      {!infoFirst && infoRow}
 
       {successors.length > 0 && (
         <Card>
