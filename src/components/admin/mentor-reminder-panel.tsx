@@ -1,8 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { CalendarClock, RotateCcw, Save, Send, Users } from 'lucide-react';
+import { CalendarClock, RotateCcw, Save, Send, Sparkles, Users } from 'lucide-react';
 
 import { clearMentorReminderGroupAction, saveMentorReminderSettingAction, sendMentorReminderNowAction, defaultMentorReminderTemplateAction } from '@/lib/notifications/sms-admin-actions';
 import type { EligibleMentor, ReminderSetting } from '@/lib/notifications/mentor-weekly-reminder';
@@ -26,6 +26,14 @@ export interface ReminderScope {
   /** 공통 행이 덮는 그룹명 (공통 범위만) */
   coveredGroups: string[];
 }
+
+/** 리마인더 문구 자동 기입 필드 — 서버 치환(`renderMentorReminder`)이 지원하는 4개만 */
+const REMINDER_FIELDS = [
+  { key: 'program', label: '행사명', desc: '지금 운영 중인 행사(사업) 이름' },
+  { key: 'group', label: '그룹명', desc: '사업 그룹 이름 (넣으면 그룹마다 한 통씩, 빼면 멘토마다 한 통으로 합쳐 발송)' },
+  { key: 'mentor', label: '멘토 이름', desc: '문자를 받는 멘토 이름' },
+  { key: 'companies', label: '보고서 남은 멘티', desc: '회차·보고서가 아직 남은 담당 멘티 이름 (여러 명이면 쉼표로 이어서)' },
+] as const;
 
 function render(template: string, vars: { program: string; group: string; mentor: string; companies: string[] }): string {
   return template.split('{program}').join(vars.program).split('{group}').join(vars.group).split('{mentor}').join(vars.mentor).split('{companies}').join(vars.companies.join(', '));
@@ -51,6 +59,20 @@ export function MentorReminderPanel({ scopes, programName, initialScope, canEdit
   const [minute, setMinute] = useState(base?.sendMinute ?? 30);
   const [template, setTemplate] = useState(base?.template ?? '');
   const [busy, setBusy] = useState<'save' | 'send' | 'clear' | null>(null);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  /** 커서 위치에 `{키}` 삽입 — 삽입 뒤로 커서 이동 */
+  const insertField = (key: string) => {
+    const token = `{${key}}`;
+    const el = textRef.current;
+    const start = el ? el.selectionStart : template.length;
+    const end = el ? el.selectionEnd : template.length;
+    setTemplate(template.slice(0, start) + token + template.slice(end));
+    window.requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(start + token.length, start + token.length);
+    });
+  };
   if (draftKey !== scopeId) {
     // 범위가 바뀌면 그 범위의 저장값으로 폼을 다시 채운다
     setDraftKey(scopeId);
@@ -137,7 +159,7 @@ export function MentorReminderPanel({ scopes, programName, initialScope, canEdit
               <span className="mt-0.5 flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary"><CalendarClock className="h-5 w-5" /></span>
               <div>
                 <p className="text-sm font-semibold">자동 발송 요일 · 시각 (KST)</p>
-                <p className="text-xs text-muted-foreground">매주 그 요일, 설정 시각 이후 첫 정각+30분 점검에서 발송됩니다(최대 1시간 지연). 배정 멘티 중 회차가 남은 멘티가 있는 멘토에게만 갑니다.</p>
+                <p className="text-xs text-muted-foreground">매주 그 요일, 정한 시각이 지나면 1시간 안에 발송됩니다(매시 30분마다 확인). 담당 멘티 중 회차가 남은 멘티가 있는 멘토에게만 갑니다.</p>
               </div>
             </div>
             <button type="button" disabled={!canEdit} onClick={() => setEnabled((v) => !v)} className={cn('inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-60', enabled ? 'border-status-approved/40 bg-status-approved/10 text-status-approved' : 'border-muted bg-muted text-muted-foreground')}>
@@ -169,13 +191,43 @@ export function MentorReminderPanel({ scopes, programName, initialScope, canEdit
             </div>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="reminder-template">
-              안내문 내용 <span className="text-xs font-normal text-muted-foreground">(치환: <code className="rounded bg-muted px-1">{'{program}'}</code> 행사명 · <code className="rounded bg-muted px-1">{'{group}'}</code> 그룹명 · <code className="rounded bg-muted px-1">{'{mentor}'}</code> 멘토명 · <code className="rounded bg-muted px-1">{'{companies}'}</code> 회차 남은 멘티)</span>
-            </Label>
-            <Textarea id="reminder-template" rows={4} value={template} disabled={!canEdit} onChange={(e) => setTemplate(e.target.value)} placeholder="[{program}] {mentor}멘토님, 이번주에도 [{companies}] 멘티에 대한 …" />
+            <Label htmlFor="reminder-template">안내문 내용</Label>
+            <Textarea id="reminder-template" ref={textRef} rows={4} value={template} disabled={!canEdit} onChange={(e) => setTemplate(e.target.value)} placeholder="[{program}] {mentor}멘토님, 이번주에도 [{companies}] 멘티에 대한 …" />
             <div className="flex items-center justify-between">
               <button type="button" disabled={!canEdit} onClick={resetTemplate} className="inline-flex items-center gap-1 text-xs text-muted-foreground underline underline-offset-2 disabled:opacity-60"><RotateCcw className="h-3 w-3" /> 기본 문구로</button>
               <span className="text-[11px] text-muted-foreground">{template.length}자</span>
+            </div>
+            {/* 자동 기입 필드 — 누르면 커서 위치에 {키} 삽입 */}
+            <div className="flex flex-col gap-1.5 rounded-lg border border-primary/25 bg-primary/[0.04] p-2.5">
+              <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs font-semibold">
+                <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden />
+                자동 기입 필드
+                <span className="font-normal text-muted-foreground">— 누르면 안내문의 커서 위치에 들어가고, 멘토마다 자기 정보로 바뀝니다</span>
+              </p>
+              <div className="flex flex-wrap gap-1.5" role="group" aria-label="자동 기입 필드">
+                {REMINDER_FIELDS.map((f) => (
+                  <button
+                    key={f.key}
+                    type="button"
+                    disabled={!canEdit}
+                    onClick={() => insertField(f.key)}
+                    title={f.desc}
+                    aria-label={`${f.label} : {${f.key}} 넣기`}
+                    className="inline-flex max-w-full items-center gap-1 rounded-full border border-primary/25 bg-background px-2.5 py-1 text-left text-xs transition-colors hover:border-primary/60 hover:bg-primary/10 disabled:opacity-60"
+                  >
+                    <span className="font-medium">{f.label}</span>
+                    <span className="text-muted-foreground">:</span>
+                    <code className="font-mono text-[11px] text-primary">{`{${f.key}}`}</code>
+                  </button>
+                ))}
+              </div>
+              <ul className="grid gap-0.5 text-[11px] text-muted-foreground sm:grid-cols-2">
+                {REMINDER_FIELDS.map((f) => (
+                  <li key={f.key}>
+                    <b className="font-semibold text-foreground/80">{f.label}</b> — {f.desc}
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
           <div className="rounded-lg border bg-muted/40 p-3">

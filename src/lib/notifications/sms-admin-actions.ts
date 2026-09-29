@@ -8,6 +8,9 @@ import { sendSms } from '@/lib/notifications/provider';
 import { getSolapiBalance } from '@/lib/notifications/solapi';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import { normalizePhone } from '@/lib/utils/phone';
+import { loadLoginGuideRecipients } from '@/lib/data/members';
+import type { LoginGuideContext, LoginGuideRecipient } from '@/lib/sms/login-guide-template';
+import { bulkFieldsUsed, fallbackBulkRecipient, renderBulkSms, validateBulkSmsText } from '@/lib/sms/bulk-sms-fields';
 
 const INSTITUTION_READ_ONLY = '발주처 계정은 문자 발송을 할 수 없습니다.';
 
@@ -111,13 +114,71 @@ export async function sendTestSmsAction(input: { to: string; text?: string }): P
   return r;
 }
 
+/** 앱 주소 (끝 슬래시 제거) — `{login_url}` 치환용 */
+function appBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
+}
+
+/**
+ * 자동 기입 필드 치환 준비 — 수신자별 데이터(로그인 안내 문자와 같은 로더) + 행사 공통 값.
+ * `{login_url}` 을 쓰는데 앱 주소가 없으면 오류(빈 주소로 발송하지 않는다).
+ */
+async function prepareBulkRender(
+  programId: string,
+  supportTypeId: string | null,
+  ids: string[],
+  needsLoginUrl: boolean,
+): Promise<{ ok: true; context: LoginGuideContext; byId: Map<string, LoginGuideRecipient> } | { ok: false; error: string }> {
+  const base = appBaseUrl();
+  if (needsLoginUrl && !base) return { ok: false, error: '앱 주소(NEXT_PUBLIC_APP_URL)가 설정되지 않아 {login_url}(로그인 주소)을 채울 수 없습니다. 이 필드를 빼고 보내거나 관리자에게 문의하세요.' };
+  const { program, recipients } = await loadLoginGuideRecipients(programId, supportTypeId, ids);
+  if (!program) return { ok: false, error: '행사를 찾을 수 없습니다.' };
+  return {
+    ok: true,
+    context: { programName: program.name, loginUrl: base ? `${base}/login` : '', footer: program.footer },
+    byId: new Map(recipients.map((r) => [r.id, r])),
+  };
+}
+
+export type BulkSmsPreviewResult =
+  | { ok: true; context: LoginGuideContext; recipients: LoginGuideRecipient[] }
+  | { ok: false; error: string };
+
+/** 미리보기로 불러올 최대 수신자 수 */
+const BULK_PREVIEW_MAX = 5;
+
+/**
+ * 문자 발송 확인창 미리보기 데이터 — 선택 수신자 앞쪽 몇 명의 치환 데이터(평범한 JSON).
+ * 발송 액션과 같은 로더·같은 렌더 함수(`renderBulkSms`)를 쓰므로 미리보기 = 실제 발송 문구.
+ */
+export async function getBulkSmsPreviewAction(recipientIds: string[]): Promise<BulkSmsPreviewResult> {
+  const g = await smsGate();
+  if (!g.ok) return { ok: false, error: g.error };
+  const rawIds = Array.from(new Set(Array.isArray(recipientIds) ? recipientIds : []))
+    .filter((x): x is string => typeof x === 'string' && /^[0-9a-f-]{36}$/i.test(x))
+    .slice(0, BULK_PREVIEW_MAX);
+  if (rawIds.length === 0) return { ok: false, error: '수신자를 1명 이상 선택하세요.' };
+  const ids = await scopeRecipients(g.ctx.programId, rawIds);
+  if (ids.length === 0) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
+  const base = appBaseUrl();
+  const { program, recipients } = await loadLoginGuideRecipients(g.ctx.programId, g.ctx.supportTypeId ?? null, ids);
+  if (!program) return { ok: false, error: '행사를 찾을 수 없습니다.' };
+  const order = new Map(ids.map((id, i) => [id, i]));
+  return {
+    ok: true,
+    context: { programName: program.name, loginUrl: base ? `${base}/login` : '', footer: program.footer },
+    recipients: recipients.filter((r) => order.has(r.id)).sort((a, b) => order.get(a.id)! - order.get(b.id)!),
+  };
+}
+
 /**
  * 관리자: 선택한 회원들에게 실제 문자 발송.
  *  - 수신자는 현재 행사의 활성 소속으로 제한
  *  - 행사별 문자 API → 플랫폼 폴백 (`sendSms(to, text, programId)`)
  *  - 10명 단위 병렬 배치(Promise.allSettled). 발송사가 인증·잔액 오류를 돌려주면 그 배치에서 중단
- *  - `{name}` 은 수신자 이름으로 치환 (서버, P31). 실패 수신자 목록을 돌려준다
- *  - 감사 'sms.bulk_send' (program_id, total/count, sent, failed, failed_ids)
+ *  - 자동 기입 필드(`{name}` `{program}` `{mentees}` … — src/lib/sms/bulk-sms-fields.ts)는 수신자별로 치환.
+ *    미리보기와 같은 렌더 함수(`renderBulkSms`)·같은 로더(`loadLoginGuideRecipients`)를 쓴다. 실패 수신자 목록을 돌려준다
+ *  - 감사 'sms.bulk_send' (program_id, total/count, sent, failed, failed_ids, fields_used)
  */
 export async function sendBulkSmsAction(input: {
   recipientIds: string[];
@@ -129,18 +190,29 @@ export async function sendBulkSmsAction(input: {
   const text = (input.text ?? '').trim();
   const rawIds = Array.from(new Set(input.recipientIds ?? [])).filter(Boolean);
   if (!text) return { ok: false, error: '메시지 내용을 입력하세요.' };
+  const invalid = validateBulkSmsText(text);
+  if (invalid) return { ok: false, error: invalid };
   if (rawIds.length === 0) return { ok: false, error: '수신자를 1명 이상 선택하세요.' };
   const ids = await scopeRecipients(g.ctx.programId, rawIds);
   if (ids.length === 0) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
 
   const admin = createAdminClient();
-  const users = await fetchAllIn(ids, (chunk, from, to) => admin.from('users').select('id, name, phone, is_active').in('id', chunk).range(from, to));
+  const users = await fetchAllIn(ids, (chunk, from, to) => admin.from('users').select('id, name, phone, email, organization, role, is_active').in('id', chunk).range(from, to));
   const targets = users
     .filter((u) => u.is_active && normalizePhone(u.phone))
-    .map((u) => ({ id: u.id, name: u.name, phone: normalizePhone(u.phone)! }));
+    .map((u) => ({ id: u.id, name: u.name, phone: normalizePhone(u.phone)!, email: u.email, organization: u.organization, role: u.role }));
   if (targets.length === 0) return { ok: false, error: '발송 가능한 연락처가 없습니다.' };
-  const hasName = text.includes('{name}');
-  const textFor = (t: { name: string }) => (hasName ? text.replaceAll('{name}', t.name) : text);
+
+  // 자동 기입 필드 — 쓰였을 때만 수신자별 치환 데이터를 읽는다 (필드 없는 문구는 그대로 발송)
+  const fieldsUsed = bulkFieldsUsed(text);
+  let render: ((t: (typeof targets)[number]) => string) | null = null;
+  if (fieldsUsed.length > 0) {
+    const prepared = await prepareBulkRender(g.ctx.programId, g.ctx.supportTypeId ?? null, targets.map((t) => t.id), fieldsUsed.includes('login_url'));
+    if (!prepared.ok) return { ok: false, error: prepared.error };
+    // 로더에서 빠진 수신자(드묾)는 가진 값(이름·휴대폰 등)만으로 치환한다
+    render = (t) => renderBulkSms(text, prepared.byId.get(t.id) ?? fallbackBulkRecipient(t), prepared.context);
+  }
+  const textFor = (t: (typeof targets)[number]) => (render ? render(t) : text);
 
   let sent = 0;
   let failed = 0;
@@ -175,7 +247,7 @@ export async function sendBulkSmsAction(input: {
     action: 'sms.bulk_send',
     entity_type: 'users',
     entity_id: g.actorId,
-    metadata: { total: targets.length, count: targets.length, sent, failed, failed_ids: failedIds.slice(0, 200), dropped_out_of_scope: rawIds.length - ids.length, fatal_error: fatal, role: g.ctx.role, name_substituted: hasName },
+    metadata: { total: targets.length, count: targets.length, sent, failed, failed_ids: failedIds.slice(0, 200), dropped_out_of_scope: rawIds.length - ids.length, fatal_error: fatal, role: g.ctx.role, name_substituted: fieldsUsed.includes('name'), fields_used: fieldsUsed },
   });
   if (auditError) console.error('bulk sms audit failed:', auditError.message);
 
@@ -212,6 +284,10 @@ export async function scheduleBulkSmsAction(input: {
   const text = (input.text ?? '').trim();
   const rawIds = Array.from(new Set(input.recipientIds ?? [])).filter(Boolean);
   if (!text) return { ok: false, error: '메시지 내용을 입력하세요.' };
+  // 자동 기입 필드는 문구 그대로 저장하고, 발송 시점에 수신자별로 치환한다 (scheduled-sms.ts)
+  const invalid = validateBulkSmsText(text);
+  if (invalid) return { ok: false, error: invalid };
+  if (bulkFieldsUsed(text).includes('login_url') && !appBaseUrl()) return { ok: false, error: '앱 주소(NEXT_PUBLIC_APP_URL)가 설정되지 않아 {login_url}(로그인 주소)을 채울 수 없습니다. 이 필드를 빼고 예약하세요.' };
   if (rawIds.length === 0) return { ok: false, error: '수신자를 1명 이상 선택하세요.' };
   const ids = await scopeRecipients(g.ctx.programId, rawIds);
   if (ids.length === 0) return { ok: false, error: '이 행사 소속 회원이 아닙니다.' };
@@ -242,7 +318,7 @@ export async function scheduleBulkSmsAction(input: {
     action: 'sms.schedule',
     entity_type: 'scheduled_messages',
     entity_id: actor.id,
-    metadata: { total: ids.length, scheduled_at: when.toISOString(), dropped_out_of_scope: rawIds.length - ids.length },
+    metadata: { total: ids.length, scheduled_at: when.toISOString(), dropped_out_of_scope: rawIds.length - ids.length, fields_used: bulkFieldsUsed(text) },
   });
   if (auditError) console.error('sms schedule audit failed:', auditError.message);
 

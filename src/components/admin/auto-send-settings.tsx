@@ -121,7 +121,7 @@ export function AutoSendSettings({
                         <span className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
                           {r.label}
                           {c.kind === 'toggle' && c.lockable && (
-                            <span className="inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground" title="정산·품의 게이트 알림은 끌 수 없습니다">
+                            <span className="inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground" title="정산·지급 품의 진행에 꼭 필요한 알림이라 끌 수 없습니다">
                               <Lock className="h-3 w-3" /> 항상 켬
                             </span>
                           )}

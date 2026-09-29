@@ -1,10 +1,20 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Search, X, Plus, Send, Users, Clock, CalendarClock, ClipboardPaste, RotateCcw } from 'lucide-react';
+import { Search, X, Plus, Send, Users, Clock, CalendarClock, ClipboardPaste, RotateCcw, Sparkles } from 'lucide-react';
 
-import { sendBulkSmsAction, scheduleBulkSmsAction } from '@/lib/notifications/sms-admin-actions';
+import { getBulkSmsPreviewAction, sendBulkSmsAction, scheduleBulkSmsAction, type BulkSmsPreviewResult } from '@/lib/notifications/sms-admin-actions';
+import {
+  BULK_SMS_FIELDS,
+  SAMPLE_BULK_CONTEXT,
+  bulkFieldsUsed,
+  buttonLabel,
+  fallbackBulkRecipient,
+  renderBulkSms,
+  sampleBulkRecipient,
+  validateBulkSmsText,
+} from '@/lib/sms/bulk-sms-fields';
 import type { SmsRecipient } from '@/lib/data/members';
 import { ROLE_LABELS } from '@/lib/auth/roles';
 import { estimateSmsCost } from '@/lib/notifications/sms-cost';
@@ -33,6 +43,8 @@ const digitsOnly = (s: string) => s.replace(/\D/g, '');
 /**
  * 문자 발송 작성 — 수신자 선택(역할 칩 · 이름/휴대폰 검색) → 문안 → 즉시/예약.
  * 발송 전 ConfirmDialog 로 수신자 수 · 예상 비용 · 발신 경로 · 문안 미리보기를 보여준다.
+ * 자동 기입 필드(`{name}` `{program}` … — src/lib/sms/bulk-sms-fields.ts) 버튼은 메시지 커서 위치에 들어가고,
+ * 확인창 미리보기는 첫 수신자의 실제 데이터로 서버 발송과 같은 렌더 함수(`renderBulkSms`)를 쓴다.
  * `canSend=false`(발주처 열람)면 발송·예약 버튼이 잠긴다.
  */
 export function SmsComposer({
@@ -80,6 +92,9 @@ export function SmsComposer({
   const [mode, setMode] = useState<'now' | 'scheduled'>('now');
   const [scheduledAt, setScheduledAt] = useState('');
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const textRef = useRef<HTMLTextAreaElement>(null);
+  // 확인창 미리보기 — 첫 수신자의 실제 치환 데이터 (id 로 최신 여부 판정)
+  const [preview, setPreview] = useState<{ id: string; data: BulkSmsPreviewResult } | null>(null);
 
   const selectedIds = useMemo(() => new Set(selected.map((r) => r.id)), [selected]);
   const sendable = configured || programSmsActive;
@@ -102,7 +117,14 @@ export function SmsComposer({
     return m;
   }, [recipients]);
 
-  const cost = estimateSmsCost(text, selected.length);
+  // 자동 기입 필드 — 검증(서버와 같은 함수) · 사용 여부
+  const fieldsUsed = bulkFieldsUsed(text);
+  const usesFields = fieldsUsed.length > 0;
+  const invalid = text.trim() ? validateBulkSmsText(text) : null;
+  const firstRecipient = selected[0] ?? null;
+  // 필드를 쓰면 예시 값으로 치환한 길이로 비용을 어림한다 (받는 사람마다 길이가 조금씩 다름)
+  const estimateText = usesFields && !invalid ? renderBulkSms(text, sampleBulkRecipient(firstRecipient?.role ?? 'mentor'), SAMPLE_BULK_CONTEXT) : text;
+  const cost = estimateSmsCost(estimateText, selected.length);
 
   function add(r: SmsRecipient) {
     setSelected((prev) => [...prev, r]);
@@ -145,8 +167,50 @@ export function SmsComposer({
     const ids = new Set(lastFailed.map((f) => f.id));
     setSelected(recipients.filter((r) => ids.has(r.id)));
   }
-  /** 미리보기용 {name} 치환 샘플 */
-  const previewText = text.includes('{name}') ? text.replaceAll('{name}', selected[0]?.name ?? '홍길동') : text;
+  /** 커서 위치에 `{키}` 삽입 — 삽입 뒤로 커서 이동 */
+  function insertField(key: string) {
+    const token = `{${key}}`;
+    const el = textRef.current;
+    const start = el ? el.selectionStart : text.length;
+    const end = el ? el.selectionEnd : text.length;
+    setText(text.slice(0, start) + token + text.slice(end));
+    window.requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(start + token.length, start + token.length);
+    });
+  }
+
+  // 확인창이 열리면 첫 수신자의 치환 데이터를 불러온다 (필드를 쓸 때만)
+  const firstId = firstRecipient?.id ?? null;
+  useEffect(() => {
+    if (!confirmOpen || !usesFields || !firstId) return;
+    let alive = true;
+    getBulkSmsPreviewAction([firstId])
+      .then((r) => {
+        if (alive) setPreview({ id: firstId, data: r });
+      })
+      .catch(() => {
+        if (alive) setPreview({ id: firstId, data: { ok: false, error: '미리보기 정보를 불러오지 못했습니다.' } });
+      });
+    return () => {
+      alive = false;
+    };
+  }, [confirmOpen, usesFields, firstId]);
+
+  const previewData = preview && preview.id === firstId ? preview.data : null;
+  const previewLoading = usesFields && confirmOpen && !previewData;
+  /** 확인창 미리보기 — 실제 데이터가 오면 서버와 같은 렌더, 불러오는 중·실패면 이름만 치환 */
+  const previewText = (() => {
+    if (!usesFields || invalid) return text;
+    if (previewData?.ok && firstRecipient) {
+      const r = previewData.recipients.find((x) => x.id === firstRecipient.id) ?? fallbackBulkRecipient(firstRecipient);
+      return renderBulkSms(text, r, previewData.context);
+    }
+    return text.replaceAll('{name}', firstRecipient?.name ?? '홍길동');
+  })();
+  // 필드를 쓰면 확인창 비용은 첫 수신자 문구 기준(예시), 아니면 그대로
+  const dialogCost = usesFields ? estimateSmsCost(previewText, selected.length) : cost;
 
   // datetime-local 최소값 (지금부터 2분 뒤) — 과거 예약 방지
   const minScheduled = useMemo(() => {
@@ -205,7 +269,7 @@ export function SmsComposer({
     : !sendable
       ? '플랫폼 공통 또는 행사별 문자 API 가 설정되지 않았습니다.'
       : undefined;
-  const ready = canSend && sendable && !sending && selected.length > 0 && text.trim().length > 0 && (mode !== 'scheduled' || !!scheduledAt);
+  const ready = canSend && sendable && !sending && selected.length > 0 && text.trim().length > 0 && !invalid && (mode !== 'scheduled' || !!scheduledAt);
   const route = programSmsActive ? '행사별 문자 API (행사 발신번호)' : configured ? '플랫폼 공통 발신번호' : '미설정';
 
   return (
@@ -366,22 +430,116 @@ export function SmsComposer({
 
       {/* 메시지 + 실시간 비용 */}
       <div className="flex flex-col gap-1.5">
-        <Label htmlFor="bulk-text">메시지 (90byte 초과 시 LMS 자동전환) <span className="ml-1 text-xs font-normal text-muted-foreground">· <code>{'{name}'}</code> 은 수신자 이름으로 바뀝니다</span></Label>
+        <Label htmlFor="bulk-text">
+          메시지 (90byte 초과 시 LMS 자동전환)
+          <span className="ml-1 text-xs font-normal text-muted-foreground">· 아래 자동 기입 필드를 넣으면 받는 사람마다 자기 정보로 바뀌어 발송됩니다</span>
+        </Label>
         <Textarea
           id="bulk-text"
+          ref={textRef}
           rows={4}
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="발송할 메시지를 입력하세요. {name} 을 쓰면 수신자 이름으로 치환됩니다."
+          placeholder="발송할 메시지를 입력하세요. 예) {name}님, 이번 주 멘토링 일정을 확인해 주세요."
+          aria-invalid={!!invalid}
+          aria-describedby={invalid ? 'bulk-text-error' : undefined}
         />
+        {invalid && (
+          <p id="bulk-text-error" className="rounded-md border border-destructive/40 bg-destructive/5 px-2 py-1.5 text-xs font-medium text-destructive">
+            {invalid}
+          </p>
+        )}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-muted/50 px-3 py-2 text-sm">
           <span className="text-muted-foreground">
             {cost.kind} · {cost.bytes}byte · {formatKRW(cost.unitPrice)}/건 × {cost.recipientCount}명
+            {usesFields && <span className="ml-1 text-xs">(예시 기준)</span>}
           </span>
           <span className="font-semibold">
             예상 발송비용 <span className="text-primary">{formatKRW(cost.total)}</span>
             <span className="ml-1 text-xs font-normal text-muted-foreground">(부가세 별도)</span>
           </span>
+        </div>
+
+        {/* 자동 기입 필드 — 버튼을 누르면 커서 위치에 {키} 삽입 */}
+        <div className="flex flex-col gap-2 rounded-lg border border-primary/25 bg-primary/[0.04] p-3">
+          <div className="flex flex-col gap-0.5">
+            <p className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-sm font-semibold">
+              <Sparkles className="h-4 w-4 shrink-0 text-primary" aria-hidden />
+              자동 기입 필드
+              <span className="text-xs font-normal text-muted-foreground">— 누르면 메시지의 커서 위치에 들어갑니다</span>
+            </p>
+            <p className="text-xs text-muted-foreground">
+              발송할 때 받는 사람마다 자기 이름·담당 멘토 같은 정보로 바뀝니다. 예) <code className="rounded bg-background px-1">{'{name}'}님</code> → 홍길동님
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="자동 기입 필드">
+            {BULK_SMS_FIELDS.map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => insertField(f.key)}
+                title={f.desc}
+                aria-label={`${buttonLabel(f)} 넣기`}
+                className={cn(
+                  'inline-flex max-w-full items-center gap-1 rounded-full border bg-background px-2.5 py-1 text-left text-xs transition-colors hover:border-primary/60 hover:bg-primary/10',
+                  fieldsUsed.includes(f.key) ? 'border-primary/60 text-primary' : 'border-primary/25',
+                )}
+              >
+                <span className="font-medium">{f.label}</span>
+                <span className="text-muted-foreground">:</span>
+                <code className="break-all font-mono text-[11px] text-primary">{`{${f.key}}`}</code>
+                {f.target !== '공통' && (
+                  <span className="shrink-0 rounded-full bg-muted px-1.5 text-[10px] font-medium text-muted-foreground">{f.target}</span>
+                )}
+              </button>
+            ))}
+          </div>
+
+          <details className="group rounded-md border bg-background" open>
+            <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold">자동 기입 필드 안내</summary>
+            <div className="overflow-x-auto border-t">
+              <table className="w-full min-w-[540px] text-xs">
+                <thead className="bg-muted/50 text-left text-muted-foreground">
+                  <tr>
+                    <th className="whitespace-nowrap px-3 py-1.5 font-semibold">필드 버튼</th>
+                    <th className="px-3 py-1.5 font-semibold">자동으로 들어가는 내용</th>
+                    <th className="px-3 py-1.5 font-semibold">예시</th>
+                    <th className="whitespace-nowrap px-3 py-1.5 font-semibold">적용 대상</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {BULK_SMS_FIELDS.map((f) => (
+                    <tr key={f.key} className="border-t align-top">
+                      <td className="whitespace-nowrap px-3 py-1.5">
+                        <button type="button" onClick={() => insertField(f.key)} className="font-medium text-primary hover:underline" title="커서 위치에 넣기">
+                          {buttonLabel(f)}
+                        </button>
+                      </td>
+                      <td className="px-3 py-1.5">
+                        {f.desc}
+                        {f.optional && <span className="block text-[11px] text-muted-foreground">값이 없으면 이 필드만 있는 줄은 빠집니다</span>}
+                      </td>
+                      <td className="px-3 py-1.5 text-muted-foreground">{f.sample}</td>
+                      <td className="whitespace-nowrap px-3 py-1.5">
+                        <span
+                          className={cn(
+                            'rounded-full px-1.5 py-0.5 text-[10px] font-semibold',
+                            f.target === '공통' ? 'bg-muted text-muted-foreground' : f.target === '멘토만' ? 'bg-sky-100 text-sky-900 dark:bg-sky-950/40 dark:text-sky-100' : 'bg-violet-100 text-violet-900 dark:bg-violet-950/40 dark:text-violet-100',
+                          )}
+                        >
+                          {f.target}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="border-t px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+              값이 없는 선택 필드(소속·그룹명·담당 멘티/멘토·하단 문구)만 있는 줄은 통째로 빠집니다. 멘토만·멘티만 필드는 다른 역할에게는 &lsquo;-&rsquo; 로 들어갑니다(그 필드만 있는 줄이면 줄째 빠짐).
+              예시는 설명용 가짜 값이며, 실제 발송 문구는 발송 확인창에서 첫 수신자 기준으로 확인할 수 있습니다.
+            </p>
+          </details>
         </div>
       </div>
 
@@ -458,7 +616,7 @@ export function SmsComposer({
         description={mode === 'scheduled' ? `${scheduledAt.replace('T', ' ')} 에 아래 문안이 자동 발송됩니다.` : '아래 문안이 즉시 발송됩니다. 발송 후에는 취소할 수 없습니다.'}
         impact={[
           `수신자 ${selected.length}명${scopeLabel ? ` (범위: ${scopeLabel})` : ''}`,
-          `예상 비용 ${formatKRW(cost.total)} (${cost.kind} ${formatKRW(cost.unitPrice)}/건 · 부가세 별도)`,
+          `예상 비용 ${formatKRW(dialogCost.total)} (${dialogCost.kind} ${formatKRW(dialogCost.unitPrice)}/건 · 부가세 별도${usesFields ? ' · 첫 수신자 문구 기준 예시 — 받는 사람마다 길이가 달라 장문(LMS)으로 바뀔 수 있음' : ''})`,
           `발신 경로: ${route}`,
         ]}
         confirmLabel={mode === 'scheduled' ? '예약' : '발송'}
@@ -467,8 +625,17 @@ export function SmsComposer({
         className="max-w-lg"
       >
         <div className="rounded-lg border bg-muted/30 p-3">
-          <p className="mb-1 text-[11px] text-muted-foreground">문안 미리보기 · {cost.bytes}byte{text.includes('{name}') ? ' · {name} 치환 예시' : ''}</p>
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap font-sans text-xs leading-relaxed">{previewText}</pre>
+          <p className="mb-1 text-[11px] text-muted-foreground">
+            문안 미리보기 · {dialogCost.bytes}byte
+            {usesFields && firstRecipient
+              ? previewLoading
+                ? ' · 받는 사람 정보를 불러오는 중…'
+                : previewData?.ok
+                  ? ` · ${firstRecipient.name} 님이 받는 실제 문구`
+                  : ` · 이름만 바꾼 예시 (${previewData && !previewData.ok ? previewData.error : '불러오기 실패'})`
+              : ''}
+          </p>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words font-sans text-xs leading-relaxed">{previewText}</pre>
         </div>
       </ConfirmDialog>
     </div>

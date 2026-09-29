@@ -120,8 +120,8 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     });
     const alimtalk = alimtalkConfigured();
     const channelLabels: Record<AutoSendChannel, string> = {
-      queue: alimtalk ? '알림톡 (실패 시 문자 대체)' : '문자 (알림톡 미연동 — 행사 문자 API → 플랫폼)',
-      direct: '문자 직발송 (행사 문자 API → 플랫폼)',
+      queue: alimtalk ? '알림톡 (실패 시 문자 대체)' : '문자 (알림톡 미연동 — 행사 발신번호 우선, 없으면 공용 번호)',
+      direct: '문자 바로 발송 (행사 발신번호 우선, 없으면 공용 번호)',
       platform: '문자 직발송 (플랫폼 공통 발신)',
     };
     const canEditAuto = profile.role === 'nextlab' && denyUnless(ctx, 'settings') === null;
