@@ -30,6 +30,7 @@ export function StaffMobileTabs({ role, pendingCount = 0 }: { role: 'nextlab' | 
     { href: '/nextlab/reports', label: '리포트' },
     { href: '/nextlab/settlements', label: '정산·품의' },
     { href: '/nextlab/roster', label: '회원 명단' },
+    { href: '/nextlab/files', label: '파일 관리', hint: '사업계획서 · 멘토 지급서류' },
     { href: '/nextlab/schedule', label: '스케줄', hint: '오늘의 멘토링 · 달력' },
     { href: '/nextlab/board', label: '게시판' },
     { href: '/nextlab/surveys', label: '조사' },

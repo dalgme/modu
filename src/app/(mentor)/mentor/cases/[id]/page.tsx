@@ -20,6 +20,7 @@ import { CaseDetailBackNav } from '@/components/cases/case-detail-back-nav';
 import { CaseDocumentsPanel } from '@/components/cases/case-documents-panel';
 import { MentorRoundBoard } from '@/components/mentor/mentor-round-board';
 import { BundleDownloadButton } from '@/components/files/bundle-download-button';
+import { BusinessPlanPanel } from '@/components/files/business-plan-panel';
 import { observationUploadGate } from '@/lib/workflow/observation-rule';
 import { ObservationForm } from '@/components/mentor/observation-form';
 import { MentorRequests } from '@/components/mentor/mentor-requests';
@@ -140,6 +141,9 @@ export default async function Page({ params }: { params: { id: string } }) {
           canRequestWithdrawal={canTransition('request_mentor_withdrawal', item.status)}
           pendingWithdrawal={requests.withdrawals.some((r) => r.status === 'pending')}
         />
+
+        {/* 멘티 사업계획서·참고파일 — 미리보기 전용(행사 설정으로 다운로드 허용 시만 내려받기, 2026-09-30). 담당 확인은 위 notFound 가드 */}
+        <BusinessPlanPanel caseId={item.id} viewer="mentor" />
 
         {/* [OOO] 멘티 컨설팅 — 코발트블루 배경 기반 박스 (2026-09-30) */}
         <Card id="rounds" className="scroll-mt-36 overflow-hidden border-[#0047AB]/40 bg-[#0047AB]/[0.04] dark:bg-[#0047AB]/10">

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { CalendarDays, type LucideIcon } from 'lucide-react';
+import { CalendarDays, FolderOpen, type LucideIcon } from 'lucide-react';
 
 import { cn } from '@/lib/utils';
 import { useScrollActiveTab } from '@/components/common/use-scroll-active-tab';
@@ -12,6 +12,8 @@ const TABS: { href: string; label: string; match?: string[]; external?: boolean;
   { href: '/nextlab/reports', label: '리포트' },
   { href: '/nextlab/review', label: '검수' },
   { href: '/nextlab/roster', label: '회원 명단', match: ['/nextlab/cases', '/nextlab/members', '/nextlab/view'] },
+  // 라운드별 멘티 사업계획서·멘토 지급서류 일괄 업로드 (2026-09-30)
+  { href: '/nextlab/files', label: '파일 관리', icon: FolderOpen },
   { href: '/nextlab/schedule', label: '스케줄', icon: CalendarDays },
   { href: '/nextlab/board', label: '게시판', match: ['/nextlab/requests'] },
   { href: '/nextlab/settlements', label: '정산·품의' },

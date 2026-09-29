@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { requireNextlab } from '@/lib/auth/guards';
+import { clearMergedCache } from '@/lib/files/mentor-payment';
 import { createAdminClient } from '@/lib/supabase/admin';
 import {
   createStaffOrMentorAccount,
@@ -387,11 +388,17 @@ export async function deleteMemberAction(
 
   // 회원 소유 스토리지 파일 정리 (지급서류 업로드 · 멘토 서명) — 실패해도 삭제는 진행 (P21). (P32) 위촉 서식 제출 파일은 폐지, 수령 기록은 FK cascade
   try {
-    const [{ data: payDocs }, { data: sigs }] = await Promise.all([
+    const [{ data: payDocs }, { data: sigs }, { data: payFiles }] = await Promise.all([
       admin.from('mentor_payment_docs').select('resume_path, bankbook_path, id_card_path').eq('user_id', userId),
       admin.from('mentor_signatures').select('storage_path').eq('user_id', userId),
+      // (2026-09-30) 운영사가 [파일 관리]에 등록한 지급증빙 서류 — 행은 FK cascade, 파일·합본 캐시는 직접 정리
+      admin.from('mentor_payment_files').select('program_id, storage_path').eq('mentor_id', userId),
     ]);
-    const docPaths = (payDocs ?? []).flatMap((d) => [d.resume_path, d.bankbook_path, d.id_card_path]).filter((p): p is string => !!p);
+    const docPaths = [
+      ...(payDocs ?? []).flatMap((d) => [d.resume_path, d.bankbook_path, d.id_card_path]),
+      ...(payFiles ?? []).map((f) => f.storage_path),
+    ].filter((p): p is string => !!p);
+    for (const pid of Array.from(new Set((payFiles ?? []).map((f) => f.program_id)))) await clearMergedCache(pid, userId);
     if (docPaths.length) await admin.storage.from('documents').remove(docPaths);
     const sigPaths = (sigs ?? []).map((s) => s.storage_path).filter(Boolean);
     if (sigPaths.length) await admin.storage.from('signatures').remove(sigPaths);

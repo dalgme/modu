@@ -11,6 +11,7 @@ import { getCaseSurvey } from '@/lib/data/survey';
 import { listTeamMembers } from '@/lib/data/team-members';
 import { TeamPanel } from '@/components/cases/team-panel';
 import { RequiredDocsPanel } from '@/components/cases/required-docs-panel';
+import { BusinessPlanPanel } from '@/components/files/business-plan-panel';
 import { SurveyResultCard } from '@/components/cases/survey-result-card';
 import { MentorChangePanel } from '@/components/nextlab/mentor-change-panel';
 import { listLatestRecommendations } from '@/lib/matching/recommend';
@@ -255,6 +256,8 @@ export default async function Page({ params }: { params: { id: string } }) {
           <span>📦 이 케이스 서류 일괄 다운로드 (ZIP) — 정산 증빙 제출용</span>
           <span>↓</span>
         </a>
+        {/* (2026-09-30) 파일 관리에서 올린 사업계획서·참고파일 — 운영사는 항상 내려받기 가능 */}
+        <BusinessPlanPanel caseId={item.id} viewer="staff" />
         <RequiredDocsPanel caseId={item.id} slots={slots} viewerRole="nextlab" canUpload />
         <CaseDocumentsPanel caseId={item.id} docs={docs} viewerRole="nextlab" canUpload />
         {hasCapability(ctx, 'case.delete') && <CaseDeletePanel caseId={item.id} ownerName={item.owner_name} businessName={item.business_name} />}
