@@ -6,6 +6,7 @@ import { FileText, Lock, Trash2 } from 'lucide-react';
 
 import type { RoundItem } from '@/lib/data/rounds';
 import { deleteRoundAction, deletePlannedRoundAction } from '@/lib/workflow/mentor-actions';
+import { canMentorDeleteRound, firstEmptyRoundNo } from '@/lib/workflow/round-slots';
 import { roundModeLabel, roundReportFileName } from '@/lib/workflow/round-report-name';
 import { RoundForm, type LastRoundDefaults, type ParticipantOption } from '@/components/mentor/round-form';
 import { RoundReportForm } from '@/components/mentor/round-report-form';
@@ -61,12 +62,12 @@ export function MentorRoundBoard({
   const [editing, setEditing] = useState<RoundItem | null>(null);
   const byNo = new Map(rounds.map((r) => [r.round_no, r]));
   const rowCount = Math.max(maxRounds, rounds.length ? rounds[rounds.length - 1]!.round_no : 0);
-  const nextNo = rounds.length + 1;
-  const last = rounds[rounds.length - 1] ?? null;
+  // 다음 차례 = 비어 있는 가장 앞 번호 (서버 submitRound 와 같은 함수) — 중간 회차를 지우면 그 자리부터 다시 등록
+  const nextNo = firstEmptyRoundNo(rounds.map((r) => r.round_no));
   const now = Date.now();
 
   const remove = (r: RoundItem) => {
-    if (!confirm(`${r.round_no}회차를 삭제할까요?${r.report_registered_at ? ' 사진·보고서 파일도 함께 삭제됩니다.' : ''}`)) return;
+    if (!confirm(`${r.round_no}회차를 삭제할까요?${r.report_registered_at ? `\n일정과 보고서 파일이 함께 삭제되고 ${r.round_no}회차 자리는 비워집니다. 다른 회차 번호는 그대로이며, 다음 [예정 등록]이 이 자리를 채웁니다.` : ''}`)) return;
     start(async () => {
       const res = r.report_registered_at ? await deleteRoundAction(caseId, r.id) : await deletePlannedRoundAction(caseId, r.id);
       toast(res.ok ? { title: '삭제했습니다.' } : { title: res.error, variant: 'destructive' });
@@ -108,7 +109,8 @@ export function MentorRoundBoard({
           const canUpload = editable && !reported && !r.locked && !future && own;
           // 등록된 보고서 수정 업로드 — 정산 전·본인 회차 (replaceRoundReport 서버 게이트와 같은 조건)
           const canReplace = editable && reported && !r.locked && own;
-          const canDelete = editable && !r.locked && own && (r.id === last?.id || !reported);
+          // 보고서 등록 회차도 각각 삭제 가능 (2026-09-30) — 서버 deleteRound 게이트와 같은 조건
+          const canDelete = canMentorDeleteRound({ editable, own, locked: r.locked, menteeSigned: !!r.mentee_signed_at });
           const weekday = WEEKDAYS[toKstParts(r.started_at)?.weekday ?? 0];
           const modified = r.report?.updatedAt && Math.abs(new Date(r.report.updatedAt).getTime() - new Date(r.report.createdAt).getTime()) > 60_000 ? r.report.updatedAt : null;
           return (

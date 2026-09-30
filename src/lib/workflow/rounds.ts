@@ -11,6 +11,7 @@ import { getRoundAllowance, photoDocKey, reportDocKey } from '@/lib/data/rounds'
 import { renderRoundReport, resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import type { WorkflowResult } from '@/lib/workflow/cases';
 import { roundReportFileName } from '@/lib/workflow/round-report-name';
+import { firstEmptyRoundNo } from '@/lib/workflow/round-slots';
 
 /** 회차 참가자 (스냅샷 — 팀원 명단이 나중에 바뀌어도 회차 기록은 유지) */
 export interface RoundParticipant {
@@ -136,16 +137,17 @@ export async function submitRound(input: RoundInput): Promise<RoundResult> {
   if (participants.length === 0) return { ok: false, error: '참가자를 1명 이상 선택하세요.' };
 
   // 3) 회차 상한 = 그룹 회차 + 승인된 추가 회차
-  const [{ data: group }, { count: existingCount }, allowance] = await Promise.all([
+  const [{ data: group }, { data: existingRows }, allowance] = await Promise.all([
     admin.from('support_types').select('required_rounds, status, ends_on').eq('id', c.support_type_id).maybeSingle(),
-    admin.from('mentoring_logs').select('id', { count: 'exact', head: true }).eq('case_id', c.id),
+    admin.from('mentoring_logs').select('round_no').eq('case_id', c.id),
     getRoundAllowance(c.id),
   ]);
   if (!group) return { ok: false, error: '사업그룹을 찾을 수 없습니다.' };
   // 그룹 종료일 이후 일정은 등록 불가 (P30) — 운영사가 종료일을 늘리거나 승계 개설로 이어간다
   if (group.ends_on && day > group.ends_on) return { ok: false, error: `그룹 종료일(${group.ends_on}) 이후 일정은 등록할 수 없습니다. 운영사에 문의하세요.` };
   const maxRounds = group.required_rounds + allowance.approvedExtra;
-  const roundNo = (existingCount ?? 0) + 1;
+  // 비어 있는 가장 앞 번호 (2026-09-30) — 보고서 등록 회차를 개별 삭제하면 그 자리가 비고, 다음 등록이 그 자리를 채운다
+  const roundNo = firstEmptyRoundNo((existingRows ?? []).map((r) => r.round_no));
   if (roundNo > maxRounds) {
     return { ok: false, error: `이 그룹은 ${group.required_rounds}회(승인된 추가 ${allowance.approvedExtra}회 포함 최대 ${maxRounds}회)까지 등록할 수 있습니다. 추가 회차가 필요하면 요청하세요.` };
   }
@@ -630,8 +632,8 @@ export async function updatePlannedRound(input: {
 }
 
 /**
- * 계획(미보고) 회차 삭제 (P20) — 마지막이 아니어도, 그 뒤 회차가 전부 미보고·미정산이면
- * 삭제하고 뒤 회차 번호를 당긴다(is_extra 재계산).
+ * 계획(미보고) 회차 삭제 (P20) — 어느 회차든. 그 뒤 회차가 전부 미보고·미정산이면 뒤 번호를 당기고(is_extra 재계산),
+ * 뒤에 보고서 등록 회차가 있으면 번호를 그대로 두고 자리만 비운다(2026-09-30).
  */
 export async function deletePlannedRound(logId: string, mentorId: string, caseId?: string): Promise<WorkflowResult> {
   const admin = createAdminClient();
@@ -654,16 +656,15 @@ export async function deletePlannedRound(logId: string, mentorId: string, caseId
     .eq('case_id', log.case_id)
     .gt('round_no', log.round_no)
     .order('round_no');
-  if ((after ?? []).some((r) => r.report_registered_at || r.settlement_id)) {
-    return { ok: false, error: '이 회차 뒤에 보고서가 등록된 회차가 있어 삭제할 수 없습니다.' };
-  }
+  // 뒤에 보고서 등록(또는 정산) 회차가 있으면 번호를 당기지 않고 자리만 비운다 (2026-09-30 — 등록된 파일명 보존, 다음 등록이 빈 자리를 채움)
+  const keepNumbers = (after ?? []).some((r) => r.report_registered_at || r.settlement_id);
 
   const { error } = await admin.from('mentoring_logs').delete().eq('id', log.id);
   if (error) return { ok: false, error: error.message };
   // 뒤 회차 번호 당기기 + is_extra 재계산
   const { data: group } = await admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle();
   const required = group?.required_rounds ?? 0;
-  for (const r of after ?? []) {
+  for (const r of keepNumbers ? [] : (after ?? [])) {
     const newNo = r.round_no - 1;
     await admin.from('mentoring_logs').update({ round_no: newNo, is_extra: newNo > required }).eq('id', r.id);
   }
@@ -673,12 +674,15 @@ export async function deletePlannedRound(logId: string, mentorId: string, caseId
     action: 'round.plan_delete',
     entityType: 'mentoring_logs',
     entityId: logId,
-    metadata: { case_id: log.case_id, round_no: log.round_no, renumbered: (after ?? []).length },
+    metadata: { case_id: log.case_id, round_no: log.round_no, renumbered: keepNumbers ? 0 : (after ?? []).length },
   });
   return { ok: true, caseId: log.case_id };
 }
 
-/** 회차 삭제 — 마지막 회차만, 정산 미포함, 종결 요청 전. 삭제 후 회차 번호가 이어진다. */
+/**
+ * 보고서 등록 회차 삭제 (2026-09-30 개정) — 어느 회차든 개별 삭제(정산 미포함·멘티 서명 전·종결 요청 전·본인 등록).
+ * 뒤 회차 번호는 당기지 않는다(이미 저장된 보고서 파일명 "…-N회차-…"이 어긋나지 않게). 비워진 번호는 다음 [예정 등록]이 채운다.
+ */
 export async function deleteRound(logId: string, mentorId: string, caseId?: string): Promise<WorkflowResult> {
   const admin = createAdminClient();
   const { data: log } = await admin.from('mentoring_logs').select('id, case_id, round_no, mentor_id, settlement_id, mentee_signed_at, report_registered_at, cases!inner(status, program_id)').eq('id', logId).maybeSingle();
@@ -690,8 +694,6 @@ export async function deleteRound(logId: string, mentorId: string, caseId?: stri
   const c = log.cases as unknown as { status: string; program_id: string };
   const denied = assertTransition('submit_round', c.status as never);
   if (denied) return { ok: false, error: denied };
-  const { count } = await admin.from('mentoring_logs').select('id', { count: 'exact', head: true }).eq('case_id', log.case_id);
-  if ((count ?? 0) !== log.round_no) return { ok: false, error: '마지막 회차만 삭제할 수 있습니다.' };
 
   const { data: docs } = await admin.from('documents').select('id, storage_path, doc_key').eq('case_id', log.case_id).in('doc_key', [photoDocKey(logId), reportDocKey(logId)]);
   for (const d of docs ?? []) {

@@ -131,7 +131,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         reportPending={rounds.filter((r) => !r.report_registered_at && new Date(r.started_at).getTime() <= Date.now()).map((r) => r.round_no)}
         nextPlanned={rounds.filter((r) => !r.report_registered_at && new Date(r.started_at).getTime() > Date.now()).map((r) => ({ roundNo: r.round_no, startedAt: r.started_at }))[0] ?? null}
       />
-      {/* 배치: 다음 할 일 배너 → (셸) 제목·단계 막대 → 멘티 정보 | 진행 이력(infoFirst) → 요청·종결 → 회차 → 관찰의견서 → 정산 → 서류 */}
+      {/* 배치: 다음 할 일 배너 → (셸) 제목·단계 막대 → 가로형 멘티 정보(infoFirst) → 요청·종결 → 회차 → 관찰의견서 → 정산 → 서류 */}
       <CaseDetailShell item={item} history={history} predecessors={predecessors} predecessorLinks={false} branding={ctx.branding} basePath="/mentor/cases" infoFirst>
         <div id="requests" className="scroll-mt-36" />
         <MentorRequests
@@ -147,9 +147,9 @@ export default async function Page({ params }: { params: { id: string } }) {
         {/* 멘티 사업계획서·참고파일 — 미리보기 전용(행사 설정으로 다운로드 허용 시만 내려받기, 2026-09-30). 담당 확인은 위 notFound 가드 */}
         <BusinessPlanPanel caseId={item.id} viewer="mentor" />
 
-        {/* [OOO] 멘티 컨설팅 — 코발트블루 배경 기반 박스 (2026-09-30) */}
-        <Card id="rounds" className="scroll-mt-36 overflow-hidden border-[#0047AB]/40 bg-[#0047AB]/[0.04] dark:bg-[#0047AB]/10">
-          <CardHeader className="space-y-1 bg-[#0047AB] text-white">
+        {/* [OOO] 멘티 컨설팅 — 코럴(brand.coral) 머리 박스 + 아래 회차 목록과 여백 (2026-09-30) */}
+        <Card id="rounds" className="scroll-mt-36 overflow-hidden border-brand-coral/40 bg-brand-coral/[0.04] dark:bg-brand-coral/10">
+          <CardHeader className="space-y-1.5 bg-brand-coral pb-4 text-white">
             <CardTitle className="flex flex-wrap items-baseline gap-x-2 text-base text-white">
               [{item.owner_name}] 멘티 {ctx.group?.round_label ?? '컨설팅'}
               <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-normal text-white/90">
@@ -157,11 +157,11 @@ export default async function Page({ params }: { params: { id: string } }) {
                 {allowance.approvedExtra > 0 && ` · 추가 ${allowance.approvedExtra}회 승인`}
               </span>
             </CardTitle>
-            <p className="text-xs text-white/85">
+            <p className="text-xs text-white/90">
               회차마다 [N차 예정 등록]으로 일정을 먼저 등록하고, 멘토링을 마친 뒤 그 회차의 [보고서 업로드]를 하면 이행으로 인정되어 정산에 포함됩니다. 보고서를 고쳐야 하면 [보고서 수정 업로드]로 다시 올리세요. 파일 이름은 ‘멘토명-멘티명-회차-온/오프라인’으로 자동 저장됩니다.
             </p>
           </CardHeader>
-          <CardContent className="pt-4">
+          <CardContent className="pt-6">
             <MentorRoundBoard
               caseId={item.id}
               menteeName={item.owner_name}

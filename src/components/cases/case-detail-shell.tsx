@@ -8,6 +8,7 @@ import type { Branding } from '@/lib/programs/branding';
 import { StatusBadge } from '@/components/cases/status-badge';
 import { ProcessStepBar } from '@/components/cases/process-step-bar';
 import { CaseDetailCard } from '@/components/cases/case-detail-card';
+import { CaseInfoWide } from '@/components/cases/case-info-wide';
 import { CaseTimeline } from '@/components/cases/case-timeline';
 import { ContactLinks } from '@/components/common/contact-links';
 import { MentorName } from '@/components/common/mentor-name';
@@ -41,7 +42,7 @@ export function CaseDetailShell({
   basePath: string;
   showLoginId?: boolean;
   /**
-   * true 면 "멘티 정보 | 진행 이력" 줄을 역할별 패널(children) 위로 올린다 (멘토 케이스 화면).
+   * true 면 가로형 멘티 정보(`CaseInfoWide`)를 역할별 패널(children) 위에 둔다 (멘토 케이스 화면, 진행 이력 카드 없음 — 2026-09-30).
    * 이때 폰 요약 카드(연락처·담당 멘토)는 바로 아래 멘티 정보 카드와 겹치므로 생략한다. 기본 false = 기존 배치.
    */
   infoFirst?: boolean;
@@ -98,7 +99,8 @@ export function CaseDetailShell({
         </div>
       )}
 
-      {infoFirst && infoRow}
+      {/* (2026-09-30) 멘토 화면: 가로형 멘티 정보만 — 진행 이력은 위 단계 막대와 겹쳐 생략 */}
+      {infoFirst && <CaseInfoWide item={item} />}
 
       {children}
 

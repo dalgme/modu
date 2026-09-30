@@ -568,6 +568,14 @@ UX/UI보완을 진행하세요
 ```
 → [새 창] = `/files/view`(같은 미리보기 엔진, 원본 URL 미노출), `deleteObservationFile` + `observationEditable`, 감사 `observation.*` → `ObservationFileLog`, 케이스 진행 SQL 초기화(감사 `case.progress_reset`).
 
+### P41 (2026-09-30) — 멘토 케이스 화면: 코럴 박스·회차 개별 삭제·가로형 멘티 정보
+```
+- "[OOO] 멘티 컨설팅" 영역을 코발트블루가 아니라 코럴 박스로, 하단 "1회차" Box 와 약간의 여백
+- 보고서가 모두 업로드된 뒤 삭제가 4회차부터 순차로만 됨 → 보고서 등록 완료 회차는 각각 삭제 가능하게
+- 멘티 정보(좌)·진행 이력(우) 카드 → 진행 이력 삭제(위 색깔 바와 중복), 멘티 정보는 가로로 길게·가독성 있게 리디자인
+```
+→ `round-slots.ts`(`firstEmptyRoundNo`·`canMentorDeleteRound`, 빈 자리 채우기), `CaseInfoWide`, `bg-brand-coral`.
+
 ---
 
 ## 4. 다음 세션에서 쓸 시작 프롬프트 (템플릿)
