@@ -477,6 +477,9 @@ UX/UI보완을 진행하세요</code></pre>
 - 보고서가 모두 업로드된 뒤 삭제가 4회차부터 순차로만 됨 → 보고서 등록 완료 회차는 각각 삭제 가능하게
 - 멘티 정보(좌)·진행 이력(우) 카드 → 진행 이력 삭제(위 색깔 바와 중복), 멘티 정보는 가로로 길게·가독성 있게 리디자인</code></pre>
 <p>→ <code>round-slots.ts</code>(<code>firstEmptyRoundNo</code>·<code>canMentorDeleteRound</code>, 빈 자리 채우기), <code>CaseInfoWide</code>, <code>bg-brand-coral</code>.</p>
+<h3 id="p42-2026-09-30-남준현-케이스-초기화-마무리">P42 (2026-09-30) — 남준현 케이스 초기화 마무리</h3>
+<pre><code>남준현 멘티의 &quot;사업계획서&quot; 파일만 남기고 모두 삭제했습니다. 관련 기능도 초기상태로 돌려놓으세요.</code></pre>
+<p>→ 저장소·케이스 테이블 초기 상태 확인, 케이스 [조치 이력]은 <code>case.progress_reset</code> 이전 진행 기록 숨김(<code>progress-reset.ts</code>, 감사 로그 원본 유지).</p>
 <hr>
 <h2 id="4-다음-세션에서-쓸-시작-프롬프트-템플릿">4. 다음 세션에서 쓸 시작 프롬프트 (템플릿)</h2>
 <pre><code>이 리포(dalgme/modu)는 &quot;모두의창업&quot; 멘토링 운영관리 플랫폼입니다. 배포·부트스트랩까지 끝났습니다.

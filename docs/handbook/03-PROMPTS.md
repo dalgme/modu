@@ -576,6 +576,12 @@ UX/UI보완을 진행하세요
 ```
 → `round-slots.ts`(`firstEmptyRoundNo`·`canMentorDeleteRound`, 빈 자리 채우기), `CaseInfoWide`, `bg-brand-coral`.
 
+### P42 (2026-09-30) — 남준현 케이스 초기화 마무리
+```
+남준현 멘티의 "사업계획서" 파일만 남기고 모두 삭제했습니다. 관련 기능도 초기상태로 돌려놓으세요.
+```
+→ 저장소·케이스 테이블 초기 상태 확인, 케이스 [조치 이력]은 `case.progress_reset` 이전 진행 기록 숨김(`progress-reset.ts`, 감사 로그 원본 유지).
+
 ---
 
 ## 4. 다음 세션에서 쓸 시작 프롬프트 (템플릿)
