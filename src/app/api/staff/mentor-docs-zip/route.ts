@@ -66,7 +66,8 @@ export async function GET(): Promise<Response> {
     const { data: blob } = await admin.storage.from('documents').download(path);
     if (!blob) return;
     const buf = Buffer.from(await blob.arrayBuffer());
-    zip.file(`${folderOf(userId)}/${safe(label)}${extOf(fileName, path)}`, buf);
+    // 파일명 규칙 "멘토명-서류명" (2026-09-30)
+    zip.file(`${folderOf(userId)}/${safe(`${userById.get(userId)?.name ?? '멘토'}-${label}`)}${extOf(fileName, path)}`, buf);
     added += 1;
   };
 
@@ -93,7 +94,7 @@ export async function GET(): Promise<Response> {
   // (P35-B) 대량 반출 이벤트
   await recordSecurityEventSafe({ kind: 'export', severity: 'info', userId: profile.id, path: '/api/staff/mentor-docs-zip', detail: { route: 'mentor-docs-zip', files: added, mentors: ids.length, program_id: ctx.programId } });
   const buf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
-  const filename = `${ctx.program.name}_멘토서류_${new Date().toISOString().slice(0, 10)}.zip`;
+  const filename = `${ctx.program.name}-멘토 지급서류.zip`;
   return new Response(new Uint8Array(buf), {
     headers: {
       'Content-Type': 'application/zip',

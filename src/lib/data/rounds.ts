@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createCaseScopedSignedUrl } from '@/lib/storage/files';
+import { downloadNamesForCase } from '@/lib/files/download-name';
 import type { Tables } from '@/types/database';
 
 export type RoundRow = Tables<'mentoring_logs'>;
@@ -31,6 +32,8 @@ export async function listRounds(caseId: string): Promise<RoundItem[]> {
     supabase.from('users').select('id, name').in('id', mentorIds),
   ]);
   const mentorName = new Map((mentors ?? []).map((m) => [m.id, m.name]));
+  // 받는 파일 이름 = "멘토명-멘티명-N회차 보고서" (2026-09-30 파일명 규칙)
+  const dlNames = await downloadNamesForCase(caseId);
   const out: RoundItem[] = [];
   for (const r of rows) {
     const photoDocs = (docs ?? []).filter((d) => d.doc_key === photoDocKey(r.id));
@@ -39,7 +42,7 @@ export async function listRounds(caseId: string): Promise<RoundItem[]> {
       photoDocs.map(async (d) => ({ id: d.id, name: d.doc_name, url: await createCaseScopedSignedUrl('photos', caseId, d.storage_path, 600) })),
     );
     const report = reportDoc
-      ? { id: reportDoc.id, name: reportDoc.doc_name, url: await createCaseScopedSignedUrl('documents', caseId, reportDoc.storage_path, 600, reportDoc.doc_name), createdAt: reportDoc.created_at, updatedAt: reportDoc.updated_at ?? null }
+      ? { id: reportDoc.id, name: reportDoc.doc_name, url: await createCaseScopedSignedUrl('documents', caseId, reportDoc.storage_path, 600, dlNames.get(reportDoc.id) ?? reportDoc.doc_name), createdAt: reportDoc.created_at, updatedAt: reportDoc.updated_at ?? null }
       : null;
     out.push({ ...r, mentorName: mentorName.get(r.mentor_id) ?? null, photos, report, locked: r.settlement_id !== null });
   }
@@ -84,10 +87,11 @@ export async function getObservationReportFile(caseId: string): Promise<Observat
     .eq('doc_key', 'observation_report')
     .maybeSingle();
   if (!data) return null;
+  const dlNames = await downloadNamesForCase(caseId);
   return {
     id: data.id,
     name: data.doc_name,
-    url: await createCaseScopedSignedUrl('documents', caseId, data.storage_path, 600, data.doc_name),
+    url: await createCaseScopedSignedUrl('documents', caseId, data.storage_path, 600, dlNames.get(data.id) ?? data.doc_name),
     createdAt: data.created_at,
     updatedAt: data.updated_at,
   };

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createCaseScopedSignedUrl } from '@/lib/storage/files';
+import { downloadNamesForCase } from '@/lib/files/download-name';
 import type { Tables } from '@/types/database';
 import type { SettlementLine } from '@/lib/settlement/compute';
 import { mentorsMissingPaymentDocs } from '@/lib/data/mentors';
@@ -143,9 +144,10 @@ export async function listStatementFiles(caseId: string): Promise<{ id: string; 
     supabase.from('settlements').select('id').eq('case_id', caseId).eq('status', 'canceled'),
   ]);
   const canceledKeys = new Set((canceled ?? []).map((s) => `settlement_statement:${s.id}`));
+  const dlNames = (data ?? []).length ? await downloadNamesForCase(caseId) : new Map<string, string>();
   const out = [];
   for (const d of (data ?? []).filter((d) => !canceledKeys.has(d.doc_key))) {
-    out.push({ id: d.id, name: d.doc_name, createdAt: d.created_at, url: await createCaseScopedSignedUrl('documents', caseId, d.storage_path, 600, d.doc_name) });
+    out.push({ id: d.id, name: d.doc_name, createdAt: d.created_at, url: await createCaseScopedSignedUrl('documents', caseId, d.storage_path, 600, dlNames.get(d.id) ?? d.doc_name) });
   }
   return out;
 }

@@ -3,6 +3,7 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
 import { createCaseScopedSignedUrl, moveFile, sha256Hex } from '@/lib/storage/files';
+import { downloadNamesForCase } from '@/lib/files/download-name';
 import { logAudit } from '@/lib/workflow/audit';
 import type { Tables } from '@/types/database';
 import type { UserRole } from '@/lib/auth/roles';
@@ -34,11 +35,12 @@ export async function listCaseDocuments(caseId: string, viewerRole: UserRole): P
     .eq('doc_key', CASE_DOC_KEY)
     .order('created_at', { ascending: false });
   const rows = (data ?? []).filter((d) => viewerRole !== 'mentor' || d.mentor_visible);
+  const dlNames = rows.length ? await downloadNamesForCase(caseId) : new Map<string, string>();
   return Promise.all(
     rows.map(async (d) => ({
       id: d.id,
       name: d.doc_name,
-      url: await createCaseScopedSignedUrl('documents', caseId, d.storage_path, 600, d.doc_name),
+      url: await createCaseScopedSignedUrl('documents', caseId, d.storage_path, 600, dlNames.get(d.id) ?? d.doc_name),
       mentorVisible: d.mentor_visible,
       uploadedRole: d.uploaded_role,
       uploadedBy: d.uploaded_by,
@@ -163,6 +165,7 @@ export async function listRequiredDocSlots(caseId: string, viewerRole: UserRole)
     .in('doc_key', slots.map((s) => s.key))
     .order('created_at', { ascending: false });
   const visible = (docs ?? []).filter((d) => viewerRole !== 'mentor' || d.mentor_visible);
+  const dlNames = visible.length ? await downloadNamesForCase(caseId) : new Map<string, string>();
   const out: RequiredDocSlot[] = [];
   for (const s of slots) {
     const files = await Promise.all(
@@ -171,7 +174,7 @@ export async function listRequiredDocSlots(caseId: string, viewerRole: UserRole)
         .map(async (d) => ({
           id: d.id,
           name: d.doc_name,
-          url: await createCaseScopedSignedUrl('documents', caseId, d.storage_path, 600, d.doc_name),
+          url: await createCaseScopedSignedUrl('documents', caseId, d.storage_path, 600, dlNames.get(d.id) ?? d.doc_name),
           mentorVisible: d.mentor_visible,
           uploadedRole: d.uploaded_role,
           uploadedBy: d.uploaded_by,

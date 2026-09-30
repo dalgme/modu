@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { resolveDocAccess } from '@/lib/files/access';
 import { docFileHref, type PreviewMeta } from '@/lib/files/preview-kind';
 import { createSignedUrl } from '@/lib/storage/files';
+import { downloadNameForDoc } from '@/lib/files/download-name';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,7 @@ function downloadBlocked(request: Request): Response {
  *                  url = 인라인 서명 URL(다운로드 가능 120초 · 미리보기 전용 60초, download 파라미터 없음) — 미리보기 창이 바이트를 직접 읽는다
  *                  downloadUrl = 이 라우트(다운로드) 또는 null(다운로드·인쇄 차단) · textUrl = 서버 글자 추출 라우트
  *  - `?inline=1` : (하위 호환) 인라인 서명 URL 로 302. 미리보기 전용 파일은 403 — 새 창 원본 열기도 다운로드 경로라서
- *  - 기본        : 저장된 파일명(doc_name)으로 다운로드(302). 미리보기 전용 파일은 403
+ *  - 기본        : 규칙 파일명(`download-name.ts`)으로 다운로드(302). 미리보기 전용 파일은 403
  * 서명 URL 은 Supabase 스토리지(다른 출처)라 브라우저 fetch 는 스토리지의 CORS(Access-Control-Allow-Origin: *)에 기대고,
  * 이 라우트를 fetch 로 거쳐 302 를 따라가지 않도록(리다이렉트+CORS 조합 실패 방지) 미리보기 창은 meta 의 url 을 직접 읽는다.
  */
@@ -41,12 +42,14 @@ export async function GET(request: Request, { params }: { params: { id: string }
   }
   const q = new URL(request.url).searchParams;
   const { doc, downloadable } = access;
+  // 받는 파일 이름 = 플랫폼 규칙 "멘토명-멘티명-구분명" / "멘티명-구분명" (2026-09-30)
+  const fileName = await downloadNameForDoc(doc.caseId, doc.id, doc.name);
 
   if (q.get('meta') === '1') {
     const url = await createSignedUrl(doc.bucket, doc.path, downloadable ? 120 : 60, false);
     if (!url) return NextResponse.json({ error: 'not_found' }, { status: 404, headers: NO_STORE });
     const meta: PreviewMeta = {
-      name: doc.name,
+      name: fileName,
       mime: doc.mime,
       url,
       downloadUrl: downloadable ? docFileHref(doc.id, 'download') : null,
@@ -57,7 +60,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
 
   if (!downloadable) return downloadBlocked(request);
   const inline = q.get('inline') === '1';
-  const url = await createSignedUrl(doc.bucket, doc.path, 120, inline ? false : doc.name);
+  const url = await createSignedUrl(doc.bucket, doc.path, 120, inline ? false : fileName);
   if (!url) return NextResponse.json({ error: 'not_found' }, { status: 404, headers: NO_STORE });
   return NextResponse.redirect(url, { status: 302, headers: NO_STORE });
 }

@@ -3,7 +3,8 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { Tables } from '@/types/database';
 import { mentorEligibleForGroup } from '@/lib/matching/eligibility';
-import { safeFileName } from '@/lib/http/download';
+import { createSignedUrl } from '@/lib/storage/files';
+import { buildMentorFileName } from '@/lib/files/download-name-rule';
 
 export interface PaymentDocUpload {
   name: string;
@@ -79,16 +80,18 @@ export async function listProgramMentors(programId: string, supportTypeId?: stri
   const scoreByCase = new Map((responses ?? []).map((r) => [r.case_id, r.score]));
   // 멘토가 업로드한 지급서류 파일 → 서명 URL (다운로드용, 10분)
   const uploadsByUser = new Map<string, { resume: PaymentDocUpload | null; bankbook: PaymentDocUpload | null; idCard: PaymentDocUpload | null }>();
-  const signed = async (path: string | null, name: string | null, at: string | null): Promise<PaymentDocUpload | null> => {
+  // 다운로드 이름 = "멘토명-이력서.pdf" 형식 (2026-09-30 파일명 규칙)
+  const mentorNameById = new Map(mentors.map((m) => [m.id, m.name]));
+  const signed = async (userId: string, kind: string, path: string | null, name: string | null, at: string | null): Promise<PaymentDocUpload | null> => {
     if (!path) return null;
-    const { data } = await admin.storage.from('documents').createSignedUrl(path, 600, { download: name ? safeFileName(name) : undefined });
-    return { name: name ?? '파일', at, url: data?.signedUrl ?? null };
+    const url = await createSignedUrl('documents', path, 600, buildMentorFileName(mentorNameById.get(userId) ?? null, kind, name ?? path));
+    return { name: name ?? '파일', at, url };
   };
   for (const d of docs ?? []) {
     uploadsByUser.set(d.user_id, {
-      resume: await signed(d.resume_path, d.resume_file_name, d.resume_uploaded_at),
-      bankbook: await signed(d.bankbook_path, d.bankbook_file_name, d.bankbook_uploaded_at),
-      idCard: await signed(d.id_card_path, d.id_card_file_name, d.id_card_uploaded_at),
+      resume: await signed(d.user_id, '이력서', d.resume_path, d.resume_file_name, d.resume_uploaded_at),
+      bankbook: await signed(d.user_id, '통장사본', d.bankbook_path, d.bankbook_file_name, d.bankbook_uploaded_at),
+      idCard: await signed(d.user_id, '신분증사본', d.id_card_path, d.id_card_file_name, d.id_card_uploaded_at),
     });
   }
 

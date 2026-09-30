@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createSignedUrl } from '@/lib/storage/files';
+import { buildMentorFileName } from '@/lib/files/download-name-rule';
 import { mentorPaymentFolder, resolvePaymentViewer } from '@/lib/files/mentor-payment';
 import { mentorPaymentFileHref } from '@/lib/files/mentor-payment-shared';
 import { recordSecurityEventSafe } from '@/lib/ops/security-events';
@@ -35,8 +36,17 @@ export async function GET(request: Request, { params }: { params: { fileId: stri
 
   const sp = new URL(request.url).searchParams;
   const noStore = { 'Cache-Control': 'no-store' };
+  // 받는 파일 이름 = "멘토명-지급서류 n" (2026-09-30 파일명 규칙) — n = 그 멘토 파일 중 순서(파일이 하나면 번호 없음)
+  const admin = createAdminClient();
+  const [{ data: mentor }, { data: siblings }] = await Promise.all([
+    admin.from('users').select('name').eq('id', row.mentor_id).maybeSingle(),
+    admin.from('mentor_payment_files').select('id').eq('program_id', row.program_id).eq('mentor_id', row.mentor_id).order('sort_order').order('created_at'),
+  ]);
+  const list = siblings ?? [];
+  const seq = list.length > 1 ? list.findIndex((f) => f.id === row.id) + 1 : null;
+  const fileName = buildMentorFileName(mentor?.name ?? null, '지급서류', row.file_name || row.storage_path, seq);
   if (sp.get('download') === '1') {
-    const url = await createSignedUrl('documents', row.storage_path, 120, row.file_name);
+    const url = await createSignedUrl('documents', row.storage_path, 120, fileName);
     if (!url) return NextResponse.json({ error: '파일을 준비하지 못했습니다.' }, { status: 500 });
     await recordSecurityEventSafe({
       kind: 'export',
@@ -50,7 +60,7 @@ export async function GET(request: Request, { params }: { params: { fileId: stri
   const url = await createSignedUrl('documents', row.storage_path, 120);
   if (!url) return NextResponse.json({ error: '파일을 준비하지 못했습니다.' }, { status: 500 });
   if (sp.get('meta') === '1') {
-    return NextResponse.json({ name: row.file_name, mime: row.mime_type, url, downloadUrl: mentorPaymentFileHref(row.id, 'download'), textUrl: null }, { headers: noStore });
+    return NextResponse.json({ name: fileName, mime: row.mime_type, url, downloadUrl: mentorPaymentFileHref(row.id, 'download'), textUrl: null }, { headers: noStore });
   }
   return NextResponse.redirect(url, { status: 302, headers: noStore });
 }

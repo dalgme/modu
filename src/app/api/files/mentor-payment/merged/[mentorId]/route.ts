@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createSignedUrl } from '@/lib/storage/files';
+import { buildMentorFileName } from '@/lib/files/download-name-rule';
 import { ensureMergedPdf, resolvePaymentViewer } from '@/lib/files/mentor-payment';
 import { mentorPaymentMergedHref } from '@/lib/files/mentor-payment-shared';
 import { recordSecurityEventSafe } from '@/lib/ops/security-events';
@@ -29,7 +30,8 @@ export async function GET(request: Request, { params }: { params: { mentorId: st
   if (!merged.ok) return NextResponse.json({ error: merged.error }, { status: merged.status });
 
   const { data: u } = await createAdminClient().from('users').select('name').eq('id', mentorId).maybeSingle();
-  const fileName = `${u?.name ?? '멘토'}_지급서류.pdf`;
+  // 파일명 규칙 "멘토명-지급서류" (2026-09-30)
+  const fileName = buildMentorFileName(u?.name ?? '멘토', '지급서류', 'merged.pdf');
   const sp = new URL(request.url).searchParams;
   const noStore = { 'Cache-Control': 'no-store' };
 

@@ -94,17 +94,21 @@ export async function createSignedUrl(
   expiresInSeconds = 300,
   download: boolean | string = false,
 ): Promise<string | null> {
-  const opts =
-    typeof download === 'string' && download.trim()
-      ? { download: safeFileName(download) } // 원본 파일명 유지 + 금지 문자 정리 (P33)
-      : download
-        ? { download: true }
-        : undefined;
+  // (2026-09-30) 한글 파일명 깨짐 수정 — storage-js 가 download 값을 URLSearchParams 로 한 번, encodeURI 로 또 한 번
+  // 인코딩해(%→%25) 스토리지가 "%EB%B6…" 글자 그대로를 파일명으로 내려보냈다. 파일명 없이 서명한 뒤 한 번만 인코딩해 붙인다.
   const admin = createAdminClient();
-  const { data } = await admin.storage
+  const named = typeof download === 'string' && download.trim() ? safeFileName(download) : null;
+  const { data, error } = await admin.storage
     .from(bucket)
-    .createSignedUrl(storagePath, expiresInSeconds, opts);
-  return data?.signedUrl ?? null;
+    .createSignedUrl(storagePath, expiresInSeconds, !named && download ? { download: true } : undefined);
+  if (error) console.error('createSignedUrl failed:', error.message);
+  if (!data?.signedUrl) return null;
+  return named ? withDownloadName(data.signedUrl, named) : data.signedUrl;
+}
+
+/** 서명 URL 에 다운로드 파일명을 한 번만 인코딩해 붙인다 (스토리지가 Content-Disposition filename* 로 내려준다) */
+export function withDownloadName(signedUrl: string, fileName: string): string {
+  return `${signedUrl}${signedUrl.includes('?') ? '&' : '?'}download=${encodeURIComponent(fileName)}`;
 }
 
 /**

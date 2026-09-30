@@ -6,6 +6,7 @@ import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { recordSecurityEventSafe } from '@/lib/ops/security-events';
 import { contentDisposition } from '@/lib/http/download';
+import { downloadNamesForCase } from '@/lib/files/download-name';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -39,7 +40,7 @@ export async function GET(request: Request): Promise<Response> {
 
   const { data: docs } = await admin
     .from('documents')
-    .select('doc_key, doc_name, storage_path')
+    .select('id, doc_key, doc_name, storage_path')
     .eq('case_id', caseId)
     .order('created_at');
   if (!docs || docs.length === 0) return NextResponse.json({ error: '이 케이스에 등록된 서류가 없습니다.' }, { status: 404 });
@@ -50,11 +51,13 @@ export async function GET(request: Request): Promise<Response> {
   const zip = new JSZip();
   const used = new Set<string>();
   let added = 0;
+  // 파일명 규칙 "멘토명-멘티명-구분명" / "멘티명-구분명" (2026-09-30)
+  const dlNames = await downloadNamesForCase(caseId);
   for (const d of docs.filter((d) => !canceledKeys.has(d.doc_key))) {
     const bucket = d.doc_key.startsWith('mentoring_photo:') ? 'photos' : 'documents';
     const { data: blob } = await admin.storage.from(bucket).download(d.storage_path);
     if (!blob) continue;
-    let name = `${folderOf(d.doc_key)}/${safe(d.doc_name)}`;
+    let name = `${folderOf(d.doc_key)}/${safe(dlNames.get(d.id) ?? d.doc_name)}`;
     if (used.has(name)) {
       const dot = name.lastIndexOf('.');
       name = dot > 0 ? `${name.slice(0, dot)}_${added}${name.slice(dot)}` : `${name}_${added}`;
@@ -77,7 +80,7 @@ export async function GET(request: Request): Promise<Response> {
   // (P35-B) 대량 반출 이벤트
   await recordSecurityEventSafe({ kind: 'export', severity: 'info', userId: profile.id, path: '/api/staff/case-docs-zip', detail: { route: 'case-docs-zip', files: added, case_id: caseId, program_id: ctx.programId } });
   const buf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
-  const filename = `${safe(c.owner_name)}_${safe(c.business_name)}_서류일체_${new Date().toISOString().slice(0, 10)}.zip`;
+  const filename = `${safe(c.owner_name)}-서류 일체.zip`;
   return new Response(new Uint8Array(buf), {
     headers: {
       'Content-Type': 'application/zip',

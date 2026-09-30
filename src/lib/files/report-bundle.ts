@@ -3,6 +3,7 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import { safeFileName } from '@/lib/http/download';
+import { buildDownloadName } from '@/lib/files/download-name-rule';
 import { reportDocKey } from '@/lib/data/rounds';
 import { kstYmd } from '@/lib/utils/kst';
 
@@ -130,15 +131,15 @@ export async function buildReportBundle(input: {
       if (input.scope === 'case' && input.mentorId && l.mentor_id !== input.mentorId) continue;
       const d = reportByLog.get(reportDocKey(l.id));
       if (!d) continue;
-      push(dirFor(c, l.mentor_id), d.doc_name, d.storage_path);
+      // 파일명 규칙 "멘토명-멘티명-N회차 보고서" (2026-09-30)
+      push(dirFor(c, l.mentor_id), buildDownloadName({ docKey: `mentoring_report:${l.id}`, sourceName: d.doc_name || d.storage_path, menteeName: c.owner_name, mentorName: mentorName.get(l.mentor_id) ?? null, roundNo: l.round_no }), d.storage_path);
       added += 1;
     }
     const obs = obsByCase.get(c.id);
     const obsMentor = obs?.uploaded_by && mentorName.has(obs.uploaded_by) ? obs.uploaded_by : lastMentor.get(c.id) ?? null;
     const obsWanted = obs && obsMentor && (input.scope !== 'mentor' || obsMentor === input.id) && (input.scope !== 'case' || !input.mentorId || obsMentor === input.mentorId);
     if (obs && obsMentor && obsWanted) {
-      const nm = obs.doc_name.includes('관찰의견서') ? obs.doc_name : `관찰의견서_${obs.doc_name}`;
-      push(dirFor(c, obsMentor), nm, obs.storage_path);
+      push(dirFor(c, obsMentor), buildDownloadName({ docKey: 'observation_report', sourceName: obs.doc_name || obs.storage_path, menteeName: c.owner_name, mentorName: mentorName.get(obsMentor) ?? null }), obs.storage_path);
       added += 1;
     }
     if (added === 0) emptyCases += 1;
