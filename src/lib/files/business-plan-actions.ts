@@ -173,14 +173,16 @@ export async function deleteBusinessDocAction(docId: string): Promise<SimpleResu
   const op = await operator();
   if ('error' in op) return { ok: false, error: op.error };
   const admin = createAdminClient();
-  const { data: doc } = await admin
+  // documents → cases 외래키가 둘(case_id·copied_from_case_id)이라 cases 임베드가 모호해 조회가 실패한다 — 따로 읽는다 (2026-09-30)
+  const { data: doc, error: docErr } = await admin
     .from('documents')
-    .select('id, case_id, doc_key, doc_name, storage_path, cases!inner(program_id)')
+    .select('id, case_id, doc_key, doc_name, storage_path')
     .eq('id', docId)
     .in('doc_key', [...BUSINESS_DOC_KEYS])
     .maybeSingle();
-  const programId = (doc?.cases as unknown as { program_id: string } | null)?.program_id;
-  if (!doc || programId !== op.programId) return { ok: false, error: '파일을 찾을 수 없습니다.' };
+  if (docErr) console.error('deleteBusinessDocAction lookup failed:', docErr.message);
+  const { data: owner } = doc?.case_id ? await admin.from('cases').select('program_id').eq('id', doc.case_id).maybeSingle() : { data: null };
+  if (!doc || owner?.program_id !== op.programId) return { ok: false, error: '파일을 찾을 수 없습니다.' };
   const { error } = await admin.from('documents').delete().eq('id', doc.id);
   if (error) return { ok: false, error: `삭제 실패: ${error.message}` };
   // 케이스 폴더 안의 파일만 지운다(경로 조작 방지)

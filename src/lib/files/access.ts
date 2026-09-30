@@ -37,13 +37,18 @@ export type DocAccess =
 export async function resolveDocAccess(docId: string): Promise<DocAccess> {
   if (!/^[0-9a-f-]{36}$/i.test(docId)) return { ok: false, status: 404 };
   const admin = createAdminClient();
-  const { data: d } = await admin
+  // documents → cases 외래키가 둘(case_id·copied_from_case_id, 0081)이라 `cases!inner(...)` 임베드는 모호해서
+  // PostgREST 가 오류를 내고 모든 파일이 404 가 됐다(2026-09-30 장애) — 문서와 케이스를 따로 읽는다.
+  const { data: d, error: docErr } = await admin
     .from('documents')
-    .select('id, case_id, doc_key, doc_name, storage_path, mime_type, mentor_visible, uploaded_by, cases!inner(program_id, mentee_id)')
+    .select('id, case_id, doc_key, doc_name, storage_path, mime_type, mentor_visible, uploaded_by')
     .eq('id', docId)
     .maybeSingle();
+  if (docErr) console.error('resolveDocAccess document lookup failed:', docErr.message);
   if (!d || !d.case_id) return { ok: false, status: 404 };
-  const c = d.cases as unknown as { program_id: string; mentee_id: string | null };
+  const { data: c, error: caseErr } = await admin.from('cases').select('program_id, mentee_id').eq('id', d.case_id).maybeSingle();
+  if (caseErr) console.error('resolveDocAccess case lookup failed:', caseErr.message);
+  if (!c) return { ok: false, status: 404 };
   const doc: DocFile = {
     id: d.id,
     caseId: d.case_id,
