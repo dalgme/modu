@@ -5,7 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { getCaseById, getCaseStatusHistory, listMentorsForProgram, listPredecessorCases, listSuccessorCases } from '@/lib/data/cases';
-import { getObservationReportFile, listPendingRequestsForCase, listRounds } from '@/lib/data/rounds';
+import { getObservationReportFile, listObservationHistory, listPendingRequestsForCase, listRounds } from '@/lib/data/rounds';
 import { listCaseDocuments, listRequiredDocSlots } from '@/lib/workflow/case-documents';
 import { getCaseSurvey } from '@/lib/data/survey';
 import { listTeamMembers } from '@/lib/data/team-members';
@@ -45,6 +45,7 @@ import { listCaseAuditRows } from '@/lib/audit/case-rows';
 import { CASE_STATUS_META } from '@/types/case-status';
 import { fmt } from '@/lib/programs/branding';
 import { FileActions } from '@/components/files/file-preview';
+import { ObservationFileLog } from '@/components/files/observation-file-log';
 import { BundleDownloadButton } from '@/components/files/bundle-download-button';
 
 export const maxDuration = 60;
@@ -56,7 +57,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   if (!item || item.program_id !== ctx.programId) notFound();
   const canViewAs = hasCapability(ctx, 'members.view_as');
 
-  const [history, predecessors, successors, mentors, rounds, obsFile, requests, docs, settlements, statements, estimates, slots, survey, changeReqs, recs, menteeProfile, tags, myGroupIds, caseAudit] = await Promise.all([
+  const [history, predecessors, successors, mentors, rounds, obsFile, requests, docs, settlements, statements, estimates, slots, survey, changeReqs, recs, menteeProfile, tags, myGroupIds, caseAudit, obsHistory] = await Promise.all([
     getCaseStatusHistory(item.id),
     listPredecessorCases(item.id),
     listSuccessorCases(item.id),
@@ -77,6 +78,7 @@ export default async function Page({ params }: { params: { id: string } }) {
     listStaffGroupIds(ctx.programId, profile.id),
     // [조치 이력] — entity_type='cases' + metadata.case_id 로 남은 회차·서류·메시지·대행 기록까지, 최근 50건 (P31)
     listCaseAuditRows(params.id, ctx.programId, 50),
+    listObservationHistory(item.id),
   ]);
   const teamMembers = await listTeamMembers(item.id);
   // 담당 외 그룹 안내: 현재 범위 그룹이 있는데 다르면 'scope', 내 담당 그룹 지정이 있는데 포함되지 않으면 'duty'
@@ -235,12 +237,18 @@ export default async function Page({ params }: { params: { id: string } }) {
           </CardHeader>
           <CardContent className="text-sm">
             {obsFile ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <b className="min-w-0 truncate">{obsFile.name}</b>
-                <FileActions docId={obsFile.id} name={obsFile.name} />
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <b className="min-w-0 truncate">{obsFile.name}</b>
+                  <FileActions docId={obsFile.id} name={obsFile.name} />
+                </div>
+                <ObservationFileLog fileName={obsFile.name} createdAt={obsFile.createdAt} updatedAt={obsFile.updatedAt} history={obsHistory} />
               </div>
             ) : (
-              <p className="text-muted-foreground">아직 제출되지 않았습니다.</p>
+              <div className="flex flex-col gap-2">
+                <p className="text-muted-foreground">아직 제출되지 않았습니다.</p>
+                {obsHistory.length > 0 && <ObservationFileLog fileName={null} createdAt={null} updatedAt={null} history={obsHistory} />}
+              </div>
             )}
           </CardContent>
         </Card>

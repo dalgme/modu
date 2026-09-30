@@ -467,6 +467,11 @@ UX/UI보완을 진행하세요</code></pre>
 - &quot;[OOO] 멘티 컨설팅&quot; 코발트블루 박스, [중도 종료 요청] 빨간 버튼, 멘토 대시보드 &quot;담당 멘티 · 지금 할 일&quot; 카드 가독성
 - 운영 설정 &gt; 관리 &gt; 문자 API 를 눌러도 상단 설정 메뉴가 사라지지 않게, 솔라피 등록 기준 초보자용 설정·설명</code></pre>
 <p>→ 0088(<code>programs.file_policy</code>·<code>mentor_payment_files</code>), <code>/nextlab/files</code>, pdf.js 캔버스 + 서버 글자 추출 폴백(<code>/api/files/doc/[id]/text</code>), 미리보기 전용 모드, <code>replaceRoundReport</code>, 설정 <code>?tab=sms-api</code>(솔라피 4단계 안내).</p>
+<h3 id="p40-2026-09-30-새-창-자체-뷰어-관찰의견서-수정-삭제-테스트-초기화">P40 (2026-09-30) — 새 창 자체 뷰어·관찰의견서 수정/삭제·테스트 초기화</h3>
+<pre><code>- 새창 열기는 허용해야겠군요. 그럼 사실상 다운로드는 허용하는 방식이 될까요? 아니면 업로드된 사업계획서는 무조건 자체 웹뷰어를 통해서 &quot;보기&quot;만 가능하게 할 수 있을까요?
+- &quot;강석우 멘토-남준현 멘티&quot;의 매칭은 유지하되, 멘토링 진행 상황은 리셋-초기화 (예약일정·보고서 업로드·수정은 모두 테스트)
+- 멘토가 관찰의견서 제출(업로드) 시 수정·삭제할 수 있도록, 파일 로그(최초 업로드 일자, 수정 일자 등)도 같이 표시</code></pre>
+<p>→ [새 창] = <code>/files/view</code>(같은 미리보기 엔진, 원본 URL 미노출), <code>deleteObservationFile</code> + <code>observationEditable</code>, 감사 <code>observation.*</code> → <code>ObservationFileLog</code>, 케이스 진행 SQL 초기화(감사 <code>case.progress_reset</code>).</p>
 <hr>
 <h2 id="4-다음-세션에서-쓸-시작-프롬프트-템플릿">4. 다음 세션에서 쓸 시작 프롬프트 (템플릿)</h2>
 <pre><code>이 리포(dalgme/modu)는 &quot;모두의창업&quot; 멘토링 운영관리 플랫폼입니다. 배포·부트스트랩까지 끝났습니다.

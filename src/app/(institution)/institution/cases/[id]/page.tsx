@@ -6,7 +6,7 @@ import { getCaseById, getCaseStatusHistory, listPredecessorCases } from '@/lib/d
 import { CaseDetailShell } from '@/components/cases/case-detail-shell';
 import { CaseDetailBackNav } from '@/components/cases/case-detail-back-nav';
 import { OperatorRequestButton } from '@/components/cases/operator-request-button';
-import { getObservationReportFile, listRounds } from '@/lib/data/rounds';
+import { getObservationReportFile, listObservationHistory, listRounds } from '@/lib/data/rounds';
 import { listCaseDocuments, listRequiredDocSlots } from '@/lib/workflow/case-documents';
 import { getCaseSurvey } from '@/lib/data/survey';
 import { RequiredDocsPanel } from '@/components/cases/required-docs-panel';
@@ -19,6 +19,7 @@ import { SettlementCard } from '@/components/settlement/settlement-card';
 import { CaseEndPanel } from '@/components/settlement/case-end-panel';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileActions } from '@/components/files/file-preview';
+import { ObservationFileLog } from '@/components/files/observation-file-log';
 import { BundleDownloadButton } from '@/components/files/bundle-download-button';
 
 export const maxDuration = 60;
@@ -29,7 +30,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   const item = await getCaseById(params.id);
   if (!item || item.program_id !== ctx.programId) notFound();
 
-  const [history, predecessors, rounds, obsFile, docs, settlements, statements, slots, survey] = await Promise.all([
+  const [history, predecessors, rounds, obsFile, docs, settlements, statements, slots, survey, obsHistory] = await Promise.all([
     getCaseStatusHistory(item.id),
     listPredecessorCases(item.id),
     listRounds(item.id),
@@ -39,6 +40,7 @@ export default async function Page({ params }: { params: { id: string } }) {
     listStatementFiles(item.id),
     listRequiredDocSlots(item.id, 'institution'),
     getCaseSurvey(item.id),
+    listObservationHistory(item.id),
   ]);
 
   return (
@@ -72,12 +74,18 @@ export default async function Page({ params }: { params: { id: string } }) {
           </CardHeader>
           <CardContent className="text-sm">
             {obsFile ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <b className="min-w-0 truncate">{obsFile.name}</b>
-                <FileActions docId={obsFile.id} name={obsFile.name} />
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <b className="min-w-0 truncate">{obsFile.name}</b>
+                  <FileActions docId={obsFile.id} name={obsFile.name} />
+                </div>
+                <ObservationFileLog fileName={obsFile.name} createdAt={obsFile.createdAt} updatedAt={obsFile.updatedAt} history={obsHistory} />
               </div>
             ) : (
-              <p className="text-muted-foreground">아직 제출되지 않았습니다.</p>
+              <div className="flex flex-col gap-2">
+                <p className="text-muted-foreground">아직 제출되지 않았습니다.</p>
+                {obsHistory.length > 0 && <ObservationFileLog fileName={null} createdAt={null} updatedAt={null} history={obsHistory} />}
+              </div>
             )}
           </CardContent>
         </Card>

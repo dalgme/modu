@@ -14,6 +14,7 @@ import {
   requestRoundExtension,
   saveObservationDraft,
   uploadObservationFile,
+  deleteObservationFile,
 } from '@/lib/workflow/closure';
 import type { WorkflowResult } from '@/lib/workflow/cases';
 import { saveMentorSignature } from '@/lib/documents/round-report';
@@ -103,6 +104,15 @@ export async function uploadObservationAction(caseId: string, staging: { staging
   const profile = await mentorOfCaseOrNull(caseId);
   if (!profile) return { ok: false, error: NOT_ASSIGNED_ERROR };
   const result = await uploadObservationFile(caseId, profile.id, staging);
+  if (result.ok) revalidate(caseId);
+  return result;
+}
+
+/** 멘토: 관찰의견서 파일 삭제 (2026-09-30) */
+export async function deleteObservationAction(caseId: string): Promise<WorkflowResult> {
+  const profile = await mentorOfCaseOrNull(caseId);
+  if (!profile) return { ok: false, error: NOT_ASSIGNED_ERROR };
+  const result = await deleteObservationFile(caseId, profile.id);
   if (result.ok) revalidate(caseId);
   return result;
 }

@@ -137,6 +137,22 @@ export function docFileHref(docId: string, mode: 'inline' | 'download' | 'meta' 
   return base;
 }
 
+/**
+ * 자체 웹뷰어 "새 창" 주소 (2026-09-30) — 원본 파일(서명 URL)을 새 탭에 여는 대신 플랫폼 뷰어 페이지를 연다.
+ * 브라우저 기본 PDF 뷰어의 저장·인쇄 버튼이 없어서, 미리보기 전용 파일도 새 창으로 크게 볼 수 있다.
+ */
+export function viewerPageHref(src: { docId?: string; metaUrl?: string }): string | null {
+  if (src.docId) return `/files/view?doc=${encodeURIComponent(src.docId)}`;
+  if (src.metaUrl && safeViewerMetaUrl(src.metaUrl)) return `/files/view?meta=${encodeURIComponent(src.metaUrl)}`;
+  return null;
+}
+
+/** 뷰어 페이지가 받아 줄 meta 주소 — 같은 출처의 파일 라우트(/api/files/…)만. 외부 주소·경로 조작은 거부 */
+export function safeViewerMetaUrl(url: string | null | undefined): string | null {
+  if (!url || !url.startsWith('/api/files/') || url.includes('..') || url.includes('//') || url.includes('\\')) return null;
+  return url;
+}
+
 /** 형식별 안내 — 미리보기 창 하단 */
 export const PREVIEW_NOTES: Partial<Record<PreviewKind, string>> = {
   hwp: '한글(HWP) 문서를 브라우저에서 그린 미리보기입니다. 복잡한 표·그림은 원본과 다르게 보일 수 있습니다.',

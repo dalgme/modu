@@ -560,6 +560,14 @@ UX/UI보완을 진행하세요
 ```
 → 0088(`programs.file_policy`·`mentor_payment_files`), `/nextlab/files`, pdf.js 캔버스 + 서버 글자 추출 폴백(`/api/files/doc/[id]/text`), 미리보기 전용 모드, `replaceRoundReport`, 설정 `?tab=sms-api`(솔라피 4단계 안내).
 
+### P40 (2026-09-30) — 새 창 자체 뷰어·관찰의견서 수정/삭제·테스트 초기화
+```
+- 새창 열기는 허용해야겠군요. 그럼 사실상 다운로드는 허용하는 방식이 될까요? 아니면 업로드된 사업계획서는 무조건 자체 웹뷰어를 통해서 "보기"만 가능하게 할 수 있을까요?
+- "강석우 멘토-남준현 멘티"의 매칭은 유지하되, 멘토링 진행 상황은 리셋-초기화 (예약일정·보고서 업로드·수정은 모두 테스트)
+- 멘토가 관찰의견서 제출(업로드) 시 수정·삭제할 수 있도록, 파일 로그(최초 업로드 일자, 수정 일자 등)도 같이 표시
+```
+→ [새 창] = `/files/view`(같은 미리보기 엔진, 원본 URL 미노출), `deleteObservationFile` + `observationEditable`, 감사 `observation.*` → `ObservationFileLog`, 케이스 진행 SQL 초기화(감사 `case.progress_reset`).
+
 ---
 
 ## 4. 다음 세션에서 쓸 시작 프롬프트 (템플릿)

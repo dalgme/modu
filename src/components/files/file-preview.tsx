@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from '@/hooks/use-toast';
 import type { HwpxResult } from '@/lib/files/hwpx';
-import { docFileHref, PREVIEW_NOTES, previewKind, sniffKind, type PreviewKind, type PreviewMeta, type PreviewText } from '@/lib/files/preview-kind';
+import { docFileHref, PREVIEW_NOTES, previewKind, sniffKind, viewerPageHref, type PreviewKind, type PreviewMeta, type PreviewText } from '@/lib/files/preview-kind';
 import { cn } from '@/lib/utils';
 
 /**
@@ -23,7 +23,8 @@ import { cn } from '@/lib/utils';
  *  - DOC(97~2003): 서버 글자 추출
  *  - 엑셀·CSV  : 첫 시트 표 / 텍스트 파일: 글자
  *
- * 미리보기 전용(meta.downloadUrl = null 또는 allowDownload=false): [다운로드]·[새 창] 없음, 우클릭·끌기·길게 눌러 저장·글자 선택 차단,
+ * [새 창] = 플랫폼 자체 뷰어 페이지(/files/view) — 원본 파일 주소를 새 탭에 열지 않는다(브라우저 PDF 뷰어의 저장·인쇄 버튼이 생기므로).
+ * 미리보기 전용(meta.downloadUrl = null 또는 allowDownload=false): [다운로드] 없음, 우클릭·끌기·길게 눌러 저장·글자 선택 차단,
  * 창이 열려 있는 동안 인쇄(Ctrl+P·브라우저 메뉴) 결과를 "인쇄가 제한된 문서입니다" 한 줄로 바꾼다.
  * ※ 화면 캡처·휴대폰 촬영·개발자 도구로 바이트를 가로채는 것까지 막을 수는 없다 — 일반 사용자의 저장·인쇄를 막는 억제 장치다.
  *
@@ -534,9 +535,81 @@ function usePrintBlock(active: boolean) {
 
 type MetaState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; meta: PreviewMeta };
 
+/** 미리보기 계약 읽기 + 형식 상태 — 레이어 팝업과 새 창 뷰어 페이지 공용 */
+function useViewer(href: string | null, active: boolean, allowDownload: boolean) {
+  const [state, setState] = useState<MetaState>({ status: 'loading' });
+  const [kind, setKind] = useState<PreviewKind | 'text-fallback' | null>(null);
+  useEffect(() => {
+    if (!active || !href) return;
+    let cancelled = false;
+    setState({ status: 'loading' });
+    setKind(null);
+    loadMeta(href)
+      .then((meta) => !cancelled && setState({ status: 'ready', meta }))
+      .catch((e: unknown) => !cancelled && setState({ status: 'error', message: e instanceof Error ? e.message : '파일 정보를 불러오지 못했습니다.' }));
+    return () => {
+      cancelled = true;
+    };
+  }, [active, href]);
+  const meta = state.status === 'ready' ? state.meta : null;
+  const downloadHref = meta && allowDownload ? meta.downloadUrl : null;
+  // 서버 판정이 오기 전까지는 미리보기 전용으로 취급한다(인쇄 차단이 늦게 걸리지 않도록)
+  const viewOnly = !downloadHref;
+  usePrintBlock(active && viewOnly);
+  const note = kind === 'text-fallback' ? '원본 서식 대신 문서의 글자만 보여 줍니다(표 모양·그림 제외).' : kind ? PREVIEW_NOTES[kind] : undefined;
+  return { state, meta, downloadHref, viewOnly, setKind, note };
+}
+
+/** 뷰어 머리 오른쪽 — 미리보기 전용 배지 · [새 창](자체 뷰어 페이지) · [다운로드] */
+function ViewerActions({ meta, viewOnly, downloadHref, newWindowHref }: { meta: PreviewMeta | null; viewOnly: boolean; downloadHref: string | null; newWindowHref: string | null }) {
+  return (
+    <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+      {meta && viewOnly && (
+        <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-900">
+          <ShieldAlert className="h-3.5 w-3.5" /> 미리보기 전용(다운로드·인쇄 제한)
+        </span>
+      )}
+      {meta && newWindowHref && (
+        <Button asChild variant="outline" size="sm" className="gap-1">
+          <a href={newWindowHref} target="_blank" rel="noopener noreferrer" title="플랫폼 뷰어로 새 창에서 크게 보기">
+            <ExternalLink className="h-3.5 w-3.5" /> 새 창
+          </a>
+        </Button>
+      )}
+      {downloadHref && (
+        <Button asChild variant="outline" size="sm" className="gap-1">
+          <a href={downloadHref}>
+            <Download className="h-3.5 w-3.5" /> 다운로드
+          </a>
+        </Button>
+      )}
+    </div>
+  );
+}
+
+/** 뷰어 본문 — 불러오는 중 / 오류 / 미리보기 + 하단 안내 */
+function ViewerContent({ v, active }: { v: ReturnType<typeof useViewer>; active: boolean }) {
+  return (
+    <>
+      {active && v.viewOnly && <style>{PRINT_BLOCK_CSS}</style>}
+      {active && v.state.status === 'loading' && (
+        <div className="relative min-h-0 flex-1">
+          <Spinner />
+        </div>
+      )}
+      {active && v.state.status === 'error' && (
+        <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">{v.state.message}</div>
+      )}
+      {active && v.meta && <PreviewBody meta={v.meta} viewOnly={v.viewOnly} onKind={v.setKind} />}
+      {v.note && <p className="border-t px-3 py-2 text-[11px] text-muted-foreground">{v.note}</p>}
+    </>
+  );
+}
+
 /**
  * 업로드 파일 [미리보기] 버튼 — 누르면 레이어 팝업에서 파일을 웹으로 보여 준다.
  * docId(문서 id) 또는 metaUrl(같은 계약의 다른 라우트) 중 하나를 준다. allowDownload=false 면 서버가 허용해도 미리보기 전용.
+ * [새 창] = 원본 파일이 아니라 플랫폼 자체 뷰어 페이지(/files/view) — 미리보기 전용 파일도 저장·인쇄 없이 크게 볼 수 있다.
  */
 export function FilePreviewButton({
   docId,
@@ -556,30 +629,11 @@ export function FilePreviewButton({
   allowDownload?: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const [state, setState] = useState<MetaState>({ status: 'loading' });
-  const [kind, setKind] = useState<PreviewKind | 'text-fallback' | null>(null);
   const href = metaHref({ docId, metaUrl });
-
-  useEffect(() => {
-    if (!open || !href) return;
-    let cancelled = false;
-    setState({ status: 'loading' });
-    setKind(null);
-    loadMeta(href)
-      .then((meta) => !cancelled && setState({ status: 'ready', meta }))
-      .catch((e: unknown) => !cancelled && setState({ status: 'error', message: e instanceof Error ? e.message : '파일 정보를 불러오지 못했습니다.' }));
-    return () => {
-      cancelled = true;
-    };
-  }, [open, href]);
-
-  const meta = state.status === 'ready' ? state.meta : null;
-  const downloadHref = meta && allowDownload ? meta.downloadUrl : null;
-  // 서버 판정이 오기 전까지는 미리보기 전용으로 취급한다(인쇄 차단이 늦게 걸리지 않도록)
-  const viewOnly = !downloadHref;
-  usePrintBlock(open && viewOnly);
-
-  const note = kind === 'text-fallback' ? '원본 서식 대신 문서의 글자만 보여 줍니다(표 모양·그림 제외).' : kind ? PREVIEW_NOTES[kind] : undefined;
+  const v = useViewer(href, open, allowDownload);
+  // allowDownload=false 로 연 파일은 새 창에서도 다운로드를 숨기도록 표시를 넘긴다
+  const pageHref = viewerPageHref({ docId, metaUrl });
+  const newWindowHref = pageHref ? (allowDownload ? pageHref : `${pageHref}&nodl=1`) : null;
 
   return (
     <>
@@ -596,45 +650,35 @@ export function FilePreviewButton({
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="flex h-[88dvh] max-w-5xl flex-col gap-0 p-0 sm:h-[88vh]">
-          {open && viewOnly && <style>{PRINT_BLOCK_CSS}</style>}
           <DialogHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0 border-b p-3 pr-12">
-            <DialogTitle className="min-w-0 truncate text-base">{meta?.name ?? name}</DialogTitle>
+            <DialogTitle className="min-w-0 truncate text-base">{v.meta?.name ?? name}</DialogTitle>
             <DialogDescription className="sr-only">업로드된 파일 미리보기</DialogDescription>
-            <div className="flex shrink-0 items-center gap-1.5">
-              {meta && viewOnly && (
-                <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-900">
-                  <ShieldAlert className="h-3.5 w-3.5" /> 미리보기 전용(다운로드·인쇄 제한)
-                </span>
-              )}
-              {meta && downloadHref && (kind === 'pdf' || kind === 'image') && (
-                <Button asChild variant="outline" size="sm" className="gap-1">
-                  <a href={meta.url} target="_blank" rel="noopener noreferrer">
-                    <ExternalLink className="h-3.5 w-3.5" /> 새 창
-                  </a>
-                </Button>
-              )}
-              {downloadHref && (
-                <Button asChild variant="outline" size="sm" className="gap-1">
-                  <a href={downloadHref}>
-                    <Download className="h-3.5 w-3.5" /> 다운로드
-                  </a>
-                </Button>
-              )}
-            </div>
+            <ViewerActions meta={v.meta} viewOnly={v.viewOnly} downloadHref={v.downloadHref} newWindowHref={newWindowHref} />
           </DialogHeader>
-          {open && state.status === 'loading' && (
-            <div className="relative min-h-0 flex-1">
-              <Spinner />
-            </div>
-          )}
-          {open && state.status === 'error' && (
-            <div className="flex min-h-0 flex-1 items-center justify-center p-6 text-center text-sm text-muted-foreground">{state.message}</div>
-          )}
-          {open && meta && <PreviewBody meta={meta} viewOnly={viewOnly} onKind={setKind} />}
-          {note && <p className="border-t px-3 py-2 text-[11px] text-muted-foreground">{note}</p>}
+          <ViewerContent v={v} active={open} />
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * 새 창 뷰어 페이지 본문 (/files/view) — 팝업과 같은 엔진·같은 차단 규칙을 화면 전체로.
+ * `metaHrefValue` 는 페이지(서버)가 검증한 같은 출처 주소만 받는다.
+ */
+export function FileViewerPage({ metaHrefValue, allowDownload = true }: { metaHrefValue: string; allowDownload?: boolean }) {
+  const v = useViewer(metaHrefValue, true, allowDownload);
+  useEffect(() => {
+    if (v.meta?.name) document.title = `${v.meta.name} — 미리보기`;
+  }, [v.meta?.name]);
+  return (
+    <div className="flex h-dvh flex-col bg-background">
+      <header className="flex flex-wrap items-center justify-between gap-2 border-b px-3 py-2">
+        <h1 className="min-w-0 truncate text-base font-semibold">{v.meta?.name ?? '파일 미리보기'}</h1>
+        <ViewerActions meta={v.meta} viewOnly={v.viewOnly} downloadHref={v.downloadHref} newWindowHref={null} />
+      </header>
+      <ViewerContent v={v} active />
+    </div>
   );
 }
 

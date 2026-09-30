@@ -10,7 +10,7 @@ import { uploadFile, moveFile, sha256Hex } from '@/lib/storage/files';
 import { queueNotification } from '@/lib/workflow/notifications';
 import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
 import { getRoundAllowance } from '@/lib/data/rounds';
-import { observationUploadGate } from '@/lib/workflow/observation-rule';
+import { observationEditable, observationUploadGate } from '@/lib/workflow/observation-rule';
 import { missingRequiredMenteeDocs } from '@/lib/workflow/case-documents';
 import { getBranding } from '@/lib/programs/data';
 import { fmt } from '@/lib/programs/branding';
@@ -73,9 +73,9 @@ export async function uploadObservationFile(
   if (!staging.stagingPath.startsWith('_staging/') || staging.stagingPath.includes('..')) return { ok: false, error: '잘못된 업로드 경로입니다.' };
   const admin = createAdminClient();
   // 상태 게이트 (P31) — 웹 작성본(saveObservationDraft)과 같은 조건: 종결 요청 가능 단계(진행 중·보완 요청) + 멘토 배정 단계
-  const { data: c } = await admin.from('cases').select('id, status, support_type_id').eq('id', caseId).maybeSingle();
+  const { data: c } = await admin.from('cases').select('id, status, support_type_id, program_id').eq('id', caseId).maybeSingle();
   if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
-  if (!TRANSITIONS.request_closure.from.includes(c.status) && c.status !== 'mentor_assigned') {
+  if (!observationEditable(c.status)) {
     return { ok: false, error: '컨설팅 진행 중(또는 보완 요청) 단계에서만 관찰의견서를 올릴 수 있습니다.' };
   }
   // (2026-09-29) 계획 회차 보고서를 모두 올린 뒤에만 업로드 — 멘토 화면 버튼 조건과 같은 함수
@@ -108,6 +108,40 @@ export async function uploadObservationFile(
     await admin.storage.from('documents').remove([dest]);
     return replaced;
   }
+  // 파일 이력(최초 업로드·수정·삭제) — 관찰의견서 카드의 [변경 이력] 이 이 기록을 읽는다
+  await logAudit(admin, {
+    actorId: mentorId,
+    programId: c.program_id,
+    action: replaced.replacedName !== null ? 'observation.replace' : 'observation.upload',
+    entityType: 'cases',
+    entityId: caseId,
+    metadata: { case_id: caseId, file_name: staging.fileName || '관찰의견서', ...(replaced.replacedName !== null ? { previous_name: replaced.replacedName } : {}) },
+  });
+  return { ok: true, caseId };
+}
+
+/**
+ * 관찰의견서 파일 삭제 (2026-09-30) — 멘토가 잘못 올린 파일을 지운다. 업로드와 같은 상태 게이트(observationEditable).
+ * 종결 요청 이후(검수 중)에는 지울 수 없다. 행을 먼저 지우고 파일은 뒤에 정리(행이 남으면 화면이 깨진 링크를 보이므로).
+ */
+export async function deleteObservationFile(caseId: string, mentorId: string): Promise<WorkflowResult> {
+  const admin = createAdminClient();
+  const { data: c } = await admin.from('cases').select('id, status, program_id').eq('id', caseId).maybeSingle();
+  if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
+  if (!observationEditable(c.status)) return { ok: false, error: '컨설팅 진행 중(또는 보완 요청) 단계에서만 관찰의견서를 삭제할 수 있습니다.' };
+  const { data: rows } = await admin.from('documents').select('id, doc_name, storage_path').eq('case_id', caseId).eq('doc_key', 'observation_report');
+  if (!rows || rows.length === 0) return { ok: false, error: '삭제할 관찰의견서가 없습니다.' };
+  const { error } = await admin.from('documents').delete().in('id', rows.map((r) => r.id));
+  if (error) return { ok: false, error: `관찰의견서 삭제에 실패했습니다: ${error.message}` };
+  await admin.storage.from('documents').remove(rows.map((r) => r.storage_path));
+  await logAudit(admin, {
+    actorId: mentorId,
+    programId: c.program_id,
+    action: 'observation.delete',
+    entityType: 'cases',
+    entityId: caseId,
+    metadata: { case_id: caseId, file_name: rows[0]!.doc_name },
+  });
   return { ok: true, caseId };
 }
 
@@ -119,9 +153,9 @@ export async function uploadObservationFile(
 async function replaceObservationDocument(
   caseId: string,
   doc: { doc_name: string; storage_path: string; sha256: string; file_size: number; mime_type: string; uploaded_by: string },
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true; replacedName: string | null } | { ok: false; error: string }> {
   const admin = createAdminClient();
-  const { data: old } = await admin.from('documents').select('id, storage_path').eq('case_id', caseId).eq('doc_key', 'observation_report').order('created_at');
+  const { data: old } = await admin.from('documents').select('id, storage_path, doc_name').eq('case_id', caseId).eq('doc_key', 'observation_report').order('created_at');
   const rows = old ?? [];
   const keep = rows[0] ?? null;
   const { error } = keep
@@ -133,7 +167,7 @@ async function replaceObservationDocument(
   if (stalePaths.length > 0) await admin.storage.from('documents').remove(stalePaths);
   const extraIds = rows.slice(1).map((d) => d.id);
   if (extraIds.length > 0) await admin.from('documents').delete().in('id', extraIds);
-  return { ok: true };
+  return { ok: true, replacedName: keep?.doc_name ?? null };
 }
 
 /**

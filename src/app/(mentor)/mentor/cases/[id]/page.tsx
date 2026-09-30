@@ -6,7 +6,7 @@ import { requireMentor } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { getCaseById, getCaseStatusHistory, listMentorCases, listPredecessorCases } from '@/lib/data/cases';
 import { menteeLabel } from '@/lib/utils/labels';
-import { getObservationReportFile, getRoundAllowance, listPendingRequestsForCase, listRounds } from '@/lib/data/rounds';
+import { getObservationReportFile, getRoundAllowance, listObservationHistory, listPendingRequestsForCase, listRounds } from '@/lib/data/rounds';
 import { listTeamMembers } from '@/lib/data/team-members';
 import { listCaseDocuments, listRequiredDocSlots } from '@/lib/workflow/case-documents';
 import { RequiredDocsPanel } from '@/components/cases/required-docs-panel';
@@ -21,7 +21,7 @@ import { CaseDocumentsPanel } from '@/components/cases/case-documents-panel';
 import { MentorRoundBoard } from '@/components/mentor/mentor-round-board';
 import { BundleDownloadButton } from '@/components/files/bundle-download-button';
 import { BusinessPlanPanel } from '@/components/files/business-plan-panel';
-import { observationUploadGate } from '@/lib/workflow/observation-rule';
+import { observationEditable, observationUploadGate } from '@/lib/workflow/observation-rule';
 import { ObservationForm } from '@/components/mentor/observation-form';
 import { MentorRequests } from '@/components/mentor/mentor-requests';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,7 +39,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   if (!item || item.program_id !== ctx.programId || item.mentorId !== profile.id) notFound();
 
   const today = kstDate(new Date());
-  const [history, predecessors, rounds, allowance, obsFile, requests, docs, online, offline, settlements, statements, estimates, slots, readiness, lastReview, siblings] = await Promise.all([
+  const [history, predecessors, rounds, allowance, obsFile, requests, docs, online, offline, settlements, statements, estimates, slots, readiness, lastReview, siblings, obsHistory] = await Promise.all([
     getCaseStatusHistory(item.id),
     // 이전 단계 케이스는 다른 배정이라 RLS 로 못 읽는다 — 요약(그룹·멘토·회차)만 service_role 로 읽어 링크 없이 표시 (P30). 접근 근거 = 이 케이스의 담당 멘토(위 notFound 가드)
     listPredecessorCases(item.id, { admin: true }),
@@ -59,6 +59,8 @@ export default async function Page({ params }: { params: { id: string } }) {
     createAdminClient().from('reviews').select('result, comment, created_at').eq('case_id', item.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
     // 이 멘토의 다른 담당 멘티(같은 행사, 활성 배정) — 이전/다음 이동 (P31)
     listMentorCases(profile.id, { programId: ctx.programId }),
+    // 관찰의견서 파일 변경 이력(업로드·수정·삭제) — 2026-09-30
+    listObservationHistory(item.id),
   ]);
   const ordered = siblings.filter((c) => !c.mentorEnded).sort((a, b) => a.owner_name.localeCompare(b.owner_name, 'ko'));
   const idx = ordered.findIndex((c) => c.id === item.id);
@@ -184,7 +186,7 @@ export default async function Page({ params }: { params: { id: string } }) {
             <p className="text-xs text-muted-foreground">멘티당 1건 · 파일 업로드로 제출합니다. 계획된 회차의 보고서를 모두 올리면 [파일 업로드]가 열리고, 종결 요청 시 운영사에 제출됩니다.</p>
           </CardHeader>
           <CardContent>
-            <ObservationForm caseId={item.id} file={obsFile} editable={roundsEditable} uploadGate={obsGate} />
+            <ObservationForm caseId={item.id} file={obsFile ? { id: obsFile.id, name: obsFile.name, createdAt: obsFile.createdAt, updatedAt: obsFile.updatedAt } : null} history={obsHistory} editable={observationEditable(item.status)} uploadGate={obsGate} />
           </CardContent>
         </Card>
 

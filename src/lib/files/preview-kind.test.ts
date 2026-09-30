@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { docFileHref, previewKind, sniffKind } from './preview-kind';
+import { docFileHref, previewKind, sniffKind, safeViewerMetaUrl, viewerPageHref } from './preview-kind';
 
 const bytes = (...parts: (number[] | string)[]) =>
   Uint8Array.from(parts.flatMap((p) => (typeof p === 'string' ? Array.from(p, (c) => c.charCodeAt(0)) : p)));
@@ -50,5 +50,19 @@ describe('sniffKind — 바이트 우선, 확장자 보조', () => {
     expect(sniffKind(bytes('a,b\n1,2'), 'a.csv')).toBe('sheet');
     expect(sniffKind(bytes('memo'), 'a.txt')).toBe('text');
     expect(sniffKind(new Uint8Array(0), '')).toBe('none');
+  });
+});
+
+describe('viewer page (새 창 자체 뷰어)', () => {
+  it('문서 id 는 /files/view?doc= 로', () => {
+    expect(viewerPageHref({ docId: 'abc' })).toBe('/files/view?doc=abc');
+  });
+  it('meta 주소는 같은 출처 /api/files/ 만 허용', () => {
+    expect(safeViewerMetaUrl('/api/files/mentor-payment/merged/x?meta=1')).toBe('/api/files/mentor-payment/merged/x?meta=1');
+    expect(safeViewerMetaUrl('https://evil.example/api/files/x')).toBeNull();
+    expect(safeViewerMetaUrl('//evil.example/api/files/x')).toBeNull();
+    expect(safeViewerMetaUrl('/api/files/../auth/x')).toBeNull();
+    expect(safeViewerMetaUrl('/api/other')).toBeNull();
+    expect(viewerPageHref({ metaUrl: 'https://evil.example' })).toBeNull();
   });
 });

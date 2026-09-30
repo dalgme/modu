@@ -65,16 +65,71 @@ export async function getObservationReport(caseId: string): Promise<Tables<'obse
   return data ?? null;
 }
 
-export async function getObservationReportFile(caseId: string): Promise<{ id: string; name: string; url: string | null } | null> {
+export interface ObservationFileInfo {
+  id: string;
+  name: string;
+  url: string | null;
+  /** 최초 업로드 일시 — 교체해도 유지(같은 행을 update) */
+  createdAt: string;
+  /** 마지막 수정(교체) 일시 */
+  updatedAt: string;
+}
+
+export async function getObservationReportFile(caseId: string): Promise<ObservationFileInfo | null> {
   const supabase = createClient();
   const { data } = await supabase
     .from('documents')
-    .select('id, doc_name, storage_path')
+    .select('id, doc_name, storage_path, created_at, updated_at')
     .eq('case_id', caseId)
     .eq('doc_key', 'observation_report')
     .maybeSingle();
   if (!data) return null;
-  return { id: data.id, name: data.doc_name, url: await createCaseScopedSignedUrl('documents', caseId, data.storage_path, 600, data.doc_name) };
+  return {
+    id: data.id,
+    name: data.doc_name,
+    url: await createCaseScopedSignedUrl('documents', caseId, data.storage_path, 600, data.doc_name),
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
+}
+
+export interface ObservationHistoryItem {
+  kind: 'upload' | 'replace' | 'delete';
+  at: string;
+  fileName: string | null;
+  actorName: string | null;
+  /** 운영사가 멘토 화면 대행으로 처리 */
+  viaViewAs: boolean;
+}
+
+/**
+ * 관찰의견서 파일 변경 이력 (2026-09-30) — 감사 로그 observation.upload/replace/delete. 최신순.
+ * 호출부가 이미 이 케이스 열람 권한을 확인한 뒤 부른다(서비스롤 조회).
+ */
+export async function listObservationHistory(caseId: string): Promise<ObservationHistoryItem[]> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from('audit_logs')
+    .select('action, created_at, metadata, actor_id')
+    .eq('entity_type', 'cases')
+    .eq('entity_id', caseId)
+    .in('action', ['observation.upload', 'observation.replace', 'observation.delete'])
+    .order('created_at', { ascending: false })
+    .limit(30);
+  const rows = data ?? [];
+  const actorIds = Array.from(new Set(rows.map((r) => r.actor_id).filter(Boolean))) as string[];
+  const { data: users } = actorIds.length ? await admin.from('users').select('id, name').in('id', actorIds) : { data: [] as { id: string; name: string }[] };
+  const nameById = new Map((users ?? []).map((u) => [u.id, u.name]));
+  return rows.map((r) => {
+    const meta = (r.metadata ?? {}) as { file_name?: string; via?: string };
+    return {
+      kind: r.action === 'observation.replace' ? 'replace' : r.action === 'observation.delete' ? 'delete' : 'upload',
+      at: r.created_at,
+      fileName: meta.file_name ?? null,
+      actorName: r.actor_id ? (nameById.get(r.actor_id) ?? null) : null,
+      viaViewAs: meta.via === 'view-as',
+    };
+  });
 }
 
 export async function listPendingRequestsForCase(caseId: string): Promise<{
