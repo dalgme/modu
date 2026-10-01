@@ -18,9 +18,15 @@ export interface CaseNextStepInput {
   mentorInput?: { plannedWithoutReport: number; hasObservation: boolean } | null;
   /** 페이지에 실제로 있는 섹션 앵커('#rounds' 등). 생략하면 전부 표시 (P31) */
   sections?: string[];
+  /** 서버 canApproveClosure 결과 — 종결 요청 전이라도 승인 가능한지 (2026-10-01) */
+  approvable?: boolean;
 }
 
 function describe(i: CaseNextStepInput): { title: string; desc: string; anchor?: string; href?: string; hrefLabel?: string; tone: 'action' | 'wait' | 'done' } {
+  // (2026-10-01) 회차 보고서·관찰의견서가 모두 등록되면 종결 요청 전이라도 바로 검수 승인 가능 (= 서버 canApproveClosure)
+  if (i.approvable && (i.status === 'in_progress' || i.status === 'revision_requested')) {
+    return { title: '검수 승인할 수 있습니다', desc: '모든 회차 보고서와 관찰의견서가 등록됐습니다. [검수 승인 · 정산 확정]을 누르면 지급 품의가 자동으로 작성·제출되어 발주처 정산 확인 단계로 넘어갑니다.', anchor: '#review', tone: 'action' };
+  }
   switch (i.status) {
     case 'registered':
       return i.menteeLinked
@@ -37,7 +43,7 @@ function describe(i: CaseNextStepInput): { title: string; desc: string; anchor?:
     case 'revision_requested':
       return { title: '멘토의 보완을 기다리는 중', desc: '보완 요청 사유를 멘토가 확인하고 다시 종결 요청하면 검수 단계로 돌아옵니다.', anchor: '#rounds', tone: 'wait' };
     case 'settlement_pending':
-      return { title: '정산이 확정됐습니다 — 지급 품의를 편성하세요', desc: '정산·품의 화면의 [지급 대기]에서 이 건을 골라 품의를 만들고 발주처에 제출합니다.', href: '/nextlab/settlements?tab=pending', hrefLabel: '정산·품의로 이동', anchor: '#settlement', tone: 'action' };
+      return { title: '정산 확정 — 지급 품의 자동 제출이 되지 않은 건', desc: '보통은 검수 승인과 함께 품의가 자동 제출됩니다. 이 건은 지급 대기로 남아 있으니 정산·품의 화면의 [지급 대기]에서 골라 품의를 만들고 제출하세요.', href: '/nextlab/settlements?tab=pending', hrefLabel: '정산·품의로 이동', anchor: '#settlement', tone: 'action' };
     case 'settlement_batched':
       return { title: '발주처의 정산 확인을 기다리는 중', desc: '품의가 제출되었습니다. 발주처가 정산 확인을 하면 종결로 확정됩니다.', href: '/nextlab/settlements?tab=all', hrefLabel: '품의 보기', anchor: '#settlement', tone: 'wait' };
     case 'closed':

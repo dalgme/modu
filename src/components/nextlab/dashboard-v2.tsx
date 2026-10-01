@@ -314,7 +314,7 @@ export function DashboardV2(p: DashboardV2Props) {
       </Dialog>
       <Dialog open={detail === 'closure'} onOpenChange={(o) => { if (!o) setDetail(null); }}>
         <DialogContent className="max-w-3xl">
-          <DialogHeader><DialogTitle>종결 검수 대기 {p.closureQueue.length}건</DialogTitle><DialogDescription>멘토가 관찰의견서를 제출하고 종결을 요청한 케이스. 케이스 상세에서 검수 승인하면 정산이 확정됩니다.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>종결 검수 대기 {p.closureQueue.length}건</DialogTitle><DialogDescription>멘토가 종결을 요청했거나, 모든 회차 보고서와 관찰의견서가 등록돼 바로 승인할 수 있는 케이스. 케이스 상세에서 검수 승인하면 정산이 확정되고 지급 품의가 자동 제출됩니다.</DialogDescription></DialogHeader>
           <QueueTable items={p.closureQueue} empty="검수 대기 건이 없습니다." />
         </DialogContent>
       </Dialog>

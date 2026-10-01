@@ -34,6 +34,7 @@ export function ClosureReviewPanel({
   observationUrl,
   canApprove = { ok: true, reason: '' },
   canReview = true,
+  canRevise = true,
 }: {
   caseId: string;
   estimates: ClosureEstimateProp[];
@@ -41,6 +42,8 @@ export function ClosureReviewPanel({
   canApprove?: { ok: boolean; reason: string; settledAlready?: boolean };
   /** 'review' 권한 — 없으면 버튼을 숨긴다 (페이지가 hasCapability(ctx,'review') 로 계산) */
   canReview?: boolean;
+  /** 보완 요청 가능 여부 = 전이 상수 review_revision (종결 요청 상태에서만). 종결 요청 전 승인 가능 케이스는 숨김 (2026-10-01) */
+  canRevise?: boolean;
 }) {
   const { toast } = useToast();
   const [pending, start] = useTransition();
@@ -66,7 +69,7 @@ export function ClosureReviewPanel({
             impact: [
               `확정 실지급 합계 ${formatKRW(totalNet)}${hasRoundIds ? ` (회차 ${roundIds.length}건)` : ''}`,
               ...estimates.map((e) => `${e.mentorName}: 실지급 ${formatKRW(e.figures.net)} (원천징수 ${formatKRW(e.figures.withholding)})`),
-              '승인 즉시 멘토별 지급 품의가 자동으로 편성·제출되어 발주처 정산 확인 단계로 넘어갑니다(운영 설정에서 끈 경우 지급 대기로 남음). 발주처 확인 전에는 품의 [제출 철회]로 되돌릴 수 있습니다.',
+              '승인 즉시 멘토별 지급 품의가 자동으로 작성·제출되어 발주처 정산 확인 단계로 넘어갑니다. 발주처 확인 전에는 품의 [제출 철회]로 되돌릴 수 있습니다.',
             ],
             confirmLabel: '승인 · 확정',
           }
@@ -124,9 +127,11 @@ export function ClosureReviewPanel({
           <>
             <Textarea value={comment} onChange={(e) => setComment(e.target.value)} placeholder="검수 의견 (보완 요청 시 필수)" rows={3} disabled={pending} />
             <div className="flex flex-wrap justify-end gap-2">
-              <Button variant="outline" onClick={() => void run('revision_requested')} disabled={pending} className="gap-1">
-                <Undo2 className="h-4 w-4" /> 보완 요청
-              </Button>
+              {canRevise && (
+                <Button variant="outline" onClick={() => void run('revision_requested')} disabled={pending} className="gap-1">
+                  <Undo2 className="h-4 w-4" /> 보완 요청
+                </Button>
+              )}
               <Button onClick={() => void run('approved')} disabled={pending || !approveEnabled} title={approveEnabled ? undefined : canApprove.reason || '정산 대상 회차가 없습니다.'} className="gap-1">
                 <CheckCircle2 className="h-4 w-4" /> 검수 승인 · 정산 확정
               </Button>

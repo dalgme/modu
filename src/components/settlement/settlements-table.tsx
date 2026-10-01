@@ -64,8 +64,7 @@ export function SettlementsTable({
   const selectedItems = useMemo(() => items.filter((s) => selected.has(s.id)), [items, selected]);
   const total = selectedItems.reduce((acc, s) => ({ gross: acc.gross + Number(s.gross), withholding: acc.withholding + Number(s.withholding), net: acc.net + Number(s.net) }), { gross: 0, withholding: 0, net: 0 });
   const allSelectable = filtered.filter((s) => s.status === 'pending');
-  const docsMissing = selectedItems.filter((s) => s.mentorDocsMissing);
-  const docsMissingNames = Array.from(new Set(docsMissing.map((s) => s.mentorName)));
+  // (2026-10-01) 멘토 지급서류는 이메일로 따로 받는 부가 정보 — 정산·품의 흐름에 경고·차단을 걸지 않는다
 
   const toggle = (id: string) => {
     const next = new Set(selected);
@@ -113,7 +112,6 @@ export function SettlementsTable({
           <div className="text-sm">
             선택 <b>{selected.size}</b>건 · 지급총액 <b className="tabular-nums">{formatKRW(total.gross)}</b> · 원천징수 <span className="tabular-nums">{formatKRW(total.withholding)}</span> · 실지급{' '}
             <b className="tabular-nums text-primary">{formatKRW(total.net)}</b>
-            {docsMissing.length > 0 && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800">서류 미비 {docsMissingNames.length}명 포함</span>}
           </div>
           <div className="flex w-full flex-wrap items-end gap-2 sm:ml-auto sm:w-auto">
             {draftBatches.length > 0 && (
@@ -180,7 +178,6 @@ export function SettlementsTable({
                   )}
                   <td className="px-3 py-2 font-medium">
                     {s.mentorName}
-                    {s.mentorDocsMissing && <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800" title="이력서·통장사본·신분증사본 중 미수령">서류 미비</span>}
                   </td>
                   <td className="px-3 py-2">
                     <Link href={`${caseHrefBase}/${s.case_id}`} className="hover:underline">
@@ -220,10 +217,9 @@ export function SettlementsTable({
         impact={[
           `${selected.size}건 · 지급총액 ${formatKRW(total.gross)} · 원천징수 ${formatKRW(total.withholding)} · 실지급 ${formatKRW(total.net)}`,
           '편성된 케이스는 "지급 품의 편성" 단계로 바뀌고, 발주처 제출 전까지는 품의에서 제외할 수 있습니다.',
-          ...(docsMissingNames.length ? [`⚠ 지급서류 미수령 멘토 ${docsMissingNames.length}명 포함: ${docsMissingNames.slice(0, 5).join(', ')}${docsMissingNames.length > 5 ? ` 외 ${docsMissingNames.length - 5}명` : ''} — 제출 전 이력서·통장사본·신분증사본 수령을 확인하세요.`] : []),
         ]}
-        confirmLabel={docsMissingNames.length ? '서류 미비를 알고 편성' : '품의 편성'}
-        severity={docsMissingNames.length ? 'danger' : 'normal'}
+        confirmLabel="품의 편성"
+        severity="normal"
         pending={pending}
         onConfirm={submit}
       />

@@ -4,7 +4,6 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import { resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import { estimateSettlements } from '@/lib/settlement/settle';
-import { normalizeObservation } from '@/lib/workflow/closure';
 
 /**
  * (P31) 운영사 검수 대기열 — closure_requested(검수 대기) / revision_requested(보완 요청 중) 케이스를
@@ -17,7 +16,8 @@ export interface ReviewQueueItem {
   businessName: string;
   groupId: string;
   groupName: string;
-  status: 'closure_requested' | 'revision_requested';
+  /** ready = 종결 요청 전이지만 회차 보고서·관찰의견서가 모두 등록돼 바로 승인 가능한 진행 중 케이스 (2026-10-01) */
+  status: 'closure_requested' | 'revision_requested' | 'ready';
   mentorId: string | null;
   mentorName: string | null;
   /** 이 상태에 들어온 뒤 경과일 (case_status_history 기준, 없으면 updated_at) */
@@ -49,17 +49,16 @@ export async function listReviewQueue(programId: string, groupId: string | null)
     .from('cases')
     .select('id, owner_name, business_name, status, updated_at, support_type_id, support_types(name, required_rounds)')
     .eq('program_id', programId)
-    .in('status', ['closure_requested', 'revision_requested']);
+    .in('status', ['closure_requested', 'revision_requested', 'in_progress']);
   if (groupId) q = q.eq('support_type_id', groupId);
   const { data: cases } = await q;
   const list = cases ?? [];
   if (list.length === 0) return { pending: [], revision: [] };
   const caseIds = list.map((c) => c.id);
 
-  const [logs, history, { data: obs }, { data: obsFiles }, { data: responses }, { data: assigns }, { data: extra }, { data: reviews }] = await Promise.all([
+  const [logs, history, { data: obsFiles }, { data: responses }, { data: assigns }, { data: extra }, { data: reviews }] = await Promise.all([
     fetchAllIn<{ case_id: string; report_registered_at: string | null; mentee_signed_at: string | null }>(caseIds, (chunk, from, to) => admin.from('mentoring_logs').select('case_id, report_registered_at, mentee_signed_at').in('case_id', chunk).range(from, to)),
     fetchAllIn<{ case_id: string; to_status: string; created_at: string }>(caseIds, (chunk, from, to) => admin.from('case_status_history').select('case_id, to_status, created_at').in('case_id', chunk).in('to_status', ['closure_requested', 'revision_requested']).order('created_at', { ascending: false }).range(from, to)),
-    admin.from('observation_reports').select('case_id, content').in('case_id', caseIds),
     admin.from('documents').select('case_id').in('case_id', caseIds).eq('doc_key', 'observation_report'),
     admin.from('survey_responses').select('case_id').in('case_id', caseIds),
     admin.from('mentor_assignments').select('case_id, mentor_id').in('case_id', caseIds).eq('is_active', true),
@@ -70,7 +69,6 @@ export async function listReviewQueue(programId: string, groupId: string | null)
   const { data: mentors } = mentorIds.length ? await admin.from('users').select('id, name').in('id', mentorIds) : { data: [] as { id: string; name: string }[] };
   const mentorName = new Map((mentors ?? []).map((m) => [m.id, m.name]));
   const mentorOf = new Map((assigns ?? []).map((a) => [a.case_id, a.mentor_id]));
-  const obsSummary = new Set((obs ?? []).filter((o) => normalizeObservation(o.content).summary.trim().length > 0).map((o) => o.case_id));
   const obsFile = new Set((obsFiles ?? []).map((d) => d.case_id));
   const surveyed = new Set((responses ?? []).map((r) => r.case_id));
   const extraOf = new Map<string, number>();
@@ -95,8 +93,10 @@ export async function listReviewQueue(programId: string, groupId: string | null)
     const st = c.support_types as unknown as { name: string; required_rounds: number } | null;
     const rounds = logsByCase.get(c.id) ?? [];
     const reported = rounds.filter((r) => r.report_registered_at);
-    const status = c.status as 'closure_requested' | 'revision_requested';
-    const enteredAt = entered.get(`${c.id}:${status}`) ?? c.updated_at;
+    // 진행 중 케이스는 승인 게이트(canApproveClosure)와 같은 조건 — 필수 회차 이상 · 전부 보고서 · 관찰의견서 파일 — 일 때만 'ready' 로 싣는다
+    if (c.status === 'in_progress' && !(rounds.length >= (st?.required_rounds ?? 0) && (st?.required_rounds ?? 0) > 0 && reported.length === rounds.length && obsFile.has(c.id))) continue;
+    const status = c.status === 'in_progress' ? 'ready' : (c.status as 'closure_requested' | 'revision_requested');
+    const enteredAt = status === 'ready' ? c.updated_at : (entered.get(`${c.id}:${status}`) ?? c.updated_at);
     const est = await estimateSettlements(c.id);
     const mid = mentorOf.get(c.id) ?? null;
     items.push({
@@ -113,7 +113,7 @@ export async function listReviewQueue(programId: string, groupId: string | null)
       reportedRounds: reported.length,
       requiredRounds: st?.required_rounds ?? 0, // 승인 게이트(canApproveClosure)와 같은 기준 — 추가 회차는 별도 (P32 리뷰 #9)
       extraRounds: extraOf.get(c.id) ?? 0,
-      hasObservation: obsSummary.has(c.id) || obsFile.has(c.id),
+      hasObservation: obsFile.has(c.id),
       signatures: signOn.get(c.support_type_id) ? { signed: reported.filter((r) => r.mentee_signed_at).length, total: reported.length } : null,
       surveyAnswered: surveyed.has(c.id),
       expectedNet: est.reduce((s, e) => s + e.result.net, 0),
@@ -121,5 +121,5 @@ export async function listReviewQueue(programId: string, groupId: string | null)
     });
   }
   items.sort((a, b) => a.enteredAt.localeCompare(b.enteredAt));
-  return { pending: items.filter((i) => i.status === 'closure_requested'), revision: items.filter((i) => i.status === 'revision_requested') };
+  return { pending: items.filter((i) => i.status === 'closure_requested' || i.status === 'ready'), revision: items.filter((i) => i.status === 'revision_requested') };
 }

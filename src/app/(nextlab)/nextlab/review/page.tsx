@@ -134,12 +134,13 @@ function Row({ r, canReview }: { r: ReviewQueueItem; canReview: boolean }) {
           <Chip ok={r.hasObservation} warn={!r.hasObservation} label={r.hasObservation ? '관찰의견서 있음' : '관찰의견서 없음'} />
           {r.signatures && <Chip ok={r.signatures.signed >= r.signatures.total} warn={r.signatures.signed < r.signatures.total} label={`서명 ${r.signatures.signed}/${r.signatures.total}`} />}
           <Chip ok={r.surveyAnswered} label={r.surveyAnswered ? '만족도 응답' : '만족도 미응답'} />
+          {r.status === 'ready' && <Chip ok warn={false} label="서류 완비 · 종결 요청 전" />}
         </div>
       </td>
       <td className="hidden px-3 py-2 text-right font-semibold tabular-nums md:table-cell">{formatKRW(r.expectedNet)}</td>
       <td className="px-3 py-2 text-right">
         <Link href={`/nextlab/cases/${r.caseId}#review`} className="inline-flex h-8 items-center rounded-md border bg-background px-2.5 text-xs font-semibold hover:bg-accent">
-          {canReview ? (r.status === 'closure_requested' ? '검수하기' : '상세 보기') : '상세 보기'}
+          {canReview ? (r.status === 'revision_requested' ? '상세 보기' : '검수하기') : '상세 보기'}
         </Link>
       </td>
     </tr>

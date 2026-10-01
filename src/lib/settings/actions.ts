@@ -557,9 +557,6 @@ export async function updateWithholdingAction(input: unknown): Promise<Result> {
 const closureSchema = z.object({
   require_mentee_signature: z.coerce.boolean().default(false),
   require_group_docs: z.coerce.boolean().default(false),
-  block_batch_on_missing_mentor_docs: z.coerce.boolean().default(false),
-  // (2026-10-01) 검수 승인 시 품의 자동 편성·제출 — 체크 해제 시 폼에서 빠지므로 false 로 저장된다(키 없음 = 켬)
-  auto_batch: z.coerce.boolean().default(false),
 });
 
 export async function updateClosurePolicyAction(input: unknown): Promise<Result> {

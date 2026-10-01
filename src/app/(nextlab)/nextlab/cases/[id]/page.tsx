@@ -114,7 +114,9 @@ export default async function Page({ params }: { params: { id: string } }) {
   const pendingWd = requests.withdrawals.filter((r) => r.status === 'pending');
   const SOURCE_LABEL = { mentor_in_group: '그룹 내 멘토별 설정', group: '그룹 일괄 설정', program: '행사 기본' } as const;
   // 검수 승인 가능 여부는 서버 판정 함수 그대로 (§3 불변 규칙: 버튼 조건 = 서버 게이트, P31)
-  const approval = item.status === 'closure_requested' ? await canApproveClosure(item.id) : { ok: false, reason: null as string | null };
+  // (2026-10-01) 회차 보고서·관찰의견서가 모두 등록되면 종결 요청 전이라도 승인 가능 — 전이 상수(review_approve.from) 상태에서 판정
+  const approval = canTransition('review_approve', item.status) ? await canApproveClosure(item.id) : { ok: false, reason: null as string | null };
+  const showReview = item.status === 'closure_requested' || (canTransition('review_approve', item.status) && approval.ok);
   const estimateProps = estimates.map((e) => ({
     mentorId: e.mentorId,
     mentorName: e.mentorName,
@@ -137,11 +139,12 @@ export default async function Page({ params }: { params: { id: string } }) {
         pendingChangeRequests={(changeReqs.data ?? []).length}
         menteeLinked={!!item.mentee_id}
         mentorInput={{ plannedWithoutReport: rounds.filter((r) => !r.report_registered_at && new Date(r.started_at).getTime() <= Date.now()).length, hasObservation: !!obsFile }}
+        approvable={approval.ok}
       />
       {/* 종결 요청 상태에서는 검수 패널을 "지금 할 일" 바로 아래에 — 스크롤 없이 승인/보완 (2026-09-24) */}
-      {item.status === 'closure_requested' && canTransition('review_approve', item.status) && (
+      {showReview && (
         <div id="review" className="scroll-mt-40">
-          <ClosureReviewPanel caseId={item.id} estimates={estimateProps} observationUrl={obsFile?.url ?? null} canApprove={{ ok: approval.ok, reason: approval.reason ?? '' }} canReview={hasCapability(ctx, 'review')} />
+          <ClosureReviewPanel caseId={item.id} estimates={estimateProps} observationUrl={obsFile?.url ?? null} canApprove={{ ok: approval.ok, reason: approval.reason ?? '' }} canReview={hasCapability(ctx, 'review')} canRevise={canTransition('review_revision', item.status)} />
         </div>
       )}
       <CaseDetailShell item={item} history={history} predecessors={predecessors} successors={successors} branding={ctx.branding} basePath="/nextlab/cases" showLoginId>

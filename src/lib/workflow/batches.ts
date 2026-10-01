@@ -5,7 +5,6 @@ import { queueNotification } from '@/lib/workflow/notifications';
 import { notifyProgramStaff } from '@/lib/workflow/closure';
 import { assertBatchTransition, BATCH_TRANSITIONS, TRANSITIONS } from '@/lib/workflow/transitions';
 import { recomputeFromLines, sumSettlements, type SettlementLine, type WithholdingPolicy } from '@/lib/settlement/compute';
-import { mentorsMissingPaymentDocs } from '@/lib/data/mentors';
 import type { Json } from '@/types/database';
 
 export type BatchResult = { ok: true; batchId: string } | { ok: false; error: string };
@@ -77,17 +76,7 @@ export async function addToBatch(batchId: string, settlementIds: string[], actor
     if (s.program_id !== batch.program_id) return { ok: false, error: '다른 행사의 정산 건은 편성할 수 없습니다.' };
     if (s.status !== 'pending' || s.batch_id) return { ok: false, error: TRANSITIONS.add_to_batch.denied };
   }
-  // 종결 게이트: 멘토 지급서류 미수령 시 품의 차단 (설정, 기본 꺼짐)
-  const { data: program } = await admin.from('programs').select('closure_policy').eq('id', batch.program_id).maybeSingle();
-  const policy = (program?.closure_policy ?? {}) as { block_batch_on_missing_mentor_docs?: boolean };
-  if (policy.block_batch_on_missing_mentor_docs) {
-    const { data: mentorRows } = await admin.from('settlements').select('mentor_id').in('id', ids);
-    const missing = await mentorsMissingPaymentDocs(batch.program_id, Array.from(new Set((mentorRows ?? []).map((m) => m.mentor_id))));
-    if (missing.size > 0) {
-      const { data: names } = await admin.from('users').select('name').in('id', Array.from(missing));
-      return { ok: false, error: `지급서류(이력서·통장사본·신분증사본) 미수령 멘토가 있어 편성할 수 없습니다: ${(names ?? []).map((n) => n.name).join(', ')} — 회원 명단 › 멘토 매칭 리스트의 [지급서류]에서 O 로 바꾼 뒤 다시 시도하세요.` };
-    }
-  }
+  // (2026-10-01) 멘토 지급서류는 이메일로 따로 받는 부가 정보 — 품의 편성을 막지 않는다(구 block_batch_on_missing_mentor_docs 폐지)
   const now = new Date().toISOString();
   const { data: upd } = await admin.from('settlements').update({ status: 'batched', batch_id: batchId }).in('id', ids).eq('status', 'pending').is('batch_id', null).select('id, case_id, kind, net, mentor_id');
   if (!upd || upd.length !== ids.length) {
@@ -420,26 +409,18 @@ export async function markBatchPaid(batchId: string, actorId: string, paidOn?: s
 
 // ───────────────────────────────────────────── 자동 편성·제출 (2026-10-01)
 
-/** 행사 설정: 검수 승인 시 지급 품의 자동 편성·제출 (closure_policy.auto_batch — 키 없음 = 켬) */
-export async function autoBatchEnabled(programId: string): Promise<boolean> {
-  const { data } = await createAdminClient().from('programs').select('closure_policy').eq('id', programId).maybeSingle();
-  const cp = (data?.closure_policy ?? {}) as { auto_batch?: boolean };
-  return cp.auto_batch !== false;
-}
-
 export type AutoBatchOutcome = { mentorId: string; batchId: string | null; error: string | null };
 
 /**
  * 검수 승인 직후 그 케이스에서 확정된 정산(지급 대기)을 **멘토별 품의로 자동 편성 → 제출**한다 (정산 흐름 3단계 자동화).
  * 제출되면 발주처 정산 확인(4단계)으로 넘어간다. 품의 제목 = "[그룹] 멘토명 지급 품의 · 멘티명".
- * 실패(예: 지급서류 미수령 차단 정책)해도 검수 승인은 유지되고, 그 정산은 지급 대기로 남아 운영사가 수동 편성한다 — 실패 사유는 감사(batch.auto_failed)에 남긴다.
+ * **조건 없이** 항상 실행한다(지급서류 수령 여부와 무관). 예외적인 실패(DB 오류 등)에도 검수 승인은 유지되고, 그 정산은 지급 대기로 남아 운영사가 수동 편성한다 — 실패 사유는 감사(batch.auto_failed)에 남긴다.
  */
 export async function autoBatchSettlements(caseId: string, settlementIds: string[], actorId: string): Promise<AutoBatchOutcome[]> {
   if (settlementIds.length === 0) return [];
   const admin = createAdminClient();
   const { data: c } = await admin.from('cases').select('program_id, owner_name, support_type_id').eq('id', caseId).maybeSingle();
   if (!c) return [];
-  if (!(await autoBatchEnabled(c.program_id))) return [];
   const [{ data: rows }, { data: group }] = await Promise.all([
     admin.from('settlements').select('id, mentor_id, status, batch_id').in('id', settlementIds),
     c.support_type_id ? admin.from('support_types').select('name').eq('id', c.support_type_id).maybeSingle() : Promise.resolve({ data: null as { name: string } | null }),

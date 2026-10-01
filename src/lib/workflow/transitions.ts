@@ -17,7 +17,7 @@ export type TransitionKey =
   | 'submit_round' // T4  mentor_assigned → in_progress (1회차), 이후 상태 유지
   | 'request_closure' // T5  in_progress | revision_requested → closure_requested
   | 'review_revision' // T6  closure_requested → revision_requested
-  | 'review_approve' // T7  closure_requested → settlement_pending (+ 정산 확정)
+  | 'review_approve' // T7  in_progress | revision_requested | closure_requested → settlement_pending (+ 정산 확정, 회차 보고서·관찰의견서 완비 시)
   | 'add_to_batch' // T8  settlement_pending → settlement_batched
   | 'remove_from_batch' // T8' settlement_batched → settlement_pending
   | 'confirm_settlement' // T9  settlement_batched → closed (발주처)
@@ -77,10 +77,11 @@ export const TRANSITIONS: Record<TransitionKey, Transition> = {
     denied: '종결 요청 단계에서만 보완을 요청할 수 있습니다.',
   },
   review_approve: {
-    from: ['closure_requested'],
+    // (2026-10-01) 모든 회차 보고서 + 관찰의견서가 등록되면 멘토의 종결 요청을 기다리지 않고 바로 승인할 수 있다 (사용자 결정)
+    from: ['in_progress', 'revision_requested', 'closure_requested'],
     to: 'settlement_pending',
     who: ['nextlab'],
-    denied: '종결 요청 단계에서만 검수 승인할 수 있습니다.',
+    denied: '회차 진행 중·보완 요청·종결 요청 단계에서만 검수 승인할 수 있습니다.',
   },
   add_to_batch: {
     from: ['settlement_pending'],

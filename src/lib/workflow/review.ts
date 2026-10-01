@@ -3,7 +3,6 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { queueNotification } from '@/lib/workflow/notifications';
 import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
-import { normalizeObservation } from '@/lib/workflow/closure';
 import { missingRequiredMenteeDocs } from '@/lib/workflow/case-documents';
 import { createSettlementSnapshot, estimateSettlements, rollbackSettlements, settleLeftoverMentors } from '@/lib/settlement/settle';
 import { autoBatchSettlements } from '@/lib/workflow/batches';
@@ -36,25 +35,25 @@ export async function canApproveClosure(caseId: string): Promise<ApprovalReadine
   const admin = createAdminClient();
   const { data: c } = await admin.from('cases').select('id, status, program_id, support_type_id').eq('id', caseId).maybeSingle();
   if (!c) return { ok: false, reason: '케이스를 찾을 수 없습니다.', reported: 0, required: 0, hasObservation: false };
-  const [{ data: group }, { data: program }, { data: logs }, { data: obs }, { data: obsFile }, { count: settledCount }] = await Promise.all([
+  const [{ data: group }, { data: program }, { data: logs }, { data: obsFile }, { count: settledCount }] = await Promise.all([
     admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle(),
     admin.from('programs').select('closure_policy').eq('id', c.program_id).maybeSingle(),
     admin.from('mentoring_logs').select('round_no, mentee_signed_at, report_registered_at').eq('case_id', caseId).order('round_no'),
-    admin.from('observation_reports').select('content').eq('case_id', caseId).maybeSingle(),
     admin.from('documents').select('id').eq('case_id', caseId).eq('doc_key', 'observation_report').maybeSingle(),
     admin.from('settlements').select('id', { count: 'exact', head: true }).eq('case_id', caseId).neq('status', 'canceled'),
   ]);
   const rounds = logs ?? [];
   const required = group?.required_rounds ?? 0;
   const reported = rounds.filter((r) => r.report_registered_at).length;
-  const hasObservation = (obs ? normalizeObservation(obs.content).summary.trim().length > 0 : false) || !!obsFile;
+  // 관찰의견서 = 업로드 파일만 인정 (P39 — 웹 작성 폐지, 종결 요청 게이트와 같은 기준)
+  const hasObservation = !!obsFile;
   const base = { reported, required, hasObservation, settledAlready: (settledCount ?? 0) > 0 };
   const denied = assertTransition('review_approve', c.status);
   if (denied) return { ok: false, reason: denied, ...base };
   if (rounds.length < required) return { ok: false, reason: `필수 회차 ${required}회 중 ${rounds.length}회만 등록되어 있습니다.`, ...base };
   const unreported = rounds.filter((r) => !r.report_registered_at).map((r) => r.round_no);
   if (unreported.length > 0) return { ok: false, reason: `보고서가 없는 회차(${unreported.join('·')}회차)가 있습니다. 멘토에게 보완을 요청하세요.`, ...base };
-  if (!hasObservation) return { ok: false, reason: '관찰의견서가 없습니다(총평 미작성·파일 없음). 보완을 요청하세요.', ...base };
+  if (!hasObservation) return { ok: false, reason: '관찰의견서 파일이 아직 등록되지 않았습니다.', ...base };
   const policy = (program?.closure_policy ?? {}) as { require_mentee_signature?: boolean; require_group_docs?: boolean };
   if (policy.require_mentee_signature && rounds.some((r) => !r.mentee_signed_at)) {
     return { ok: false, reason: '이 행사는 모든 회차에 멘티 확인 서명이 있어야 승인할 수 있습니다. 서명이 없는 회차가 있습니다.', ...base };
@@ -137,8 +136,8 @@ export async function reviewClosure(caseId: string, actorId: string, result: 'ap
   // (P31) 발주처에는 케이스별 확정 통보를 보내지 않는다 — 품의 제출(batch_submitted) 시점에 한 번 통보. 멘토 통보는 createSettlementSnapshot 이 담당.
   const { error: auditError } = await admin.from('audit_logs').insert({ actor_id: actorId, program_id: c.program_id, action: 'case.review_approve', entity_type: 'cases', entity_id: caseId, metadata: { settlement_id: snap.settlementId, net: snap.result?.net ?? null, leftover_settlement_ids: leftover.settlementIds } });
   if (auditError) console.error('case.review_approve audit insert failed:', auditError.message);
-  // (2026-10-01) 정산 흐름 3단계 자동화 — 확정된 정산을 멘토별 품의로 편성·제출해 발주처 정산 확인 단계로 넘긴다(행사 설정으로 끌 수 있음).
-  // 실패해도 승인은 유지되고 정산은 지급 대기로 남는다(수동 편성).
+  // (2026-10-01) 정산 흐름 3단계 자동화 — 확정된 정산을 멘토별 품의로 **조건 없이** 편성·제출해 발주처 정산 확인 단계로 넘긴다.
+  // 지급서류(이메일 별도 수령)는 이 과정에 영향을 주지 않는다. 예외적으로 실패하면 승인은 유지되고 정산은 지급 대기로 남는다(수동 편성).
   try {
     await autoBatchSettlements(caseId, createdIds, actorId);
   } catch (e) {

@@ -73,6 +73,12 @@ export default async function Page() {
     requiredRounds: c.requiredRounds,
     createdAt: c.created_at,
   });
+  // (2026-10-01) 종결 요청 전이라도 회차 보고서·관찰의견서가 모두 등록된 진행 중 케이스는 바로 검수 승인 가능 → 검수 대기에 함께 싣는다
+  const readyCandidates = cases.filter((c) => (c.status === 'in_progress' || c.status === 'revision_requested') && c.requiredRounds > 0 && c.roundsDone >= c.requiredRounds && c.roundsPlanned === c.roundsDone);
+  const { data: readyObs } = readyCandidates.length
+    ? await adminDb.from('documents').select('case_id').eq('doc_key', 'observation_report').in('case_id', readyCandidates.map((c) => c.id))
+    : { data: [] as { case_id: string }[] };
+  const readyIds = new Set((readyObs ?? []).map((d) => d.case_id));
   const unreadRequests = operatorRequests.filter((r) => !r.read_at).length;
   const b = ctx.branding;
 
@@ -101,7 +107,7 @@ export default async function Page() {
         delays={delays}
         inbox={inbox}
         assignQueue={cases.filter((c) => c.status === 'registered' || c.status === 'reassignment_pending').map(toQueue)}
-        closureQueue={cases.filter((c) => c.status === 'closure_requested').map(toQueue)}
+        closureQueue={cases.filter((c) => c.status === 'closure_requested' || readyIds.has(c.id)).map(toQueue)}
         board={{ inquiries: openInquiries, posts: boardPosts.filter((p) => p.replies.length === 0).length, messages: programMessages.filter((m) => !m.read).length }}
         unconfirmedAssignments={unconfirmed ?? 0}
         operatorRequestsUnread={unreadRequests}
