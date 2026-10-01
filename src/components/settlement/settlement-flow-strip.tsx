@@ -4,7 +4,7 @@ import Link from 'next/link';
 const STEPS: { n: number; label: string; where: string; href?: string }[] = [
   { n: 1, label: '검수 승인', where: '케이스 상세 [검수 승인 · 정산 확정]', href: '/nextlab/reports?tab=cases' },
   { n: 2, label: '지급 대기', where: '이 화면 [지급 대기] 목록' },
-  { n: 3, label: '품의 편성 · 제출', where: '지급 대기 건 선택 → 품의 만들기 → 제출' },
+  { n: 3, label: '품의 편성 · 제출 (자동)', where: '검수 승인 즉시 멘토별 품의 자동 제출 — 실패·수동 건만 여기서' },
   { n: 4, label: '정산 확인', where: '발주처가 품의를 확인' },
   { n: 5, label: '지급 완료 · 종결', where: '품의 상세 [지급 완료] → 케이스 종결' },
 ];

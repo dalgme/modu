@@ -26,7 +26,8 @@ export default async function Page({ searchParams }: { searchParams: SP }) {
   const budget = tab === 'overview' ? await computeBudgetOverview(ctx.programId, groupId) : undefined;
   const delays = tab === 'overview' ? await listDelayedCases(ctx.programId, groupId) : undefined;
   const year = searchParams.year && /^\d{4}$/.test(searchParams.year) ? Number(searchParams.year) : undefined;
-  const trend = tab === 'trend' ? await computeMonthlyTrend(ctx.programId, groupId, year ? { year } : { months: 12 }) : undefined;
+  // (2026-10-01) 개요 탭도 월별 이행 회차 차트를 그린다 — 개요는 최근 12개월
+  const trend = tab === 'trend' ? await computeMonthlyTrend(ctx.programId, groupId, year ? { year } : { months: 12 }) : tab === 'overview' ? await computeMonthlyTrend(ctx.programId, groupId, { months: 12 }) : undefined;
   // 멘토 진행현황 = 그룹별(담당 인원)·담당 멘티명·회차·확정 실지급·만족도·운영사 평가 (P27-17)
   // 발주처에는 운영사 평가(메모·작성자)를 내려보내지 않는다 — 열을 숨기는 것과 별개로 페이로드에서 제거
   const mentorProgress = tab === 'cases' && searchParams.view === 'mentor' ? (await loadMatchingLists(ctx.programId, groupId)).mentorRows.map((r) => ({ ...r, reviews: [], reviewAvg: null })) : undefined;
@@ -39,6 +40,7 @@ export default async function Page({ searchParams }: { searchParams: SP }) {
         <p className="mt-1 text-sm text-muted-foreground">{ctx.program.name}{ctx.group ? ` · ${ctx.group.name}` : ' · 행사 전체'} — 실시간 진행현황과 성과·정산 집계. 기간은 아래 칩에서 바꿉니다.</p>
       </div>
       <ReportsBody
+        scopeLabel={ctx.group ? ctx.group.name : '행사 전체'}
         reportFiles={reportFiles}
         m={m}
         tab={tab}

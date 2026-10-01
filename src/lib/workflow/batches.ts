@@ -417,3 +417,57 @@ export async function markBatchPaid(batchId: string, actorId: string, paidOn?: s
   await audit(actorId, batch.program_id, 'batch.paid', batchId, { title: batch.title, paid_at: at, paid_on: day, count: list.length, gross: totals.gross, withholding: totals.withholding, net: totals.net, settlement_ids: list.map((s) => s.id) });
   return { ok: true, batchId };
 }
+
+// ───────────────────────────────────────────── 자동 편성·제출 (2026-10-01)
+
+/** 행사 설정: 검수 승인 시 지급 품의 자동 편성·제출 (closure_policy.auto_batch — 키 없음 = 켬) */
+export async function autoBatchEnabled(programId: string): Promise<boolean> {
+  const { data } = await createAdminClient().from('programs').select('closure_policy').eq('id', programId).maybeSingle();
+  const cp = (data?.closure_policy ?? {}) as { auto_batch?: boolean };
+  return cp.auto_batch !== false;
+}
+
+export type AutoBatchOutcome = { mentorId: string; batchId: string | null; error: string | null };
+
+/**
+ * 검수 승인 직후 그 케이스에서 확정된 정산(지급 대기)을 **멘토별 품의로 자동 편성 → 제출**한다 (정산 흐름 3단계 자동화).
+ * 제출되면 발주처 정산 확인(4단계)으로 넘어간다. 품의 제목 = "[그룹] 멘토명 지급 품의 · 멘티명".
+ * 실패(예: 지급서류 미수령 차단 정책)해도 검수 승인은 유지되고, 그 정산은 지급 대기로 남아 운영사가 수동 편성한다 — 실패 사유는 감사(batch.auto_failed)에 남긴다.
+ */
+export async function autoBatchSettlements(caseId: string, settlementIds: string[], actorId: string): Promise<AutoBatchOutcome[]> {
+  if (settlementIds.length === 0) return [];
+  const admin = createAdminClient();
+  const { data: c } = await admin.from('cases').select('program_id, owner_name, support_type_id').eq('id', caseId).maybeSingle();
+  if (!c) return [];
+  if (!(await autoBatchEnabled(c.program_id))) return [];
+  const [{ data: rows }, { data: group }] = await Promise.all([
+    admin.from('settlements').select('id, mentor_id, status, batch_id').in('id', settlementIds),
+    c.support_type_id ? admin.from('support_types').select('name').eq('id', c.support_type_id).maybeSingle() : Promise.resolve({ data: null as { name: string } | null }),
+  ]);
+  const pending = (rows ?? []).filter((r) => r.status === 'pending' && !r.batch_id);
+  const byMentor = new Map<string, string[]>();
+  for (const r of pending) byMentor.set(r.mentor_id, [...(byMentor.get(r.mentor_id) ?? []), r.id]);
+  if (byMentor.size === 0) return [];
+  const { data: mentors } = await admin.from('users').select('id, name').in('id', Array.from(byMentor.keys()));
+  const nameOf = new Map((mentors ?? []).map((m) => [m.id, m.name]));
+
+  const out: AutoBatchOutcome[] = [];
+  for (const [mentorId, ids] of Array.from(byMentor.entries())) {
+    const title = `${group?.name ? `[${group.name}] ` : ''}${nameOf.get(mentorId) ?? '멘토'} 지급 품의 · ${c.owner_name}`;
+    const created = await createBatch({ programId: c.program_id, title, settlementIds: ids, actorId, note: '검수 승인 시 자동 편성·제출' });
+    if (!created.ok) {
+      await audit(actorId, c.program_id, 'batch.auto_failed', caseId, { case_id: caseId, mentor_id: mentorId, settlement_ids: ids, step: 'create', error: created.error }, 'cases');
+      out.push({ mentorId, batchId: null, error: created.error });
+      continue;
+    }
+    const submitted = await submitBatch(created.batchId, actorId);
+    if (!submitted.ok) {
+      await audit(actorId, c.program_id, 'batch.auto_failed', created.batchId, { case_id: caseId, mentor_id: mentorId, settlement_ids: ids, step: 'submit', error: submitted.error });
+      out.push({ mentorId, batchId: created.batchId, error: submitted.error });
+      continue;
+    }
+    await audit(actorId, c.program_id, 'batch.auto_submitted', created.batchId, { case_id: caseId, mentor_id: mentorId, settlement_ids: ids, title });
+    out.push({ mentorId, batchId: created.batchId, error: null });
+  }
+  return out;
+}

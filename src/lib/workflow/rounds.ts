@@ -6,7 +6,7 @@ import { actingNote } from '@/lib/auth/impersonation';
 import { logAudit } from '@/lib/workflow/audit';
 import { queueNotification } from '@/lib/workflow/notifications';
 import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
-import { resolveLimits, resolveRate, kstDate, type ConsultingMode } from '@/lib/settlement/rates';
+import { resolveRate, kstDate, type ConsultingMode } from '@/lib/settlement/rates';
 import { getRoundAllowance, photoDocKey, reportDocKey } from '@/lib/data/rounds';
 import { renderRoundReport, resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import type { WorkflowResult } from '@/lib/workflow/cases';
@@ -107,7 +107,7 @@ function noRateError(day: string): string {
 /**
  * 회차 1단계 등록 (계획 또는 실행) — docs/MODU-DESIGN.md §4-3 검증 7항목 전부 서버 코드에서 직접.
  *  1 담당 멘토(호출부 mentorOfCaseOrNull) 2 상태 3 회차 상한 4 같은 멘티·같은 날 합산 상한
- *  5 멘토 1일 건수 6 시간 겹침 7 단가 스냅샷
+ *  5 시간 겹침 7 단가 스냅샷 (멘토 1일 건수·멘티 1일 회차 제한은 2026-10-01 폐지)
  * 미래 일시(사전 계획)도 허용된다. 통계·정산의 기본데이터이므로 일시·유형·참가자는 여기서 확정된다.
  */
 export async function submitRound(input: RoundInput): Promise<RoundResult> {
@@ -153,12 +153,9 @@ export async function submitRound(input: RoundInput): Promise<RoundResult> {
   }
 
   // 7) 단가 스냅샷 + 한도 설정
-  const [rate, limits] = await Promise.all([
-    resolveRate(c.program_id, c.support_type_id, input.mode, day),
-    resolveLimits(c.program_id, c.support_type_id, day),
-  ]);
+  // (2026-10-01) 회차 등록 횟수 제한(멘토 1일 건수·멘티 1일 회차)은 적용하지 않는다 — 금액 상한·시간 겹침만 검증
+  const rate = await resolveRate(c.program_id, c.support_type_id, input.mode, day);
   if (!rate) return { ok: false, error: noRateError(day) };
-  if (!limits) return { ok: false, error: '운영 한도가 설정되지 않았습니다. 운영사 설정을 확인하세요.' };
 
   // 4) 같은 멘티·같은 날 합산 (회차 수 + 유형별 금액)
   const dayStart = new Date(`${day}T00:00:00+09:00`).toISOString();
@@ -170,26 +167,19 @@ export async function submitRound(input: RoundInput): Promise<RoundResult> {
     .gte('started_at', dayStart)
     .lte('started_at', dayEnd);
   const sameDayRows = sameDay ?? [];
-  if (sameDayRows.length + 1 > limits.caseDailyRoundLimit) {
-    return { ok: false, error: `같은 멘티에게는 하루 최대 ${limits.caseDailyRoundLimit}회까지만 등록할 수 있습니다.` };
-  }
   const sameModeAmount = sameDayRows.filter((r) => r.mode === input.mode).reduce((s, r) => s + Number(r.amount_snapshot), 0);
   if (sameModeAmount + rate.unitPrice > rate.dailyCapAmount) {
     const remain = Math.max(0, rate.dailyCapAmount - sameModeAmount);
     return { ok: false, error: `같은 날 ${input.mode === 'online' ? '온라인' : '오프라인'} 일일 상한(${rate.dailyCapAmount.toLocaleString('ko-KR')}원)을 넘습니다. 남은 한도 ${remain.toLocaleString('ko-KR')}원.` };
   }
 
-  // 5) 멘토 1일 건수 + 6) 시간 겹침
+  // 5) 시간 겹침 (멘토 1일 건수 제한은 2026-10-01 폐지)
   const { data: mentorDay } = await admin
     .from('mentoring_logs')
     .select('id, case_id, started_at, ended_at')
     .eq('mentor_id', input.mentorId)
     .gte('started_at', dayStart)
     .lte('started_at', dayEnd);
-  const otherCases = new Set((mentorDay ?? []).map((r) => r.case_id).filter((id) => id !== c.id));
-  if (otherCases.size + 1 > limits.mentorDailyCaseLimit) {
-    return { ok: false, error: `멘토는 하루 최대 ${limits.mentorDailyCaseLimit}명(건)의 멘티만 컨설팅할 수 있습니다.` };
-  }
   const overlap = (mentorDay ?? []).find((r) => new Date(r.started_at) < ended && new Date(r.ended_at) > started);
   if (overlap) return { ok: false, error: '같은 시간대에 이미 등록된 회차가 있습니다. 시간을 확인하세요.' };
 
@@ -298,7 +288,7 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
   }
 
   // (P31) 단가·추가 회차 판정은 보고서 등록 시점(수행일 기준)으로 재확정 — 계획 등록 뒤 단가 적용일·필수 회차·추가 승인이 바뀌었을 수 있다.
-  // 같은 날 합산 상한·멘토 1일 건수·시간 겹침도 등록과 같은 규칙으로 다시 통과해야 한다. 정산에 포함된 회차는 위에서 이미 차단.
+  // 같은 날 합산 금액 상한·시간 겹침도 등록과 같은 규칙으로 다시 통과해야 한다. 정산에 포함된 회차는 위에서 이미 차단.
   const [{ data: group }, allowance] = await Promise.all([
     admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle(),
     getRoundAllowance(log.case_id),
@@ -534,7 +524,7 @@ export async function updateRound(input: {
 /**
  * 계획(미보고) 회차의 일정 수정 (P20) — 일자·시각·유형·장소.
  * 보고서(2단계) 등록 전 회차만. 일자·유형이 바뀌면 단가 스냅샷을 다시 확정하고,
- * 등록과 같은 검증(일일 상한·멘토 1일 건수·시간 겹침)을 자기 자신 제외로 다시 수행한다.
+ * 등록과 같은 검증(일일 금액 상한·시간 겹침)을 자기 자신 제외로 다시 수행한다.
  */
 export async function updatePlannedRound(input: {
   logId: string;
@@ -569,12 +559,9 @@ export async function updatePlannedRound(input: {
   const minDay = await roundDayLowerBound(log.case_id, input.mentorId);
   if (minDay && day < minDay) return { ok: false, error: lowerBoundError(minDay) };
 
-  const [rate, limits] = await Promise.all([
-    resolveRate(c.program_id, c.support_type_id, input.mode, day),
-    resolveLimits(c.program_id, c.support_type_id, day),
-  ]);
+  // (2026-10-01) 회차 등록 횟수 제한(멘토 1일 건수·멘티 1일 회차)은 적용하지 않는다 — 금액 상한·시간 겹침만 검증
+  const rate = await resolveRate(c.program_id, c.support_type_id, input.mode, day);
   if (!rate) return { ok: false, error: noRateError(day) };
-  if (!limits) return { ok: false, error: '운영 한도가 설정되지 않았습니다. 운영사 설정을 확인하세요.' };
 
   const dayStart = new Date(`${day}T00:00:00+09:00`).toISOString();
   const dayEnd = new Date(`${day}T23:59:59.999+09:00`).toISOString();
@@ -586,9 +573,6 @@ export async function updatePlannedRound(input: {
     .lte('started_at', dayEnd)
     .neq('id', log.id);
   const sameDayRows = sameDay ?? [];
-  if (sameDayRows.length + 1 > limits.caseDailyRoundLimit) {
-    return { ok: false, error: `같은 멘티에게는 하루 최대 ${limits.caseDailyRoundLimit}회까지만 등록할 수 있습니다.` };
-  }
   const sameModeAmount = sameDayRows.filter((r) => r.mode === input.mode).reduce((s, r) => s + Number(r.amount_snapshot), 0);
   if (sameModeAmount + rate.unitPrice > rate.dailyCapAmount) {
     return { ok: false, error: `같은 날 ${input.mode === 'online' ? '온라인' : '오프라인'} 일일 상한(${rate.dailyCapAmount.toLocaleString('ko-KR')}원)을 넘습니다.` };
@@ -600,10 +584,6 @@ export async function updatePlannedRound(input: {
     .gte('started_at', dayStart)
     .lte('started_at', dayEnd)
     .neq('id', log.id);
-  const otherCases = new Set((mentorDay ?? []).map((r) => r.case_id).filter((id) => id !== log.case_id));
-  if (otherCases.size + 1 > limits.mentorDailyCaseLimit) {
-    return { ok: false, error: `멘토는 하루 최대 ${limits.mentorDailyCaseLimit}명(건)의 멘티만 컨설팅할 수 있습니다.` };
-  }
   const overlap = (mentorDay ?? []).find((r) => new Date(r.started_at) < ended && new Date(r.ended_at) > started);
   if (overlap) return { ok: false, error: '같은 시간대에 이미 등록된 회차가 있습니다. 시간을 확인하세요.' };
 
@@ -716,7 +696,7 @@ export async function deleteRound(logId: string, mentorId: string, caseId?: stri
 
 /**
  * 일정 검증 공용 (P30) — 등록·계획 수정·운영사 정정이 같은 규칙을 읽는다.
- *  일일 상한(같은 멘티·같은 날 회차 수 + 유형별 금액) · 멘토 1일 건수 · 시간 겹침 · 단가 스냅샷.
+ *  일일 금액 상한(같은 멘티·같은 날 유형별 금액) · 시간 겹침 · 단가 스냅샷.
  *  excludeLogId 가 있으면 자기 자신은 비교에서 뺀다.
  */
 export async function validateRoundSchedule(input: {
@@ -741,16 +721,14 @@ export async function validateRoundSchedule(input: {
     const minDay = await roundDayLowerBound(input.caseId, input.mentorId);
     if (minDay && day < minDay) return { ok: false, error: lowerBoundError(minDay) };
   }
-  const [rate, limits] = await Promise.all([resolveRate(input.programId, input.supportTypeId, input.mode, day), resolveLimits(input.programId, input.supportTypeId, day)]);
+  const rate = await resolveRate(input.programId, input.supportTypeId, input.mode, day);
   if (!rate) return { ok: false, error: noRateError(day) };
-  if (!limits) return { ok: false, error: '운영 한도가 설정되지 않았습니다. 운영사 설정을 확인하세요.' };
   const dayStart = new Date(`${day}T00:00:00+09:00`).toISOString();
   const dayEnd = new Date(`${day}T23:59:59.999+09:00`).toISOString();
   let sameDayQ = admin.from('mentoring_logs').select('id, mode, amount_snapshot').eq('case_id', input.caseId).gte('started_at', dayStart).lte('started_at', dayEnd);
   if (input.excludeLogId) sameDayQ = sameDayQ.neq('id', input.excludeLogId);
   const { data: sameDay } = await sameDayQ;
   const sameDayRows = sameDay ?? [];
-  if (sameDayRows.length + 1 > limits.caseDailyRoundLimit) return { ok: false, error: `같은 멘티에게는 하루 최대 ${limits.caseDailyRoundLimit}회까지만 등록할 수 있습니다.` };
   const sameModeAmount = sameDayRows.filter((r) => r.mode === input.mode).reduce((s, r) => s + Number(r.amount_snapshot), 0);
   if (sameModeAmount + rate.unitPrice > rate.dailyCapAmount) {
     const remain = Math.max(0, rate.dailyCapAmount - sameModeAmount);
@@ -759,8 +737,6 @@ export async function validateRoundSchedule(input: {
   let mentorDayQ = admin.from('mentoring_logs').select('id, case_id, started_at, ended_at').eq('mentor_id', input.mentorId).gte('started_at', dayStart).lte('started_at', dayEnd);
   if (input.excludeLogId) mentorDayQ = mentorDayQ.neq('id', input.excludeLogId);
   const { data: mentorDay } = await mentorDayQ;
-  const otherCases = new Set((mentorDay ?? []).map((r) => r.case_id).filter((id) => id !== input.caseId));
-  if (otherCases.size + 1 > limits.mentorDailyCaseLimit) return { ok: false, error: `멘토는 하루 최대 ${limits.mentorDailyCaseLimit}명(건)의 멘티만 컨설팅할 수 있습니다.` };
   const overlap = (mentorDay ?? []).find((r) => new Date(r.started_at) < ended && new Date(r.ended_at) > started);
   if (overlap) return { ok: false, error: '같은 시간대에 이미 등록된 회차가 있습니다. 시간을 확인하세요.' };
   return { ok: true, day, rate };
@@ -769,7 +745,7 @@ export async function validateRoundSchedule(input: {
 /**
  * 운영사 회차 정정 (P30) — 일시·방법·장소를 사후 정정한다. 정산에 포함된 회차는 불가.
  * 보고서·멘티 서명이 있어도 허용하되 서명은 유지되며 감사에 그 사실을 남긴다(서명 대상 문서는 web 양식이면 재생성).
- * 등록과 같은 검증(일일 상한·멘토 1일 건수·시간 겹침·단가 스냅샷)을 다시 통과해야 한다. 호출부가 case.manage 권한을 검사한다.
+ * 등록과 같은 검증(일일 금액 상한·시간 겹침·단가 스냅샷)을 다시 통과해야 한다. 호출부가 case.manage 권한을 검사한다.
  */
 export async function correctRound(input: {
   caseId: string;

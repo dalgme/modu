@@ -240,7 +240,7 @@ export function RatesLimits({ rates, limits, groups, today, defaultGroupId = nul
 
       <section className="rounded-xl border bg-background p-4">
         <h3 className="font-semibold">운영 한도</h3>
-        <p className="text-xs text-muted-foreground">멘토 1일 최대 멘티(건) 수 · 같은 멘티 1일 최대 회차 수.</p>
+        <p className="text-xs text-muted-foreground">기록용 — 2026-10-01부터 회차 등록 시 하루 횟수 제한(멘토 1일 건수·멘티 1일 회차)은 적용하지 않습니다. 같은 멘티·같은 날 금액 상한(단가 표)과 시간 겹침만 검증합니다.</p>
         <form
           onSubmit={(e) => {
             e.preventDefault();

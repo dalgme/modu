@@ -131,16 +131,23 @@ function avg(list: number[]): number | null {
   return list.length ? Math.round((list.reduce((a, b) => a + b, 0) / list.length) * 100) / 100 : null;
 }
 
-export async function computeProgramMetrics(programId: string, supportTypeId?: string | null, period?: ReportPeriod | null): Promise<ProgramMetrics> {
+export async function computeProgramMetrics(
+  programId: string,
+  supportTypeId?: string | null,
+  period?: ReportPeriod | null,
+  /** (2026-10-01) 운영사 대시보드: 비활성(행사 비활성화·계정 잠금) 멘티의 케이스를 지표에서 뺀다 */
+  opts: { excludeMenteeIds?: Set<string> } = {},
+): Promise<ProgramMetrics> {
   const admin = createAdminClient();
   const hasPeriod = !!(period && (period.from || period.to));
   const { data: groupsRaw } = await admin.from('support_types').select('id, code, name, status, required_rounds').eq('program_id', programId).order('sort_order');
   const groups = (groupsRaw ?? []).filter((g) => !supportTypeId || g.id === supportTypeId);
   const groupIds = groups.map((g) => g.id);
-  let casesQ = admin.from('cases').select('id, support_type_id, status, predecessor_case_id, created_at, closed_at').eq('program_id', programId);
+  let casesQ = admin.from('cases').select('id, support_type_id, status, predecessor_case_id, created_at, closed_at, mentee_id').eq('program_id', programId);
   if (supportTypeId) casesQ = casesQ.eq('support_type_id', supportTypeId);
   const { data: casesRaw } = await casesQ;
-  const cases = casesRaw ?? [];
+  const excluded = opts.excludeMenteeIds;
+  const cases = (casesRaw ?? []).filter((c) => !excluded || !c.mentee_id || !excluded.has(c.mentee_id));
   const caseIds = cases.map((c) => c.id);
   const inScope = new Set(caseIds);
 

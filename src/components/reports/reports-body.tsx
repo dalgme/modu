@@ -16,7 +16,7 @@ import type { CaseListItem } from '@/lib/data/cases';
 import type { SettlementItem } from '@/lib/data/settlements';
 import { CASE_STATUSES, CASE_STATUS_META } from '@/types/case-status';
 import { WITHHOLDING_LABELS } from '@/lib/settlement/compute';
-import { MetricsTiles } from '@/components/reports/metrics-tiles';
+import { OverviewVisual } from '@/components/reports/overview-visual';
 import { SettlementsTable } from '@/components/settlement/settlements-table';
 import { CaseTable } from '@/components/cases/case-table';
 import { MentorProgressTable } from '@/components/nextlab/matching-lists';
@@ -65,6 +65,7 @@ export function ReportsBody({
   caseFilterMentors,
   totalCases,
   reportFiles,
+  scopeLabel = '행사 전체',
 }: {
   m: ProgramMetrics;
   tab: ReportTab;
@@ -95,6 +96,8 @@ export function ReportsBody({
   caseFilterMentors?: { id: string; name: string }[];
   /** [보고서 파일] 탭 데이터 (2026-09-30) */
   reportFiles?: ReportFilesData;
+  /** 개요 탭 핵심 지표 밴드 제목의 범위 (2026-10-01) */
+  scopeLabel?: string;
 }) {
   const reportsHref = `${base}/reports`;
   const periodQs = period?.from || period?.to ? `${period.from ? `&from=${period.from}` : ''}${period.to ? `&to=${period.to}` : ''}` : '';
@@ -147,8 +150,8 @@ export function ReportsBody({
 
       {tab === 'overview' && (
         <div className="flex flex-col gap-4">
+          <OverviewVisual m={m} base={base} trend={trend} scopeLabel={scopeLabel} />
           {budget && <BudgetCard overview={budget} settingsHint={base === '/nextlab'} />}
-          <MetricsTiles m={m} base={base} reportsHref={reportsHref} />
           {delays && (
             <section id="delays" className={`scroll-mt-40 flex flex-col gap-2 rounded-xl border p-4 ${delays.length > 0 ? 'border-status-rejected/40 bg-status-rejected/5' : 'bg-background'}`}>
               <h3 className="flex items-center gap-2 text-base font-bold">

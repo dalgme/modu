@@ -5,6 +5,7 @@ import { requireContext } from '@/lib/programs/context';
 import { fmt } from '@/lib/programs/branding';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { listCases } from '@/lib/data/cases';
+import { loadInactiveMemberIds } from '@/lib/data/inactive-members';
 import { countOpenInquiries } from '@/lib/data/inquiries';
 import { listBoardPosts } from '@/lib/data/board';
 import { listProgramMessages } from '@/lib/messages/data';
@@ -29,18 +30,23 @@ export default async function Page() {
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
   const groupId = ctx.supportTypeId ?? null;
-  const [cases, openInquiries, operatorRequests, inbox, metrics, boardPosts, programMessages, budget, trend, delays] = await Promise.all([
+  // (2026-10-01) 비활성 회원(행사 비활성화·계정 잠금) 멘티의 케이스는 배정 대기·지연·핵심 지표에서 뺀다
+  const inactiveMentees = await loadInactiveMemberIds(ctx.programId, 'mentee');
+  const [allCases, openInquiries, operatorRequests, inbox, metrics, boardPosts, programMessages, budget, trend, allDelays] = await Promise.all([
     listCases({ programId: ctx.programId, supportTypeId: groupId ?? undefined }),
     countOpenInquiries(ctx.programId),
     listOperatorRequests(ctx.programId),
     listInbox(ctx.programId, groupId ?? undefined, true),
-    computeProgramMetrics(ctx.programId, groupId),
+    computeProgramMetrics(ctx.programId, groupId, null, { excludeMenteeIds: inactiveMentees }),
     listBoardPosts(ctx.programId),
     listProgramMessages(ctx.programId),
     computeBudgetOverview(ctx.programId, groupId),
     computeMonthlyTrend(ctx.programId, groupId),
     listDelayedCases(ctx.programId, groupId),
   ]);
+  const cases = allCases.filter((c) => !c.mentee_id || !inactiveMentees.has(c.mentee_id));
+  const activeCaseIds = new Set(cases.map((c) => c.id));
+  const delays = allDelays.filter((d) => activeCaseIds.has(d.caseId));
   // 멘토가 아직 확인하지 않은 배정 (범위 내 케이스) — 조인 필터로 센다 (케이스 id 나열은 수백 건에서 URL 이 길어진다)
   let unconfirmedQ = createAdminClient().from('mentor_assignments').select('id, cases!inner(program_id, support_type_id)', { count: 'exact', head: true }).eq('is_active', true).is('confirmed_at', null).eq('cases.program_id', ctx.programId);
   if (groupId) unconfirmedQ = unconfirmedQ.eq('cases.support_type_id', groupId);

@@ -105,10 +105,11 @@ export function GatesForm({ program, programTemplateHasMentorSign }: { program: 
   return (
     <div className="flex flex-col gap-4">
       <form className="flex flex-col gap-3 rounded-xl border bg-background p-4" action={(fd) => run(() => updateClosurePolicyAction(Object.fromEntries(fd.entries())), '종결 게이트를 저장했습니다.')}>
-        <h3 className="font-semibold">종결 게이트 (기본 전부 꺼짐)</h3>
+        <h3 className="font-semibold">종결 게이트 · 정산 자동화 (게이트는 기본 꺼짐, 품의 자동 제출은 기본 켬)</h3>
         <Check name="require_mentee_signature" label="종결 요청 시 모든 회차에 멘티 서명 필수" v={!!cp.require_mentee_signature} />
         <Check name="require_group_docs" label="종결 요청 시 멘티 필수서류 모두 제출 필수" v={!!cp.require_group_docs} />
         <Check name="block_batch_on_missing_mentor_docs" label="멘토 지급서류(이력서·통장·신분증) 미수령 시 품의 편성 차단" v={!!cp.block_batch_on_missing_mentor_docs} />
+        <Check name="auto_batch" label="검수 승인(정산 확정) 즉시 멘토별 지급 품의를 자동으로 편성·제출 → 발주처 정산 확인 단계로 (기본 켬)" v={cp.auto_batch !== false} />
         <div className="flex justify-end"><Button type="submit" size="sm" disabled={pending}>저장</Button></div>
       </form>
 

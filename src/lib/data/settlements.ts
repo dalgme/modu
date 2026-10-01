@@ -153,3 +153,25 @@ export async function listStatementFiles(caseId: string): Promise<{ id: string; 
 }
 
 export { SETTLEMENT_STATUS_LABELS, BATCH_STATUS_LABELS } from '@/lib/settlement/labels';
+
+/**
+ * 발주처 대시보드 "정산이 필요한 건수" (2026-10-01) — 운영사가 제출해 발주처 정산 확인을 기다리는 품의(submitted)의 정산 건.
+ * 멘토 인원(중복 제외) · 정산 건수 · 품의 수 · 실지급 합계. 범위 그룹이 있으면 그 그룹 케이스의 정산만 센다.
+ */
+export async function loadSettlementNeeded(programId: string, supportTypeId?: string | null): Promise<{ mentors: number; settlements: number; batches: number; net: number }> {
+  const admin = createAdminClient();
+  const { data: batches } = await admin.from('settlement_batches').select('id').eq('program_id', programId).eq('status', 'submitted');
+  const batchIds = (batches ?? []).map((b) => b.id);
+  if (batchIds.length === 0) return { mentors: 0, settlements: 0, batches: 0, net: 0 };
+  let q = admin.from('settlements').select('id, mentor_id, net, batch_id, cases!inner(support_type_id)').in('batch_id', batchIds).eq('status', 'batched');
+  if (supportTypeId) q = q.eq('cases.support_type_id', supportTypeId);
+  const { data: rows, error } = await q;
+  if (error) console.error('loadSettlementNeeded failed:', error.message);
+  const list = rows ?? [];
+  return {
+    mentors: new Set(list.map((r) => r.mentor_id)).size,
+    settlements: list.length,
+    batches: new Set(list.map((r) => r.batch_id)).size,
+    net: list.reduce((a, r) => a + Number(r.net), 0),
+  };
+}

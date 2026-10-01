@@ -6,6 +6,7 @@ import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
 import { normalizeObservation } from '@/lib/workflow/closure';
 import { missingRequiredMenteeDocs } from '@/lib/workflow/case-documents';
 import { createSettlementSnapshot, estimateSettlements, rollbackSettlements, settleLeftoverMentors } from '@/lib/settlement/settle';
+import { autoBatchSettlements } from '@/lib/workflow/batches';
 import type { WorkflowResult } from '@/lib/workflow/cases';
 
 /** 검수 승인 시 클라이언트가 보고 있던 예상값 — 서버 재계산과 다르면 거부한다 (P31) */
@@ -136,5 +137,12 @@ export async function reviewClosure(caseId: string, actorId: string, result: 'ap
   // (P31) 발주처에는 케이스별 확정 통보를 보내지 않는다 — 품의 제출(batch_submitted) 시점에 한 번 통보. 멘토 통보는 createSettlementSnapshot 이 담당.
   const { error: auditError } = await admin.from('audit_logs').insert({ actor_id: actorId, program_id: c.program_id, action: 'case.review_approve', entity_type: 'cases', entity_id: caseId, metadata: { settlement_id: snap.settlementId, net: snap.result?.net ?? null, leftover_settlement_ids: leftover.settlementIds } });
   if (auditError) console.error('case.review_approve audit insert failed:', auditError.message);
+  // (2026-10-01) 정산 흐름 3단계 자동화 — 확정된 정산을 멘토별 품의로 편성·제출해 발주처 정산 확인 단계로 넘긴다(행사 설정으로 끌 수 있음).
+  // 실패해도 승인은 유지되고 정산은 지급 대기로 남는다(수동 편성).
+  try {
+    await autoBatchSettlements(caseId, createdIds, actorId);
+  } catch (e) {
+    console.error('autoBatchSettlements failed:', e instanceof Error ? e.message : e);
+  }
   return { ok: true, caseId };
 }

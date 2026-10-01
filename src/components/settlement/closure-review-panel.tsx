@@ -66,7 +66,7 @@ export function ClosureReviewPanel({
             impact: [
               `확정 실지급 합계 ${formatKRW(totalNet)}${hasRoundIds ? ` (회차 ${roundIds.length}건)` : ''}`,
               ...estimates.map((e) => `${e.mentorName}: 실지급 ${formatKRW(e.figures.net)} (원천징수 ${formatKRW(e.figures.withholding)})`),
-              '케이스는 지급 대기(settlement_pending)로 넘어가며 품의 편성 전까지 취소할 수 있습니다.',
+              '승인 즉시 멘토별 지급 품의가 자동으로 편성·제출되어 발주처 정산 확인 단계로 넘어갑니다(운영 설정에서 끈 경우 지급 대기로 남음). 발주처 확인 전에는 품의 [제출 철회]로 되돌릴 수 있습니다.',
             ],
             confirmLabel: '승인 · 확정',
           }
