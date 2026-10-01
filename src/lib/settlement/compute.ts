@@ -232,3 +232,20 @@ export function recomputeFromLines(lines: SettlementLine[], withholding: Withhol
   }
   return computeSettlement({ rounds, withholding }, options);
 }
+
+/**
+ * 원천징수 합계를 회차별로 나눈다 (2026-10-01, 엑셀 회차별 세금분·실지급분).
+ * 세금은 멘토×정산 단위 합계로 계산되므로(과세최저한·절사) 회차별 값은 **금액 비례 배분**이고,
+ * 배분 합계가 정산(또는 예상) 원천징수 합계와 정확히 같도록 원 단위 내림 후 나머지를 금액이 큰 회차부터 1원씩 더한다.
+ */
+export function allocateWithholding(amounts: number[], withholding: number): number[] {
+  const total = amounts.reduce((a, b) => a + b, 0);
+  if (amounts.length === 0) return [];
+  if (total <= 0 || withholding <= 0) return amounts.map(() => 0);
+  const raw = amounts.map((a) => (a / total) * withholding);
+  const out = raw.map((v) => Math.floor(v));
+  let remain = Math.round(withholding) - out.reduce((a, b) => a + b, 0);
+  const order = amounts.map((a, i) => ({ a, i, frac: raw[i]! - out[i]! })).sort((x, y) => y.frac - x.frac || y.a - x.a || x.i - y.i);
+  for (let k = 0; remain > 0 && order.length > 0; k = (k + 1) % order.length, remain--) out[order[k]!.i]! += 1;
+  return out;
+}

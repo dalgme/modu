@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllIn } from '@/lib/supabase/paginate';
+import { loadInactiveMemberIds } from '@/lib/data/inactive-members';
 import { listCases } from '@/lib/data/cases';
 import { CASE_STATUS_META, CASE_STATUSES, type CaseStatus } from '@/types/case-status';
 import { AUTO_MATCH_VERSION } from '@/lib/matching/auto-match';
@@ -52,6 +53,8 @@ export interface MentorMatchRow {
   mentorId: string;
   mentorName: string;
   organization: string | null;
+  /** 직함(users.position) — 엑셀 (2026-10-01) */
+  position: string | null;
   phone: string | null;
   email: string | null;
   expertise: string[];
@@ -126,9 +129,16 @@ function docSetState(d: { resume_state: string | null; bankbook_state: string | 
   return '-';
 }
 
-export async function loadMatchingLists(programId: string, supportTypeId?: string | null): Promise<MatchingLists> {
+export async function loadMatchingLists(
+  programId: string,
+  supportTypeId?: string | null,
+  /** (2026-10-01) 회원 명단의 매칭 리스트·엑셀: 비활성(행사 비활성화·계정 잠금) 멘티의 케이스를 뺀다 — 그 멘티는 [비활성화] 탭에 있다 */
+  opts: { excludeInactiveMentees?: boolean } = {},
+): Promise<MatchingLists> {
   const admin = createAdminClient();
-  const cases = await listCases({ programId, supportTypeId: supportTypeId ?? undefined });
+  const allCases = await listCases({ programId, supportTypeId: supportTypeId ?? undefined });
+  const inactive = opts.excludeInactiveMentees ? await loadInactiveMemberIds(programId, 'mentee') : null;
+  const cases = inactive ? allCases.filter((c) => !c.mentee_id || !inactive.has(c.mentee_id)) : allCases;
   const caseIds = cases.map((c) => c.id);
 
   const [{ data: assigns }, { data: profiles }, { data: responses }, { data: recs }, { data: mentorMembers }, { data: roster }, { data: settlements }, { data: docs }, { data: reviews }] = await Promise.all([
@@ -147,7 +157,7 @@ export async function loadMatchingLists(programId: string, supportTypeId?: strin
           .in('case_id', caseIds)
           .order('rank')
       : Promise.resolve({ data: [] as unknown[] }),
-    admin.from('program_members').select('user_id, users!inner(id, name, organization, phone, email, is_active)').eq('program_id', programId).eq('role', 'mentor').eq('is_active', true),
+    admin.from('program_members').select('user_id, users!inner(id, name, organization, position, phone, email, is_active)').eq('program_id', programId).eq('role', 'mentor').eq('is_active', true),
     admin.from('support_type_members').select('user_id, support_type_id, support_types!inner(name, program_id)').eq('is_active', true).eq('member_role', 'mentor').eq('support_types.program_id', programId),
     caseIds.length ? admin.from('settlements').select('case_id, mentor_id, net').in('case_id', caseIds).neq('status', 'canceled') : Promise.resolve({ data: [] as { case_id: string; mentor_id: string; net: number }[] }),
     admin.from('mentor_payment_docs').select('user_id, resume_state, bankbook_state, id_card_state').eq('program_id', programId),
@@ -168,7 +178,7 @@ export async function loadMatchingLists(programId: string, supportTypeId?: strin
   const docByUser = new Map((docs ?? []).map((d) => [d.user_id, d]));
 
   const mentors = (mentorMembers ?? [])
-    .map((m) => m.users as unknown as { id: string; name: string; organization: string | null; phone: string | null; email: string | null; is_active: boolean })
+    .map((m) => m.users as unknown as { id: string; name: string; organization: string | null; position: string | null; phone: string | null; email: string | null; is_active: boolean })
     .filter((u) => u.is_active);
   const mentorIds = mentors.map((m) => m.id);
   const authorIds = Array.from(new Set((reviews ?? []).map((r) => r.author_id)));
@@ -278,6 +288,7 @@ export async function loadMatchingLists(programId: string, supportTypeId?: strin
         mentorId: m.id,
         mentorName: m.name,
         organization: m.organization,
+        position: m.position,
         phone: m.phone,
         email: m.email,
         expertise: expertiseByMentor.get(m.id) ?? [],

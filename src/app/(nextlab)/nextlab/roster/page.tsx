@@ -236,7 +236,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
 
   if (tab === 'mentor-match' || tab === 'mentee-match') {
     const { loadMatchingLists } = await import('@/lib/data/matching-lists');
-    const [lists, groups] = await Promise.all([loadMatchingLists(ctx.programId, ctx.supportTypeId ?? null), listSupportTypes(ctx.programId)]);
+    const [lists, groups] = await Promise.all([loadMatchingLists(ctx.programId, ctx.supportTypeId ?? null, { excludeInactiveMentees: true }), listSupportTypes(ctx.programId)]);
     const groupList = groups.map((g) => ({ id: g.id, name: g.name }));
     body = (
       <>

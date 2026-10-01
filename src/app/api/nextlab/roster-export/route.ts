@@ -13,10 +13,11 @@ import { listRosterColumns } from '@/lib/data/roster-columns';
 import { CASE_STATUS_META } from '@/types/case-status';
 import { GRADE_LABELS, type StaffGrade } from '@/lib/auth/capabilities';
 import { ROLE_LABELS } from '@/lib/auth/roles';
-import { loadMatchingLists, MATCH_METHOD_LABELS } from '@/lib/data/matching-lists';
+import { loadMatchingLists } from '@/lib/data/matching-lists';
+import { loadRoundBreakdown, roundHeader, roundValues } from '@/lib/reports/round-breakdown';
 import { menteeOrg, mentorLabel } from '@/lib/utils/labels';
 import { MENTEE_COLUMNS, MENTOR_COLUMNS, STAFF_COLUMNS } from '@/lib/import/bulk-import';
-import { excelFileName, kstDate, sheetName, sheetWithMeta, workbookBuffer, xlsxResponse } from '@/lib/excel/sheet';
+import { excelFileName, kstDate, kstDateTime, kstTime, sheetName, sheetWithMeta, workbookBuffer, xlsxResponse } from '@/lib/excel/sheet';
 
 export const dynamic = 'force-dynamic';
 
@@ -53,14 +54,33 @@ export async function GET(request: Request): Promise<Response> {
   let filter: string | undefined;
 
   if (kind === 'mentee-match' || kind === 'mentor-match') {
-    // P25 매칭 리스트 엑셀
-    const [lists, cases] = await Promise.all([loadMatchingLists(ctx.programId, ctx.supportTypeId ?? null), listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined })]);
+    // P25 매칭 리스트 엑셀 — (2026-10-01) 비활성 멘티 제외 · 회차별 [일시·시수·장소·보고서 제출·수당·세금분·실지급분] 펼침
+    const [lists, cases] = await Promise.all([
+      loadMatchingLists(ctx.programId, ctx.supportTypeId ?? null, { excludeInactiveMentees: true }),
+      listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined }),
+    ]);
     const contactByCase = new Map(cases.map((c) => [c.id, { phone: c.phone ?? '', email: c.email ?? '' }]));
+    const listedCaseIds = new Set(lists.menteeRows.map((r) => r.caseId));
+    const breakdown = await loadRoundBreakdown(
+      ctx.programId,
+      cases.filter((c) => listedCaseIds.has(c.id)).map((c) => ({ id: c.id, support_type_id: c.support_type_id })),
+    );
+    const maxRound = Math.max(breakdown.maxRound, ...lists.menteeRows.map((r) => r.requiredRounds), 0);
+    const when = (a: string, b: string) => `${kstDateTime(a)}~${kstTime(b)}`;
+    filter = '세금분·실지급분: 정산 확정 회차는 확정액 배분, 미확정 이행 회차는 같은 계산식의 예상치 · 보고서 미제출 회차는 금액 없음';
     if (kind === 'mentee-match') {
       title = '멘티 매칭 리스트';
-      header = ['순위', '멘티', '휴대폰', '이메일', '라운드', '희망분야', '재배치 희망', '배정 멘토', '방식', '추천', '매칭 일자', '멘토 확인', '만족도', '진행', '회차'];
+      // 배정 멘토의 소속·직함·연락처·이메일 — 종료된 멘토도 포함해 users 에서 직접 읽는다
+      const mentorIds = Array.from(new Set(lists.menteeRows.map((r) => r.mentorId).filter((x): x is string => !!x)));
+      const mentorInfo = new Map(
+        (await fetchAllIn<{ id: string; organization: string | null; position: string | null; phone: string | null; email: string | null }>(mentorIds, (chunk, from, to) =>
+          createAdminClient().from('users').select('id, organization, position, phone, email').in('id', chunk).range(from, to),
+        )).map((u) => [u.id, u]),
+      );
+      header = ['순위', '멘티', '휴대폰', '이메일', '라운드', '희망분야', '재배치 희망', '배정 멘토', '멘토 소속', '멘토 직함', '멘토 연락처', '멘토 이메일', '추천', '멘토 확인', '진행', ...roundHeader(maxRound)];
       rows = lists.menteeRows.map((r) => {
         const ct = contactByCase.get(r.caseId);
+        const mi = r.mentorId ? mentorInfo.get(r.mentorId) : undefined;
         return [
           r.rank ?? '',
           r.label,
@@ -70,22 +90,24 @@ export async function GET(request: Request): Promise<Response> {
           r.needs.join(', '),
           r.preferredMentor ?? '',
           r.mentorName ? mentorLabel(r.mentorName, r.mentorActive) : '',
-          r.matchMethod ? MATCH_METHOD_LABELS[r.matchMethod] : '',
+          mi?.organization ?? '',
+          mi?.position ?? '',
+          mi?.phone ?? '',
+          mi?.email ?? '',
           r.mentorName ? '' : r.recommendations.map((x) => `${x.rank}. ${mentorLabel(x.mentorName, x.mentorActive)} ${Math.round(x.score)}점`).join(' / '),
-          kstDate(r.assignedAt),
           kstDate(r.confirmedAt),
-          r.surveyDone ? '작성 완료' : '',
           r.statusLabel,
-          `${r.roundsDone}/${r.requiredRounds}`,
+          ...roundValues(breakdown.byCase.get(r.caseId), maxRound, when),
         ];
       });
     } else {
       title = '멘토 매칭 리스트';
-      header = ['멘토', '소속', '휴대폰', '이메일', '분야', '그룹 지정', '지급서류', '확정 실지급', '만족도', '운영사 평가', '순위', '멘티', '라운드', '방식', '매칭 일자', '멘토 확인', '진행', '회차'];
+      header = ['멘토', '소속', '직함', '휴대폰', '이메일', '분야', '지급서류', '확정 실지급', '만족도', '운영사 평가', '순위', '멘티', '멘토 확인', '진행', ...roundHeader(maxRound)];
       rows = lists.mentorRows.flatMap((m) => {
-        const base = [mentorLabel(m.mentorName, m.mentees.length), m.organization ?? '', m.phone ?? '', m.email ?? '', m.expertise.join(', '), m.designatedGroupNames.join(', '), m.paymentDocState, m.settledNet, m.surveyAvg ?? '', m.reviewAvg ?? ''];
-        if (m.mentees.length === 0) return [[...base, '', '', '', '', '', '', '미배정(Pool)', '']];
-        return m.mentees.map((c) => [...base, c.rank ?? '', c.label, c.groupName ?? '', c.matchMethod ? MATCH_METHOD_LABELS[c.matchMethod] : '', kstDate(c.assignedAt), kstDate(c.confirmedAt), c.statusLabel, `${c.roundsDone}/${c.requiredRounds}`]);
+        const base = [mentorLabel(m.mentorName, m.mentees.length), m.organization ?? '', m.position ?? '', m.phone ?? '', m.email ?? '', m.expertise.join(', '), m.paymentDocState, m.settledNet, m.surveyAvg ?? '', m.reviewAvg ?? ''];
+        if (m.mentees.length === 0) return [[...base, '', '', '', '미배정(Pool)', ...roundValues(undefined, maxRound, when)]];
+        // 멘토 행의 회차 = 그 멘토가 진행한 회차만 (교체 전·후 멘토 몫을 섞지 않는다)
+        return m.mentees.map((c) => [...base, c.rank ?? '', c.label, kstDate(c.confirmedAt), c.statusLabel, ...roundValues(breakdown.byCase.get(c.caseId), maxRound, when, m.mentorId)]);
       });
     }
   } else if (kind === 'mentee') {
