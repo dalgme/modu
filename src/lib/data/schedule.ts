@@ -56,14 +56,14 @@ async function eventsForCases(cases: CaseLite[], mentorNameByCase?: Map<string, 
   });
 }
 
-/** 멘토: 배정(활성) 케이스 전체의 회차 일정 */
+/** 멘토: 배정(활성) 케이스 + 끝까지 담당하고 종결·중도 종료된 케이스의 회차 일정 (지난 일정도 달력에 남는다, 2026-10-01) */
 export async function listMentorSchedule(mentorId: string, programId: string): Promise<ScheduleEvent[]> {
   const admin = createAdminClient();
   const { data: assigns } = await admin
     .from('mentor_assignments')
     .select('case_id, cases!inner(id, owner_name, business_name, program_id)')
     .eq('mentor_id', mentorId)
-    .eq('is_active', true);
+    .or('is_active.eq.true,end_kind.in.(case_closed,case_withdrawn)');
   const cases = (assigns ?? [])
     .map((a) => a.cases as unknown as (CaseLite & { program_id: string }))
     .filter((c) => c && c.program_id === programId);

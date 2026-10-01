@@ -24,6 +24,7 @@ import { BusinessPlanPanel } from '@/components/files/business-plan-panel';
 import { observationEditable, observationUploadGate } from '@/lib/workflow/observation-rule';
 import { ObservationForm } from '@/components/mentor/observation-form';
 import { MentorRequests } from '@/components/mentor/mentor-requests';
+import { MentorCaseClosureSummary, showsClosureSummary } from '@/components/mentor/mentor-case-closure-summary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { listCaseSettlements, listStatementFiles } from '@/lib/data/settlements';
 import { estimateSettlements } from '@/lib/settlement/settle';
@@ -94,6 +95,9 @@ export default async function Page({ params }: { params: { id: string } }) {
   const reported = rounds.filter((r) => r.report_registered_at).length;
   // 관찰의견서 업로드 열림 = 계획 회차 보고서 전부 등록 (서버 uploadObservationFile 과 같은 함수)
   const obsGate = observationUploadGate(rounds, item.requiredRounds);
+  // 검수 승인(정산 확정) 이후·중도 종료 = 멘토 쪽 절차가 끝난 케이스 — 요청 버튼을 숨기고 열람 전용 안내 (2026-10-01)
+  const finished = ['settlement_pending', 'settlement_batched', 'closed', 'withdrawn'].includes(item.status);
+  const lastAt = (to: string) => history.filter((h) => h.to_status === to).map((h) => h.created_at).sort().pop() ?? null;
   const revisionNote = item.status === 'revision_requested' && lastReview.data?.result === 'revision_requested' ? { comment: lastReview.data.comment, at: lastReview.data.created_at } : null;
 
   return (
@@ -133,7 +137,29 @@ export default async function Page({ params }: { params: { id: string } }) {
       />
       {/* 배치: 다음 할 일 배너 → (셸) 제목·단계 막대 → 가로형 멘티 정보(infoFirst) → 요청·종결 → 회차 → 관찰의견서 → 정산 → 서류 */}
       <CaseDetailShell item={item} history={history} predecessors={predecessors} predecessorLinks={false} branding={ctx.branding} basePath="/mentor/cases" infoFirst>
+        {showsClosureSummary(item.status) && (
+          <MentorCaseClosureSummary
+            status={item.status}
+            programName={ctx.program.name}
+            groupName={item.supportTypeName}
+            assignedAt={item.mentorAssignedAt}
+            steps={{
+              closureRequestedAt: lastAt('closure_requested'),
+              approvedAt: lastAt('settlement_pending'),
+              batchedAt: lastAt('settlement_batched'),
+              closedAt: item.closed_at ?? lastAt('closed'),
+              withdrawnAt: lastAt('withdrawn'),
+            }}
+            reported={reported}
+            required={item.requiredRounds}
+            observationName={obsFile?.name ?? null}
+            settlements={settlements
+              .filter((s) => s.mentor_id === profile.id)
+              .map((s) => ({ id: s.id, kind: s.kind, status: s.status, net: s.net, gross: s.gross, roundCount: s.roundCount, paidAt: s.paid_at }))}
+          />
+        )}
         <div id="requests" className="scroll-mt-36" />
+        {!finished && (
         <MentorRequests
           caseId={item.id}
           canRequestClosure={closureOk}
@@ -143,6 +169,7 @@ export default async function Page({ params }: { params: { id: string } }) {
           canRequestWithdrawal={canTransition('request_mentor_withdrawal', item.status)}
           pendingWithdrawal={requests.withdrawals.some((r) => r.status === 'pending')}
         />
+        )}
 
         {/* 멘티 사업계획서·참고파일 — 미리보기 전용(행사 설정으로 다운로드 허용 시만 내려받기, 2026-09-30). 담당 확인은 위 notFound 가드 */}
         <BusinessPlanPanel caseId={item.id} viewer="mentor" />
@@ -158,7 +185,9 @@ export default async function Page({ params }: { params: { id: string } }) {
               </span>
             </CardTitle>
             <p className="text-xs text-white/90">
-              회차마다 [N차 예정 등록]으로 일정을 먼저 등록하고, 멘토링을 마친 뒤 그 회차의 [보고서 업로드]를 하면 이행으로 인정되어 정산에 포함됩니다. 보고서를 고쳐야 하면 [보고서 수정 업로드]로 다시 올리세요. 파일 이름은 ‘멘토명-멘티명-회차-온/오프라인’으로 자동 저장됩니다.
+              {finished
+                ? '절차가 끝난 멘티입니다 — 회차 일정·보고서는 열람과 [미리보기]·[다운로드]만 할 수 있습니다.'
+                : '회차마다 [N차 예정 등록]으로 일정을 먼저 등록하고, 멘토링을 마친 뒤 그 회차의 [보고서 업로드]를 하면 이행으로 인정되어 정산에 포함됩니다. 보고서를 고쳐야 하면 [보고서 수정 업로드]로 다시 올리세요. 파일 이름은 ‘멘토명-멘티명-회차-온/오프라인’으로 자동 저장됩니다.'}
             </p>
           </CardHeader>
           <CardContent className="pt-6">
