@@ -306,6 +306,7 @@ npm run lint:brand   # scripts/check-brand-strings.sh — 0건 (npm run lint 에
 - **P47(2026-10-01) — 멘토 배정일 이전 일정 등록 허용**: 스키마 변경 없음. `rounds.ts` 의 회차 일자 하한(`roundDayLowerBound` — 케이스 등록일·멘토 배정일 중 늦은 날, P31)을 등록(`submitRound`)·일정 수정·운영사 정정(`validateRoundSchedule`) 3곳에서 제거. 남는 일자 검증 = 60일 이후 미래 차단·같은 날 시작/종료·단가 적용일(단가 없는 날은 등록 불가)·금액 상한·시간 겹침.
 - **P47-2(2026-10-01) — 발주처 대시보드 비활성 제외**: 운영사 대시보드(P45)와 같은 기준(`loadInactiveMemberIds` — 행사 비활성화·계정 잠금 멘티)으로 발주처 대시보드의 배정 대기·지연 케이스·핵심 지표·차트에서 해당 케이스를 뺀다(`computeProgramMetrics(..,{excludeMenteeIds})` + 지연 목록 케이스 필터). 리포트는 그대로.
 - **P48(2026-10-01) — 매칭 리스트 비활성 멘티 제외·매칭 리스트 엑셀 회차별 펼침**: 스키마 변경 없음. ① `loadMatchingLists(.., {excludeInactiveMentees})`(회원 명단 매칭 리스트 탭·엑셀만 — 리포트는 그대로): 행사 비활성화·계정 잠금 멘티(`loadInactiveMemberIds`)의 케이스를 멘티 매칭 리스트·멘토 매칭 리스트(멘토 밑 멘티)에서 뺀다. 멘티 명단 탭은 P36 부터 활성만, 비활성 멘티는 [비활성화] 탭. ② **멘티 매칭 리스트 엑셀**: 배정 멘토 옆 멘토 소속·직함(`users.position`)·연락처·이메일 추가, 방식·매칭 일자·만족도·회차(n/m) 삭제. **멘토 매칭 리스트 엑셀**: 그룹 지정·라운드·방식·매칭 일자·회차 삭제(직함 추가). 두 시트 모두 회차마다 `N회차 일시·시수·장소·보고서 제출·수당·세금분·실지급분` 7칸(`src/lib/reports/round-breakdown.ts` `loadRoundBreakdown`/`roundHeader`/`roundValues`, 멘토 시트는 그 멘토가 진행한 회차만). 세금분 = 정산 확정 회차는 그 정산 원천징수 합계를, 미확정 이행 회차는 같은 `computeSettlement` 예상 원천징수를 금액 비례 배분(`allocateWithholding` — compute.ts, 합계 보존·vitest 3건), 보고서 전 회차는 금액 비움.
+- **P49(2026-10-01) — 엑셀 금액 칸 천단위 콤마**: 스키마 변경 없음. `src/lib/excel/sheet.ts` `applyMoneyFormat(ws, extra?)`·`isMoneyHeader()` — 헤더(또는 항목/값 시트의 왼쪽 항목) 이름이 금액(수당·세금·원천징수·실지급·지급총액·소득세·소득금액·단가·예산·합계·세전 등, 비율·건수·방식 제외)인 칸의 **정수 값에 셀 서식 `#,##0`** 만 붙인다(값은 숫자 그대로라 합계·정렬·수식 유지, 소수인 만족도·집행률은 대상 아님). `sheetWithMeta` 가 자동 적용(`SheetMeta.money` = 추가 금액 이름, 리포트 개요 '지급 대기' 등·예산 '확정/예상'), 품의 엑셀 4시트·원천세 2시트·종합리포트 xlsx 는 직접 호출. 컬럼 너비도 콤마 포함 길이로. vitest 3건.
 - 남은 것: **사용자 조치** — Vercel 환경변수 `MFA_BYPASS_EMAILS=smoke-institution@modu.test,smoke-nextlab@modu.test`(Production+Preview, 없으면 문자 설정된 배포에서 스모크 로그인 실패) · 행사 기본 설정에 보호책임자 연락망 입력 · (선택) `OPS_ALERT_PHONES` · (선택) GitHub 시크릿 `SUPABASE_DB_URL`·`BACKUP_PASSPHRASE`(2차 백업) · (선택) `VERCEL_AUTOMATION_BYPASS_SECRET` · UptimeRobot 등에 `/api/health` 등록 · 보안 정책 나머지 결정 ①③④⑥⑦ 회신(`docs/SECURITY-POLICY.md §7-3`). 코드 — 보안 로드맵 다음 단계(R-1 임시비번 만료·R-3a 반출 사유·R-7a 보안 헤더), 첫 자동 백업(내일 03:00) 확인, 배포 화면 클릭 검증, 도메인 연결, `src/lib/data/app-settings.ts` 의 미사용 feature-flag 헬퍼 정리.
 
 ---
@@ -323,6 +324,7 @@ npm run lint:brand   # scripts/check-brand-strings.sh — 0건 (npm run lint 에
 
 > 결정이 바뀌면 덮어쓰지 말고 날짜와 함께 추가.
 
+- 2026-10-01 **P49**: 플랫폼에서 내려받는 모든 엑셀의 금액 칸은 천단위 콤마 서식으로 보인다. 값은 숫자로 유지하고 서식만 바꾸며, 금액 칸 판정은 `sheet.ts` 한 곳(헤더 이름 기준)에서 한다.
 - 2026-10-01 **P48**: 비활성화된 멘티는 멘티 명단·멘티/멘토 매칭 리스트에서 빠지고 [비활성화] 탭에만 보인다. 매칭 리스트 엑셀은 회차별 7칸(일시·시수·장소·보고서 제출·수당·세금분·실지급분)으로 펼치고, 회차별 세금분은 정산(또는 예상) 원천징수 합계를 금액 비례로 나눈 값이다(합계는 정산액과 일치).
 - 2026-10-01 **P47**: 멘토링 일정(회차)은 멘토 배정일·케이스 등록일 이전 일자로도 등록·수정할 수 있다.
 - 2026-10-01 **P46**: 검수 승인 버튼은 배정 회차의 보고서가 모두 등록되고 관찰의견서 파일이 등록되면 활성화된다(멘토의 종결 요청 여부와 무관). 승인하면 지급 품의가 조건 없이 자동 작성·제출된다. 멘토 지급서류는 이메일로 따로 받으며 플랫폼 프로세스(승인·품의)에 어떤 영향도 주지 않는 부가기능이다.

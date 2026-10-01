@@ -1,6 +1,7 @@
 import 'server-only';
 
 import * as XLSX from 'xlsx';
+import { applyMoneyFormat } from '@/lib/excel/sheet';
 import { AlignmentType, Document, HeadingLevel, Packer, Paragraph, Table, TableCell, TableRow, TextRun, WidthType } from 'docx';
 import PptxGenJS from 'pptxgenjs';
 
@@ -29,7 +30,7 @@ export async function exportSummary(s: SummarySnapshot, format: SummaryFormat): 
 
 function toXlsx(s: SummarySnapshot): Buffer {
   const wb = XLSX.utils.book_new();
-  const add = (name: string, rows: unknown[][]) => XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), name.slice(0, 31));
+  const add = (name: string, rows: unknown[][]) => XLSX.utils.book_append_sheet(wb, applyMoneyFormat(XLSX.utils.aoa_to_sheet(rows)), name.slice(0, 31));
   const cover: unknown[][] = [[s.title], [sub(s)], []];
   for (const sec of sections(s)) {
     cover.push([sec.title]);

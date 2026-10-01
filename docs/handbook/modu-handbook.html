@@ -508,6 +508,9 @@ UX/UI보완을 진행하세요</code></pre>
 (멘티 매칭) 엑셀: &quot;배정 멘토&quot; 옆에 &quot;소속, 직함, 연락처, 이메일&quot; 추가, &quot;방식, 매칭 일자, 만족도&quot; 삭제, &quot;회차&quot;는 회차별 [일시, 시수, 장소, 보고서 제출여부, 수당, 세금분, 실지급분]
 (멘토 매칭) 엑셀: &quot;그룹 지정, 라운드, 방식, 매칭 일자&quot; 삭제, &quot;회차&quot;는 회차별 [일시, 시수, 장소, 보고서 제출여부, 수당, 세금분, 실지급분]</code></pre>
 <p>→ <code>loadMatchingLists({excludeInactiveMentees})</code>, <code>round-breakdown.ts</code>, <code>allocateWithholding</code>(compute.ts + vitest).</p>
+<h3 id="p49-2026-10-01-엑셀-금액-천단위-콤마">P49 (2026-10-01) — 엑셀 금액 천단위 콤마</h3>
+<blockquote>엑셀에서 금액을 적는 칸에서는 "천단위 콤마(,)"의 형식을 적용해 주세요.</blockquote>
+<p>→ 공용 <code>applyMoneyFormat</code>(헤더 이름으로 금액 칸 판정, 정수에 <code>#,##0</code> 서식) — 모든 엑셀 내보내기 적용, 값은 숫자 유지.</p>
 <hr>
 <h2 id="4-다음-세션에서-쓸-시작-프롬프트-템플릿">4. 다음 세션에서 쓸 시작 프롬프트 (템플릿)</h2>
 <pre><code>이 리포(dalgme/modu)는 &quot;모두의창업&quot; 멘토링 운영관리 플랫폼입니다. 배포·부트스트랩까지 끝났습니다.

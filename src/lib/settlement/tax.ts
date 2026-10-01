@@ -1,6 +1,7 @@
 import 'server-only';
 
 import * as XLSX from 'xlsx';
+import { applyMoneyFormat } from '@/lib/excel/sheet';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAll, fetchAllIn } from '@/lib/supabase/paginate';
@@ -118,6 +119,8 @@ export function buildTaxWorkbook(t: TaxSummary, programName: string, groupName: 
     ['연도', '멘토', '원천징수 방식', '지급 건수', '총지급(세전)', '소득세', '지방소득세', '원천징수 합계', '실지급'],
     ...t.mentors.map((m) => [m.year, m.mentorName, m.methodLabel, m.count, m.gross, m.incomeTax, m.localTax, m.withholding, m.net]),
   ]);
+  applyMoneyFormat(monthly);
+  applyMoneyFormat(yearly);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, monthly, '월별 원천세');
   XLSX.utils.book_append_sheet(wb, yearly, '연간 멘토별');

@@ -59,7 +59,7 @@ export function buildReportWorkbook(tab: string, m: ProgramMetrics, cases: CaseL
   const period = periodLabel(m.scope.period);
   const institution = extra.role === 'institution';
   const meta = { 기준일: kstDateTime(m.scope.generatedAt), 범위: `${programName} · ${extra.scopeName ?? '행사 전체'}`, 필터: [period !== '전체 기간' ? `기간 ${period}` : null, extra.filterLabel].filter(Boolean).join(' · ') || undefined };
-  const add = (name: string, header: string[], rows: unknown[][]) => XLSX.utils.book_append_sheet(wb, sheetWithMeta(header, rows, meta), sheetName(name));
+  const add = (name: string, header: string[], rows: unknown[][], money?: string[]) => XLSX.utils.book_append_sheet(wb, sheetWithMeta(header, rows, { ...meta, money }), sheetName(name));
 
   if (tab === 'overview') {
     const p = m.performance;
@@ -69,7 +69,7 @@ export function buildReportWorkbook(tab: string, m: ProgramMetrics, cases: CaseL
       ['수행 성과', '케이스', p.cases], ['수행 성과', '기간 내 신규', p.newCases], ['수행 성과', '기간 내 종결', p.closedCases], ['수행 성과', '이행 회차', p.roundsDone], ['수행 성과', '계획 회차', p.roundsPlanned], ['수행 성과', '완료 회차(정산 확정)', p.roundsCompleted], ['수행 성과', '종결', p.closed], ['수행 성과', '종결률', p.closureRate], ['수행 성과', '온라인 회차', p.onlineRounds], ['수행 성과', '오프라인 회차', p.offlineRounds],
       ['잔여 과업', '미배정', b.unassigned], ['잔여 과업', '잔여 회차', b.remainingRounds], ['잔여 과업', `정체(${b.stalledDays}일)`, b.stalled], ['잔여 과업', '검수 대기', b.reviewPending], ['잔여 과업', '보완 요청 중', b.revisionRequested], ['잔여 과업', '재배정 대기', b.reassignmentPending], ['잔여 과업', '미서명 회차', b.unsignedRounds], ['잔여 과업', '미응답 설문', b.unansweredSurveys], ['잔여 과업', '지급서류 미비 멘토', b.mentorsMissingDocs], ['잔여 과업', '미처리 요청', b.pendingRequests],
       ['정산', '예상(세전)', s.estimatedGross], ['정산', '지급 대기', s.pendingNet], ['정산', '품의 편성', s.batchedNet], ['정산', '정산 확인', s.confirmedNet], ['정산', '지급 완료', s.paidNet], ['정산', '원천징수 합계', s.withholdingTotal],
-    ]);
+    ], ['지급 대기', '품의 편성', '정산 확인', '지급 완료']);
   }
   if (tab === 'overview' || tab === 'cases') {
     add('진행현황 매트릭스', ['그룹', ...CASE_STATUSES.map((st) => CASE_STATUS_META[st].short), '합계', '이행 회차', '계획 회차'], m.groups.map((g) => [g.name, ...CASE_STATUSES.map((st) => g.byStatus[st]), g.cases, g.roundsDone, g.roundsPlanned]));
@@ -109,7 +109,7 @@ export function buildReportWorkbook(tab: string, m: ProgramMetrics, cases: CaseL
   }
   if (tab === 'overview' && extra.budget) {
     const bRow = (r: BudgetOverview['total']) => [r.name, r.budget ?? '', r.confirmed, r.forecast, r.confirmed + r.forecast, r.budget ? Math.round(((r.confirmed + r.forecast) / r.budget) * 1000) / 10 : ''];
-    add('예산', ['구분', '예산(지급총액)', '확정', '예상', '합계', '집행률(%)'], [bRow(extra.budget.total), ...extra.budget.groups.map(bRow)]);
+    add('예산', ['구분', '예산(지급총액)', '확정', '예상', '합계', '집행률(%)'], [bRow(extra.budget.total), ...extra.budget.groups.map(bRow)], ['확정', '예상']);
   }
   if (wb.SheetNames.length === 0) add('빈 시트', ['안내'], [['데이터 없음']]);
   return workbookBuffer(wb);

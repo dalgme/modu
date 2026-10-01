@@ -628,6 +628,12 @@ UX/UI보완을 진행하세요
 ```
 → `loadMatchingLists({excludeInactiveMentees})`, `round-breakdown.ts`, `allocateWithholding`(compute.ts + vitest).
 
+
+### P49 (2026-10-01) — 엑셀 금액 천단위 콤마
+
+> 엑셀에서 금액을 적는 칸에서는 "천단위 콤마(,)"의 형식을 적용해 주세요.
+
+→ 공용 `applyMoneyFormat`(헤더 이름으로 금액 칸 판정, 정수에 `#,##0` 서식) — 모든 엑셀 내보내기 적용, 값은 숫자 유지.
 ---
 
 ## 4. 다음 세션에서 쓸 시작 프롬프트 (템플릿)

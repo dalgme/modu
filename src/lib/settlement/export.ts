@@ -1,6 +1,7 @@
 import 'server-only';
 
 import * as XLSX from 'xlsx';
+import { applyMoneyFormat } from '@/lib/excel/sheet';
 
 import type { BatchItem, SettlementItem } from '@/lib/data/settlements';
 import { WITHHOLDING_LABELS } from '@/lib/settlement/compute';
@@ -89,6 +90,7 @@ export function buildBatchWorkbook(batch: BatchItem, items: SettlementItem[], pr
     aggRow(['합계', ''], grand),
   ]);
 
+  for (const ws of [detail, mentorSheet, groupSheet, mentorMethodSheet]) applyMoneyFormat(ws);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, detail, '건별 내역');
   XLSX.utils.book_append_sheet(wb, mentorSheet, '멘토별 합계');
