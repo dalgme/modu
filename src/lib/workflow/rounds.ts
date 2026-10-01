@@ -80,25 +80,8 @@ function validateReportFile(fileName: string, mimeType: string): string | null {
   return null;
 }
 
-/**
- * 회차 일자 하한 (P31) — 케이스 등록일과 (그 멘토의) 배정일 중 늦은 날짜. 그 이전 일자로는 회차를 등록·수정할 수 없다.
- * 대행 중 담당자가 과거 일자를 잘못 입력하거나 이전 멘토 기간을 침범하는 것을 막는다.
- */
-async function roundDayLowerBound(caseId: string, mentorId: string): Promise<string | null> {
-  const admin = createAdminClient();
-  const [{ data: c }, { data: a }] = await Promise.all([
-    admin.from('cases').select('created_at').eq('id', caseId).maybeSingle(),
-    admin.from('mentor_assignments').select('assigned_at').eq('case_id', caseId).eq('mentor_id', mentorId).order('assigned_at', { ascending: false }).limit(1).maybeSingle(),
-  ]);
-  const days = [c?.created_at, a?.assigned_at].filter((d): d is string => !!d).map((d) => kstDate(d));
-  if (days.length === 0) return null;
-  return days.sort()[days.length - 1] ?? null;
-}
-
-function lowerBoundError(minDay: string): string {
-  const [, m, d] = minDay.split('-');
-  return `배정일(${Number(m)}/${Number(d)}) 이전 일자는 등록할 수 없습니다.`;
-}
+// (2026-10-01) 회차 일자 하한(케이스 등록일·멘토 배정일) 폐지 — 배정 전 일자로도 일정을 등록·수정할 수 있다(사용자 결정).
+// 단가 적용 시작일 이전 일자는 단가가 없어 여전히 등록되지 않는다(noRateError).
 
 function noRateError(day: string): string {
   return `해당 일자(${day})에 적용되는 단가가 없습니다. 운영 설정의 단가 적용 시작일을 확인하세요.`;
@@ -129,9 +112,6 @@ export async function submitRound(input: RoundInput): Promise<RoundResult> {
   if (started.getTime() > Date.now() + PLAN_MAX_FUTURE_MS) return { ok: false, error: '60일 이후의 일정은 미리 등록할 수 없습니다.' };
   if (kstDate(started) !== kstDate(ended)) return { ok: false, error: '한 회차는 같은 날 안에서 끝나야 합니다.' };
   const day = kstDate(started);
-  // 배정일(케이스 등록일·멘토 배정일) 이전 일자 차단 (P31)
-  const minDay = await roundDayLowerBound(c.id, input.mentorId);
-  if (minDay && day < minDay) return { ok: false, error: lowerBoundError(minDay) };
 
   const participants = normalizeParticipants(input.participants);
   if (participants.length === 0) return { ok: false, error: '참가자를 1명 이상 선택하세요.' };
@@ -303,7 +283,6 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
     started: new Date(log.started_at),
     ended: new Date(log.ended_at),
     excludeLogId: log.id,
-    enforceLowerBound: false,
   });
   if (!v.ok) return v;
   const isExtra = log.round_no > group.required_rounds;
@@ -556,8 +535,6 @@ export async function updatePlannedRound(input: {
   if (started.getTime() > Date.now() + PLAN_MAX_FUTURE_MS) return { ok: false, error: '60일 이후의 일정으로는 변경할 수 없습니다.' };
   if (kstDate(started) !== kstDate(ended)) return { ok: false, error: '한 회차는 같은 날 안에서 끝나야 합니다.' };
   const day = kstDate(started);
-  const minDay = await roundDayLowerBound(log.case_id, input.mentorId);
-  if (minDay && day < minDay) return { ok: false, error: lowerBoundError(minDay) };
 
   // (2026-10-01) 회차 등록 횟수 제한(멘토 1일 건수·멘티 1일 회차)은 적용하지 않는다 — 금액 상한·시간 겹침만 검증
   const rate = await resolveRate(c.program_id, c.support_type_id, input.mode, day);
@@ -708,8 +685,6 @@ export async function validateRoundSchedule(input: {
   started: Date;
   ended: Date;
   excludeLogId?: string | null;
-  /** 배정일 이전 일자 차단 (P31). 보고서 등록처럼 이미 확정된 일자를 재검증할 때는 false */
-  enforceLowerBound?: boolean;
 }): Promise<{ ok: true; day: string; rate: NonNullable<Awaited<ReturnType<typeof resolveRate>>> } | { ok: false; error: string }> {
   const admin = createAdminClient();
   const { started, ended } = input;
@@ -717,10 +692,6 @@ export async function validateRoundSchedule(input: {
   if (ended <= started) return { ok: false, error: '종료 시각은 시작 시각보다 늦어야 합니다.' };
   if (kstDate(started) !== kstDate(ended)) return { ok: false, error: '한 회차는 같은 날 안에서 끝나야 합니다.' };
   const day = kstDate(started);
-  if (input.enforceLowerBound !== false) {
-    const minDay = await roundDayLowerBound(input.caseId, input.mentorId);
-    if (minDay && day < minDay) return { ok: false, error: lowerBoundError(minDay) };
-  }
   const rate = await resolveRate(input.programId, input.supportTypeId, input.mode, day);
   if (!rate) return { ok: false, error: noRateError(day) };
   const dayStart = new Date(`${day}T00:00:00+09:00`).toISOString();
