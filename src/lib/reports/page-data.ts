@@ -4,15 +4,20 @@ import { computeProgramMetrics, type ReportPeriod } from '@/lib/reports/metrics'
 import { listCases, type CaseListItem } from '@/lib/data/cases';
 import { CASE_STATUSES, CASE_STATUS_META, CASE_STEP_ORDER, type CaseStatus } from '@/types/case-status';
 import { listSettlements } from '@/lib/data/settlements';
+import { loadInactiveMemberIds } from '@/lib/data/inactive-members';
 
 /** 리포트 페이지·엑셀이 같은 데이터를 쓴다. period = 기간 필터(회차 보고서 등록일·정산 확정일·케이스 등록/종결일, P30) */
-export async function loadReportData(programId: string, supportTypeId?: string | null, period?: ReportPeriod | null) {
-  const [m, cases, settlements] = await Promise.all([
-    computeProgramMetrics(programId, supportTypeId, period),
+export async function loadReportData(programId: string, supportTypeId?: string | null, period?: ReportPeriod | null, opts: { excludeInactiveMentees?: boolean } = {}) {
+  // (2026-10-02) 운영사 리포트: 비활성 회원(행사 비활성화·계정 잠금) 멘티의 케이스는 핵심 지표·진행현황 통계에서 뺀다 — 대시보드(P45)와 같은 기준.
+  // 정산 건 목록은 금액 기록이라 그대로 둔다.
+  const inactiveMentees = opts.excludeInactiveMentees ? await loadInactiveMemberIds(programId, 'mentee') : new Set<string>();
+  const [m, allCases, settlements] = await Promise.all([
+    computeProgramMetrics(programId, supportTypeId, period, { excludeMenteeIds: inactiveMentees.size ? inactiveMentees : undefined }),
     listCases({ programId, supportTypeId: supportTypeId ?? undefined }),
     listSettlements({ programId, supportTypeId: supportTypeId ?? undefined }),
   ]);
-  return { m, cases, settlements };
+  const cases = inactiveMentees.size ? allCases.filter((c) => !c.mentee_id || !inactiveMentees.has(c.mentee_id)) : allCases;
+  return { m, cases, settlements, inactiveMentees, excludedCaseIds: new Set(allCases.filter((c) => !cases.includes(c)).map((c) => c.id)) };
 }
 
 /** 기간 칩 (KST) — 전체 | 올해 | 이번 분기 | 이번 달. 리포트 페이지·엑셀 라우트가 같은 계산을 쓴다 (P30) */
