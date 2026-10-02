@@ -23,7 +23,7 @@ export function SettlementSummary({ f, compact = false }: { f: SettlementFigures
           <tr className="border-b text-left text-xs text-muted-foreground">
             <th className="py-1 pr-2 font-medium">유형</th>
             <th className="py-1 pr-2 text-right font-medium">회차</th>
-            {!compact && <th className="py-1 pr-2 text-right font-medium">단가</th>}
+            {!compact && <th className="py-1 pr-2 text-right font-medium">시간당 단가</th>}
             <th className="py-1 text-right font-medium">금액</th>
           </tr>
         </thead>

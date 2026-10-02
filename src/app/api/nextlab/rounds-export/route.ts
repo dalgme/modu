@@ -81,7 +81,7 @@ export async function GET(request: Request): Promise<Response> {
 
   // 멘토명 → 시작일시 정렬
   const sorted = [...logs].sort((a, b) => (mentorById.get(a.mentor_id)?.name ?? '').localeCompare(mentorById.get(b.mentor_id)?.name ?? '', 'ko') || a.started_at.localeCompare(b.started_at));
-  const header = ['멘토', '멘토 휴대폰', '멘티', '그룹', '케이스 상태', '회차', '추가 회차', '일자', '시작', '종료', '운영시간(분)', '방법', '장소', '참가자', '보고서 등록일', '보고서 형식', '멘티 서명', '단가 스냅샷', '금액 스냅샷', '정산 상태', '정산 확정일', '정정'];
+  const header = ['멘토', '멘토 휴대폰', '멘티', '그룹', '케이스 상태', '회차', '추가 회차', '일자', '시작', '종료', '운영시간(분)', '방법', '장소', '참가자', '보고서 등록일', '보고서 형식', '멘티 서명', '시간당 단가', '금액', '정산 상태', '정산 확정일', '정정'];
   const rows = sorted.map((l) => {
     const c = caseById.get(l.case_id);
     const u = mentorById.get(l.mentor_id);

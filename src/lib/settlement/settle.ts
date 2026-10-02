@@ -396,12 +396,12 @@ const STATEMENT_TEMPLATE = `
 </table>
 <h2>회차 내역</h2>
 <table class="grid">
-  <tr><th>회차</th><th>유형</th><th>일자</th><th>단가</th><th>금액</th></tr>
+  <tr><th>회차</th><th>유형</th><th>일자</th><th>시간당 단가</th><th>금액</th></tr>
   {{{rounds_table}}}
 </table>
 <h2>정산 집계</h2>
 <table class="grid">
-  <tr><th>유형</th><th>회차</th><th>단가</th><th>금액</th></tr>
+  <tr><th>유형</th><th>회차</th><th>시간당 단가</th><th>금액</th></tr>
   {{{lines_table}}}
   <tr class="total"><td colspan="3">지급총액</td><td class="num">{{gross}}</td></tr>
 </table>

@@ -6,6 +6,7 @@ import { CalendarDays, Clock, MapPin, Monitor, Plus, Users } from 'lucide-react'
 
 import { submitRoundAction } from '@/lib/workflow/mentor-actions';
 import type { RoundParticipant } from '@/lib/workflow/rounds';
+import { amountForMinutes } from '@/lib/settlement/round-amount';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -233,7 +234,7 @@ export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOp
               >
                 {m === 'online' ? '온라인' : '오프라인'}
                 <span className="ml-1 text-xs text-muted-foreground">
-                  {rates[m] != null ? `${rates[m]!.toLocaleString('ko-KR')}원` : '단가 미설정'}
+                  {rates[m] != null ? `시간당 ${rates[m]!.toLocaleString('ko-KR')}원` : '단가 미설정'}
                 </span>
               </button>
             ))}
@@ -275,6 +276,10 @@ export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOp
         <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4 text-primary" /> <b>{dateLabel}</b></span>
         <span className="inline-flex items-center gap-1.5 tabular-nums"><Clock className="h-4 w-4 text-primary" /> {startTime} ~ {endTime} <b className="text-primary">({durationLabel(Math.max(0, minutes))})</b></span>
         <span className="inline-flex items-center gap-1.5"><Monitor className="h-4 w-4 text-primary" /> <b>{mode === 'online' ? '온라인' : '오프라인'}</b></span>
+        {/* 회차 금액 = 시간당 단가 × 운영시간 (P50) — 서버 저장과 같은 함수 */}
+        {rates[mode] != null && minutes > 0 && (
+          <span className="inline-flex items-center gap-1.5 tabular-nums">금액 <b className="text-primary">{amountForMinutes(rates[mode]!, minutes).toLocaleString('ko-KR')}원</b></span>
+        )}
         <span className="inline-flex items-center gap-1.5"><Users className="h-4 w-4 text-primary" /> {chosen.length > 0 ? chosen.map((p) => p.name).join(' · ') : <span className="text-destructive">참가자 미선택</span>} {chosen.length > 0 && <b>({chosen.length}명)</b>}</span>
         <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4 text-primary" /> {place.trim() || <span className="text-muted-foreground">장소 미입력</span>}</span>
       </div>

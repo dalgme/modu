@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { roundAmount } from '@/lib/settlement/round-amount';
 import { moveFile, sha256Hex } from '@/lib/storage/files';
 import { actingNote } from '@/lib/auth/impersonation';
 import { logAudit } from '@/lib/workflow/audit';
@@ -148,7 +149,9 @@ export async function submitRound(input: RoundInput): Promise<RoundResult> {
     .lte('started_at', dayEnd);
   const sameDayRows = sameDay ?? [];
   const sameModeAmount = sameDayRows.filter((r) => r.mode === input.mode).reduce((s, r) => s + Number(r.amount_snapshot), 0);
-  if (sameModeAmount + rate.unitPrice > rate.dailyCapAmount) {
+  // 회차 금액 = 시간당 단가 × 운영시간 (P50)
+  const amount = roundAmount(rate.unitPrice, started, ended);
+  if (sameModeAmount + amount > rate.dailyCapAmount) {
     const remain = Math.max(0, rate.dailyCapAmount - sameModeAmount);
     return { ok: false, error: `같은 날 ${input.mode === 'online' ? '온라인' : '오프라인'} 일일 상한(${rate.dailyCapAmount.toLocaleString('ko-KR')}원)을 넘습니다. 남은 한도 ${remain.toLocaleString('ko-KR')}원.` };
   }
@@ -177,7 +180,7 @@ export async function submitRound(input: RoundInput): Promise<RoundResult> {
       participants: participants as never,
       report_registered_at: null,
       unit_price_snapshot: rate.unitPrice,
-      amount_snapshot: rate.unitPrice,
+      amount_snapshot: amount,
       rate_id: rate.rateId,
       is_extra: roundNo > group.required_rounds,
     })
@@ -345,7 +348,7 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
       report_kind: reportKind,
       report_registered_at: new Date().toISOString(),
       unit_price_snapshot: v.rate.unitPrice,
-      amount_snapshot: v.rate.unitPrice,
+      amount_snapshot: v.amount,
       rate_id: v.rate.rateId,
       is_extra: isExtra,
     })
@@ -372,7 +375,7 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
     action: 'round.report',
     entityType: 'mentoring_logs',
     entityId: log.id,
-    metadata: { case_id: log.case_id, round_no: log.round_no, report_kind: reportKind, photos: photoPaths.length, amount: v.rate.unitPrice, is_extra: isExtra, ...(allowanceExceeded ? { allowance_exceeded: true } : {}) },
+    metadata: { case_id: log.case_id, round_no: log.round_no, report_kind: reportKind, photos: photoPaths.length, amount: v.amount, is_extra: isExtra, ...(allowanceExceeded ? { allowance_exceeded: true } : {}) },
   });
 
   // 목표 회차(그룹 required_rounds) 보고서 등록 완료 → 멘티 만족도 조사 자동 개시 (P20)
@@ -551,7 +554,9 @@ export async function updatePlannedRound(input: {
     .neq('id', log.id);
   const sameDayRows = sameDay ?? [];
   const sameModeAmount = sameDayRows.filter((r) => r.mode === input.mode).reduce((s, r) => s + Number(r.amount_snapshot), 0);
-  if (sameModeAmount + rate.unitPrice > rate.dailyCapAmount) {
+  // 회차 금액 = 시간당 단가 × 운영시간 (P50)
+  const amount = roundAmount(rate.unitPrice, started, ended);
+  if (sameModeAmount + amount > rate.dailyCapAmount) {
     return { ok: false, error: `같은 날 ${input.mode === 'online' ? '온라인' : '오프라인'} 일일 상한(${rate.dailyCapAmount.toLocaleString('ko-KR')}원)을 넘습니다.` };
   }
   const { data: mentorDay } = await admin
@@ -572,7 +577,7 @@ export async function updatePlannedRound(input: {
       ended_at: ended.toISOString(),
       place: input.place?.trim() || null,
       unit_price_snapshot: rate.unitPrice,
-      amount_snapshot: rate.unitPrice,
+      amount_snapshot: amount,
       rate_id: rate.rateId,
     })
     .eq('id', log.id);
@@ -685,7 +690,7 @@ export async function validateRoundSchedule(input: {
   started: Date;
   ended: Date;
   excludeLogId?: string | null;
-}): Promise<{ ok: true; day: string; rate: NonNullable<Awaited<ReturnType<typeof resolveRate>>> } | { ok: false; error: string }> {
+}): Promise<{ ok: true; day: string; rate: NonNullable<Awaited<ReturnType<typeof resolveRate>>>; amount: number } | { ok: false; error: string }> {
   const admin = createAdminClient();
   const { started, ended } = input;
   if (Number.isNaN(started.getTime()) || Number.isNaN(ended.getTime())) return { ok: false, error: '일시를 확인하세요.' };
@@ -701,7 +706,9 @@ export async function validateRoundSchedule(input: {
   const { data: sameDay } = await sameDayQ;
   const sameDayRows = sameDay ?? [];
   const sameModeAmount = sameDayRows.filter((r) => r.mode === input.mode).reduce((s, r) => s + Number(r.amount_snapshot), 0);
-  if (sameModeAmount + rate.unitPrice > rate.dailyCapAmount) {
+  // 회차 금액 = 시간당 단가 × 운영시간 (P50)
+  const amount = roundAmount(rate.unitPrice, started, ended);
+  if (sameModeAmount + amount > rate.dailyCapAmount) {
     const remain = Math.max(0, rate.dailyCapAmount - sameModeAmount);
     return { ok: false, error: `같은 날 ${input.mode === 'online' ? '온라인' : '오프라인'} 일일 상한(${rate.dailyCapAmount.toLocaleString('ko-KR')}원)을 넘습니다. 남은 한도 ${remain.toLocaleString('ko-KR')}원.` };
   }
@@ -710,7 +717,7 @@ export async function validateRoundSchedule(input: {
   const { data: mentorDay } = await mentorDayQ;
   const overlap = (mentorDay ?? []).find((r) => new Date(r.started_at) < ended && new Date(r.ended_at) > started);
   if (overlap) return { ok: false, error: '같은 시간대에 이미 등록된 회차가 있습니다. 시간을 확인하세요.' };
-  return { ok: true, day, rate };
+  return { ok: true, day, rate, amount };
 }
 
 /**
@@ -747,7 +754,7 @@ export async function correctRound(input: {
   const v = await validateRoundSchedule({ caseId: log.case_id, mentorId: log.mentor_id, programId: c.program_id, supportTypeId: c.support_type_id, mode: input.mode, started, ended, excludeLogId: log.id });
   if (!v.ok) return v;
   const before = { mode: log.mode, started_at: log.started_at, ended_at: log.ended_at, place: log.place, unit_price_snapshot: log.unit_price_snapshot, amount_snapshot: log.amount_snapshot, rate_id: log.rate_id };
-  const after = { mode: input.mode, started_at: started.toISOString(), ended_at: ended.toISOString(), place: input.place?.trim() || null, unit_price_snapshot: v.rate.unitPrice, amount_snapshot: v.rate.unitPrice, rate_id: v.rate.rateId };
+  const after = { mode: input.mode, started_at: started.toISOString(), ended_at: ended.toISOString(), place: input.place?.trim() || null, unit_price_snapshot: v.rate.unitPrice, amount_snapshot: v.amount, rate_id: v.rate.rateId };
   const { error } = await admin.from('mentoring_logs').update({ ...after, corrected_at: new Date().toISOString() }).eq('id', log.id).is('settlement_id', null);
   if (error) return { ok: false, error: error.message };
   if (log.report_kind === 'web' && log.report_registered_at) {

@@ -130,8 +130,8 @@ export function RatesLimits({ rates, limits, groups, today, defaultGroupId = nul
             <thead>
               <tr className="border-b text-left text-xs text-muted-foreground">
                 <th className="py-1 pr-2">범위</th>
-                <th className="py-1 pr-2">온라인 단가 / 일일 상한</th>
-                <th className="py-1 pr-2">오프라인 단가 / 일일 상한</th>
+                <th className="py-1 pr-2">온라인 시간당 단가 / 일일 상한</th>
+                <th className="py-1 pr-2">오프라인 시간당 단가 / 일일 상한</th>
                 <th className="py-1 pr-2">멘토 1일 건수 · 멘티 1일 회차</th>
               </tr>
             </thead>
@@ -170,7 +170,7 @@ export function RatesLimits({ rates, limits, groups, today, defaultGroupId = nul
 
       <section className="rounded-xl border bg-background p-4">
         <h3 className="font-semibold">컨설팅 단가 · 일일 금액 상한</h3>
-        <p className="text-xs text-muted-foreground">유형별 단가(회당)와 같은 멘티·같은 날 합산 상한. 그룹 override 는 그룹을 고르세요. 적용일 이후 등록되는 회차부터 반영됩니다.</p>
+        <p className="text-xs text-muted-foreground">유형별 시간당 단가와 같은 멘티·같은 날 합산 상한. 회차 금액 = 시간당 단가 × 운영시간(예: 시간당 100,000원 × 3시간 = 300,000원). 그룹 override 는 그룹을 고르세요. 적용일 이후 등록되는 회차부터 반영됩니다.</p>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -195,7 +195,7 @@ export function RatesLimits({ rates, limits, groups, today, defaultGroupId = nul
             </select>
           </div>
           <div className="flex flex-col gap-1">
-            <Label htmlFor="rate-price" className="text-xs">단가 (회당)</Label>
+            <Label htmlFor="rate-price" className="text-xs">단가 (시간당)</Label>
             <AmountInput id="rate-price" value={rPrice} onValueChange={setRPrice} placeholder="80,000" required />
           </div>
           <div className="flex flex-col gap-1">
