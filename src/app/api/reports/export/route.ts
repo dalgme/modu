@@ -33,14 +33,14 @@ export async function GET(request: Request): Promise<Response> {
   const groupId = ctx.supportTypeId ?? sp.get('group') ?? null;
   const view = sp.get('view') === 'mentor' ? 'mentor' : 'mentee';
   const params = { status: sp.get('status') ?? undefined, mentor: sp.get('mentor') ?? undefined, q: sp.get('q') ?? undefined, sort: sp.get('sort') ?? undefined, view };
-  // 운영사 엑셀은 화면과 같게 비활성 멘티 제외 (2026-10-02)
-  const operator = ctx.role !== 'institution';
-  const { m, cases: allCases, settlements, excludedCaseIds } = await loadReportData(ctx.programId, groupId, period, { excludeInactiveMentees: operator });
+  // 화면과 같게 비활성 멘티 제외 — 운영사(2026-10-02)·발주처(2026-10-06) 모두
+  const excludeInactive = true;
+  const { m, cases: allCases, settlements, excludedCaseIds } = await loadReportData(ctx.programId, groupId, period, { excludeInactiveMentees: excludeInactive });
   const cases = tab === 'cases' ? filterAndSortCases(allCases, params) : allCases;
   const admin = createAdminClient();
   const [trend, lists, delays, budget, profiles] = await Promise.all([
     tab === 'trend' || tab === 'overview' ? computeMonthlyTrend(ctx.programId, groupId, year ? { year } : { months: 12 }) : Promise.resolve(undefined),
-    (tab === 'cases' && view === 'mentor') || tab === 'mentors' ? loadMatchingLists(ctx.programId, groupId, { excludeInactiveMentees: operator }) : Promise.resolve(undefined),
+    (tab === 'cases' && view === 'mentor') || tab === 'mentors' ? loadMatchingLists(ctx.programId, groupId, { excludeInactiveMentees: excludeInactive }) : Promise.resolve(undefined),
     tab === 'overview' ? listDelayedCases(ctx.programId, groupId).then((ds) => ds.filter((d) => !excludedCaseIds.has(d.caseId))) : Promise.resolve(undefined),
     tab === 'overview' ? computeBudgetOverview(ctx.programId, groupId) : Promise.resolve(undefined),
     tab === 'cases' || tab === 'overview'

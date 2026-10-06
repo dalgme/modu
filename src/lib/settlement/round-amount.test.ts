@@ -17,3 +17,14 @@ describe('회차 금액 = 시간당 단가 × 운영시간 (P50)', () => {
     expect(amountForMinutes(100000, 0)).toBe(0);
   });
 });
+
+import { isWholeHours } from './round-amount';
+
+describe('1시간 단위 등록 (2026-10-06)', () => {
+  it('정시·정확한 시간 단위만 통과', () => {
+    expect(isWholeHours('2026-10-06T14:00:00+09:00', '2026-10-06T16:00:00+09:00')).toBe(true);
+    expect(isWholeHours('2026-10-06T14:30:00+09:00', '2026-10-06T15:30:00+09:00')).toBe(true);
+    expect(isWholeHours('2026-10-06T14:00:00+09:00', '2026-10-06T15:30:00+09:00')).toBe(false);
+    expect(isWholeHours('2026-10-06T14:00:00+09:00', '2026-10-06T14:00:00+09:00')).toBe(false);
+  });
+});

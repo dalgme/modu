@@ -2447,6 +2447,7 @@ export type Database = {
           client_name: string;
           client_seal_name: string | null;
           client_short: string | null;
+          contract_title: string | null;
           closure_policy: Json;
           created_at: string;
           created_by: string | null;
@@ -2483,6 +2484,7 @@ export type Database = {
           client_name: string;
           client_seal_name?: string | null;
           client_short?: string | null;
+          contract_title?: string | null;
           closure_policy?: Json;
           created_at?: string;
           created_by?: string | null;
@@ -2519,6 +2521,7 @@ export type Database = {
           client_name?: string;
           client_seal_name?: string | null;
           client_short?: string | null;
+          contract_title?: string | null;
           closure_policy?: Json;
           created_at?: string;
           created_by?: string | null;

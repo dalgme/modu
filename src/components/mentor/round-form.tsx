@@ -6,7 +6,7 @@ import { CalendarDays, Clock, MapPin, Monitor, Plus, Users } from 'lucide-react'
 
 import { submitRoundAction } from '@/lib/workflow/mentor-actions';
 import type { RoundParticipant } from '@/lib/workflow/rounds';
-import { amountForMinutes } from '@/lib/settlement/round-amount';
+import { amountForMinutes, HOURLY_ONLY_NOTICE } from '@/lib/settlement/round-amount';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -16,12 +16,12 @@ import { kstTodayYmd, toKstParts } from '@/lib/utils/kst';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
-/** ISO → KST 날짜·시각(10분 단위로 내림) — 회차는 항상 한국시간 기준으로 다룬다 (P31, 공용 유틸 `kst.ts` 로 통일 P35-D) */
+/** ISO → KST 날짜·시각(정시로 내림 — 1시간 단위, 2026-10-06) — 회차는 항상 한국시간 기준으로 다룬다 (P31, 공용 유틸 `kst.ts` 로 통일 P35-D) */
 function kstParts(iso: string): { date: string; time: string } {
   const p = toKstParts(iso);
   if (!p) return { date: '', time: '' };
-  const minutes = Math.floor(p.mm / 10) * 10;
-  return { date: `${p.y}-${pad(p.m)}-${pad(p.d)}`, time: `${pad(p.hh)}:${pad(minutes)}` };
+  // (2026-10-06) 멘토링 시간은 1시간 단위 — 기본값도 정시로 내린다
+  return { date: `${p.y}-${pad(p.m)}-${pad(p.d)}`, time: `${pad(p.hh)}:00` };
 }
 
 function todayKst(): string {
@@ -53,21 +53,15 @@ export interface ParticipantOption {
   subLabel?: string;
 }
 
-/** 시각 선택 — 24시간제, 시(00~23)·분(10분 단위) 두 개의 짧은 목록으로 (긴 144개 목록보다 폰에서 고르기 쉽다, P28) */
+/** 시각 선택 — 24시간제, **정시만**(00분). 멘토링 시간은 1시간 단위로만 등록한다 (2026-10-06, 분 단위는 수당 지급 불가) */
 function TimeSelect({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
-  const [h, m] = value.split(':');
-  const set = (hh: string, mm: string) => onChange(`${hh}:${mm}`);
+  const [h] = value.split(':');
   const cls = 'h-10 rounded-md border border-input bg-background px-2 text-base tabular-nums sm:text-sm';
   return (
     <span className="inline-flex items-center gap-1">
-      <select id={id} value={h} onChange={(e) => set(e.target.value, m ?? '00')} className={cls} aria-label="시">
+      <select id={id} value={h} onChange={(e) => onChange(`${e.target.value}:00`)} className={cls} aria-label="시">
         {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((hh) => (
-          <option key={hh} value={hh}>{hh}시</option>
-        ))}
-      </select>
-      <select value={m} onChange={(e) => set(h ?? '00', e.target.value)} className={cls} aria-label="분">
-        {['00', '10', '20', '30', '40', '50'].map((mm) => (
-          <option key={mm} value={mm}>{mm}분</option>
+          <option key={hh} value={hh}>{hh}:00</option>
         ))}
       </select>
     </span>
@@ -77,8 +71,17 @@ function TimeSelect({ id, value, onChange }: { id: string; value: string; onChan
 /** 시작 시각을 바꾸면 종료가 시작보다 빠르지 않게 60분 뒤로 따라간다 */
 function plusMinutes(hhmm: string, add: number): string {
   const [h, m] = hhmm.split(':').map(Number);
-  const total = Math.min(23 * 60 + 50, (h ?? 0) * 60 + (m ?? 0) + add);
+  const total = Math.min(23 * 60, (h ?? 0) * 60 + (m ?? 0) + add);
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+}
+
+/** 1시간 단위 등록 강조 안내 (2026-10-06) — 등록·일정 수정·정정 화면 공용 */
+export function HourlyOnlyNotice() {
+  return (
+    <p role="alert" className="rounded-lg border-2 border-red-500 bg-red-50 px-3 py-2 text-sm font-bold text-red-700 dark:bg-red-950/40 dark:text-red-200">
+      ⚠ {HOURLY_ONLY_NOTICE}
+    </p>
+  );
 }
 
 /** 지난 일시로 등록할 때의 안내 (2026-09-29) — 등록은 막지 않는다. 일정 수정 화면도 같은 문구를 쓴다 */
@@ -92,7 +95,7 @@ export function PastScheduleNotice() {
 
 /**
  * 회차 1단계 등록 (계획/실행) — 통계·정산의 기본데이터.
- * 일자·시간(10분 단위)·방법·참가자는 전부 클릭 선택, 장소만 직접 입력.
+ * 일자·시간(1시간 단위)·방법·참가자는 전부 클릭 선택, 장소만 직접 입력.
  * 사전(계획)·사후(실행) 등록 모두 가능하고, 보고서(실서류)는 2단계에서 등록한다.
  */
 export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOptions, lastRound = null, triggerLabel, disabled = false, disabledHint }: {
@@ -194,6 +197,7 @@ export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOp
         <DialogDescription className="sr-only">일자·시간·방법·참가자·장소를 고르고 등록합니다.</DialogDescription>
       </DialogHeader>
       {!isPlan && <PastScheduleNotice />}
+      <HourlyOnlyNotice />
       <p className="text-xs text-muted-foreground">
         일시·방법·참가자는 통계와 지급액 정산의 기본데이터입니다. 보고서는 멘토링을 진행한 뒤 이 회차 행의 [보고서 업로드]로 올립니다.
         {lastRound && <span className="ml-1 text-primary">이전 회차의 방법·시간·장소를 기본값으로 채웠습니다.</span>}
@@ -205,7 +209,7 @@ export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOp
           <Input id="r-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1">
-          <Label>시간 (24시간제 · 10분 단위)</Label>
+          <Label>시간 (24시간제 · 1시간 단위)</Label>
           <div className="flex flex-wrap items-center gap-1">
             <TimeSelect
               id="r-start"

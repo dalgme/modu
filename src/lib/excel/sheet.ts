@@ -146,6 +146,15 @@ export function excelFileName(program: string, scope: string | null | undefined,
   return `${safeName(program)}_${safeName(scope || '전체')}_${safeName(tabLabel)}_${kstToday()}.xlsx`;
 }
 
+/**
+ * 매칭 리스트(멘토별/멘티별) 엑셀 파일명 (2026-10-06 사용자 결정)
+ * `({멘토별|멘티별})멘토링 진행 현황_{용역명}_{운영사}_{YYMMDD}.xlsx` — 용역명은 행사 기본 설정의 [용역명](없으면 행사명), 운영사는 행사 설정 기관명.
+ */
+export function progressFileName(kind: '멘토별' | '멘티별', contractTitle: string, operatorName: string, today = kstToday()): string {
+  const yymmdd = today.replace(/-/g, '').slice(2);
+  return `(${kind})멘토링 진행 현황_${safeName(contractTitle)}_${safeName(operatorName)}_${yymmdd}.xlsx`;
+}
+
 /** 워크북 → 버퍼 */
 export function workbookBuffer(wb: XLSX.WorkBook): Buffer {
   return Buffer.from(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as ArrayBuffer);

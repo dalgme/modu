@@ -22,15 +22,16 @@ export default async function Page({ searchParams }: { searchParams: SP }) {
   const groupId = ctx.supportTypeId ?? groups.find((g) => g.id === searchParams.group)?.id ?? null;
   // 기간 필터 (P30): 회차 = 보고서 등록일 · 정산 = 확정일 · 케이스 신규/종결 = 등록일/종결일
   const period = parsePeriod(searchParams);
-  const { m, cases, settlements } = await loadReportData(ctx.programId, groupId, period);
+  // (2026-10-06) 운영사 리포트와 같은 기준 — 비활성화 처리된 멘티는 핵심 지표·진행현황 통계에서 제외
+  const { m, cases, settlements, excludedCaseIds } = await loadReportData(ctx.programId, groupId, period, { excludeInactiveMentees: true });
   const budget = tab === 'overview' ? await computeBudgetOverview(ctx.programId, groupId) : undefined;
-  const delays = tab === 'overview' ? await listDelayedCases(ctx.programId, groupId) : undefined;
+  const delays = tab === 'overview' ? (await listDelayedCases(ctx.programId, groupId)).filter((d) => !excludedCaseIds.has(d.caseId)) : undefined;
   const year = searchParams.year && /^\d{4}$/.test(searchParams.year) ? Number(searchParams.year) : undefined;
   // (2026-10-01) 개요 탭도 월별 이행 회차 차트를 그린다 — 개요는 최근 12개월
   const trend = tab === 'trend' ? await computeMonthlyTrend(ctx.programId, groupId, year ? { year } : { months: 12 }) : tab === 'overview' ? await computeMonthlyTrend(ctx.programId, groupId, { months: 12 }) : undefined;
   // 멘토 진행현황 = 그룹별(담당 인원)·담당 멘티명·회차·확정 실지급·만족도·운영사 평가 (P27-17)
   // 발주처에는 운영사 평가(메모·작성자)를 내려보내지 않는다 — 열을 숨기는 것과 별개로 페이로드에서 제거
-  const mentorProgress = tab === 'cases' && searchParams.view === 'mentor' ? (await loadMatchingLists(ctx.programId, groupId)).mentorRows.map((r) => ({ ...r, reviews: [], reviewAvg: null })) : undefined;
+  const mentorProgress = tab === 'cases' && searchParams.view === 'mentor' ? (await loadMatchingLists(ctx.programId, groupId, { excludeInactiveMentees: true })).mentorRows.map((r) => ({ ...r, reviews: [], reviewAvg: null })) : undefined;
   const filtered = tab === 'cases' ? filterAndSortCases(cases, searchParams) : cases;
   const reportFiles = tab === 'files' ? await loadReportFiles(ctx.programId, groupId) : undefined;
   return (

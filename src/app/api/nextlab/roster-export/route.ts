@@ -17,7 +17,7 @@ import { loadMatchingLists } from '@/lib/data/matching-lists';
 import { loadRoundBreakdown, roundHeader, roundValues } from '@/lib/reports/round-breakdown';
 import { menteeOrg, mentorLabel } from '@/lib/utils/labels';
 import { MENTEE_COLUMNS, MENTOR_COLUMNS, STAFF_COLUMNS } from '@/lib/import/bulk-import';
-import { excelFileName, kstDate, kstDateTime, kstTime, sheetName, sheetWithMeta, workbookBuffer, xlsxResponse } from '@/lib/excel/sheet';
+import { excelFileName, progressFileName, kstDate, kstDateTime, kstTime, sheetName, sheetWithMeta, workbookBuffer, xlsxResponse } from '@/lib/excel/sheet';
 
 export const dynamic = 'force-dynamic';
 
@@ -226,5 +226,11 @@ export async function GET(request: Request): Promise<Response> {
   XLSX.utils.book_append_sheet(wb, sheetWithMeta(header, rows, { 범위: `${ctx.program.name} · ${scopeLabel}`, 필터: filter, extra: [['건수', rows.length]] }), sheetName(title));
   // (P35-B) 대량 반출 이벤트 — 같은 사용자 10분 내 5회 이상이면 Cron 이 warn 으로 승격
   await recordSecurityEventSafe({ kind: 'export', severity: 'info', userId: profile.id, path: '/api/nextlab/roster-export', detail: { route: 'roster-export', tab, rows: rows.length, program_id: ctx.programId } });
+  // (2026-10-06) 매칭 리스트 엑셀 = '(멘토별/멘티별)멘토링 진행 현황_{용역명}_{운영사}_{YYMMDD}'
+  if (tab === 'mentee-match' || tab === 'mentor-match') {
+    const { data: prog } = await createAdminClient().from('programs').select('name, contract_title').eq('id', ctx.programId).maybeSingle();
+    const contract = prog?.contract_title?.trim() || prog?.name || ctx.program.name;
+    return xlsxResponse(workbookBuffer(wb), progressFileName(tab === 'mentor-match' ? '멘토별' : '멘티별', contract, ctx.branding.operatorName));
+  }
   return xlsxResponse(workbookBuffer(wb), excelFileName(ctx.program.name, ctx.group?.name ?? null, title));
 }

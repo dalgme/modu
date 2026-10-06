@@ -32,6 +32,16 @@ export function fileExt(name: string | null | undefined): string {
   return m ? `.${m[1]!.toLowerCase()}` : '';
 }
 
+/**
+ * 회차 보고서 이름 (2026-10-06 사용자 결정) — '책임멘토 멘토링 보고서 및 결과보고서(김진태 멘토-전시우 멘티)_1회차'.
+ * 회차마다 파일이 하나씩이라 같은 케이스 안에서 구분되도록 끝에 회차를 붙인다. 저장 파일명·다운로드 파일명이 같은 함수를 쓴다.
+ */
+export function roundReportTitle(mentorName: string | null | undefined, menteeName: string | null | undefined, roundNo?: number | null): string {
+  const mentor = cleanNamePart(mentorName) || '멘토';
+  const mentee = cleanNamePart(menteeName) || '멘티';
+  return `책임멘토 멘토링 보고서 및 결과보고서(${mentor} 멘토-${mentee} 멘티)${roundNo ? `_${roundNo}회차` : ''}`;
+}
+
 /** doc_key → 파일 구분명과 이름 모양 */
 export function docKind(docKey: string, roundNo?: number | null, label?: string | null): { kind: string; shape: 'mentor' | 'mentee' | 'pair' } {
   const n = roundNo ? `${roundNo}회차 ` : '';
@@ -48,6 +58,7 @@ export function docKind(docKey: string, roundNo?: number | null, label?: string 
 }
 
 export function buildDownloadName(input: DownloadNameInput): string {
+  if (input.docKey.startsWith('mentoring_report:')) return `${roundReportTitle(input.mentorName, input.menteeName, input.roundNo).slice(0, 150)}${input.seq ? ` ${input.seq}` : ''}${fileExt(input.sourceName)}`;
   const { kind, shape } = docKind(input.docKey, input.roundNo, input.label);
   const mentor = cleanNamePart(input.mentorName);
   const mentee = cleanNamePart(input.menteeName);

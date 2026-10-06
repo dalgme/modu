@@ -17,3 +17,16 @@ export function amountForMinutes(hourlyPrice: number, minutes: number): number {
   if (!Number.isFinite(hourlyPrice) || hourlyPrice <= 0 || minutes <= 0) return 0;
   return Math.round((hourlyPrice * minutes) / 60);
 }
+
+/**
+ * 멘토링 시간은 **1시간 단위로만** 등록한다 (2026-10-06, 사용자 결정) — 분 단위 시간은 수당 지급이 어렵다.
+ * 등록·계획 일정 수정·운영사 정정의 서버 게이트와 화면 안내가 이 함수·문구를 같이 쓴다.
+ * (이미 등록된 회차의 보고서 등록은 막지 않는다 — 기존 일정은 [일정 수정]으로 시간 단위로 맞춘다)
+ */
+export function isWholeHours(startedAt: string | Date, endedAt: string | Date): boolean {
+  const m = roundMinutes(startedAt, endedAt);
+  return m > 0 && m % 60 === 0;
+}
+
+export const HOURLY_ONLY_ERROR = '멘토링 시간은 1시간 단위로만 등록할 수 있습니다. (예: 14:00~16:00 = 2시간) 분 단위 시간은 수당 지급이 어렵습니다.';
+export const HOURLY_ONLY_NOTICE = '멘토링 시간은 반드시 1시간 단위(1시간·2시간·3시간)로 등록하세요. 분 단위(예: 1시간 30분)는 수당 지급이 어렵습니다.';

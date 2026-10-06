@@ -62,6 +62,7 @@ async function groupInProgram(groupId: string, programId: string): Promise<boole
 // ---------------------------------------------------------------- 행사 기본(브랜딩)
 const programSchema = z.object({
   name: z.string().trim().min(1, '행사명을 입력하세요.'),
+  contract_title: z.string().trim().max(120).optional().transform((v) => v || null),
   client_name: z.string().trim().min(1, '발주처 기관명을 입력하세요.'),
   client_short: z.string().trim().optional().transform((v) => v || null),
   client_seal_name: z.string().trim().optional().transform((v) => v || null),

@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
-import { roundAmount } from '@/lib/settlement/round-amount';
+import { HOURLY_ONLY_ERROR, isWholeHours, roundAmount } from '@/lib/settlement/round-amount';
 import { moveFile, sha256Hex } from '@/lib/storage/files';
 import { actingNote } from '@/lib/auth/impersonation';
 import { logAudit } from '@/lib/workflow/audit';
@@ -109,6 +109,7 @@ export async function submitRound(input: RoundInput): Promise<RoundResult> {
   const ended = new Date(input.endedAt);
   if (Number.isNaN(started.getTime()) || Number.isNaN(ended.getTime())) return { ok: false, error: '일시를 확인하세요.' };
   if (ended <= started) return { ok: false, error: '종료 시각은 시작 시각보다 늦어야 합니다.' };
+  if (!isWholeHours(started, ended)) return { ok: false, error: HOURLY_ONLY_ERROR };
   // 사전(계획) 등록 허용 — 단, 너무 먼 미래는 차단
   if (started.getTime() > Date.now() + PLAN_MAX_FUTURE_MS) return { ok: false, error: '60일 이후의 일정은 미리 등록할 수 없습니다.' };
   if (kstDate(started) !== kstDate(ended)) return { ok: false, error: '한 회차는 같은 날 안에서 끝나야 합니다.' };
@@ -304,7 +305,7 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
   };
 
   if (input.reportFile) {
-    // 저장 파일명 = "멘토명-멘티명-회차-온/오프라인" + 원래 확장자 (2026-09-29) — 내려받을 때도 이 이름(서명 URL 다운로드명 = doc_name)
+    // 저장 파일명 = roundReportFileName (2026-10-06 "책임멘토 멘토링 보고서 및 결과보고서(…)_N회차") + 원래 확장자 — 내려받을 때도 이 이름(서명 URL 다운로드명 = doc_name)
     const { data: mentorRow } = await admin.from('users').select('name').eq('id', log.mentor_id).maybeSingle();
     const reportName = roundReportFileName({ mentorName: mentorRow?.name, menteeName: c.owner_name, roundNo: log.round_no, mode: log.mode, originalName: input.reportFile.fileName });
     const moved = await moveStaging('documents', log.case_id, input.reportFile.stagingPath, REPORT_MAX_BYTES);
@@ -535,6 +536,7 @@ export async function updatePlannedRound(input: {
   const ended = new Date(input.endedAt);
   if (Number.isNaN(started.getTime()) || Number.isNaN(ended.getTime())) return { ok: false, error: '일시를 확인하세요.' };
   if (ended <= started) return { ok: false, error: '종료 시각은 시작 시각보다 늦어야 합니다.' };
+  if (!isWholeHours(started, ended)) return { ok: false, error: HOURLY_ONLY_ERROR };
   if (started.getTime() > Date.now() + PLAN_MAX_FUTURE_MS) return { ok: false, error: '60일 이후의 일정으로는 변경할 수 없습니다.' };
   if (kstDate(started) !== kstDate(ended)) return { ok: false, error: '한 회차는 같은 날 안에서 끝나야 합니다.' };
   const day = kstDate(started);
@@ -749,6 +751,7 @@ export async function correctRound(input: {
   if (c.status === 'closed' || c.status === 'withdrawn') return { ok: false, error: '종결·중도 종료된 케이스의 회차는 정정할 수 없습니다.' };
   const started = new Date(input.startedAt);
   const ended = new Date(input.endedAt);
+  if (!isWholeHours(started, ended)) return { ok: false, error: HOURLY_ONLY_ERROR };
   if (log.report_registered_at && started.getTime() > Date.now()) return { ok: false, error: '보고서가 등록된 회차는 미래 일시로 정정할 수 없습니다.' };
   if (started.getTime() > Date.now() + PLAN_MAX_FUTURE_MS) return { ok: false, error: '60일 이후의 일정으로는 변경할 수 없습니다.' };
   const v = await validateRoundSchedule({ caseId: log.case_id, mentorId: log.mentor_id, programId: c.program_id, supportTypeId: c.support_type_id, mode: input.mode, started, ended, excludeLogId: log.id });

@@ -29,3 +29,11 @@ describe('엑셀 금액 칸 천단위 콤마 (P49)', () => {
     expect((ws.C4 as XLSX.CellObject).z).toBeUndefined();
   });
 });
+
+import { progressFileName } from './sheet';
+
+describe('매칭 리스트 엑셀 파일명 (2026-10-06)', () => {
+  it('(멘토별/멘티별)멘토링 진행 현황_용역명_운영사_YYMMDD', () => {
+    expect(progressFileName('멘토별', '2026년 모두의 창업 로컬트랙 중부권 멘토링 운영 용역', '(주)테스트', '2026-10-06')).toBe('(멘토별)멘토링 진행 현황_2026년 모두의 창업 로컬트랙 중부권 멘토링 운영 용역_(주)테스트_261006.xlsx');
+  });
+});

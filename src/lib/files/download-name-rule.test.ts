@@ -5,7 +5,7 @@ import { buildDownloadName, buildMentorFileName, fileExt } from './download-name
 describe('buildDownloadName', () => {
   const base = { menteeName: '남준현', mentorName: '강석우' };
   it('멘토링 산출물 = 멘토명-멘티명-구분명', () => {
-    expect(buildDownloadName({ ...base, docKey: 'mentoring_report:x', sourceName: 'report.HWP', roundNo: 2 })).toBe('강석우-남준현-2회차 보고서.hwp');
+    expect(buildDownloadName({ ...base, docKey: 'mentoring_report:x', sourceName: 'report.HWP', roundNo: 2 })).toBe('책임멘토 멘토링 보고서 및 결과보고서(강석우 멘토-남준현 멘티)_2회차.hwp');
     expect(buildDownloadName({ ...base, docKey: 'observation_report', sourceName: 'a.pdf' })).toBe('강석우-남준현-관찰의견서.pdf');
     expect(buildDownloadName({ ...base, docKey: 'settlement_statement:abc', sourceName: 's.pdf' })).toBe('강석우-남준현-정산서.pdf');
     expect(buildDownloadName({ ...base, docKey: 'mentoring_photo:x', sourceName: 'IMG_1.JPG', roundNo: 1, seq: 3 })).toBe('강석우-남준현-1회차 사진 3.jpg');

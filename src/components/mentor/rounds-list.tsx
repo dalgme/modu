@@ -8,7 +8,7 @@ import type { RoundItem } from '@/lib/data/rounds';
 import { deleteRoundAction, collectRoundSignatureAction, updatePlannedRoundAction, deletePlannedRoundAction } from '@/lib/workflow/mentor-actions';
 import { correctRoundAction } from '@/lib/workflow/round-correction-actions';
 import { RoundReportForm } from '@/components/mentor/round-report-form';
-import { PastScheduleNotice } from '@/components/mentor/round-form';
+import { HourlyOnlyNotice, PastScheduleNotice } from '@/components/mentor/round-form';
 import { FileActions } from '@/components/files/file-preview';
 import { SignaturePad } from '@/components/common/signature-pad';
 import { Button } from '@/components/ui/button';
@@ -21,7 +21,7 @@ function toLocalParts(iso: string): { date: string; time: string } {
   return { date: kstYmd(iso), time: kstHm(iso) };
 }
 
-/** 계획(미보고) 회차 일정 수정 (P20) — 일자·시각(10분 단위)·유형·장소 */
+/** 계획(미보고) 회차 일정 수정 (P20) — 일자·시각(1시간 단위)·유형·장소 */
 export function PlannedRoundEditor({ caseId, round, onClose }: { caseId: string; round: RoundItem; onClose: () => void }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -59,6 +59,7 @@ export function PlannedRoundEditor({ caseId, round, onClose }: { caseId: string;
   return (
     <div className="mt-2 flex flex-col gap-2 rounded-lg border border-sky-300 bg-sky-50/50 p-3 text-sm dark:border-sky-800 dark:bg-sky-950/20">
       <p className="font-semibold">{round.round_no}회차 일정 수정</p>
+      <HourlyOnlyNotice />
       {date && startTime && new Date(`${date}T${startTime}:00+09:00`).getTime() <= Date.now() && <PastScheduleNotice />}
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-1 text-xs">
@@ -67,11 +68,11 @@ export function PlannedRoundEditor({ caseId, round, onClose }: { caseId: string;
         </label>
         <label className="flex flex-col gap-1 text-xs">
           시작
-          <input type="time" step={600} value={startTime} onChange={(ev) => setStartTime(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
+          <input type="time" step={3600} value={startTime} onChange={(ev) => setStartTime(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
         </label>
         <label className="flex flex-col gap-1 text-xs">
           종료
-          <input type="time" step={600} value={endTime} onChange={(ev) => setEndTime(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
+          <input type="time" step={3600} value={endTime} onChange={(ev) => setEndTime(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
         </label>
         <label className="flex flex-col gap-1 text-xs">
           방법
@@ -136,6 +137,7 @@ function OperatorCorrectEditor({ caseId, round, onClose }: { caseId: string; rou
   return (
     <div className="mt-2 flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50/50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/20">
       <p className="font-semibold">{round.round_no}회차 정정 (운영사)</p>
+      <HourlyOnlyNotice />
       <div className="flex flex-wrap items-end gap-2">
         <label className="flex flex-col gap-1 text-xs">
           일자
@@ -143,11 +145,11 @@ function OperatorCorrectEditor({ caseId, round, onClose }: { caseId: string; rou
         </label>
         <label className="flex flex-col gap-1 text-xs">
           시작
-          <input type="time" step={600} value={startTime} onChange={(ev) => setStartTime(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
+          <input type="time" step={3600} value={startTime} onChange={(ev) => setStartTime(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
         </label>
         <label className="flex flex-col gap-1 text-xs">
           종료
-          <input type="time" step={600} value={endTime} onChange={(ev) => setEndTime(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
+          <input type="time" step={3600} value={endTime} onChange={(ev) => setEndTime(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
         </label>
         <label className="flex flex-col gap-1 text-xs">
           방법
