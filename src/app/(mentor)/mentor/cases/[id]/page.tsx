@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { observationRequiredFor } from '@/lib/workflow/observation-required';
 import { notFound } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -89,6 +90,8 @@ export default async function Page({ params }: { params: { id: string } }) {
   const roundsEditable = canTransition('submit_round', item.status);
   // 관찰의견서 = 업로드 파일만 인정 (2026-09-30 웹 작성 폐지)
   const hasObservation = !!obsFile;
+  // (2026-10-15) 관찰의견서가 필요 없는 그룹(예: 1기 2라운드)은 제출란을 숨기고 [종결 요청]만 둔다
+  const obsRequired = await observationRequiredFor(item.support_type_id);
   // 버튼 조건 = 서버 게이트(requestClosure)와 같은 함수 (P28) — 보고서 등록 기준 회차·서명/필수서류 정책 포함
   const closureOk = readiness.ok;
   const closureHint = readiness.hint;
@@ -128,7 +131,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         planned={rounds.length}
         required={item.requiredRounds}
         maxRounds={maxRounds}
-        hasObservation={hasObservation}
+        hasObservation={hasObservation || !obsRequired}
         closureOk={closureOk}
         closureHint={closureHint}
         revisionNote={revisionNote}
@@ -163,6 +166,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         <MentorRequests
           caseId={item.id}
           canRequestClosure={closureOk}
+          observationRequired={obsRequired}
           closureHint={closureHint}
           canRequestExtension={roundsEditable}
           pendingExtension={requests.extensions.some((r) => r.status === 'pending')}
@@ -205,6 +209,7 @@ export default async function Page({ params }: { params: { id: string } }) {
           </CardContent>
         </Card>
 
+        {obsRequired && (
         <Card id="observation" className="scroll-mt-36">
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -218,6 +223,7 @@ export default async function Page({ params }: { params: { id: string } }) {
             <ObservationForm caseId={item.id} file={obsFile ? { id: obsFile.id, name: obsFile.name, createdAt: obsFile.createdAt, updatedAt: obsFile.updatedAt } : null} history={obsHistory} editable={observationEditable(item.status)} uploadGate={obsGate} />
           </CardContent>
         </Card>
+        )}
 
         {myEstimate && myEstimate.rounds.length > 0 && (
           <Card>

@@ -97,6 +97,14 @@ export function GroupsManager({
         </div>
         <Field label="정렬" name="sort_order" type="number" defaultValue={String(g?.sort_order ?? 0)} />
         <div className="flex flex-col gap-1">
+          <Label>관찰의견서 제출</Label>
+          <select name="observation_required" defaultValue={(g as { observation_required?: boolean | null } | undefined)?.observation_required === false ? 'no' : 'yes'} className="h-10 rounded-md border bg-background px-2 text-base sm:h-9 sm:text-sm">
+            <option value="yes">필요 (회차 보고서 + 관찰의견서)</option>
+            <option value="no">불필요 (회차 보고서만으로 종결)</option>
+          </select>
+          <p className="text-[11px] text-muted-foreground">불필요로 두면 멘토 화면에 관찰의견서 제출란이 없고 [종결 요청]만 보입니다.</p>
+        </div>
+        <div className="flex flex-col gap-1">
           <Label>그룹 원천징수 방식 (일괄)</Label>
           <select name="withholding_method" defaultValue={g?.withholding_method ?? ''} className="h-10 rounded-md border bg-background px-2 text-base sm:h-9 sm:text-sm">
             <option value="">행사 기본 따름</option>
@@ -169,7 +177,7 @@ export function GroupsManager({
                 <span className={`ml-2 rounded-full px-2 py-0.5 text-[11px] ${g.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-muted text-muted-foreground'}`}>{g.status === 'active' ? '진행 중' : '종료'}</span>
               </p>
               <p className="text-xs text-muted-foreground">
-                {g.round_label} {g.required_rounds}회 · 케이스 {g.caseCount}건{g.starts_on || g.ends_on ? ` · ${g.starts_on ?? '-'} ~ ${g.ends_on ?? '-'}` : ''} · 원천징수 {g.withholding_method ?? '행사 기본'} · 서명 정책 {g.round_report_policy ? '그룹 지정' : '행사 기본'}
+                {g.round_label} {g.required_rounds}회 · 케이스 {g.caseCount}건{g.starts_on || g.ends_on ? ` · ${g.starts_on ?? '-'} ~ ${g.ends_on ?? '-'}` : ''} · 원천징수 {g.withholding_method ?? '행사 기본'} · 서명 정책 {g.round_report_policy ? '그룹 지정' : '행사 기본'}{(g as { observation_required?: boolean | null }).observation_required === false ? ' · 관찰의견서 불필요' : ''}
                 {g.predecessor_support_type_id && ` · 승계 원천: ${groups.find((x) => x.id === g.predecessor_support_type_id)?.name ?? '-'}`}
               </p>
             </div>

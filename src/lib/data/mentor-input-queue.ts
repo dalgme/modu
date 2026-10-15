@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { observationRequiredMap } from '@/lib/workflow/observation-required';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAll, fetchAllIn } from '@/lib/supabase/paginate';
 import { kstDate } from '@/lib/settlement/rates';
@@ -83,6 +84,8 @@ export async function listMentorInputQueue(programId: string, supportTypeId: str
   }
   const obsWeb = new Set(obsRows.filter((o) => normalizeObservation(o.content).summary.trim().length > 0).map((o) => o.case_id));
   const obsFile = new Set(obsFiles.map((d) => d.case_id));
+  // (2026-10-15) 관찰의견서가 필요 없는 그룹은 '있음'으로 본다 — '관찰의견서 없음' 칩·종결 가능 판정에서 빠지지 않게
+  const obsRequired = await observationRequiredMap(groupIds);
 
   const rows: MentorInputQueueRow[] = cases.map((c) => {
     const g = groupById.get(c.support_type_id);
@@ -101,7 +104,7 @@ export async function listMentorInputQueue(programId: string, supportTypeId: str
       plannedWithoutReport: cl.filter((l) => !l.report_registered_at && kstDate(l.started_at) < today).length,
       reportedRounds: reported.length,
       requiredRounds: g?.required_rounds ?? 0,
-      hasObservation: obsWeb.has(c.id) || obsFile.has(c.id),
+      hasObservation: obsWeb.has(c.id) || obsFile.has(c.id) || obsRequired.get(c.support_type_id) === false,
       pendingSignatures: signOn ? reported.filter((l) => !l.mentee_signed_at).length : 0,
       closureReady: false,
     };

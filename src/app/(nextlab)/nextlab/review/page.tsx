@@ -131,7 +131,7 @@ function Row({ r, canReview }: { r: ReviewQueueItem; canReview: boolean }) {
       <td className="px-3 py-2">
         <div className="flex flex-wrap gap-1">
           <Chip ok={roundsOk} warn={!roundsOk} label={`회차 ${r.reportedRounds}/${r.requiredRounds}${r.extraRounds ? ` (+추가 ${r.extraRounds})` : ''}`} />
-          <Chip ok={r.hasObservation} warn={!r.hasObservation} label={r.hasObservation ? '관찰의견서 있음' : '관찰의견서 없음'} />
+          {r.observationRequired ? <Chip ok={r.hasObservation} warn={!r.hasObservation} label={r.hasObservation ? '관찰의견서 있음' : '관찰의견서 없음'} /> : <Chip ok warn={false} label="관찰의견서 불필요 그룹" />}
           {r.signatures && <Chip ok={r.signatures.signed >= r.signatures.total} warn={r.signatures.signed < r.signatures.total} label={`서명 ${r.signatures.signed}/${r.signatures.total}`} />}
           <Chip ok={r.surveyAnswered} label={r.surveyAnswered ? '만족도 응답' : '만족도 미응답'} />
           {r.status === 'ready' && <Chip ok warn={false} label="서류 완비 · 종결 요청 전" />}

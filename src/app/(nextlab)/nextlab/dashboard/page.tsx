@@ -1,5 +1,6 @@
 import Link from 'next/link';
 
+import { observationRequiredMap } from '@/lib/workflow/observation-required';
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { fmt } from '@/lib/programs/branding';
@@ -79,6 +80,9 @@ export default async function Page() {
     ? await adminDb.from('documents').select('case_id').eq('doc_key', 'observation_report').in('case_id', readyCandidates.map((c) => c.id))
     : { data: [] as { case_id: string }[] };
   const readyIds = new Set((readyObs ?? []).map((d) => d.case_id));
+  // 관찰의견서가 필요 없는 그룹(2026-10-15)은 회차 보고서만 갖추면 승인 가능
+  const readyObsRequired = await observationRequiredMap(readyCandidates.map((c) => c.support_type_id));
+  for (const c of readyCandidates) if (readyObsRequired.get(c.support_type_id) === false) readyIds.add(c.id);
   const unreadRequests = operatorRequests.filter((r) => !r.read_at).length;
   const b = ctx.branding;
 

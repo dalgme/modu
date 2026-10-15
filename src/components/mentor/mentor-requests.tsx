@@ -15,6 +15,7 @@ export function MentorRequests({
   caseId,
   canRequestClosure,
   closureHint,
+  observationRequired = true,
   canRequestExtension,
   pendingExtension,
   canRequestWithdrawal,
@@ -23,6 +24,8 @@ export function MentorRequests({
   caseId: string;
   canRequestClosure: boolean;
   closureHint: string;
+  /** false = 관찰의견서가 필요 없는 그룹(예: 1기 2라운드, 2026-10-15) — 버튼은 [종결 요청]만 */
+  observationRequired?: boolean;
   canRequestExtension: boolean;
   pendingExtension: boolean;
   canRequestWithdrawal: boolean;
@@ -55,12 +58,12 @@ export function MentorRequests({
           disabled={!canRequestClosure || pending}
           title={closureHint}
           onClick={() => {
-            if (!confirm('관찰의견서를 제출하고 종결을 요청할까요? 요청 후에는 회차를 수정할 수 없습니다.')) return;
+            if (!confirm(observationRequired ? '관찰의견서를 제출하고 종결을 요청할까요? 요청 후에는 회차를 수정할 수 없습니다.' : '종결을 요청할까요? 요청 후에는 회차를 수정할 수 없습니다.')) return;
             run(() => requestClosureAction(caseId), '종결을 요청했습니다. 운영사 검수 후 정산이 확정됩니다.');
           }}
           className="gap-1"
         >
-          <CheckCircle2 className="h-4 w-4" /> 관찰의견서 제출 · 종결 요청
+          <CheckCircle2 className="h-4 w-4" /> {observationRequired ? '관찰의견서 제출 · 종결 요청' : '종결 요청'}
         </Button>
         <Button variant="outline" disabled={!canRequestExtension || pendingExtension || pending} onClick={() => setPanel(panel === 'extension' ? null : 'extension')} className="gap-1">
           <PlusCircle className="h-4 w-4" /> {pendingExtension ? '추가 회차 요청 대기 중' : '추가 회차 요청'}

@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { observationRequiredMap } from '@/lib/workflow/observation-required';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import { resolveRoundReportPolicy } from '@/lib/documents/round-report';
@@ -28,6 +29,8 @@ export interface ReviewQueueItem {
   /** 승인된 추가 회차 (칩에 별도 표시, P32) */
   extraRounds: number;
   hasObservation: boolean;
+  /** 그룹이 관찰의견서를 요구하는가 (2026-10-15) */
+  observationRequired: boolean;
   /** 그룹 서명 정책이 켜진 경우만 {signed, total}, 아니면 null */
   signatures: { signed: number; total: number } | null;
   surveyAnswered: boolean;
@@ -86,6 +89,7 @@ export async function listReviewQueue(programId: string, groupId: string | null)
   // 그룹별 서명 정책 (양식에 멘토 서명 컬럼이 있고 멘티 확인 서명이 켜진 그룹만 n/m 표시)
   const groupIds = Array.from(new Set(list.map((c) => c.support_type_id)));
   const signOn = new Map<string, boolean>();
+  const obsRequired = await observationRequiredMap(groupIds);
   await Promise.all(groupIds.map(async (g) => signOn.set(g, (await resolveRoundReportPolicy(programId, g)).menteeConfirmSignature)));
 
   const items: ReviewQueueItem[] = [];
@@ -94,7 +98,7 @@ export async function listReviewQueue(programId: string, groupId: string | null)
     const rounds = logsByCase.get(c.id) ?? [];
     const reported = rounds.filter((r) => r.report_registered_at);
     // 진행 중 케이스는 승인 게이트(canApproveClosure)와 같은 조건 — 필수 회차 이상 · 전부 보고서 · 관찰의견서 파일 — 일 때만 'ready' 로 싣는다
-    if (c.status === 'in_progress' && !(rounds.length >= (st?.required_rounds ?? 0) && (st?.required_rounds ?? 0) > 0 && reported.length === rounds.length && obsFile.has(c.id))) continue;
+    if (c.status === 'in_progress' && !(rounds.length >= (st?.required_rounds ?? 0) && (st?.required_rounds ?? 0) > 0 && reported.length === rounds.length && (obsFile.has(c.id) || obsRequired.get(c.support_type_id) === false))) continue;
     const status = c.status === 'in_progress' ? 'ready' : (c.status as 'closure_requested' | 'revision_requested');
     const enteredAt = status === 'ready' ? c.updated_at : (entered.get(`${c.id}:${status}`) ?? c.updated_at);
     const est = await estimateSettlements(c.id);
@@ -114,6 +118,7 @@ export async function listReviewQueue(programId: string, groupId: string | null)
       requiredRounds: st?.required_rounds ?? 0, // 승인 게이트(canApproveClosure)와 같은 기준 — 추가 회차는 별도 (P32 리뷰 #9)
       extraRounds: extraOf.get(c.id) ?? 0,
       hasObservation: obsFile.has(c.id),
+      observationRequired: obsRequired.get(c.support_type_id) ?? true,
       signatures: signOn.get(c.support_type_id) ? { signed: reported.filter((r) => r.mentee_signed_at).length, total: reported.length } : null,
       surveyAnswered: surveyed.has(c.id),
       expectedNet: est.reduce((s, e) => s + e.result.net, 0),

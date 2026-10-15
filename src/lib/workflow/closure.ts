@@ -11,6 +11,7 @@ import { queueNotification } from '@/lib/workflow/notifications';
 import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
 import { getRoundAllowance } from '@/lib/data/rounds';
 import { observationEditable, observationUploadGate } from '@/lib/workflow/observation-rule';
+import { observationRequiredFor } from '@/lib/workflow/observation-required';
 import { missingRequiredMenteeDocs } from '@/lib/workflow/case-documents';
 import { getBranding } from '@/lib/programs/data';
 import { fmt } from '@/lib/programs/branding';
@@ -195,14 +196,16 @@ export async function checkClosureReadiness(caseId: string): Promise<{ ok: boole
   if (unreported.length > 0) return { ok: false, hint: `보고서가 없는 회차(${unreported.join('·')}회차)가 있습니다. 각 회차의 [보고서 업로드]를 완료하세요.`, ...base };
   const content = obs ? normalizeObservation(obs.content) : EMPTY;
   const webOk = !OBSERVATION_WEB_DISABLED && content.summary.trim().length > 0;
-  if (!(webOk || !!obsFile)) return { ok: false, hint: '관찰의견서 파일을 올리면 종결을 요청할 수 있습니다.', ...base };
+  // (2026-10-15) 관찰의견서가 필요 없는 그룹(예: 1기 2라운드)은 회차 보고서만으로 종결 요청
+  const obsRequired = await observationRequiredFor(c.support_type_id);
+  if (obsRequired && !(webOk || !!obsFile)) return { ok: false, hint: '관찰의견서 파일을 올리면 종결을 요청할 수 있습니다.', ...base };
   const policy = (program?.closure_policy ?? {}) as { require_mentee_signature?: boolean; require_group_docs?: boolean };
   if (policy.require_mentee_signature && rounds.some((r) => !r.mentee_signed_at)) return { ok: false, hint: '이 행사는 모든 회차에 멘티 확인 서명이 있어야 종결을 요청할 수 있습니다. 서명이 없는 회차를 확인하세요.', ...base };
   if (policy.require_group_docs) {
     const missing = await missingRequiredMenteeDocs(caseId);
     if (missing.length > 0) return { ok: false, hint: `멘티 필수서류가 누락되어 종결을 요청할 수 없습니다: ${missing.join(', ')}`, ...base };
   }
-  return { ok: true, hint: '관찰의견서를 제출하고 종결을 요청합니다. 운영사 검수 승인 시 정산이 확정됩니다.', ...base };
+  return { ok: true, hint: obsRequired ? '관찰의견서를 제출하고 종결을 요청합니다. 운영사 검수 승인 시 정산이 확정됩니다.' : '종결을 요청합니다. 운영사 검수 승인 시 정산이 확정됩니다.', ...base };
 }
 
 /**
@@ -250,7 +253,8 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
 
   const content = obs ? normalizeObservation(obs.content) : EMPTY;
   const hasWeb = !OBSERVATION_WEB_DISABLED && content.summary.trim().length > 0;
-  if (!hasWeb && !obsFile) return { ok: false, error: '관찰의견서 파일을 올린 뒤 종결을 요청하세요.' };
+  const obsRequired = await observationRequiredFor(c.support_type_id);
+  if (obsRequired && !hasWeb && !obsFile) return { ok: false, error: '관찰의견서 파일을 올린 뒤 종결을 요청하세요.' };
   // 우선순위 (P31): 업로드된 완성본이 웹 작성본(updated_at)보다 나중에 올라왔으면 그 파일을 유지하고 PDF 를 다시 만들지 않는다.
   // 반대(웹 작성본이 더 최신)면 기존처럼 웹 작성본으로 PDF 를 생성해 단일본을 교체한다.
   const fileAt = obsFile ? Math.max(new Date(obsFile.created_at).getTime(), new Date(obsFile.updated_at).getTime()) : 0;
@@ -315,7 +319,7 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
     from_status: c.status,
     to_status: 'closure_requested',
     changed_by: mentorId,
-    note: await actingNote('관찰의견서 제출 · 종결 요청', mentorId), // 대행 중이면 표기 (P31)
+    note: await actingNote(obsRequired ? '관찰의견서 제출 · 종결 요청' : '종결 요청', mentorId), // 대행 중이면 표기 (P31)
   });
   await notifyProgramStaff(c.program_id, caseId, 'closure_requested');
   // 멘티 만족도 안내 (P31) — 활성 양식이 있고 아직 응답이 없을 때만, 중립 문구('열렸습니다')로. 문구 자체는 템플릿(survey_opened)+payload.message.
@@ -328,7 +332,7 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
     action: 'case.closure_requested',
     entityType: 'cases',
     entityId: caseId,
-    metadata: { rounds: rounds.length, required, observation: useUploadedFile ? 'file' : 'web' },
+    metadata: { rounds: rounds.length, required, observation: !obsRequired && !obsFile && !hasWeb ? 'not_required' : useUploadedFile ? 'file' : 'web' },
   });
   return { ok: true, caseId };
 }
