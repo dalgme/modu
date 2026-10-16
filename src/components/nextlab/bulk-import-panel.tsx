@@ -447,6 +447,19 @@ export function BulkImportPanel({ groups, fixedKind, defaultGroupId }: { groups:
               ))}
             </ul>
           )}
+          {result.skipped.length > 0 && (
+            <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+              <Info className="mt-0.5 h-4 w-4 shrink-0" />
+              <div>
+                <b>건너뛴 행만 다시 등록하는 방법</b>
+                <ol className="mt-1 list-decimal pl-5 text-xs leading-relaxed">
+                  <li>같은 엑셀 파일을 그대로 다시 선택하고 [검증하기]를 누르세요. 이미 등록된 행은 오류로 표시되어 자동으로 빠집니다.</li>
+                  <li>검증 결과 표 바로 위 노란 상자에서 <b>&ldquo;동일인 의심 행도 등록&rdquo;</b>(또는 &ldquo;소속 해제 회원 재추가&rdquo;)을 체크하세요. 이 체크 상자는 검증 화면에만 나타납니다.</li>
+                  <li>[유효 행 등록]을 누르면 건너뛴 행만 등록됩니다.</li>
+                </ol>
+              </div>
+            </div>
+          )}
         </section>
       )}
     </div>
