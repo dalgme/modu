@@ -31,6 +31,8 @@ import { listCaseSettlements, listStatementFiles } from '@/lib/data/settlements'
 import { estimateSettlements } from '@/lib/settlement/settle';
 import { SettlementCard } from '@/components/settlement/settlement-card';
 import { SettlementSummary } from '@/components/settlement/settlement-summary';
+import { isGroupMatchingPublished } from '@/lib/matching/visibility';
+import { MATCHING_HIDDEN_MENTOR_NOTICE } from '@/lib/matching/visibility-shared';
 
 export const maxDuration = 60;
 
@@ -39,6 +41,20 @@ export default async function Page({ params }: { params: { id: string } }) {
   const ctx = await requireContext(profile);
   const item = await getCaseById(params.id);
   if (!item || item.program_id !== ctx.programId || item.mentorId !== profile.id) notFound();
+  // 매칭정보 감추기 라운드 (P54) — 공개 전에는 멘티 정보를 보여 주지 않는다
+  if (!(await isGroupMatchingPublished(item.support_type_id))) {
+    return (
+      <main className="flex flex-col gap-4">
+        <Link href="/mentor/dashboard" className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:underline">
+          <ChevronLeft className="h-4 w-4" /> 대시보드로
+        </Link>
+        <div className="rounded-xl border-2 border-amber-300 bg-amber-50 p-6 text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100">
+          <p className="text-lg font-bold">매칭 공개 전입니다</p>
+          <p className="mt-2 text-sm leading-relaxed">{MATCHING_HIDDEN_MENTOR_NOTICE}</p>
+        </div>
+      </main>
+    );
+  }
 
   const today = kstDate(new Date());
   const [history, predecessors, rounds, allowance, obsFile, requests, docs, online, offline, settlements, statements, estimates, slots, readiness, lastReview, siblings, obsHistory] = await Promise.all([

@@ -7,6 +7,7 @@ import type { Tables } from '@/types/database';
 import type { UserRole } from '@/lib/auth/roles';
 import { brandingFromProgram, PLATFORM_BRANDING, type Branding } from '@/lib/programs/branding';
 import { fetchAll } from '@/lib/supabase/paginate';
+import { isMatchingPublished } from '@/lib/matching/visibility-shared';
 
 export type Program = Tables<'programs'>;
 export type SupportType = Tables<'support_types'>;
@@ -153,9 +154,11 @@ export async function listMyGroups(
     admin.from('mentor_assignments').select('case_id, cases!inner(support_type_id)').eq('mentor_id', user.id).eq('is_active', true),
   ]);
   const rosterIds = new Set((roster ?? []).map((r) => r.support_type_id));
+  // 매칭정보 감추기 라운드(P54)의 배정은 공개 전까지 세지 않는다 — 그룹 목록·담당 건수로 매칭이 드러나지 않게
+  const hiddenIds = new Set(groups.filter((g) => !isMatchingPublished(g)).map((g) => g.id));
   const assignedGroupIds = (assigns ?? [])
     .map((a) => (a.cases as unknown as { support_type_id: string } | null)?.support_type_id)
-    .filter((x): x is string => !!x && groupIds.includes(x));
+    .filter((x): x is string => !!x && groupIds.includes(x) && !hiddenIds.has(x));
   const counts = countBy(assignedGroupIds);
   return groups
     .filter((g) => rosterIds.has(g.id) || counts.has(g.id))

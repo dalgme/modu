@@ -2,6 +2,7 @@ import { fetchAllIn } from '@/lib/supabase/paginate';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { menteeLoginKey } from '@/lib/auth/identifier';
+import { hiddenMatchingGroupIds } from '@/lib/matching/visibility';
 import type { Tables } from '@/types/database';
 import type { CaseStatus } from '@/types/case-status';
 
@@ -32,6 +33,8 @@ export interface CaseListItem extends CaseRow {
   menteeLoginId: string | null;
   /** 담당 멘토의 현재 확정 배정 멘티 수 — 조회 범위(행사/그룹) 기준 (P25-10 "이름(n)") */
   mentorActiveCount: number;
+  /** 멘티 화면에서 이 라운드의 매칭정보가 감추기 상태라 담당 멘토를 가렸다 (P54) */
+  matchingHidden?: boolean;
 }
 
 function deriveMenteeLoginId(acc: { name: string | null; phone: string | null } | undefined): string | null {
@@ -57,6 +60,12 @@ export interface CaseFilters {
    * 호출부가 반드시 programId(+접근 근거)를 확인한다 (CLAUDE.md §6-2).
    */
   admin?: boolean;
+  /**
+   * 멘토·멘티 본인 화면용 매칭 공개 규칙 (P54). 감추기 그룹에서
+   * - 'mentor': 그 그룹 케이스를 목록에서 뺀다
+   * - 'mentee': 담당 멘토 정보를 가리고, '멘토 배정' 상태를 '멘티 등록'으로 보여 준다
+   */
+  matchingView?: 'mentor' | 'mentee';
 }
 
 /**
@@ -85,8 +94,12 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
   if (filters.to) query = query.lte('created_at', filters.to);
   if (caseIdsByMentor) query = query.in('id', caseIdsByMentor);
 
-  const { data: cases, error } = await query;
-  if (error || !cases || cases.length === 0) return [];
+  const { data: fetched, error } = await query;
+  if (error || !fetched || fetched.length === 0) return [];
+  // 매칭 공개 규칙 (P54) — 감추기 그룹 케이스는 멘토 목록에서 제외
+  const hiddenGroups = filters.matchingView ? await hiddenGroupsFor(fetched) : new Set<string>();
+  const cases = filters.matchingView === 'mentor' ? fetched.filter((c) => !hiddenGroups.has(c.support_type_id)) : fetched;
+  if (cases.length === 0) return [];
 
   const caseIds = cases.map((c) => c.id);
   const typeIds = Array.from(new Set(cases.map((c) => c.support_type_id)));
@@ -140,7 +153,9 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
 
   return cases.map((c) => {
     const t = typeMap.get(c.support_type_id);
-    const a = assignByCase.get(c.id);
+    // 멘티 화면 + 감추기 그룹 → 담당 멘토를 가린다 (P54)
+    const masked = filters.matchingView === 'mentee' && hiddenGroups.has(c.support_type_id);
+    const a = masked ? undefined : assignByCase.get(c.id);
     return {
       ...c,
       supportTypeName: t?.name ?? null,
@@ -155,16 +170,26 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
       mentorEnded: !!a?.ended,
       menteeLoginId: deriveMenteeLoginId(c.mentee_id ? menteeAccById.get(c.mentee_id) : undefined),
       mentorActiveCount: a ? (mentorActive.get(a.mentor_id) ?? 0) : 0,
+      ...(masked ? { matchingHidden: true, status: c.status === 'mentor_assigned' ? ('registered' as CaseStatus) : c.status } : {}),
     };
   });
 }
 
-/** 멘토: 본인에게 배정된 케이스 (컨텍스트 행사/그룹 범위) */
+/** 케이스들이 속한 행사들의 감추기 그룹 (보통 한 행사) */
+async function hiddenGroupsFor(cases: { program_id: string }[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (const pid of Array.from(new Set(cases.map((c) => c.program_id)))) {
+    for (const g of Array.from(await hiddenMatchingGroupIds(pid))) out.add(g);
+  }
+  return out;
+}
+
+/** 멘토: 본인에게 배정된 케이스 (컨텍스트 행사/그룹 범위). 매칭정보 감추기 그룹은 빠진다 (P54) */
 export async function listMentorCases(
   mentorId: string,
   scope: { programId?: string; supportTypeId?: string; includeEnded?: boolean } = {},
 ): Promise<CaseListItem[]> {
-  return listCases({ mentorId, ...scope });
+  return listCases({ mentorId, ...scope, matchingView: 'mentor' });
 }
 
 /**
@@ -218,7 +243,7 @@ export async function listMenteeCases(
   menteeId: string,
   scope: { programId?: string; supportTypeId?: string } = {},
 ): Promise<CaseListItem[]> {
-  return listCases({ menteeId, ...scope });
+  return listCases({ menteeId, ...scope, matchingView: 'mentee' });
 }
 
 /** 단일 케이스 상세. 접근 불가/없으면 null. admin 이면 RLS 밖(service_role) — 호출부가 접근 근거를 확인한다. */

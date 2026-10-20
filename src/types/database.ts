@@ -3294,6 +3294,8 @@ export type Database = {
         Row: {
           mentoring_budget: number | null;
           observation_required?: boolean;
+          matching_published?: boolean;
+          matching_published_at?: string | null;
           max_mentees_per_mentor: number;
           code: string;
           created_at: string;
@@ -3315,6 +3317,8 @@ export type Database = {
         Insert: {
           mentoring_budget?: number | null;
           observation_required?: boolean;
+          matching_published?: boolean;
+          matching_published_at?: string | null;
           max_mentees_per_mentor?: number;
           code: string;
           created_at?: string;
@@ -3336,6 +3340,8 @@ export type Database = {
         Update: {
           mentoring_budget?: number | null;
           observation_required?: boolean;
+          matching_published?: boolean;
+          matching_published_at?: string | null;
           max_mentees_per_mentor?: number;
           code?: string;
           created_at?: string;

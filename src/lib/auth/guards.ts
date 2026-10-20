@@ -139,7 +139,10 @@ export async function mentorOfCaseOrNull(caseId: string): Promise<Profile | null
     .eq('mentor_id', profile.id)
     .eq('is_active', true)
     .maybeSingle();
-  return data ? profile : null;
+  if (!data) return null;
+  // 매칭정보 감추기 라운드의 케이스는 공개 전까지 멘토 액션을 막는다 (P54)
+  const { isCaseMatchingHidden } = await import('@/lib/matching/visibility');
+  return (await isCaseMatchingHidden(caseId)) ? null : profile;
 }
 
 /** 담당 배정이 없는 케이스에 멘토 액션을 시도했을 때의 공통 문구 */

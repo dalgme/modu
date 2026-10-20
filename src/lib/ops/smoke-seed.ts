@@ -108,12 +108,12 @@ async function ensureGroup(admin: Admin, programId: string): Promise<string> {
   const { data: existing } = await admin.from('support_types').select('id').eq('program_id', programId).eq('code', SMOKE_GROUP_CODE).maybeSingle();
   if (existing) {
     // 종료돼 있으면 되살린다(회차 등록 게이트 ends_on 도 비움)
-    await admin.from('support_types').update({ status: 'active', ends_on: null, required_rounds: 4 }).eq('id', existing.id);
+    await admin.from('support_types').update({ status: 'active', ends_on: null, required_rounds: 4, matching_published: true }).eq('id', existing.id);
     return existing.id;
   }
   const { data: created, error } = await admin
     .from('support_types')
-    .insert({ program_id: programId, code: SMOKE_GROUP_CODE, name: '점검 그룹', description: '자동 화면 점검용 사업그룹', required_rounds: 4, sort_order: 1, status: 'active' })
+    .insert({ program_id: programId, code: SMOKE_GROUP_CODE, name: '점검 그룹', description: '자동 화면 점검용 사업그룹', required_rounds: 4, sort_order: 1, status: 'active', matching_published: true })
     .select('id')
     .single();
   if (error || !created) throw new Error(`사업그룹 생성 실패: ${error?.message ?? 'unknown'}`);

@@ -2,6 +2,7 @@ import 'server-only';
 
 import { getSessionProfile, realRoleOrNull, roleOrNull } from '@/lib/auth/guards';
 import { isBusinessDocKey } from '@/lib/files/business-plan-shared';
+import { isGroupMatchingPublished } from '@/lib/matching/visibility';
 import { readFilePolicy } from '@/lib/files/policy';
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -46,7 +47,7 @@ export async function resolveDocAccess(docId: string): Promise<DocAccess> {
     .maybeSingle();
   if (docErr) console.error('resolveDocAccess document lookup failed:', docErr.message);
   if (!d || !d.case_id) return { ok: false, status: 404 };
-  const { data: c, error: caseErr } = await admin.from('cases').select('program_id, mentee_id').eq('id', d.case_id).maybeSingle();
+  const { data: c, error: caseErr } = await admin.from('cases').select('program_id, mentee_id, support_type_id').eq('id', d.case_id).maybeSingle();
   if (caseErr) console.error('resolveDocAccess case lookup failed:', caseErr.message);
   if (!c) return { ok: false, status: 404 };
   const doc: DocFile = {
@@ -75,6 +76,8 @@ export async function resolveDocAccess(docId: string): Promise<DocAccess> {
 
   if (me.role === 'mentor') {
     if (d.doc_key === 'case_doc' && !d.mentor_visible) return { ok: false, status: 403 };
+    // 매칭정보 감추기 라운드 (P54) — 공개 전에는 멘티 서류(사업계획서 등)를 열 수 없다
+    if (!(await isGroupMatchingPublished(c.support_type_id))) return { ok: false, status: 403 };
     const [{ count: assigned }, { count: ran }] = await Promise.all([
       admin.from('mentor_assignments').select('id', { count: 'exact', head: true }).eq('case_id', d.case_id).eq('mentor_id', me.id),
       admin.from('mentoring_logs').select('id', { count: 'exact', head: true }).eq('case_id', d.case_id).eq('mentor_id', me.id),

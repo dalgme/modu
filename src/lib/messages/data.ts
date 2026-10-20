@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { hiddenMatchingGroupIds } from '@/lib/matching/visibility';
 import type { Tables } from '@/types/database';
 
 export type DirectMessage = Tables<'direct_messages'>;
@@ -57,11 +58,11 @@ export async function markThreadRead(caseId: string, userId: string): Promise<vo
 /** 내가 당사자인 케이스 스레드 목록 (멘토 = 배정 케이스들, 멘티 = 본인 케이스들) */
 export async function listMyThreads(userId: string, role: 'mentor' | 'mentee', programId: string): Promise<MessageThreadInfo[]> {
   const admin = createAdminClient();
-  let caseRows: { id: string; business_name: string; owner_name: string; mentee_id: string | null }[] = [];
+  let caseRows: { id: string; business_name: string; owner_name: string; mentee_id: string | null; support_type_id: string }[] = [];
   if (role === 'mentee') {
     const { data } = await admin
       .from('cases')
-      .select('id, business_name, owner_name, mentee_id')
+      .select('id, business_name, owner_name, mentee_id, support_type_id')
       .eq('program_id', programId)
       .eq('mentee_id', userId)
       .order('created_at', { ascending: false });
@@ -69,13 +70,16 @@ export async function listMyThreads(userId: string, role: 'mentor' | 'mentee', p
   } else {
     const { data: assigns } = await admin
       .from('mentor_assignments')
-      .select('case_id, cases!inner(id, business_name, owner_name, mentee_id, program_id)')
+      .select('case_id, cases!inner(id, business_name, owner_name, mentee_id, program_id, support_type_id)')
       .eq('mentor_id', userId)
       .eq('is_active', true);
     caseRows = (assigns ?? [])
-      .map((a) => a.cases as unknown as { id: string; business_name: string; owner_name: string; mentee_id: string | null; program_id: string })
+      .map((a) => a.cases as unknown as { id: string; business_name: string; owner_name: string; mentee_id: string | null; program_id: string; support_type_id: string })
       .filter((c) => c && c.program_id === programId);
   }
+  // 매칭정보 감추기 라운드는 공개 전까지 멘토·멘티 메시지 스레드를 열지 않는다 (P54)
+  const hidden = await hiddenMatchingGroupIds(programId);
+  caseRows = caseRows.filter((c) => !hidden.has(c.support_type_id));
   if (caseRows.length === 0) return [];
   const caseIds = caseRows.map((c) => c.id);
   const [{ data: assigns }, { data: msgs }] = await Promise.all([

@@ -3,6 +3,7 @@ import { Briefcase, Building2, Download, GraduationCap, Link2, Network, UserPlus
 
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
+import { isMatchingPublished } from '@/lib/matching/visibility-shared';
 import { isRosterActive, listProgramMembers, loadDeactivationInfo, loadForceEndBlocks } from '@/lib/data/members';
 import { listRosterColumns } from '@/lib/data/roster-columns';
 import { listCases } from '@/lib/data/cases';
@@ -238,11 +239,21 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     const { loadMatchingLists } = await import('@/lib/data/matching-lists');
     const [lists, groups] = await Promise.all([loadMatchingLists(ctx.programId, ctx.supportTypeId ?? null, { excludeInactiveMentees: true }), listSupportTypes(ctx.programId)]);
     const groupList = groups.map((g) => ({ id: g.id, name: g.name }));
+    // 매칭정보 감추기 라운드 안내 (P54) — 현재 범위(그룹이면 그 그룹, 전체면 감추기 그룹 전부)
+    const hiddenGroups = groups.filter((g) => !isMatchingPublished(g) && (!ctx.supportTypeId || g.id === ctx.supportTypeId));
     body = (
       <>
+        {hiddenGroups.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border-2 border-amber-400 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-100">
+            <span>
+              🔒 <b>{hiddenGroups.map((g) => g.name).join(', ')}</b> — 매칭정보 <b>감추기 중</b>입니다. 여기서 배정해도 멘토·멘티 화면에는 공개 전까지 보이지 않습니다.
+            </span>
+            <Link href="/nextlab/settings?tab=publish" className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-600">매칭 공개 설정 →</Link>
+          </div>
+        )}
         <p className="rounded-lg border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
           {tab === 'mentee-match'
-            ? '멘티를 등록하면 희망 멘토가 비어 있을 때 자동 확정되고, 아니면 희망분야 순으로 후보 3명이 추천됩니다. 이 범위의 멘티가 전원 배정되면 매칭된 멘토에게 로그인 안내 문자가 자동으로 1회 발송됩니다(발송 여부는 멘토 명단의 "안내 발송" 표시).'
+            ? '멘티를 등록하면 희망 멘토가 비어 있을 때 자동 확정되고, 아니면 희망분야 순으로 후보 3명이 추천됩니다. 이 범위의 멘티가 전원 배정되면 매칭된 멘토에게 로그인 안내 문자가 자동으로 1회 발송됩니다(발송 여부는 멘토 명단의 "안내 발송" 표시). 매칭정보 감추기 라운드는 공개할 때 발송 여부를 고릅니다.'
             : '멘토별 담당 멘티·매칭일·멘토 확인(로그인 후 대시보드 열람)·진행현황·지급서류를 한눈에 봅니다. 미배정 멘토는 배정 대기 상태입니다.'}
         </p>
         {tab === 'mentor-match' ? <MentorMatchList rows={lists.mentorRows} groups={groupList} currentGroupId={ctx.supportTypeId ?? null} /> : <MenteeMatchList rows={lists.menteeRows} mentors={lists.mentorRows} toolbarExtra={<RankUploadButton />} />}

@@ -9,6 +9,7 @@ import { inviteMentee } from '@/lib/auth/admin-accounts';
 import { toStoredPhone } from '@/lib/auth/identifier';
 import { assertTransition, assignTarget, TRANSITIONS } from '@/lib/workflow/transitions';
 import { assertMentorCapacity, assertMentorEligible } from '@/lib/matching/capacity';
+import { isGroupMatchingPublished } from '@/lib/matching/visibility';
 import type { CaseFormInput } from '@/lib/validations/case';
 import type { TablesInsert } from '@/types/database';
 
@@ -262,9 +263,12 @@ export async function assignMentor(caseId: string, mentorId: string, actorId: st
     changed_by: actorId,
     note: c.status === 'reassignment_pending' ? '멘토 재배정(잔여 회차 승계)' : '멘토 배정',
   });
-  await queueNotification(admin, { caseId, programId: c.program_id, recipientId: mentorId, triggerEvent: 'mentor_assigned' });
-  if (c.mentee_id) {
-    await queueNotification(admin, { caseId, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'mentor_assigned' });
+  // 매칭정보 감추기 라운드(P54)는 공개 전까지 배정 알림을 보내지 않는다 — 공개 시 운영사가 안내 문자를 고른다
+  if (await isGroupMatchingPublished(c.support_type_id)) {
+    await queueNotification(admin, { caseId, programId: c.program_id, recipientId: mentorId, triggerEvent: 'mentor_assigned' });
+    if (c.mentee_id) {
+      await queueNotification(admin, { caseId, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'mentor_assigned' });
+    }
   }
   const { error: auditError } = await admin.from('audit_logs').insert({
     actor_id: actorId,
@@ -348,9 +352,11 @@ export async function reassignMentor(
     changed_by: actorId,
     note: reason ? `멘토 교체: ${reason}` : '멘토 교체',
   });
-  await queueNotification(admin, { caseId, programId: c.program_id, recipientId: newMentorId, triggerEvent: 'mentor_assigned' });
-  if (c.mentee_id) {
-    await queueNotification(admin, { caseId, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'mentor_assigned' });
+  if (await isGroupMatchingPublished(c.support_type_id)) {
+    await queueNotification(admin, { caseId, programId: c.program_id, recipientId: newMentorId, triggerEvent: 'mentor_assigned' });
+    if (c.mentee_id) {
+      await queueNotification(admin, { caseId, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'mentor_assigned' });
+    }
   }
   await admin.from('audit_logs').insert({
     actor_id: actorId,

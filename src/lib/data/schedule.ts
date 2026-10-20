@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { hiddenMatchingGroupIds } from '@/lib/matching/visibility';
 
 /** 스케줄 달력 이벤트 — 회차(계획/실행) 1건 (P20) */
 export interface ScheduleEvent {
@@ -61,12 +62,14 @@ export async function listMentorSchedule(mentorId: string, programId: string): P
   const admin = createAdminClient();
   const { data: assigns } = await admin
     .from('mentor_assignments')
-    .select('case_id, cases!inner(id, owner_name, business_name, program_id)')
+    .select('case_id, cases!inner(id, owner_name, business_name, program_id, support_type_id)')
     .eq('mentor_id', mentorId)
     .or('is_active.eq.true,end_kind.in.(case_closed,case_withdrawn)');
+  // 매칭정보 감추기 라운드는 공개 전까지 달력에 넣지 않는다 (P54)
+  const hidden = await hiddenMatchingGroupIds(programId);
   const cases = (assigns ?? [])
-    .map((a) => a.cases as unknown as (CaseLite & { program_id: string }))
-    .filter((c) => c && c.program_id === programId);
+    .map((a) => a.cases as unknown as (CaseLite & { program_id: string; support_type_id: string }))
+    .filter((c) => c && c.program_id === programId && !hidden.has(c.support_type_id));
   return eventsForCases(cases);
 }
 
@@ -75,8 +78,9 @@ export async function listMenteeSchedule(menteeId: string, programId: string): P
   const admin = createAdminClient();
   const { data: cases } = await admin
     .from('cases')
-    .select('id, owner_name, business_name')
+    .select('id, owner_name, business_name, support_type_id')
     .eq('program_id', programId)
     .eq('mentee_id', menteeId);
-  return eventsForCases(cases ?? []);
+  const hidden = await hiddenMatchingGroupIds(programId);
+  return eventsForCases((cases ?? []).filter((c) => !hidden.has(c.support_type_id)));
 }

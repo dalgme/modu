@@ -6,6 +6,7 @@ import { roleOrNull, mentorOfCaseOrNull } from '@/lib/auth/guards';
 import { getImpersonation } from '@/lib/auth/impersonation';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logAudit } from '@/lib/workflow/audit';
+import { isCaseMatchingHidden } from '@/lib/matching/visibility';
 
 export type MessageActionResult = { ok: true } | { ok: false; error: string };
 
@@ -40,6 +41,8 @@ export async function sendCaseMessageAction(caseId: string, body: string): Promi
       .eq('is_active', true)
       .maybeSingle();
     recipientId = assign?.mentor_id ?? null;
+    // 매칭정보 감추기 라운드는 공개 전까지 담당 멘토가 없는 것으로 본다 (P54)
+    if (recipientId && (await isCaseMatchingHidden(caseId))) recipientId = null;
     if (!recipientId) return { ok: false, error: '아직 담당 멘토가 배정되지 않았습니다.' };
   } else {
     const mentor = await mentorOfCaseOrNull(caseId);

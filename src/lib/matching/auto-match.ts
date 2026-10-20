@@ -9,6 +9,7 @@ import { DEFAULT_MAX_MENTEES_PER_MENTOR } from '@/lib/matching/capacity';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import { loadNotificationSettings } from '@/lib/notifications/settings';
 import { autoSendEnabled, buildMatchedMentorLoginGuideText } from '@/lib/notifications/templates';
+import { hiddenMatchingGroupIds, isGroupMatchingPublished } from '@/lib/matching/visibility';
 
 /**
  * P24 자동 매칭 (2026-09-22) · P25 그룹(라운드) 단위 개정 (2026-09-23).
@@ -361,17 +362,29 @@ export async function afterAssignmentConfirmed(programId: string, mentorId: stri
 export async function notifyMentorsIfAllMatched(programId: string, supportTypeId?: string | null): Promise<{ sent: number }> {
   // 행사별 자동발송 on/off (문자 발송 › 자동발송 탭). 꺼져 있으면 발송·기록 없음.
   if (!autoSendEnabled(await loadNotificationSettings(programId), 'auto_login_guide_on_matched')) return { sent: 0 };
+  // 매칭정보 감추기 라운드(P54)는 공개 전까지 보내지 않는다 — 공개할 때 운영사가 발송 여부를 고른다
+  if (supportTypeId && !(await isGroupMatchingPublished(supportTypeId))) return { sent: 0 };
   const admin = createAdminClient();
   let openQ = admin.from('cases').select('id').eq('program_id', programId).in('status', [...OPEN_STATUSES]).limit(1);
   if (supportTypeId) openQ = openQ.eq('support_type_id', supportTypeId);
   const { data: open } = await openQ;
   if ((open ?? []).length > 0) return { sent: 0 };
 
-  let casesQ = admin.from('cases').select('id').eq('program_id', programId).neq('status', 'withdrawn');
+  let casesQ = admin.from('cases').select('id, support_type_id').eq('program_id', programId).neq('status', 'withdrawn');
   if (supportTypeId) casesQ = casesQ.eq('support_type_id', supportTypeId);
   const { data: cases } = await casesQ;
-  const caseIds = (cases ?? []).map((c) => c.id);
+  const hidden = supportTypeId ? new Set<string>() : await hiddenMatchingGroupIds(programId);
+  const caseIds = (cases ?? []).filter((c) => !hidden.has(c.support_type_id)).map((c) => c.id);
+  return sendMatchedMentorNotices(programId, caseIds);
+}
+
+/**
+ * 케이스들의 활성 배정 중 안내 문자를 아직 받지 않은 멘토에게 로그인 안내 문자 1회 (notice_sent_at 기록).
+ * 전원 배정 자동 안내(notifyMentorsIfAllMatched)와 매칭정보 공개(P54)가 같이 쓴다. 문자 실패는 throw 하지 않는다(§6-5).
+ */
+export async function sendMatchedMentorNotices(programId: string, caseIds: string[]): Promise<{ sent: number }> {
   if (caseIds.length === 0) return { sent: 0 };
+  const admin = createAdminClient();
   const assigns = await fetchAllIn<{ id: string; mentor_id: string; notice_sent_at: string | null }>(caseIds, (chunk, from, to) => admin.from('mentor_assignments').select('id, mentor_id, notice_sent_at').eq('is_active', true).in('case_id', chunk).range(from, to));
   const pending = assigns.filter((a) => !a.notice_sent_at);
   if (pending.length === 0) return { sent: 0 };
@@ -410,12 +423,14 @@ export async function markAssignmentsConfirmed(mentorId: string, programId: stri
   const admin = createAdminClient();
   const { data: pending } = await admin
     .from('mentor_assignments')
-    .select('id, cases!inner(program_id)')
+    .select('id, cases!inner(program_id, support_type_id)')
     .eq('mentor_id', mentorId)
     .eq('is_active', true)
     .is('confirmed_at', null)
     .eq('cases.program_id', programId);
-  const ids = (pending ?? []).map((a) => a.id);
+  // 매칭정보 감추기 라운드(P54)의 배정은 멘토가 볼 수 없으므로 '확인'으로 표시하지 않는다
+  const hidden = await hiddenMatchingGroupIds(programId);
+  const ids = (pending ?? []).filter((a) => !hidden.has((a.cases as unknown as { support_type_id: string } | null)?.support_type_id ?? '')).map((a) => a.id);
   if (ids.length === 0) return;
   const { error } = await admin.from('mentor_assignments').update({ confirmed_at: new Date().toISOString() }).in('id', ids);
   if (error) console.error('assignment confirm mark failed:', error.message);
