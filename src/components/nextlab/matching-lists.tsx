@@ -108,6 +108,7 @@ function MentorPickList({ mentors, groupId, excludeMentorId, pick, onPick, query
       .map((m) => ({
         m,
         inGroup: m.mentees.filter((c) => c.groupId === groupId && !c.withdrawn).length,
+        desired: typeof m.desiredByGroup?.[groupId] === 'number' ? m.desiredByGroup[groupId]! : null,
         eligible: m.designatedGroupIds.length === 0 || m.designatedGroupIds.includes(groupId),
       }))
       .filter((x) => !q || x.m.mentorName.includes(q) || (x.m.organization ?? '').includes(q) || x.m.expertise.some((e) => e.includes(q)))
@@ -125,13 +126,14 @@ function MentorPickList({ mentors, groupId, excludeMentorId, pick, onPick, query
             <tr className="text-left text-muted-foreground">
               <th className="w-8 px-2 py-1.5" />
               <th className="px-2 py-1.5">멘토명</th>
+              <th className="px-2 py-1.5 text-right whitespace-nowrap" title="라운드별 엑셀로 올린 멘토의 희망 멘티 수">희망멘티 수</th>
               <th className="px-2 py-1.5 text-right whitespace-nowrap">이 그룹 매칭</th>
               <th className="hidden px-2 py-1.5 md:table-cell">분야</th>
             </tr>
           </thead>
           <tbody>
-            {candidates.length === 0 && <tr><td colSpan={4} className="px-2 py-4 text-center text-muted-foreground">해당하는 멘토가 없습니다.</td></tr>}
-            {candidates.map(({ m, inGroup, eligible }) => (
+            {candidates.length === 0 && <tr><td colSpan={5} className="px-2 py-4 text-center text-muted-foreground">해당하는 멘토가 없습니다.</td></tr>}
+            {candidates.map(({ m, inGroup, desired, eligible }) => (
               <tr key={m.mentorId} className={cn('cursor-pointer border-t hover:bg-accent/40', pick === m.mentorId && 'bg-brand-pink/10', !eligible && 'opacity-50')} onClick={() => eligible && onPick(m.mentorId)}>
                 <td className="px-2 py-2 text-center"><input type="radio" name="mentor-pick" className="h-5 w-5 accent-primary sm:h-4 sm:w-4" checked={pick === m.mentorId} disabled={!eligible} onChange={() => onPick(m.mentorId)} aria-label={m.mentorName} /></td>
                 <td className="px-2 py-2">
@@ -140,7 +142,10 @@ function MentorPickList({ mentors, groupId, excludeMentorId, pick, onPick, query
                   {!eligible ? <span className="ml-1 text-[10px] text-violet-700">그룹 지정 외 ({m.designatedGroupNames.join('/')})</span> : m.designatedGroupNames.length > 0 && <span className="ml-1 text-[10px] text-violet-700">지정 {m.designatedGroupNames.join('/')}</span>}
                   <div className="mt-0.5 md:hidden"><Chips items={m.expertise} max={4} /></div>
                 </td>
-                <td className="px-2 py-2 text-right tabular-nums">{inGroup}</td>
+                <td className="px-2 py-2 text-right tabular-nums">
+                  {desired === null ? <span className="text-muted-foreground">-</span> : <span className={cn('font-semibold', inGroup >= desired ? 'text-muted-foreground' : 'text-sky-700 dark:text-sky-300')} title={inGroup >= desired ? '희망 멘티 수만큼 매칭됨' : `희망까지 ${desired - inGroup}명 남음`}>{desired}</span>}
+                </td>
+                <td className={cn('px-2 py-2 text-right tabular-nums', desired !== null && inGroup >= desired && 'font-semibold text-amber-700 dark:text-amber-300')}>{inGroup}</td>
                 <td className="hidden px-2 py-2 md:table-cell"><Chips items={m.expertise} max={10} /></td>
               </tr>
             ))}
@@ -397,6 +402,11 @@ export function MentorMatchList({ rows, groups, currentGroupId = null, caseHrefB
               {m.phone && <span className="inline-flex items-center gap-1 whitespace-nowrap"><Phone className="h-3 w-3" />{m.phone} <ContactLinks phone={m.phone} name={m.mentorName} size="xs" /></span>}
               {m.email && <span className="inline-flex items-center gap-1 whitespace-nowrap"><Mail className="h-3 w-3" />{m.email}</span>}
             </span>
+            {currentGroupId && typeof m.desiredByGroup?.[currentGroupId] === 'number' && (
+              <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800 dark:bg-sky-950 dark:text-sky-300" title="라운드별 엑셀로 올린 희망 멘티 수">
+                희망 {m.desiredByGroup[currentGroupId]}명
+              </span>
+            )}
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${m.mentees.length > 0 ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-muted text-muted-foreground'}`}>
               {m.mentees.length > 0 ? `담당 멘티 ${m.mentees.length}` : '미배정 (배정 대기)'}
             </span>

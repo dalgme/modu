@@ -4,6 +4,7 @@ import { Briefcase, Building2, Download, GraduationCap, Link2, Network, UserPlus
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { isMatchingPublished } from '@/lib/matching/visibility-shared';
+import { DesiredUploadButton } from '@/components/nextlab/desired-upload';
 import { isRosterActive, listProgramMembers, loadDeactivationInfo, loadForceEndBlocks } from '@/lib/data/members';
 import { listRosterColumns } from '@/lib/data/roster-columns';
 import { listCases } from '@/lib/data/cases';
@@ -104,7 +105,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   let body: React.ReactNode = null;
 
   if (tab === 'mentee') {
-    const cases = await listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined });
+    const cases = await listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined, admin: true });
     const admin = createAdminClient();
     // (P31) 케이스 id in() 200개 청크 — 멘티 400명 규모에서 URL 길이·1,000행 캡에 잘리지 않게
     const caseIds = cases.map((c) => c.id);
@@ -256,7 +257,14 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             ? '멘티를 등록하면 희망 멘토가 비어 있을 때 자동 확정되고, 아니면 희망분야 순으로 후보 3명이 추천됩니다. 이 범위의 멘티가 전원 배정되면 매칭된 멘토에게 로그인 안내 문자가 자동으로 1회 발송됩니다(발송 여부는 멘토 명단의 "안내 발송" 표시). 매칭정보 감추기 라운드는 공개할 때 발송 여부를 고릅니다.'
             : '멘토별 담당 멘티·매칭일·멘토 확인(로그인 후 대시보드 열람)·진행현황·지급서류를 한눈에 봅니다. 미배정 멘토는 배정 대기 상태입니다.'}
         </p>
-        {tab === 'mentor-match' ? <MentorMatchList rows={lists.mentorRows} groups={groupList} currentGroupId={ctx.supportTypeId ?? null} /> : <MenteeMatchList rows={lists.menteeRows} mentors={lists.mentorRows} toolbarExtra={<RankUploadButton />} />}
+        {tab === 'mentor-match' ? (
+          <>
+            <div className="flex justify-end"><DesiredUploadButton groups={groupList} defaultGroupId={ctx.supportTypeId ?? null} /></div>
+            <MentorMatchList rows={lists.mentorRows} groups={groupList} currentGroupId={ctx.supportTypeId ?? null} />
+          </>
+        ) : (
+          <MenteeMatchList rows={lists.menteeRows} mentors={lists.mentorRows} toolbarExtra={<><RankUploadButton /><DesiredUploadButton groups={groupList} defaultGroupId={ctx.supportTypeId ?? null} /></>} />
+        )}
       </>
     );
   }

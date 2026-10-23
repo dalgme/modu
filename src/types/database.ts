@@ -3233,6 +3233,7 @@ export type Database = {
       support_type_members: {
         Row: {
           created_at: string;
+          desired_mentees: number | null;
           duty: string | null;
           id: string;
           is_active: boolean;
@@ -3247,6 +3248,7 @@ export type Database = {
         };
         Insert: {
           created_at?: string;
+          desired_mentees?: number | null;
           duty?: string | null;
           id?: string;
           is_active?: boolean;
@@ -3261,6 +3263,7 @@ export type Database = {
         };
         Update: {
           created_at?: string;
+          desired_mentees?: number | null;
           duty?: string | null;
           id?: string;
           is_active?: boolean;

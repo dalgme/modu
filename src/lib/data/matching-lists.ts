@@ -61,6 +61,8 @@ export interface MentorMatchRow {
   /** 그룹 지정 (비어 있으면 모든 그룹에서 사용) */
   designatedGroupNames: string[];
   designatedGroupIds: string[];
+  /** 라운드(그룹)별 희망 멘티 수 — 엑셀 업로드 값 (2026-10-23). 없으면 키 없음 */
+  desiredByGroup: Record<string, number>;
   mentees: MentorMatchMentee[];
   /** 지급서류 셋트 상태 (-/X/O, 3종 통합 — P27-16) */
   paymentDocState: PaymentDocSetState;
@@ -136,7 +138,7 @@ export async function loadMatchingLists(
   opts: { excludeInactiveMentees?: boolean } = {},
 ): Promise<MatchingLists> {
   const admin = createAdminClient();
-  const allCases = await listCases({ programId, supportTypeId: supportTypeId ?? undefined });
+  const allCases = await listCases({ programId, supportTypeId: supportTypeId ?? undefined, admin: true });
   const inactive = opts.excludeInactiveMentees ? await loadInactiveMemberIds(programId, 'mentee') : null;
   const cases = inactive ? allCases.filter((c) => !c.mentee_id || !inactive.has(c.mentee_id)) : allCases;
   const caseIds = cases.map((c) => c.id);
@@ -148,18 +150,20 @@ export async function loadMatchingLists(
     ).then((rows) => ({ data: rows })),
     fetchAllIn<{ case_id: string; preferred_mentor: string | null; needs: string[]; rank: number | null }>(caseIds, (chunk, from, to) => admin.from('mentee_profiles').select('case_id, preferred_mentor, needs, rank').in('case_id', chunk).range(from, to)).then((rows) => ({ data: rows })),
     fetchAllIn<{ case_id: string; score: number | null }>(caseIds, (chunk, from, to) => admin.from('survey_responses').select('case_id, score').in('case_id', chunk).range(from, to)).then((rows) => ({ data: rows })),
-    caseIds.length
-      ? admin
-          .from('match_recommendations')
-          .select('case_id, mentor_id, rank, score, rationale, users!match_recommendations_mentor_id_fkey(name)')
-          .eq('prompt_version', AUTO_MATCH_VERSION)
-          .is('adopted_at', null)
-          .in('case_id', caseIds)
-          .order('rank')
-      : Promise.resolve({ data: [] as unknown[] }),
+    // 케이스가 수백 건이면 `in()` URL 이 길어지므로 200개 단위로 나눠 읽는다 (2026-10-23)
+    fetchAllIn<unknown>(caseIds, (chunk, from, to) =>
+      admin
+        .from('match_recommendations')
+        .select('case_id, mentor_id, rank, score, rationale, users!match_recommendations_mentor_id_fkey(name)')
+        .eq('prompt_version', AUTO_MATCH_VERSION)
+        .is('adopted_at', null)
+        .in('case_id', chunk)
+        .order('rank')
+        .range(from, to),
+    ).then((rows) => ({ data: rows })),
     admin.from('program_members').select('user_id, users!inner(id, name, organization, position, phone, email, is_active)').eq('program_id', programId).eq('role', 'mentor').eq('is_active', true),
     admin.from('support_type_members').select('user_id, support_type_id, support_types!inner(name, program_id)').eq('is_active', true).eq('member_role', 'mentor').eq('support_types.program_id', programId),
-    caseIds.length ? admin.from('settlements').select('case_id, mentor_id, net').in('case_id', caseIds).neq('status', 'canceled') : Promise.resolve({ data: [] as { case_id: string; mentor_id: string; net: number }[] }),
+    fetchAllIn<{ case_id: string; mentor_id: string; net: number }>(caseIds, (chunk, from, to) => admin.from('settlements').select('case_id, mentor_id, net').in('case_id', chunk).neq('status', 'canceled').range(from, to)).then((rows) => ({ data: rows })),
     admin.from('mentor_payment_docs').select('user_id, resume_state, bankbook_state, id_card_state').eq('program_id', programId),
     admin.from('mentor_group_reviews').select('id, mentor_id, support_type_id, rating, memo, author_id, created_at').eq('program_id', programId).is('deleted_at', null).order('created_at', { ascending: false }),
   ]);
@@ -190,6 +194,19 @@ export async function loadMatchingLists(
   const expertiseByMentor = new Map((mentorProfiles ?? []).map((p) => [p.user_id, p.expertise ?? []]));
   const authorName = new Map((authors ?? []).map((a) => [a.id, a.name]));
   const groupName = new Map((groups ?? []).map((g) => [g.id, g.name]));
+  // 라운드별 희망 멘티 수 (그룹 지정 여부와 무관 — is_active=false 행에도 저장된다)
+  const { data: desiredRows, error: desiredErr } = await admin
+    .from('support_type_members')
+    .select('user_id, support_type_id, desired_mentees, support_types!inner(program_id)')
+    .eq('member_role', 'mentor')
+    .not('desired_mentees', 'is', null)
+    .eq('support_types.program_id', programId);
+  if (desiredErr) console.error('desired mentees load failed:', desiredErr.message);
+  const desiredByMentor = new Map<string, Record<string, number>>();
+  for (const r of desiredRows ?? []) {
+    if (r.desired_mentees === null) continue;
+    (desiredByMentor.get(r.user_id) ?? desiredByMentor.set(r.user_id, {}).get(r.user_id)!)[r.support_type_id] = r.desired_mentees;
+  }
   const designatedByMentor = new Map<string, { id: string; name: string }[]>();
   for (const r of roster ?? []) {
     const name = (r.support_types as unknown as { name: string } | null)?.name ?? '-';
@@ -294,6 +311,7 @@ export async function loadMatchingLists(
         expertise: expertiseByMentor.get(m.id) ?? [],
         designatedGroupNames: (designatedByMentor.get(m.id) ?? []).map((g) => g.name),
         designatedGroupIds: (designatedByMentor.get(m.id) ?? []).map((g) => g.id),
+        desiredByGroup: desiredByMentor.get(m.id) ?? {},
         mentees,
         paymentDocState: docSetState(docByUser.get(m.id)),
         settledNet: (settlements ?? []).filter((s) => s.mentor_id === m.id && scopedCaseIds.has(s.case_id)).reduce((a, s) => a + Number(s.net), 0),

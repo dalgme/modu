@@ -34,7 +34,7 @@ export default async function Page() {
   // (2026-10-01) 비활성 회원(행사 비활성화·계정 잠금) 멘티의 케이스는 배정 대기·지연·핵심 지표에서 뺀다
   const inactiveMentees = await loadInactiveMemberIds(ctx.programId, 'mentee');
   const [allCases, openInquiries, operatorRequests, inbox, metrics, boardPosts, programMessages, budget, trend, allDelays] = await Promise.all([
-    listCases({ programId: ctx.programId, supportTypeId: groupId ?? undefined }),
+    listCases({ programId: ctx.programId, supportTypeId: groupId ?? undefined, admin: true }),
     countOpenInquiries(ctx.programId),
     listOperatorRequests(ctx.programId),
     listInbox(ctx.programId, groupId ?? undefined, true),

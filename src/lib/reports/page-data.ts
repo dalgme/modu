@@ -13,7 +13,7 @@ export async function loadReportData(programId: string, supportTypeId?: string |
   const inactiveMentees = opts.excludeInactiveMentees ? await loadInactiveMemberIds(programId, 'mentee') : new Set<string>();
   const [m, allCases, settlements] = await Promise.all([
     computeProgramMetrics(programId, supportTypeId, period, { excludeMenteeIds: inactiveMentees.size ? inactiveMentees : undefined }),
-    listCases({ programId, supportTypeId: supportTypeId ?? undefined }),
+    listCases({ programId, supportTypeId: supportTypeId ?? undefined, admin: true }),
     listSettlements({ programId, supportTypeId: supportTypeId ?? undefined }),
   ]);
   const cases = inactiveMentees.size ? allCases.filter((c) => !c.mentee_id || !inactiveMentees.has(c.mentee_id)) : allCases;

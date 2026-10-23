@@ -57,7 +57,7 @@ export async function GET(request: Request): Promise<Response> {
     // P25 매칭 리스트 엑셀 — (2026-10-01) 비활성 멘티 제외 · 회차별 [일시·시수·장소·보고서 제출·수당·세금분·실지급분] 펼침
     const [lists, cases] = await Promise.all([
       loadMatchingLists(ctx.programId, ctx.supportTypeId ?? null, { excludeInactiveMentees: true }),
-      listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined }),
+      listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined, admin: true }),
     ]);
     const contactByCase = new Map(cases.map((c) => [c.id, { phone: c.phone ?? '', email: c.email ?? '' }]));
     const listedCaseIds = new Set(lists.menteeRows.map((r) => r.caseId));
@@ -112,7 +112,7 @@ export async function GET(request: Request): Promise<Response> {
     }
   } else if (kind === 'mentee') {
     // 템플릿 헤더(MENTEE_COLUMNS) + 내보내기 전용 컬럼 + 임의 컬럼
-    const cases = await listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined });
+    const cases = await listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined, admin: true });
     const admin = createAdminClient();
     const profiles = await fetchAllIn<{ case_id: string; nickname: string | null; external_no: string | null; region: string | null; mentee_type: string | null; needs: string[]; preferred_mentor: string | null; note: string | null; rank: number | null }>(
       cases.map((c) => c.id),

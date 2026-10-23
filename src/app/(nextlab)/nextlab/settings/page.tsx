@@ -149,8 +149,8 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     const filterKey: SuccessionFilter = mode === 'relocation' ? 'withdrawn' : (SUCCESSION_FILTERS.find((f) => f.key === searchParams.filter)?.key ?? 'completed');
     const statuses = SUCCESSION_FILTERS.find((f) => f.key === filterKey)?.statuses ?? null;
     const cases = mode === 'relocation'
-      ? await listCases({ programId: ctx.programId, status: 'withdrawn' })
-      : source ? await listCases({ programId: ctx.programId, supportTypeId: source, statuses: statuses ?? undefined }) : [];
+      ? await listCases({ programId: ctx.programId, status: 'withdrawn', admin: true })
+      : source ? await listCases({ programId: ctx.programId, supportTypeId: source, statuses: statuses ?? undefined, admin: true }) : [];
     const succMap = await mapSuccessors(cases.map((c) => c.id));
     const successors: Record<string, SuccessorInfo> = {};
     succMap.forEach((v, k) => { successors[k] = { caseId: v.caseId, supportTypeName: v.supportTypeName, status: v.status }; });

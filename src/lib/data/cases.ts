@@ -49,6 +49,8 @@ export interface CaseFilters {
   status?: CaseStatus;
   mentorId?: string;
   menteeId?: string;
+  /** 이 케이스들만 (단건 상세 — 그룹 전체를 읽지 않게, 2026-10-23 성능) */
+  ids?: string[];
   from?: string;
   to?: string;
   /** mentorId 필터에서 종결·중도 종료된(비활성) 배정 케이스도 포함 (멘토 '완료 멘티', P30) */
@@ -93,6 +95,10 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
   if (filters.from) query = query.gte('created_at', filters.from);
   if (filters.to) query = query.lte('created_at', filters.to);
   if (caseIdsByMentor) query = query.in('id', caseIdsByMentor);
+  if (filters.ids) {
+    if (filters.ids.length === 0) return [];
+    query = query.in('id', filters.ids);
+  }
 
   const { data: fetched, error } = await query;
   if (error || !fetched || fetched.length === 0) return [];
@@ -249,11 +255,11 @@ export async function listMenteeCases(
 /** 단일 케이스 상세. 접근 불가/없으면 null. admin 이면 RLS 밖(service_role) — 호출부가 접근 근거를 확인한다. */
 export async function getCaseById(caseId: string, opts: { admin?: boolean } = {}): Promise<CaseListItem | null> {
   const supabase = opts.admin ? createAdminClient() : createClient();
-  const { data: c } = await supabase.from('cases').select('*').eq('id', caseId).maybeSingle();
+  const { data: c } = await supabase.from('cases').select('program_id, support_type_id').eq('id', caseId).maybeSingle();
   if (!c) return null;
-  const [item] = await listCases({ programId: c.program_id, supportTypeId: c.support_type_id, admin: opts.admin }).then((rows) =>
-    rows.filter((r) => r.id === caseId),
-  );
+  // 그 케이스만 읽는다 — 예전에는 그룹 전체(수백 건)를 읽고 걸러 상세 화면마다 느렸다 (2026-10-23).
+  // programId·supportTypeId 를 같이 넘겨 담당 멘토 "이름(n)" 의 n 은 지금처럼 그룹 범위로 센다.
+  const [item] = await listCases({ programId: c.program_id, supportTypeId: c.support_type_id, ids: [caseId], admin: opts.admin });
   return item ?? null;
 }
 
