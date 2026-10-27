@@ -1,6 +1,7 @@
 import type { ReportFilesData } from '@/lib/data/report-files';
 import { FileActions } from '@/components/files/file-preview';
 import { BundleDownloadButton } from '@/components/files/bundle-download-button';
+import { RoundPackageButton } from '@/components/files/round-package-button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 /**
@@ -25,6 +26,38 @@ export function ReportFilesPanel({ data }: { data: ReportFilesData }) {
         </ol>
         <p className="mt-1 text-[11px] opacity-80">ZIP 은 이 브라우저에서 파일을 받아 묶습니다. 파일이 많으면 1~2분 걸릴 수 있으니 창을 닫지 마세요.</p>
       </div>
+
+      <Card className="border-2 border-sky-300 dark:border-sky-800">
+        <CardHeader>
+          <CardTitle className="text-base">제출용 묶음 (라운드별)</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            멘토-멘티마다 회차 보고서(회차순)와 관찰의견서를 <b>PDF 한 개</b>로 합쳐 “책임멘토 멘토링 보고서 및 관찰 의견서(멘토명멘토-멘티명멘티).pdf”로 넣습니다.
+            <br />· <b>멘토별</b>: 멘토 이름 폴더(1.수당지급서류 일체_멘토명.pdf + 담당 멘티 보고서) → 이름순 20명씩 “(붙임2)멘토링 보고서 및 관찰의견서(1~20번).zip” → “멘토별 멘토링 보고서 및 수당지급 서류.zip”
+            <br />· <b>멘티별</b>: “001. 멘티명” 폴더(고유번호순, 없으면 이름순) → “(멘티별)멘토링 보고서_별첨자료 삽입.zip”
+            <br />한글(HWP·HWPX) 파일은 PDF 로 합칠 수 없어 원본을 같은 폴더에 함께 넣고, 끝나면 목록을 보여 줍니다.
+          </p>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="w-full min-w-[480px] text-sm">
+            <thead className="text-left text-xs text-muted-foreground"><tr><th className="py-1.5">라운드(사업그룹)</th><th>멘티</th><th>파일</th><th className="text-right">받기</th></tr></thead>
+            <tbody>
+              {data.groups.map((g) => (
+                <tr key={g.id} className="border-t">
+                  <td className="py-2 font-medium">{g.name}</td>
+                  <td className="tabular-nums">{g.caseCount}명</td>
+                  <td className="tabular-nums">{g.fileCount}개</td>
+                  <td className="py-2 text-right">
+                    <div className="flex flex-wrap justify-end gap-1.5">
+                      <RoundPackageButton kind="mentor" groupId={g.id} label="멘토별 보고서·수당지급 서류" />
+                      <RoundPackageButton kind="mentee" groupId={g.id} label="멘티별 보고서 (번호 폴더)" />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader><CardTitle className="text-base">④ 라운드별 전체 ZIP</CardTitle></CardHeader>
