@@ -5,7 +5,8 @@ import { MENTOR_PACKAGE_NAME, chunkRanges, mentorChunkZipName, originalPartName,
 /**
  * 라운드 제출용 묶음 조립 (2026-10-27) — 브라우저에서 실행(테스트는 Node). 서버 목록(RoundPackageManifest)을 받아
  *  1) 합본마다 부품(PDF·JPG·PNG)을 순서대로 한 PDF 로 합치고
- *  2) 합칠 수 없는 부품(한글 HWP/HWPX·Word·손상·암호 PDF)은 원본을 같은 폴더에 "{합본 이름} - {설명}.{확장자}" 로 넣고 problems 에 남긴다
+ *     한글(HWP·HWPX)은 renderHwp(브라우저 rhwp)로 쪽 이미지를 만들어 같은 PDF 에 넣는다
+ *  2) 합칠 수 없는 부품(변환 실패한 한글·Word·손상·암호 PDF)은 원본을 같은 폴더에 "{합본 이름} - {설명}.{확장자}" 로 넣고 problems 에 남긴다
  *  3) 멘토별: 이름순 20명씩 "(붙임2)…(1~20번).zip" → "멘토별 멘토링 보고서 및 수당지급 서류/" 폴더 → 바깥 ZIP
  *     멘티별: "001. 이름/" 폴더들 → 바깥 ZIP
  */
@@ -23,6 +24,15 @@ export interface BuildResult {
 
 type Fetcher = (url: string) => Promise<Uint8Array>;
 
+/** 한글 문서 한 쪽 = 이미지 + PDF 쪽 크기(pt) */
+export interface RenderedPage {
+  bytes: Uint8Array;
+  format: 'jpg' | 'png';
+  widthPt: number;
+  heightPt: number;
+}
+export type HwpRenderer = (bytes: Uint8Array) => Promise<RenderedPage[]>;
+
 const A4: [number, number] = [595.28, 841.89];
 const MARGIN = 24;
 
@@ -31,7 +41,7 @@ interface Entry {
   bytes: Uint8Array;
 }
 
-async function buildDoc(doc: PackageDoc, folder: string, fetchBytes: Fetcher, problems: string[]): Promise<Entry[]> {
+async function buildDoc(doc: PackageDoc, folder: string, fetchBytes: Fetcher, problems: string[], renderHwp?: HwpRenderer): Promise<Entry[]> {
   const { PDFDocument } = await import('pdf-lib');
   const out = await PDFDocument.create();
   const extras: Entry[] = [];
@@ -45,7 +55,21 @@ async function buildDoc(doc: PackageDoc, folder: string, fetchBytes: Fetcher, pr
       problems.push(`${folder} / ${doc.name} — ${part.label}: 파일을 받지 못함`);
       continue;
     }
-    if (part.kind === 'other') {
+    if (part.kind === 'hwp' && renderHwp) {
+      try {
+        const pages = await renderHwp(bytes);
+        for (const pg of pages) {
+          const img = pg.format === 'png' ? await out.embedPng(pg.bytes) : await out.embedJpg(pg.bytes);
+          out.addPage([pg.widthPt, pg.heightPt]).drawImage(img, { x: 0, y: 0, width: pg.widthPt, height: pg.heightPt });
+        }
+        merged += 1;
+      } catch {
+        extras.push({ name: originalPartName(doc.name, part.label, part.sourceName), bytes });
+        problems.push(`${folder} / ${doc.name} — ${part.label}: 한글 파일을 PDF 로 바꾸지 못해(암호·배포용·손상 등) 원본을 함께 넣음`);
+      }
+      continue;
+    }
+    if (part.kind === 'other' || part.kind === 'hwp') {
       extras.push({ name: originalPartName(doc.name, part.label, part.sourceName), bytes });
       problems.push(`${folder} / ${doc.name} — ${part.label}: ${part.sourceName.split('.').pop()?.toUpperCase() ?? '원본'} 파일이라 PDF 에 합치지 못해 원본을 함께 넣음`);
       continue;
@@ -74,7 +98,13 @@ async function buildDoc(doc: PackageDoc, folder: string, fetchBytes: Fetcher, pr
   return entries.concat(extras);
 }
 
-export async function assembleRoundPackage(manifest: RoundPackageManifest, fetchBytes: Fetcher, onProgress?: (p: BuildProgress) => void, concurrency = 4): Promise<BuildResult> {
+export async function assembleRoundPackage(
+  manifest: RoundPackageManifest,
+  fetchBytes: Fetcher,
+  onProgress?: (p: BuildProgress) => void,
+  opts: { concurrency?: number; renderHwp?: HwpRenderer } = {},
+): Promise<BuildResult> {
+  const concurrency = opts.concurrency ?? 4;
   const JSZip = (await import('jszip')).default;
   const problems: string[] = [];
   const jobs = manifest.folders.flatMap((f, fi) => f.docs.map((d) => ({ fi, folder: f.folder, doc: d })));
@@ -85,7 +115,7 @@ export async function assembleRoundPackage(manifest: RoundPackageManifest, fetch
   const order: { fi: number; i: number; entries: Entry[] }[] = [];
   const worker = async () => {
     for (let j = queue.shift(); j; j = queue.shift()) {
-      const entries = await buildDoc(j.doc, j.folder, fetchBytes, problems);
+      const entries = await buildDoc(j.doc, j.folder, fetchBytes, problems, opts.renderHwp);
       order.push({ fi: j.fi, i: j.i, entries });
       done += 1;
       onProgress?.({ done, total: jobs.length, phase: 'files' });

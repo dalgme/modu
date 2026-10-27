@@ -31,7 +31,9 @@ describe('round-package names', () => {
   it('형식 판정·원본 이름', () => {
     expect(partKindOf('보고서.PDF')).toBe('pdf');
     expect(partKindOf('사진.jpeg')).toBe('jpg');
-    expect(partKindOf('보고서.hwp')).toBe('other');
+    expect(partKindOf('보고서.hwp')).toBe('hwp');
+    expect(partKindOf('보고서.HWPX')).toBe('hwp');
+    expect(partKindOf('보고서.docx')).toBe('other');
     expect(partKindOf('x', 'application/pdf')).toBe('pdf');
     expect(originalPartName('책임멘토 멘토링 보고서(강석우멘토-남준현멘티).pdf', '2회차 보고서', '원본.HWP')).toBe('책임멘토 멘토링 보고서(강석우멘토-남준현멘티) - 2회차 보고서.hwp');
   });

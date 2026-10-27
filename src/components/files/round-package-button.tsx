@@ -11,7 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 
 /**
  * 라운드 제출용 묶음 받기 (2026-10-27) — 멘토별(지급서류+보고서, 20명씩 ZIP 안의 ZIP) / 멘티별(번호 폴더).
- * 서버에서 목록만 받고, 이 브라우저가 파일을 받아 PDF 로 합치고 ZIP 으로 묶는다. 끝나면 합치지 못한 파일 목록을 보여 준다.
+ * 서버에서 목록만 받고, 이 브라우저가 파일을 받아 PDF 로 합치고(한글은 rhwp 로 변환) ZIP 으로 묶는다. 끝나면 합치지 못한 파일 목록을 보여 준다.
  */
 export function RoundPackageButton({ kind, groupId, label }: { kind: 'mentor' | 'mentee'; groupId: string; label: string }) {
   const { toast } = useToast();
@@ -37,6 +37,10 @@ export function RoundPackageButton({ kind, groupId, label }: { kind: 'mentor' | 
           return new Uint8Array(await f.arrayBuffer());
         },
         setProgress,
+        {
+          // 한글(HWP·HWPX)은 rhwp 로 쪽 이미지를 만들어 합친다 — 변환기(WASM)는 필요할 때만 받는다
+          renderHwp: async (bytes) => (await import('@/lib/files/hwp-render')).renderHwpPages(bytes),
+        },
       );
       const blob = await r.zip.generateAsync({ type: 'blob', compression: 'STORE' });
       const a = document.createElement('a');
@@ -70,7 +74,7 @@ export function RoundPackageButton({ kind, groupId, label }: { kind: 'mentor' | 
             {report && report.problems.length > 0 && (
               <div className="rounded-lg border border-amber-300 bg-amber-50/70 p-3 dark:border-amber-800 dark:bg-amber-950/30">
                 <p className="font-semibold text-amber-900 dark:text-amber-100">PDF 로 합치지 못한 파일 {report.problems.length}개 — 원본을 같은 폴더에 함께 넣었습니다</p>
-                <p className="mt-0.5 text-xs text-amber-900/80 dark:text-amber-100/80">한글(HWP·HWPX)·Word 파일은 브라우저에서 PDF 로 바꿀 수 없습니다. 한글에서 PDF 로 저장해 바꿔 넣거나, 멘토에게 PDF 로 다시 올려 달라고 요청하세요.</p>
+                <p className="mt-0.5 text-xs text-amber-900/80 dark:text-amber-100/80">암호·배포용으로 저장된 한글 파일, Word 파일, 손상된 PDF 는 자동으로 합칠 수 없습니다. 한글에서 PDF 로 저장해 바꿔 넣거나, 멘토에게 PDF 로 다시 올려 달라고 요청하세요.</p>
                 <ul className="mt-2 list-disc space-y-0.5 pl-5 text-xs">
                   {report.problems.map((p) => (
                     <li key={p}>{p}</li>

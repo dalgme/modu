@@ -11,13 +11,15 @@
  *
  * "책임멘토 멘토링 보고서 및 관찰 의견서(…)" = 그 멘토가 진행한 회차 보고서(회차순) + 관찰의견서를 한 PDF 로 합친 것.
  * 관찰의견서가 없으면(불필요 그룹·미제출·교체 전 멘토) "책임멘토 멘토링 보고서(…)".
+ * 한글(HWP·HWPX)은 브라우저에서 rhwp 로 쪽 이미지를 만들어 합친다(hwp-render.ts). 실패하면 원본을 함께 넣는다.
  */
 
 export const MENTOR_PACKAGE_NAME = '멘토별 멘토링 보고서 및 수당지급 서류';
 export const MENTEE_PACKAGE_NAME = '(멘티별)멘토링 보고서_별첨자료 삽입';
 export const MENTOR_CHUNK = 20;
 
-export type PartKind = 'pdf' | 'jpg' | 'png' | 'other';
+/** hwp = 한글 HWP·HWPX — 브라우저에서 rhwp 로 페이지 이미지를 만들어 합친다 */
+export type PartKind = 'pdf' | 'jpg' | 'png' | 'hwp' | 'other';
 
 /** PDF 로 합칠 수 있는 형식인지 (확장자·MIME) */
 export function partKindOf(name: string, mime?: string | null): PartKind {
@@ -26,6 +28,7 @@ export function partKindOf(name: string, mime?: string | null): PartKind {
   if (ext === 'pdf' || m === 'application/pdf') return 'pdf';
   if (ext === 'jpg' || ext === 'jpeg' || m === 'image/jpeg') return 'jpg';
   if (ext === 'png' || m === 'image/png') return 'png';
+  if (ext === 'hwp' || ext === 'hwpx' || m === 'application/x-hwp' || m === 'application/haansofthwp' || m === 'application/vnd.hancom.hwpx') return 'hwp';
   return 'other';
 }
 

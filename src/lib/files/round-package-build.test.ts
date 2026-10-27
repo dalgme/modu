@@ -77,4 +77,44 @@ describe('assembleRoundPackage', () => {
     expect(z.files['002. 양승성/']?.dir).toBe(true);
     expect(r.problems).toEqual(['001. 남준현 / 책임멘토 멘토링 보고서(강석우멘토-남준현멘티).pdf — 2회차 보고서: 파일을 받지 못함']);
   });
+
+  it('한글: 변환기가 있으면 쪽 이미지로 합치고, 실패하면 원본 동봉', async () => {
+    const manifest: RoundPackageManifest = {
+      kind: 'mentee',
+      groupName: '2기',
+      zipName: 'x.zip',
+      folders: [
+        {
+          folder: '001. 남준현',
+          docs: [
+            {
+              name: pairPdfName('강석우', '남준현', true),
+              parts: [
+                { label: '1회차 보고서', sourceName: 'a.hwp', kind: 'hwp', url: 'good' },
+                { label: '2회차 보고서', sourceName: 'b.pdf', kind: 'pdf', url: 'pdf' },
+                { label: '관찰의견서', sourceName: 'o.hwpx', kind: 'hwp', url: 'bad' },
+              ],
+            },
+          ],
+        },
+      ],
+      notes: [],
+    };
+    const pdf = await pdfOf(1);
+    const r = await assembleRoundPackage(manifest, async (u) => (u === 'pdf' ? pdf : new TextEncoder().encode(u)), undefined, {
+      renderHwp: async (bytes) => {
+        if (new TextDecoder().decode(bytes) === 'bad') throw new Error('암호 문서');
+        return [
+          { bytes: PNG_1PX, format: 'png', widthPt: 595, heightPt: 842 },
+          { bytes: PNG_1PX, format: 'png', widthPt: 595, heightPt: 842 },
+        ];
+      },
+    });
+    const z = await JSZip.loadAsync(await r.zip.generateAsync({ type: 'uint8array' }));
+    const merged = await z.file('001. 남준현/책임멘토 멘토링 보고서 및 관찰 의견서(강석우멘토-남준현멘티).pdf')!.async('uint8array');
+    expect(await pageCount(merged)).toBe(3);
+    expect(z.files['001. 남준현/책임멘토 멘토링 보고서 및 관찰 의견서(강석우멘토-남준현멘티) - 관찰의견서.hwpx']).toBeTruthy();
+    expect(r.problems).toHaveLength(1);
+    expect(r.problems[0]).toContain('한글 파일을 PDF 로 바꾸지 못해');
+  });
 });
