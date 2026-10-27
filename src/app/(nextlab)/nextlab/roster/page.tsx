@@ -145,6 +145,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
             <RankUploadButton />
             <RosterValuesUploadButton target="mentee" />
             <ExcelButton href="/api/nextlab/roster-export?tab=mentee&dedupe=1" label="재업로드용 엑셀 (1인 1행)" title="일괄 등록 템플릿과 같은 헤더 — [기존 정보 갱신] 모드로 다시 올릴 수 있습니다" />
+            <ExcelButton href="/api/nextlab/mentoring-export?kind=mentee" label="멘티별 멘토링 현황" title="현재 범위의 멘티마다 배정 멘토 · 온/오프라인 회차와 시간 · 아이템 · 운영사" />
           </div>
         </div>
         <MembersManager members={menteeItems} rosterColumns={roster.columns.map((c) => ({ id: c.id, target: c.target, name: c.name }))} rosterValues={roster.values} mode="mentee" progress={progress} />

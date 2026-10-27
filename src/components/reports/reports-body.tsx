@@ -116,6 +116,7 @@ export function ReportsBody({
               종합결과리포트 →
             </Link>
           )}
+          <ExcelButton href={`/api/nextlab/mentoring-export?kind=mentee${groupFilter?.current ? `&group=${groupFilter.current}` : ''}`} label="멘티별 멘토링 현황" title="멘티마다 배정 멘토 · 온/오프라인 회차와 시간 · 아이템 · 운영사" />
           {tab !== 'files' && <ExcelButton href={`${exportHref}${exportHref.includes('?') ? '&' : '?'}tab=${tab}${groupQs}${trendYear ? `&year=${trendYear}` : ''}${casesView === 'mentor' ? '&view=mentor' : ''}`} />}
         </div>
       </div>
