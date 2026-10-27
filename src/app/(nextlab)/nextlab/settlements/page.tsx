@@ -13,6 +13,7 @@ import { StatusBadge } from '@/components/cases/status-badge';
 import { SubTabs } from '@/components/common/sub-tabs';
 import { EmptyState } from '@/components/common/empty-state';
 import { ExcelButton } from '@/components/common/excel-button';
+import { MentoringExportBar } from '@/components/reports/mentoring-export-bar';
 import { formatDate, formatKRW } from '@/lib/utils/format';
 
 export const dynamic = 'force-dynamic';
@@ -28,23 +29,26 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   const kpi = await computeSettlementKpi(ctx.programId, groupId ?? null);
 
   const kpiRow = (
-    <div className="grid gap-2 sm:grid-cols-3">
-      <div className="rounded-xl border-2 bg-background p-3">
-        <p className="text-xs text-muted-foreground">지급 예정 합계 (제출·확인 완료, 미지급)</p>
-        <p className="text-lg font-bold tabular-nums">{formatKRW(kpi.scheduledNet)}</p>
-        <p className="text-[11px] text-muted-foreground">품의 {kpi.scheduledBatches}건 · 실지급 기준</p>
+    <>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <div className="rounded-xl border-2 bg-background p-3">
+          <p className="text-xs text-muted-foreground">지급 예정 합계 (제출·확인 완료, 미지급)</p>
+          <p className="text-lg font-bold tabular-nums">{formatKRW(kpi.scheduledNet)}</p>
+          <p className="text-[11px] text-muted-foreground">품의 {kpi.scheduledBatches}건 · 실지급 기준</p>
+        </div>
+        <div className={`rounded-xl border-2 bg-background p-3 ${kpi.waitingBatches.some((b) => b.days >= 7) ? 'border-amber-400' : ''}`}>
+          <p className="text-xs text-muted-foreground">{fmt('{client} 확인 대기 품의', ctx.branding)}</p>
+          <p className="text-lg font-bold tabular-nums">{kpi.waitingBatches.length}건{kpi.waitingBatches[0] ? ` · 최장 ${kpi.waitingBatches[0].days}일` : ''}</p>
+          <p className="truncate text-[11px] text-muted-foreground">{kpi.waitingBatches.slice(0, 2).map((b) => `${b.title} (${b.days}일)`).join(' · ') || '대기 중인 품의 없음'}</p>
+        </div>
+        <div className="rounded-xl border-2 bg-background p-3">
+          <p className="text-xs text-muted-foreground">멘토별 미지급 누계 (확정~지급 전)</p>
+          <p className="text-lg font-bold tabular-nums">{formatKRW(kpi.unpaidTotalNet)}</p>
+          <p className="truncate text-[11px] text-muted-foreground">{kpi.unpaidByMentor.slice(0, 3).map((m) => `${m.mentorName} ${formatKRW(m.net)}`).join(' · ') || '미지급 정산 없음'}</p>
+        </div>
       </div>
-      <div className={`rounded-xl border-2 bg-background p-3 ${kpi.waitingBatches.some((b) => b.days >= 7) ? 'border-amber-400' : ''}`}>
-        <p className="text-xs text-muted-foreground">{fmt('{client} 확인 대기 품의', ctx.branding)}</p>
-        <p className="text-lg font-bold tabular-nums">{kpi.waitingBatches.length}건{kpi.waitingBatches[0] ? ` · 최장 ${kpi.waitingBatches[0].days}일` : ''}</p>
-        <p className="truncate text-[11px] text-muted-foreground">{kpi.waitingBatches.slice(0, 2).map((b) => `${b.title} (${b.days}일)`).join(' · ') || '대기 중인 품의 없음'}</p>
-      </div>
-      <div className="rounded-xl border-2 bg-background p-3">
-        <p className="text-xs text-muted-foreground">멘토별 미지급 누계 (확정~지급 전)</p>
-        <p className="text-lg font-bold tabular-nums">{formatKRW(kpi.unpaidTotalNet)}</p>
-        <p className="truncate text-[11px] text-muted-foreground">{kpi.unpaidByMentor.slice(0, 3).map((m) => `${m.mentorName} ${formatKRW(m.net)}`).join(' · ') || '미지급 정산 없음'}</p>
-      </div>
-    </div>
+      <MentoringExportBar programId={ctx.programId} groupId={groupId ?? null} groupName={ctx.group?.name ?? null} />
+    </>
   );
 
   if (tab === 'tax') {

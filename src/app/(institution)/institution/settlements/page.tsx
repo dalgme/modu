@@ -9,6 +9,7 @@ import { computeBudgetOverview, computeForecastByCase } from '@/lib/reports/budg
 import { BudgetCard } from '@/components/reports/budget-card';
 import { CASE_STATUS_META } from '@/types/case-status';
 import { formatDate, formatKRW } from '@/lib/utils/format';
+import { MentoringExportBar } from '@/components/reports/mentoring-export-bar';
 
 export const dynamic = 'force-dynamic';
 
@@ -174,6 +175,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
           지출 예상 (품의 전)
         </Link>
       </nav>
+      <MentoringExportBar programId={ctx.programId} groupId={groupId ?? null} groupName={ctx.group?.name ?? null} />
       {body}
     </main>
   );
