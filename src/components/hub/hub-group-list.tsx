@@ -4,7 +4,11 @@ import { ArrowLeft, ArrowRight, Users } from 'lucide-react';
 import type { MyGroup, Program } from '@/lib/programs/data';
 import { cn } from '@/lib/utils';
 
-/** 허브 — 행사 안의 그룹 배너 (스태프는 '행사 전체' 카드가 맨 앞) */
+/**
+ * 허브 — 행사 안의 그룹 배너 (스태프는 '행사 전체' 카드가 맨 앞).
+ * 카드는 next/link 가 아니라 <a> — Link 는 화면에 보이는 순간 미리 불러오기(prefetch)로 /hub/enter 를 실행해
+ * 컨텍스트 쿠키를 마지막으로 불러온 그룹으로 바꿔 버린다(2026-10-29: 1기를 눌러도 2기 멘티가 보이던 원인).
+ */
 export function HubGroupList({
   program,
   groups,
@@ -41,7 +45,7 @@ export function HubGroupList({
       <ul className="grid gap-4 sm:grid-cols-2">
         {isStaff && tab === 'active' && (
           <li>
-            <Link
+            <a
               href={`/hub/enter?program=${program.id}&all=1`}
               className="group flex h-full flex-col justify-between gap-4 rounded-2xl border-2 border-primary/40 bg-primary/5 p-5 shadow-sm transition-colors hover:bg-primary/10"
             >
@@ -52,12 +56,12 @@ export function HubGroupList({
               <span className="inline-flex items-center gap-1 text-sm font-medium text-primary">
                 들어가기 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </span>
-            </Link>
+            </a>
           </li>
         )}
         {list.map(({ group, caseCount }) => (
           <li key={group.id}>
-            <Link
+            <a
               href={`/hub/enter?program=${program.id}&group=${group.id}`}
               className={cn(
                 'group flex h-full flex-col justify-between gap-4 rounded-2xl border bg-background p-5 shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/5',
@@ -76,7 +80,7 @@ export function HubGroupList({
                   들어가기 <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                 </span>
               </div>
-            </Link>
+            </a>
           </li>
         ))}
         {list.length === 0 && !(isStaff && tab === 'active') && (

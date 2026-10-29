@@ -10,6 +10,11 @@ export const dynamic = 'force-dynamic';
  * GET /hub/enter?program=<id>[&group=<id>|&all=1]
  */
 export async function GET(request: Request): Promise<NextResponse> {
+  // 미리 불러오기(prefetch) 요청은 쿠키를 바꾸지 않는다 — 사용자가 실제로 누른 그룹만 진입 (2026-10-29)
+  const h = request.headers;
+  if (h.get('next-router-prefetch') || h.get('purpose') === 'prefetch' || h.get('sec-purpose')?.includes('prefetch')) {
+    return new NextResponse(null, { status: 204 });
+  }
   const url = new URL(request.url);
   const programId = url.searchParams.get('program') ?? '';
   const group = url.searchParams.get('group');
