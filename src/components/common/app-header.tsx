@@ -6,9 +6,11 @@ import { signOut } from '@/lib/auth/actions';
 import { getRealSessionProfile } from '@/lib/auth/guards';
 import { getImpersonation } from '@/lib/auth/impersonation';
 import { leaveContextAction } from '@/lib/programs/actions';
+import { readContextPayload } from '@/lib/programs/context-cookie';
 import { type UserRole } from '@/lib/auth/roles';
 import { PLATFORM_BRANDING, roleLabel, type Branding } from '@/lib/programs/branding';
 import { Button } from '@/components/ui/button';
+import { ContextSync } from '@/components/common/context-sync';
 
 interface AppHeaderProps {
   name: string;
@@ -31,12 +33,17 @@ interface AppHeaderProps {
 export async function AppHeader({ name, role, branding = PLATFORM_BRANDING, context = null, platformMode = false, gradeLabel = null }: AppHeaderProps) {
   const real = await getRealSessionProfile();
   // 대행 중에는 [전환]·[로그아웃]을 숨긴다 — 전환은 다른 행사로 새는 경로, 로그아웃은 실행자 세션 전체 종료 (P31)
-  const impersonating = (await getImpersonation()) !== null;
+  const imp = await getImpersonation();
+  const impersonating = imp !== null;
+  // 탭 간 범위 동기화 키 — 쿠키(명의·행사·그룹) + 대행 대상. 다른 탭이 바꾸면 이 탭을 새로 불러온다
+  const ctxPayload = readContextPayload();
+  const scopeKey = [real?.id ?? '', ctxPayload?.u ?? '', ctxPayload?.p ?? '', ctxPayload?.g ?? '', imp?.target.id ?? ''].join('|');
   const isPlatformAdmin = !!real?.is_platform_admin;
   const platformBadge = real?.platform_role === 'admin' ? '플랫폼 부관리자' : '플랫폼 통합관리자';
   const initial = platformMode ? 'P' : (branding.programName || branding.appTitle).slice(0, 1);
   return (
     <header className={`sticky top-0 z-40 border-b border-white/10 text-midnight-foreground ${platformMode ? 'bg-violet-950' : 'bg-midnight'}`}>
+      <ContextSync scopeKey={scopeKey} />
       <div className="mx-auto flex h-14 max-w-6xl items-center justify-between gap-2 px-4">
         <div className="flex min-w-0 items-center gap-2 sm:gap-2.5">
           <Link href={platformMode ? '/platform' : '/hub'} className="flex shrink-0 items-center" title={platformMode ? '플랫폼 통합관리 콘솔' : '허브'}>

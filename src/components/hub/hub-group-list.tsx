@@ -1,13 +1,14 @@
 import Link from 'next/link';
 import { ArrowLeft, ArrowRight, Users } from 'lucide-react';
 
+import { enterContextAction } from '@/lib/programs/actions';
 import type { MyGroup, Program } from '@/lib/programs/data';
 import { cn } from '@/lib/utils';
 
 /**
  * 허브 — 행사 안의 그룹 배너 (스태프는 '행사 전체' 카드가 맨 앞).
- * 카드는 next/link 가 아니라 <a> — Link 는 화면에 보이는 순간 미리 불러오기(prefetch)로 /hub/enter 를 실행해
- * 컨텍스트 쿠키를 마지막으로 불러온 그룹으로 바꿔 버린다(2026-10-29: 1기를 눌러도 2기 멘티가 보이던 원인).
+ * 카드는 링크가 아니라 진입 버튼(서버 액션 POST) — 링크(GET /hub/enter)는 next/link 미리 불러오기·폰 링크 미리보기만으로
+ * 실행돼 컨텍스트 쿠키를 마지막으로 불러온 그룹으로 바꿔 버린다(2026-10-29: 1기를 눌러도 2기 멘티가 보이던 원인).
  */
 export function HubGroupList({
   program,
@@ -45,10 +46,13 @@ export function HubGroupList({
       <ul className="grid gap-4 sm:grid-cols-2">
         {isStaff && tab === 'active' && (
           <li>
-            <a
-              href={`/hub/enter?program=${program.id}&all=1`}
-              className="group flex h-full flex-col justify-between gap-4 rounded-2xl border-2 border-primary/40 bg-primary/5 p-5 shadow-sm transition-colors hover:bg-primary/10"
-            >
+            <form action={enterContextAction} className="h-full">
+              <input type="hidden" name="program" value={program.id} />
+              <input type="hidden" name="all" value="1" />
+              <button
+                type="submit"
+                className="group flex h-full w-full flex-col justify-between gap-4 rounded-2xl border-2 border-primary/40 bg-primary/5 p-5 text-left shadow-sm transition-colors hover:bg-primary/10"
+              >
               <div>
                 <p className="text-lg font-semibold">행사 전체</p>
                 <p className="text-xs text-muted-foreground">모든 그룹의 케이스·정산·리포트를 한 화면에서 봅니다.</p>
@@ -56,18 +60,22 @@ export function HubGroupList({
               <span className="inline-flex items-center gap-1 text-sm font-medium text-primary">
                 들어가기 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </span>
-            </a>
+              </button>
+            </form>
           </li>
         )}
         {list.map(({ group, caseCount }) => (
           <li key={group.id}>
-            <a
-              href={`/hub/enter?program=${program.id}&group=${group.id}`}
-              className={cn(
-                'group flex h-full flex-col justify-between gap-4 rounded-2xl border bg-background p-5 shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/5',
-                group.status !== 'active' && 'opacity-80',
-              )}
-            >
+            <form action={enterContextAction} className="h-full">
+              <input type="hidden" name="program" value={program.id} />
+              <input type="hidden" name="group" value={group.id} />
+              <button
+                type="submit"
+                className={cn(
+                  'group flex h-full w-full flex-col justify-between gap-4 rounded-2xl border bg-background p-5 text-left shadow-sm transition-colors hover:border-primary/50 hover:bg-primary/5',
+                  group.status !== 'active' && 'opacity-80',
+                )}
+              >
               <div>
                 <p className="text-lg font-semibold">{group.name}</p>
                 {group.description && <p className="mt-0.5 text-xs text-muted-foreground">{group.description}</p>}
@@ -80,7 +88,8 @@ export function HubGroupList({
                   들어가기 <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                 </span>
               </div>
-            </a>
+              </button>
+            </form>
           </li>
         ))}
         {list.length === 0 && !(isStaff && tab === 'active') && (

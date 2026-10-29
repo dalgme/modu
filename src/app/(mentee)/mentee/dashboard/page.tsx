@@ -33,7 +33,7 @@ export default async function Page() {
   const pendingChange = changeRequests.find((r) => r.status === 'pending') ?? null;
   const lastDecision = changeRequests.find((r) => r.status !== 'pending') ?? null;
 
-  const [unreadMessages, extra] = await Promise.all([countUnreadMessages(profile.id, ctx.programId), loadMenteeDashboardExtra(primary, ctx.programId)]);
+  const [unreadMessages, extra] = await Promise.all([countUnreadMessages(profile.id, ctx.programId, ctx.supportTypeId), loadMenteeDashboardExtra(primary, ctx.programId)]);
 
   return (
     <main className="flex flex-col gap-5">

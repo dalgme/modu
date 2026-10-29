@@ -74,13 +74,12 @@ export async function listMentorSchedule(mentorId: string, programId: string, su
 }
 
 /** 멘티: 본인 케이스의 회차 일정 (멘토가 등록한 예약·완료) */
-export async function listMenteeSchedule(menteeId: string, programId: string): Promise<ScheduleEvent[]> {
+export async function listMenteeSchedule(menteeId: string, programId: string, supportTypeId: string | null = null): Promise<ScheduleEvent[]> {
   const admin = createAdminClient();
-  const { data: cases } = await admin
-    .from('cases')
-    .select('id, owner_name, business_name, support_type_id')
-    .eq('program_id', programId)
-    .eq('mentee_id', menteeId);
+  let q = admin.from('cases').select('id, owner_name, business_name, support_type_id').eq('program_id', programId).eq('mentee_id', menteeId);
+  // 허브에서 고른 그룹(기수)만 (2026-10-29, 멘토 스케줄과 같은 규칙)
+  if (supportTypeId) q = q.eq('support_type_id', supportTypeId);
+  const { data: cases } = await q;
   const hidden = await hiddenMatchingGroupIds(programId);
   return eventsForCases((cases ?? []).filter((c) => !hidden.has(c.support_type_id)));
 }

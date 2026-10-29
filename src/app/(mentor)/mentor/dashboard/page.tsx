@@ -33,7 +33,7 @@ export default async function Page() {
   const openSurveys = await listMyOpenSurveys(profile.id, ctx.programId);
   // (P32) 운영사가 오프라인 수령을 체크하는 서류 — 멘토는 열람만 (유효 체크리스트가 꺼져 있으면 null)
   const docStatus = await getMentorDocStatusForMentor(ctx.programId, profile.id);
-  const unreadMessages = await countUnreadMessages(profile.id, ctx.programId);
+  const unreadMessages = await countUnreadMessages(profile.id, ctx.programId, ctx.supportTypeId);
   // 시작 전 준비 체크리스트 — 분야(프로필)·서명·(플래그) 지급서류·제출 서류 수령 확인 (P28·P32)
   const adminDb = createAdminClient();
   const [{ data: mp }, { data: sig }, { data: pdoc }] = await Promise.all([

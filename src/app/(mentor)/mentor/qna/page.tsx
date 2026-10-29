@@ -20,7 +20,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
 
   let body: React.ReactNode = null;
   let unreadTotal = 0;
-  const threads = await listMyThreads(profile.id, 'mentor', ctx.programId);
+  const threads = await listMyThreads(profile.id, 'mentor', ctx.programId, ctx.supportTypeId);
   unreadTotal = threads.reduce((s, t) => s + t.unread, 0);
 
   if (tab === 'board') {

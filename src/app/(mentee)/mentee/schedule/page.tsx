@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic';
 export default async function Page() {
   const profile = await requireMentee();
   const ctx = await requireContext(profile);
-  const events = await listMenteeSchedule(profile.id, ctx.programId);
+  const events = await listMenteeSchedule(profile.id, ctx.programId, ctx.supportTypeId);
   return (
     <main className="flex flex-col gap-5">
       <div>

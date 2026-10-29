@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { hiddenMatchingGroupIds } from '@/lib/matching/visibility';
+import { fetchAllIn } from '@/lib/supabase/paginate';
 import type { Tables } from '@/types/database';
 
 export type DirectMessage = Tables<'direct_messages'>;
@@ -55,8 +56,11 @@ export async function markThreadRead(caseId: string, userId: string): Promise<vo
     .is('read_at', null);
 }
 
-/** 내가 당사자인 케이스 스레드 목록 (멘토 = 배정 케이스들, 멘티 = 본인 케이스들) */
-export async function listMyThreads(userId: string, role: 'mentor' | 'mentee', programId: string): Promise<MessageThreadInfo[]> {
+/**
+ * 내가 당사자인 케이스 스레드 목록 (멘토 = 배정 케이스들, 멘티 = 본인 케이스들).
+ * supportTypeId = 허브에서 고른 그룹(기수) — 주면 그 그룹 케이스만 (2026-10-29, 대시보드·스케줄과 같은 범위)
+ */
+export async function listMyThreads(userId: string, role: 'mentor' | 'mentee', programId: string, supportTypeId: string | null = null): Promise<MessageThreadInfo[]> {
   const admin = createAdminClient();
   let caseRows: { id: string; business_name: string; owner_name: string; mentee_id: string | null; support_type_id: string }[] = [];
   if (role === 'mentee') {
@@ -79,7 +83,7 @@ export async function listMyThreads(userId: string, role: 'mentor' | 'mentee', p
   }
   // 매칭정보 감추기 라운드는 공개 전까지 멘토·멘티 메시지 스레드를 열지 않는다 (P54)
   const hidden = await hiddenMatchingGroupIds(programId);
-  caseRows = caseRows.filter((c) => !hidden.has(c.support_type_id));
+  caseRows = caseRows.filter((c) => !hidden.has(c.support_type_id) && (!supportTypeId || c.support_type_id === supportTypeId));
   if (caseRows.length === 0) return [];
   const caseIds = caseRows.map((c) => c.id);
   const [{ data: assigns }, { data: msgs }] = await Promise.all([
@@ -113,15 +117,21 @@ export async function listMyThreads(userId: string, role: 'mentor' | 'mentee', p
   });
 }
 
-/** 나에게 도착한 미확인 메시지 수 (대시보드 알람) */
-export async function countUnreadMessages(userId: string, programId: string): Promise<number> {
-  const { count } = await createAdminClient()
-    .from('direct_messages')
-    .select('id', { count: 'exact', head: true })
-    .eq('program_id', programId)
-    .eq('recipient_id', userId)
-    .is('read_at', null);
-  return count ?? 0;
+/**
+ * 나에게 도착한 미확인 메시지 수 (대시보드 알람) — 메시지 목록(listMyThreads)과 같은 범위:
+ * 매칭 감추기 라운드 제외, supportTypeId 를 주면 그 그룹(기수) 케이스만 (2026-10-29)
+ */
+export async function countUnreadMessages(userId: string, programId: string, supportTypeId: string | null = null): Promise<number> {
+  const admin = createAdminClient();
+  const { data: rows } = await admin.from('direct_messages').select('case_id').eq('program_id', programId).eq('recipient_id', userId).is('read_at', null).limit(1000);
+  if (!rows || rows.length === 0) return 0;
+  const caseIds = Array.from(new Set(rows.map((r) => r.case_id)));
+  const [cases, hidden] = await Promise.all([
+    fetchAllIn<{ id: string; support_type_id: string }>(caseIds, (chunk, f, t) => admin.from('cases').select('id, support_type_id').in('id', chunk).range(f, t)),
+    hiddenMatchingGroupIds(programId),
+  ]);
+  const ok = new Set(cases.filter((c) => !hidden.has(c.support_type_id) && (!supportTypeId || c.support_type_id === supportTypeId)).map((c) => c.id));
+  return rows.filter((r) => ok.has(r.case_id)).length;
 }
 
 export interface ProgramMessageRow {

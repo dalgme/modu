@@ -44,6 +44,9 @@ export async function pickMenteeCase(menteeId: string, scope: { programId: strin
     for (const l of logs ?? []) if (pending[l.case_id]) pending[l.case_id]!.unsigned += 1;
   }
   const requested = requestedCaseId ? cases.find((c) => c.id === requestedCaseId) : undefined;
-  const withWork = cases.find((c) => (pending[c.id]?.unsigned ?? 0) > 0 || pending[c.id]?.surveyOpen);
-  return { current: requested ?? withWork ?? cases[0] ?? null, cases, pending };
+  const hasWork = (c: (typeof cases)[number]) => (pending[c.id]?.unsigned ?? 0) > 0 || !!pending[c.id]?.surveyOpen;
+  // 기본 선택: 들어간 그룹(기수) 케이스 우선 — 다른 그룹에 할 일이 있어도 먼저 띄우지 않는다(전환 버튼으로 이동) (2026-10-29)
+  const inGroup = scope.supportTypeId ? cases.filter((c) => c.support_type_id === scope.supportTypeId) : [];
+  const current = requested ?? inGroup.find(hasWork) ?? inGroup[0] ?? cases.find(hasWork) ?? cases[0] ?? null;
+  return { current, cases, pending };
 }

@@ -23,7 +23,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   const profile = await requireMentee();
   const ctx = await requireContext(profile);
   const tab = searchParams.tab === 'messages' ? 'messages' : 'inquiries';
-  const threads = await listMyThreads(profile.id, 'mentee', ctx.programId);
+  const threads = await listMyThreads(profile.id, 'mentee', ctx.programId, ctx.supportTypeId);
   const unreadTotal = threads.reduce((s, t) => s + t.unread, 0);
 
   let body: React.ReactNode = null;

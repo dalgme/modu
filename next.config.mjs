@@ -12,6 +12,9 @@ const nextConfig = {
     return [{ source: '/admin/settings/features', destination: '/nextlab/settings', permanent: false }];
   },
   experimental: {
+    // (2026-10-29) 화면 캐시 재사용 끔 — 기본 30초 동안 앞서 본 화면을 다시 쓰면, 그 사이 허브·대행으로 바뀐
+    // 행사·그룹(기수) 대신 이전 범위 화면이 나온다("1기에 2기 멘티"). 매 이동마다 현재 쿠키로 새로 그린다.
+    staleTimes: { dynamic: 0 },
     // (P35-B) src/instrumentation.ts — 서버 기동 시 권한 거부 → 보안 이벤트 리스너 등록
     instrumentationHook: true,
     // 멘토링 사진 등 파일 업로드 서버 액션 본문 크기 상향
