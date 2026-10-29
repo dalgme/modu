@@ -53,7 +53,7 @@ const SHORTCUTS: { href: string; label: string; icon: LucideIcon; desc: string }
   { href: '/institution/reports?tab=cases', label: '멘티 진행현황', icon: ClipboardList, desc: '멘티별 단계 · 회차 · 멘토' },
   { href: '/institution/reports?tab=cases&view=mentor', label: '멘토 진행현황', icon: Users, desc: '멘토별 담당 멘티 · 실지급 · 만족도' },
   { href: '/institution/reports?tab=groups', label: '그룹 실적', icon: Layers, desc: '라운드별 케이스 · 회차 · 종결' },
-  { href: '/institution/reports?tab=files', label: '보고서 파일', icon: FolderDown, desc: '회차 보고서 · 관찰의견서 미리보기 · ZIP' },
+  { href: '/institution/reports?tab=files', label: '보고서 파일', icon: FolderDown, desc: '회차 보고서 · 결과보고서 미리보기 · ZIP' },
   { href: '/institution/reports/summary', label: '종합결과리포트', icon: FileSpreadsheet, desc: '운영사가 공유한 결과 보고서' },
 ];
 

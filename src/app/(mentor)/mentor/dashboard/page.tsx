@@ -14,18 +14,22 @@ import Link from 'next/link';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { featureEnabled } from '@/lib/platform/features';
 import { MentorOnboarding, type MentorOnboardingItem } from '@/components/mentor/mentor-onboarding';
+import { isGroupMatchingPublished } from '@/lib/matching/visibility';
 
 export default async function Page() {
   const profile = await requireMentor();
   const ctx = await requireContext(profile);
   // P24: 멘토 본인이 로그인해 대시보드(배정 멘티)를 열람하면 매칭 리스트에 '확인' 표시. 대행 중에는 기록하지 않는다.
   if (!(await getImpersonation())) await markAssignmentsConfirmed(profile.id, ctx.programId);
-  // 멘토는 여러 그룹의 멘티를 맡을 수 있으므로 대시보드는 행사 전체 케이스를 보여준다 (P28)
+  // 멘토가 그룹(기수)을 골라 들어왔으면 그 그룹의 멘티만, [행사 전체]로 들어왔으면 전체 (2026-10-29 — 2기 화면에 1기 멘티가 섞이던 문제)
   // 담당 멘티 목록은 dash.cases(할 일 카드)로 통합 — 옛 '담당 멘티 전체' 목록 조회는 제거
+  const groupId = ctx.supportTypeId ?? null;
   const [dash, endedCases] = await Promise.all([
-    loadMentorDashboard(profile.id, ctx.programId, null, '/mentor/cases'),
-    listMentorEndedCases(profile.id, ctx.programId),
+    loadMentorDashboard(profile.id, ctx.programId, groupId, '/mentor/cases'),
+    listMentorEndedCases(profile.id, ctx.programId, groupId),
   ]);
+  // 들어간 그룹이 매칭 공개 전이면 담당 멘티가 비어 보이는 이유를 알려 준다 (P54)
+  const groupHidden = groupId ? !(await isGroupMatchingPublished(groupId)) : false;
   const openSurveys = await listMyOpenSurveys(profile.id, ctx.programId);
   // (P32) 운영사가 오프라인 수령을 체크하는 서류 — 멘토는 열람만 (유효 체크리스트가 꺼져 있으면 null)
   const docStatus = await getMentorDocStatusForMentor(ctx.programId, profile.id);
@@ -56,6 +60,11 @@ export default async function Page() {
   ];
   return (
     <main className="flex flex-col gap-6">
+      {groupHidden && (
+        <p className="rounded-lg border border-amber-400 bg-amber-50/70 px-4 py-3 text-sm font-semibold text-amber-900">
+          {ctx.group?.name ?? '이 그룹'}의 멘티 매칭 정보는 운영사가 아직 공개하지 않았습니다. 공개되면 담당 멘티가 이 화면에 나타납니다.
+        </p>
+      )}
       {unreadMessages > 0 && (
         <Link href="/mentor/qna?tab=messages" className="flex items-center justify-between gap-3 rounded-lg border border-sky-400 bg-sky-50/60 px-4 py-3 text-sm font-semibold text-sky-900 hover:bg-sky-50">
           <span>🔔 멘티가 보낸 새 메시지 {unreadMessages}건</span>
@@ -67,7 +76,7 @@ export default async function Page() {
       <MentorDashboardV2 name={profile.name} data={dash} endedCases={endedCases} basePath="/mentor/cases" branding={ctx.branding} guideHref="/mentor/guide" scheduleHref="/mentor/schedule" settlementsHref="/mentor/settlements" />
       {/* ③ 내 폴더(멘토명/멘티명/보고서·관찰의견서) 전체 ZIP (2026-09-30) */}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-4 py-3 text-sm">
-        <span className="text-muted-foreground">담당했던 멘티의 회차 보고서·관찰의견서를 &quot;멘토명/멘티명&quot; 폴더로 한 번에 받습니다.</span>
+        <span className="text-muted-foreground">담당했던 멘티의 회차 보고서·결과보고서를 &quot;멘토명/멘티명&quot; 폴더로 한 번에 받습니다.</span>
         <BundleDownloadButton scope="mentor" id={profile.id} label="내 보고서 전체 ZIP" />
       </div>
     </main>

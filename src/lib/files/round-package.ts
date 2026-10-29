@@ -98,7 +98,7 @@ export async function buildRoundPackage(programId: string, groupId: string, kind
     const obs = obsByCase.get(p.caseId);
     const obsMentor = obs ? (obs.uploaded_by && nameOf.has(obs.uploaded_by) ? obs.uploaded_by : lastMentor.get(p.caseId)) : null;
     const withObs = !!obs && obsMentor === p.mentorId;
-    if (obs && withObs) parts.push(mkPart('관찰의견서', obs.doc_name || obs.storage_path, obs.mime_type, obs.storage_path));
+    if (obs && withObs) parts.push(mkPart('결과보고서', obs.doc_name || obs.storage_path, obs.mime_type, obs.storage_path));
     if (parts.length === 0) return null;
     return { name: pairPdfName(nameOf.get(p.mentorId) ?? '멘토', c.owner_name, withObs), parts };
   };

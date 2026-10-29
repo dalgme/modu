@@ -73,7 +73,7 @@ export function ClosureReviewPanel({
             ],
             confirmLabel: '승인 · 확정',
           }
-        : { title: '보완 요청', description: `멘토에게 보완을 요청합니다.\n사유: ${comment.trim()}`, impact: ['케이스는 보완 요청 상태가 되고 멘토는 회차·관찰의견서를 수정한 뒤 다시 종결을 요청합니다.'], confirmLabel: '보완 요청' },
+        : { title: '보완 요청', description: `멘토에게 보완을 요청합니다.\n사유: ${comment.trim()}`, impact: ['케이스는 보완 요청 상태가 되고 멘토는 회차·결과보고서를 수정한 뒤 다시 종결을 요청합니다.'], confirmLabel: '보완 요청' },
     );
     if (!ok) return;
     start(async () => {
@@ -93,12 +93,12 @@ export function ClosureReviewPanel({
       <CardHeader>
         <CardTitle className="text-base">종결 검수</CardTitle>
         <p className="text-xs text-muted-foreground">
-          관찰의견서와 회차를 확인한 뒤 승인하면 아래 예상 금액이 그대로 확정 스냅샷으로 저장됩니다.
+          결과보고서와 회차를 확인한 뒤 승인하면 아래 예상 금액이 그대로 확정 스냅샷으로 저장됩니다.
           {observationUrl && (
             <>
               {' '}
               <a href={observationUrl} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">
-                관찰의견서 열기
+                결과보고서 열기
               </a>
             </>
           )}

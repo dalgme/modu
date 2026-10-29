@@ -202,17 +202,18 @@ export async function listMentorCases(
  * 멘토: 종결·중도 종료로 끝난 담당 케이스 (읽기 전용 목록, P30).
  * RLS(is_mentor_of)는 활성 배정만 통과시키므로 service_role 로 읽되, 본인 배정 이력이 있는 케이스만 돌려준다.
  */
-export async function listMentorEndedCases(mentorId: string, programId: string): Promise<CaseListItem[]> {
+export async function listMentorEndedCases(mentorId: string, programId: string, supportTypeId?: string | null): Promise<CaseListItem[]> {
   const admin = createAdminClient();
   const { data: assigns } = await admin
     .from('mentor_assignments')
-    .select('case_id, assigned_at, cases!inner(program_id)')
+    .select('case_id, assigned_at, cases!inner(program_id, support_type_id)')
     .eq('mentor_id', mentorId)
     .eq('is_active', false)
     .in('end_kind', ['case_closed', 'case_withdrawn'])
     .eq('cases.program_id', programId)
     .order('assigned_at', { ascending: false });
-  const ids = Array.from(new Set((assigns ?? []).map((a) => a.case_id)));
+  const scoped = supportTypeId ? (assigns ?? []).filter((a) => (a.cases as unknown as { support_type_id?: string } | null)?.support_type_id === supportTypeId) : (assigns ?? []);
+  const ids = Array.from(new Set(scoped.map((a) => a.case_id)));
   if (ids.length === 0) return [];
   const [{ data: cases }, logs] = await Promise.all([
     admin.from('cases').select('*, support_types(name, code, required_rounds)').in('id', ids).in('status', ['closed', 'withdrawn']).order('closed_at', { ascending: false }),
@@ -224,7 +225,7 @@ export async function listMentorEndedCases(mentorId: string, programId: string):
     planned.set(l.case_id, (planned.get(l.case_id) ?? 0) + 1);
     if (l.report_registered_at) done.set(l.case_id, (done.get(l.case_id) ?? 0) + 1);
   }
-  const assignedAt = new Map((assigns ?? []).map((a) => [a.case_id, a.assigned_at]));
+  const assignedAt = new Map(scoped.map((a) => [a.case_id, a.assigned_at]));
   return (cases ?? []).map((row) => {
     const { support_types, ...c } = row as typeof row & { support_types: { name: string; code: string; required_rounds: number } | null };
     return {

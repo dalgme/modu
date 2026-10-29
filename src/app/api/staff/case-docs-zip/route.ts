@@ -17,7 +17,7 @@ const safe = (s: string) => s.replace(/[\\/:*?"<>|]/g, '_').trim() || '파일';
 function folderOf(docKey: string): string {
   if (docKey.startsWith('mentoring_report:')) return '회차 보고서';
   if (docKey.startsWith('mentoring_photo:')) return '회차 사진';
-  if (docKey === 'observation_report') return '관찰의견서';
+  if (docKey === 'observation_report') return '결과보고서';
   if (docKey.startsWith('settlement_statement')) return '정산서';
   if (docKey.startsWith('req')) return '필수서류';
   return '기타 서류';

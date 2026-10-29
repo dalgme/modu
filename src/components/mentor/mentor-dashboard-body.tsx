@@ -43,7 +43,7 @@ export function MentorDashboardBody({
 
       <CaseActionQueue
         title="진행할 컨설팅"
-        description="새로 배정됐거나 회차가 남은 멘티입니다. 회차 등록과 관찰의견서 작성은 P3 에서 열립니다."
+        description="새로 배정됐거나 회차가 남은 멘티입니다. 회차 등록과 결과보고서 작성은 P3 에서 열립니다."
         items={needsAction}
         basePath={basePath}
         ctaLabel="케이스 열기"

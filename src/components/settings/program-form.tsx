@@ -15,7 +15,7 @@ const FIELDS: { name: keyof ProgramRow; label: string; hint?: string; type?: str
   { name: 'contract_title', label: '용역명(정식 명칭)', hint: '매칭 리스트 엑셀 파일명 등 공식 문서명에 사용 — 비우면 행사명' },
   { name: 'client_name', label: '발주처 기관명', hint: '모든 화면·문서·알림의 {client} 에 반영', required: true },
   { name: 'client_short', label: '발주처 약칭' },
-  { name: 'client_seal_name', label: '발주처 직인 명의', hint: '관찰의견서·정산서 직인 자리' },
+  { name: 'client_seal_name', label: '발주처 직인 명의', hint: '결과보고서·정산서 직인 자리' },
   { name: 'operator_name', label: '용역사(운영) 기관명', hint: '{operator} 에 반영', required: true },
   { name: 'operator_short', label: '운영사 약칭' },
   { name: 'operator_contact', label: '운영사 대표 연락처' },

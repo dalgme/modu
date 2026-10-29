@@ -339,7 +339,7 @@ export async function upsertGroupAction(input: unknown): Promise<Result> {
     const obsBefore = (before as { observation_required?: boolean | null }).observation_required !== false;
     const obsAfter = d.observation_required === 'yes';
     const { error } = await admin.from('support_types').update(obsBefore === obsAfter ? row : { ...row, observation_required: obsAfter }).eq('id', d.id);
-    if (error) return { ok: false, error: error.code === '23505' ? '같은 코드의 그룹이 있습니다.' : error.code === 'PGRST204' ? '관찰의견서 설정 칸이 아직 DB 에 없습니다(마이그레이션 0091 적용 필요).' : error.message };
+    if (error) return { ok: false, error: error.code === '23505' ? '같은 코드의 그룹이 있습니다.' : error.code === 'PGRST204' ? '결과보고서 설정 칸이 아직 DB 에 없습니다(마이그레이션 0091 적용 필요).' : error.message };
 
     if (roundsImpact) {
       // 미정산 회차의 is_extra 재계산 (정산 스냅샷에 든 회차는 불변)

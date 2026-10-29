@@ -58,7 +58,7 @@ async function eventsForCases(cases: CaseLite[], mentorNameByCase?: Map<string, 
 }
 
 /** 멘토: 배정(활성) 케이스 + 끝까지 담당하고 종결·중도 종료된 케이스의 회차 일정 (지난 일정도 달력에 남는다, 2026-10-01) */
-export async function listMentorSchedule(mentorId: string, programId: string): Promise<ScheduleEvent[]> {
+export async function listMentorSchedule(mentorId: string, programId: string, supportTypeId?: string | null): Promise<ScheduleEvent[]> {
   const admin = createAdminClient();
   const { data: assigns } = await admin
     .from('mentor_assignments')
@@ -69,7 +69,7 @@ export async function listMentorSchedule(mentorId: string, programId: string): P
   const hidden = await hiddenMatchingGroupIds(programId);
   const cases = (assigns ?? [])
     .map((a) => a.cases as unknown as (CaseLite & { program_id: string; support_type_id: string }))
-    .filter((c) => c && c.program_id === programId && !hidden.has(c.support_type_id));
+    .filter((c) => c && c.program_id === programId && !hidden.has(c.support_type_id) && (!supportTypeId || c.support_type_id === supportTypeId));
   return eventsForCases(cases);
 }
 

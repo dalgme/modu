@@ -9,7 +9,8 @@ export const dynamic = 'force-dynamic';
 export default async function Page() {
   const profile = await requireMentor();
   const ctx = await requireContext(profile);
-  const events = await listMentorSchedule(profile.id, ctx.programId);
+  // 들어간 그룹(기수)이 있으면 그 그룹 일정만
+  const events = await listMentorSchedule(profile.id, ctx.programId, ctx.supportTypeId ?? null);
   return (
     <main className="flex flex-col gap-5">
       <div>

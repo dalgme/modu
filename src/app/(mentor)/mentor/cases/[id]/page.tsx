@@ -75,11 +75,16 @@ export default async function Page({ params }: { params: { id: string } }) {
     checkClosureReadiness(item.id),
     // 보완 요청 사유 — 운영사 검수 기록(reviews) 최신 1건
     createAdminClient().from('reviews').select('result, comment, created_at').eq('case_id', item.id).order('created_at', { ascending: false }).limit(1).maybeSingle(),
-    // 이 멘토의 다른 담당 멘티(같은 행사, 활성 배정) — 이전/다음 이동 (P31)
-    listMentorCases(profile.id, { programId: ctx.programId }),
+    // 이 멘토의 다른 담당 멘티(같은 행사, 활성 배정) — 이전/다음 이동 (P31). 들어간 그룹(기수)이 있으면 그 그룹 안에서만 (2026-10-29)
+    listMentorCases(profile.id, { programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined }),
     // 관찰의견서 파일 변경 이력(업로드·수정·삭제) — 2026-09-30
     listObservationHistory(item.id),
   ]);
+  // 제목의 회차 이름은 지금 들어간 그룹이 아니라 이 케이스의 그룹 기준
+  const caseGroupLabel =
+    item.support_type_id === ctx.supportTypeId
+      ? ctx.group?.round_label ?? null
+      : ((await createAdminClient().from('support_types').select('round_label').eq('id', item.support_type_id).maybeSingle()).data?.round_label ?? null);
   const ordered = siblings.filter((c) => !c.mentorEnded).sort((a, b) => a.owner_name.localeCompare(b.owner_name, 'ko'));
   const idx = ordered.findIndex((c) => c.id === item.id);
   const prevCase = idx > 0 ? ordered[idx - 1]! : null;
@@ -198,7 +203,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         <Card id="rounds" className="scroll-mt-36 overflow-hidden border-brand-coral/40 bg-brand-coral/[0.04] dark:bg-brand-coral/10">
           <CardHeader className="space-y-1.5 bg-brand-coral pb-4 text-white">
             <CardTitle className="flex flex-wrap items-baseline gap-x-2 text-base text-white">
-              [{item.owner_name}] 멘티 {ctx.group?.round_label ?? '컨설팅'}
+              [{item.owner_name}] 멘티 {caseGroupLabel ?? '컨설팅'}
               <span className="rounded-full bg-white/15 px-2 py-0.5 text-xs font-normal text-white/90">
                 등록 {rounds.length} / {maxRounds}회 · 보고서 {reported}건
                 {allowance.approvedExtra > 0 && ` · 추가 ${allowance.approvedExtra}회 승인`}
@@ -229,9 +234,9 @@ export default async function Page({ params }: { params: { id: string } }) {
         <Card id="observation" className="scroll-mt-36">
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-base">[{item.owner_name}] 멘티 관찰의견서</CardTitle>
+              <CardTitle className="text-base">[{item.owner_name}] 멘티 결과보고서</CardTitle>
               {/* ② 이 멘티의 회차 보고서 전부 + 관찰의견서 ZIP (2026-09-30) */}
-              <BundleDownloadButton scope="case" id={item.id} label="보고서·관찰의견서 ZIP" />
+              <BundleDownloadButton scope="case" id={item.id} label="보고서·결과보고서 ZIP" />
             </div>
             <p className="text-xs text-muted-foreground">멘티당 1건 · 파일 업로드로 제출합니다. 계획된 회차의 보고서를 모두 올리면 [파일 업로드]가 열리고, 종결 요청 시 운영사에 제출됩니다.</p>
           </CardHeader>

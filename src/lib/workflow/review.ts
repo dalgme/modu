@@ -57,7 +57,7 @@ export async function canApproveClosure(caseId: string): Promise<ApprovalReadine
   if (rounds.length < required) return { ok: false, reason: `필수 회차 ${required}회 중 ${rounds.length}회만 등록되어 있습니다.`, ...base };
   const unreported = rounds.filter((r) => !r.report_registered_at).map((r) => r.round_no);
   if (unreported.length > 0) return { ok: false, reason: `보고서가 없는 회차(${unreported.join('·')}회차)가 있습니다. 멘토에게 보완을 요청하세요.`, ...base };
-  if (observationRequired && !hasObservation) return { ok: false, reason: '관찰의견서 파일이 아직 등록되지 않았습니다.', ...base };
+  if (observationRequired && !hasObservation) return { ok: false, reason: '결과보고서 파일이 아직 등록되지 않았습니다.', ...base };
   const policy = (program?.closure_policy ?? {}) as { require_mentee_signature?: boolean; require_group_docs?: boolean };
   if (policy.require_mentee_signature && rounds.some((r) => !r.mentee_signed_at)) {
     return { ok: false, reason: '이 행사는 모든 회차에 멘티 확인 서명이 있어야 승인할 수 있습니다. 서명이 없는 회차가 있습니다.', ...base };

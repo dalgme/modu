@@ -49,10 +49,11 @@ export async function listSettlements(filters: { programId: string; supportTypeI
 }
 
 /** 멘토 본인 정산 목록 (RLS: mentor_id = auth.uid()) */
-export async function listMentorSettlements(mentorId: string, programId: string): Promise<SettlementItem[]> {
+/** 멘토 본인 정산 — supportTypeId 를 주면 그 그룹(기수) 케이스만 (멘토가 들어간 그룹 화면, 2026-10-29) */
+export async function listMentorSettlements(mentorId: string, programId: string, supportTypeId?: string | null): Promise<SettlementItem[]> {
   const supabase = createClient();
   const { data } = await supabase.from('settlements').select('*').eq('mentor_id', mentorId).eq('program_id', programId).neq('status', 'canceled').order('confirmed_at', { ascending: false });
-  return enrich(data ?? []);
+  return enrich(data ?? [], supportTypeId ?? undefined);
 }
 
 export async function listCaseSettlements(caseId: string): Promise<SettlementItem[]> {

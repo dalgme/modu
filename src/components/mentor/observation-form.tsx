@@ -49,7 +49,7 @@ export function ObservationForm({
       try {
         const staged = await stageUpload(f, 'documents');
         const r = await uploadObservationAction(caseId, staged);
-        toast(r.ok ? { title: file ? '관찰의견서를 새 파일로 교체했습니다.' : '관찰의견서 파일을 올렸습니다.' } : { title: r.error, variant: 'destructive' });
+        toast(r.ok ? { title: file ? '결과보고서를 새 파일로 교체했습니다.' : '결과보고서 파일을 올렸습니다.' } : { title: r.error, variant: 'destructive' });
         if (r.ok) {
           setPicked(null);
           setReplacing(false);
@@ -65,7 +65,7 @@ export function ObservationForm({
   const remove = async () => {
     if (!file) return;
     const ok = await confirm({
-      title: '관찰의견서 파일을 삭제할까요?',
+      title: '결과보고서 파일을 삭제할까요?',
       severity: 'danger',
       impact: [`삭제 파일: ${file.name}`, '삭제 후에는 새 파일을 다시 올려야 종결 요청을 할 수 있습니다.', '삭제 기록은 변경 이력에 남습니다.'],
       confirmLabel: '삭제',
@@ -73,7 +73,7 @@ export function ObservationForm({
     if (!ok) return;
     start(async () => {
       const r = await deleteObservationAction(caseId);
-      toast(r.ok ? { title: '관찰의견서 파일을 삭제했습니다.' } : { title: r.error, variant: 'destructive' });
+      toast(r.ok ? { title: '결과보고서 파일을 삭제했습니다.' } : { title: r.error, variant: 'destructive' });
       if (r.ok) router.refresh();
     });
   };
@@ -112,7 +112,7 @@ export function ObservationForm({
       {showUploader && (
         <div className={`flex flex-col gap-2 rounded-lg border p-3 ${uploadOk ? 'border-primary/40 bg-primary/5' : 'bg-muted/30'}`}>
           <p className="text-sm font-semibold">
-            {file ? '관찰의견서 수정 업로드' : '관찰의견서 파일 업로드'}
+            {file ? '결과보고서 수정 업로드' : '결과보고서 파일 업로드'}
             {file && <span className="ml-1 text-xs font-normal text-muted-foreground">(새 파일로 교체 — 최초 업로드일은 유지되고 수정일이 기록됩니다)</span>}
           </p>
           {!uploadOk && (

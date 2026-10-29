@@ -62,7 +62,7 @@ export function MentorCaseClosureSummary({
           종결 상황
           <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-xs font-medium text-white">{STATUS_TITLE[status] ?? status}</span>
         </CardTitle>
-        <p className="text-xs text-muted-foreground">종결 후에도 이 화면에서 회차·보고서·관찰의견서·정산 결과를 계속 열람할 수 있습니다. 내용 수정은 할 수 없습니다.</p>
+        <p className="text-xs text-muted-foreground">종결 후에도 이 화면에서 회차·보고서·결과보고서·정산 결과를 계속 열람할 수 있습니다. 내용 수정은 할 수 없습니다.</p>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
@@ -81,7 +81,7 @@ export function MentorCaseClosureSummary({
             </dd>
           </div>
           <div className="rounded-lg border bg-background p-3">
-            <dt className="text-[11px] font-medium text-muted-foreground">관찰의견서</dt>
+            <dt className="text-[11px] font-medium text-muted-foreground">결과보고서</dt>
             <dd className="truncate font-semibold" title={observationName ?? undefined}>
               {observationName ? '제출 완료' : '미제출'}
             </dd>

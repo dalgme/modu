@@ -51,7 +51,7 @@ export function LoginHeroWords() {
           <span className="text-brand-teal">1:1</span>로 연결하고, 끝까지 관리
         </h1>
         <p className="text-sm leading-relaxed text-midnight-foreground/75">
-          배정 · 컨설팅 회차 · 보고서와 서명 · 관찰의견서 · 검수 · 정산과 지급 품의까지 한 흐름으로. 여러 행사를 계정 추가만으로 운영합니다.
+          배정 · 컨설팅 회차 · 보고서와 서명 · 결과보고서 · 검수 · 정산과 지급 품의까지 한 흐름으로. 여러 행사를 계정 추가만으로 운영합니다.
         </p>
         <p className="text-xs text-midnight-foreground/45">© 2026 · 내부 업무용 시스템</p>
       </div>
