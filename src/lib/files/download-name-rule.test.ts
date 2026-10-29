@@ -6,7 +6,7 @@ describe('buildDownloadName', () => {
   const base = { menteeName: '남준현', mentorName: '강석우' };
   it('멘토링 산출물 = 멘토명-멘티명-구분명', () => {
     expect(buildDownloadName({ ...base, docKey: 'mentoring_report:x', sourceName: 'report.HWP', roundNo: 2 })).toBe('책임멘토 멘토링 보고서 및 결과보고서(강석우 멘토-남준현 멘티)_2회차.hwp');
-    expect(buildDownloadName({ ...base, docKey: 'observation_report', sourceName: 'a.pdf' })).toBe('강석우-남준현-결과보고서.pdf');
+    expect(buildDownloadName({ ...base, docKey: 'observation_report', sourceName: 'a.pdf' })).toBe('강석우-남준현-관찰의견서.pdf');
     expect(buildDownloadName({ ...base, docKey: 'settlement_statement:abc', sourceName: 's.pdf' })).toBe('강석우-남준현-정산서.pdf');
     expect(buildDownloadName({ ...base, docKey: 'mentoring_photo:x', sourceName: 'IMG_1.JPG', roundNo: 1, seq: 3 })).toBe('강석우-남준현-1회차 사진 3.jpg');
   });
@@ -16,7 +16,7 @@ describe('buildDownloadName', () => {
     expect(buildDownloadName({ ...base, docKey: 'req1:bizreg', sourceName: 'x.pdf', label: '사업자등록증' })).toBe('남준현-사업자등록증.pdf');
   });
   it('멘토가 아직 없으면 멘티명-구분명', () => {
-    expect(buildDownloadName({ menteeName: '남준현', mentorName: null, docKey: 'observation_report', sourceName: 'a.hwpx' })).toBe('남준현-결과보고서.hwpx');
+    expect(buildDownloadName({ menteeName: '남준현', mentorName: null, docKey: 'observation_report', sourceName: 'a.hwpx' })).toBe('남준현-관찰의견서.hwpx');
   });
   it('파일 이름에 쓸 수 없는 문자는 정리', () => {
     expect(buildDownloadName({ menteeName: '홍/길:동', mentorName: null, docKey: 'business_plan', sourceName: 'a.pdf' })).toBe('홍 길 동-사업계획서.pdf');

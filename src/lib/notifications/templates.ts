@@ -37,7 +37,7 @@ export const NOTIFICATION_TEMPLATES: Record<string, { code: string; text: string
   },
   closure_requested: {
     code: 'CLOSURE_REQUESTED',
-    text: '[{program}] 종결 요청(결과보고서)이 접수되었습니다. 검수를 진행해 주세요.',
+    text: '[{program}] 종결 요청(관찰의견서)이 접수되었습니다. 검수를 진행해 주세요.',
   },
   revision_requested: {
     code: 'REVISION_REQUESTED',
@@ -136,7 +136,7 @@ export const NOTIFICATION_EVENT_DEFS: NotificationEventDef[] = [
   { key: 'extension_requested', label: '추가 회차 요청 접수', audience: '운영사', recipients: '운영사(검수 권한)', stage: 'rounds', desc: '멘토가 추가 회차를 요청했을 때' },
   { key: 'extension_decided', label: '추가 회차 요청 처리 결과', audience: '멘토', recipients: '멘토', stage: 'rounds', desc: '추가 회차 요청을 승인·반려했을 때', sampleExtra: '추가 1회가 승인되었습니다.' },
   // ---- 종결·검수
-  { key: 'closure_requested', label: '종결 요청 접수', audience: '운영사', recipients: '운영사(검수 권한)', stage: 'closure', desc: '멘토가 결과보고서를 제출하고 종결을 요청했을 때' },
+  { key: 'closure_requested', label: '종결 요청 접수', audience: '운영사', recipients: '운영사(검수 권한)', stage: 'closure', desc: '멘토가 관찰의견서를 제출하고 종결을 요청했을 때' },
   { key: 'revision_requested', label: '검수 보완 요청', audience: '멘토', recipients: '멘토', stage: 'closure', desc: '운영사가 종결 검수에서 보완을 요청했을 때', sampleExtra: '(보완 요청 사유 앞 80자)' },
   { key: 'case_withdrawn', label: '케이스 중도 종료', audience: '멘티', recipients: '멘토·멘티 (발주처가 종료하면 운영사도)', stage: 'closure', desc: '케이스를 중도 종료했을 때' },
   { key: 'case_closed', label: '케이스 종결', audience: '멘티', recipients: '멘토·멘티', stage: 'closure', desc: '발주처 정산 확인으로 종결이 확정됐을 때' },

@@ -25,7 +25,7 @@ export interface CaseNextStepInput {
 function describe(i: CaseNextStepInput): { title: string; desc: string; anchor?: string; href?: string; hrefLabel?: string; tone: 'action' | 'wait' | 'done' } {
   // (2026-10-01) 회차 보고서·관찰의견서가 모두 등록되면 종결 요청 전이라도 바로 검수 승인 가능 (= 서버 canApproveClosure)
   if (i.approvable && (i.status === 'in_progress' || i.status === 'revision_requested')) {
-    return { title: '검수 승인할 수 있습니다', desc: '모든 회차 보고서와 결과보고서가 등록됐습니다. [검수 승인 · 정산 확정]을 누르면 지급 품의가 자동으로 작성·제출되어 발주처 정산 확인 단계로 넘어갑니다.', anchor: '#review', tone: 'action' };
+    return { title: '검수 승인할 수 있습니다', desc: '모든 회차 보고서와 관찰의견서가 등록됐습니다. [검수 승인 · 정산 확정]을 누르면 지급 품의가 자동으로 작성·제출되어 발주처 정산 확인 단계로 넘어갑니다.', anchor: '#review', tone: 'action' };
   }
   switch (i.status) {
     case 'registered':
@@ -37,9 +37,9 @@ function describe(i: CaseNextStepInput): { title: string; desc: string; anchor?:
     case 'mentor_assigned':
       return { title: `멘토(${i.mentorName ?? '-'})의 첫 회차 등록을 기다리는 중`, desc: i.roundsPlanned > 0 ? '계획 회차는 등록됐고 보고서 등록을 기다립니다.' : '멘토가 회차를 등록하면 진행 중으로 바뀝니다. 오래 멈춰 있으면 리포트 개요의 지연 케이스에서 독려 문자를 보낼 수 있습니다.', anchor: '#rounds', tone: 'wait' };
     case 'in_progress':
-      return { title: `컨설팅 진행 중 — 보고서 ${i.roundsReported}/${i.requiredRounds}회차`, desc: i.pendingRequests > 0 ? `처리 대기 요청 ${i.pendingRequests}건이 있습니다. 게시판 › 처리 대기 요청에서 승인·반려하세요.` : i.pendingChangeRequests > 0 ? `멘티의 멘토 변경 요청 ${i.pendingChangeRequests}건이 있습니다. 아래에서 수락·반려하세요.` : '멘토가 모든 회차의 보고서를 올리고 결과보고서를 제출하면 종결 검수 단계로 넘어옵니다.', anchor: i.pendingChangeRequests > 0 ? '#change' : '#rounds', href: i.pendingRequests > 0 ? '/nextlab/board?tab=requests' : undefined, hrefLabel: '처리 대기 요청', tone: i.pendingRequests + i.pendingChangeRequests > 0 ? 'action' : 'wait' };
+      return { title: `컨설팅 진행 중 — 보고서 ${i.roundsReported}/${i.requiredRounds}회차`, desc: i.pendingRequests > 0 ? `처리 대기 요청 ${i.pendingRequests}건이 있습니다. 게시판 › 처리 대기 요청에서 승인·반려하세요.` : i.pendingChangeRequests > 0 ? `멘티의 멘토 변경 요청 ${i.pendingChangeRequests}건이 있습니다. 아래에서 수락·반려하세요.` : '멘토가 모든 회차의 보고서를 올리고 관찰의견서를 제출하면 종결 검수 단계로 넘어옵니다.', anchor: i.pendingChangeRequests > 0 ? '#change' : '#rounds', href: i.pendingRequests > 0 ? '/nextlab/board?tab=requests' : undefined, hrefLabel: '처리 대기 요청', tone: i.pendingRequests + i.pendingChangeRequests > 0 ? 'action' : 'wait' };
     case 'closure_requested':
-      return { title: '종결 검수를 하세요', desc: '결과보고서와 회차 보고서를 확인한 뒤 [검수 승인 · 정산 확정] 또는 [보완 요청]을 누르세요. 승인하면 예상 금액이 그대로 확정됩니다.', anchor: '#review', tone: 'action' };
+      return { title: '종결 검수를 하세요', desc: '관찰의견서와 회차 보고서를 확인한 뒤 [검수 승인 · 정산 확정] 또는 [보완 요청]을 누르세요. 승인하면 예상 금액이 그대로 확정됩니다.', anchor: '#review', tone: 'action' };
     case 'revision_requested':
       return { title: '멘토의 보완을 기다리는 중', desc: '보완 요청 사유를 멘토가 확인하고 다시 종결 요청하면 검수 단계로 돌아옵니다.', anchor: '#rounds', tone: 'wait' };
     case 'settlement_pending':
@@ -64,7 +64,7 @@ const SECTIONS: { anchor: string; label: string }[] = [
   { anchor: '#settlement', label: '정산' },
   { anchor: '#change', label: '멘토 변경' },
   { anchor: '#rounds', label: '회차' },
-  { anchor: '#observation', label: '결과보고서' },
+  { anchor: '#observation', label: '관찰의견서' },
   { anchor: '#docs', label: '서류' },
 ];
 
@@ -88,7 +88,7 @@ export function CaseNextStep(props: CaseNextStepInput) {
             {d.desc && <p className="mt-1 text-xs text-muted-foreground">{d.desc}</p>}
             {showMentorInput && (
               <p className="mt-1 text-xs font-medium text-amber-800 dark:text-amber-200">
-                멘토 입력 대기: 보고서 {props.mentorInput!.plannedWithoutReport}회차 · 결과보고서 {props.mentorInput!.hasObservation ? '있음' : '없음'}
+                멘토 입력 대기: 보고서 {props.mentorInput!.plannedWithoutReport}회차 · 관찰의견서 {props.mentorInput!.hasObservation ? '있음' : '없음'}
               </p>
             )}
           </div>

@@ -232,7 +232,7 @@ export function DashboardV2(p: DashboardV2Props) {
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <AlertCard icon={Users} label="멘토 배정 대기" value={p.assignQueue.length} sub="새로 등록됐거나 재배정이 필요한 멘티" tone="navy" href="/nextlab/roster?tab=mentee-match&filter=unassigned" hrefLabel="미배정만 보기" onDetail={() => setDetail('assign')} />
           <AlertCard icon={AlertTriangle} label="지연 케이스" value={p.delays.length} sub="배정·첫 회차·장기 무진행·보완 지연 — 독려 문자 가능" tone="red" href="/nextlab/reports?tab=overview#delays" hrefLabel="지연 목록" onDetail={() => setDetail('delay')} />
-          <AlertCard icon={ClipboardCheck} label="종결 검수 대기" value={p.closureQueue.length} sub="결과보고서 제출 · 승인 시 정산 확정" tone="violet" href="/nextlab/review?tab=pending" hrefLabel="검수 대기열 열기" onDetail={() => setDetail('closure')} />
+          <AlertCard icon={ClipboardCheck} label="종결 검수 대기" value={p.closureQueue.length} sub="관찰의견서 제출 · 승인 시 정산 확정" tone="violet" href="/nextlab/review?tab=pending" hrefLabel="검수 대기열 열기" onDetail={() => setDetail('closure')} />
           <AlertCard icon={Inbox} label="처리 대기 요청" value={p.inbox.length} sub="추가 회차 · 멘토 변경 · 중도 종료" tone="amber" href="/nextlab/board?tab=requests" hrefLabel="요청함" onDetail={() => setDetail('inbox')} />
           <AlertCard icon={Building2} label="발주처 요청 미확인" value={p.operatorRequestsUnread} sub="발주처가 보낸 운영 요청 중 아직 읽지 않은 것" tone="amber" href="/nextlab/board?tab=requests" hrefLabel="요청함" />
           <AlertCard icon={MessageSquare} label="게시판 새 소식" value={boardTotal} sub={`문의 ${p.board.inquiries} · 게시글 ${p.board.posts} · 메시지 ${p.board.messages}`} tone="sky" href="/nextlab/board" hrefLabel="게시판" />
@@ -314,7 +314,7 @@ export function DashboardV2(p: DashboardV2Props) {
       </Dialog>
       <Dialog open={detail === 'closure'} onOpenChange={(o) => { if (!o) setDetail(null); }}>
         <DialogContent className="max-w-3xl">
-          <DialogHeader><DialogTitle>종결 검수 대기 {p.closureQueue.length}건</DialogTitle><DialogDescription>멘토가 종결을 요청했거나, 모든 회차 보고서와 결과보고서가 등록돼 바로 승인할 수 있는 케이스. 케이스 상세에서 검수 승인하면 정산이 확정되고 지급 품의가 자동 제출됩니다.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>종결 검수 대기 {p.closureQueue.length}건</DialogTitle><DialogDescription>멘토가 종결을 요청했거나, 모든 회차 보고서와 관찰의견서가 등록돼 바로 승인할 수 있는 케이스. 케이스 상세에서 검수 승인하면 정산이 확정되고 지급 품의가 자동 제출됩니다.</DialogDescription></DialogHeader>
           <QueueTable items={p.closureQueue} empty="검수 대기 건이 없습니다." />
         </DialogContent>
       </Dialog>

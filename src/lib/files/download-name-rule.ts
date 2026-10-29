@@ -47,7 +47,7 @@ export function docKind(docKey: string, roundNo?: number | null, label?: string 
   const n = roundNo ? `${roundNo}회차 ` : '';
   if (docKey.startsWith('mentoring_report:')) return { kind: `${n}보고서`, shape: 'pair' };
   if (docKey.startsWith('mentoring_photo:')) return { kind: `${n}사진`, shape: 'pair' };
-  if (docKey === 'observation_report') return { kind: '결과보고서', shape: 'pair' };
+  if (docKey === 'observation_report') return { kind: '관찰의견서', shape: 'pair' };
   if (docKey.startsWith('settlement_statement')) return { kind: '정산서', shape: 'pair' };
   if (docKey === 'business_plan') return { kind: '사업계획서', shape: 'mentee' };
   if (docKey === 'business_ref') return { kind: '참고자료', shape: 'mentee' };

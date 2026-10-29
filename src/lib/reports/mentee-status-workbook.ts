@@ -200,7 +200,7 @@ export async function buildMenteeStatusWorkbook(programId: string, groupId: stri
     { g: '멘토링 실적', h: '수당 합계', w: 11, k: 'fee' },
     { g: '멘토링 실적', h: '첫 회차', w: 11, k: 'first' },
     { g: '멘토링 실적', h: '최근 회차', w: 11, k: 'last' },
-    { g: '멘토링 실적', h: '결과보고서', w: 9, k: 'observation' },
+    { g: '멘토링 실적', h: '관찰의견서', w: 9, k: 'observation' },
     ...Array.from({ length: roundCount }, (_, i) => ({ g: '회차별 진행', h: `${i + 1}회차`, w: 15, k: `slot${i}` })),
     { g: '비고', h: '비고', w: 24, k: 'note' },
   ];

@@ -234,9 +234,9 @@ export default async function Page({ params }: { params: { id: string } }) {
         <Card id="observation" className="scroll-mt-36">
           <CardHeader>
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <CardTitle className="text-base">[{item.owner_name}] 멘티 결과보고서</CardTitle>
+              <CardTitle className="text-base">[{item.owner_name}] 멘티 관찰의견서</CardTitle>
               {/* ② 이 멘티의 회차 보고서 전부 + 관찰의견서 ZIP (2026-09-30) */}
-              <BundleDownloadButton scope="case" id={item.id} label="보고서·결과보고서 ZIP" />
+              <BundleDownloadButton scope="case" id={item.id} label="보고서·관찰의견서 ZIP" />
             </div>
             <p className="text-xs text-muted-foreground">멘티당 1건 · 파일 업로드로 제출합니다. 계획된 회차의 보고서를 모두 올리면 [파일 업로드]가 열리고, 종결 요청 시 운영사에 제출됩니다.</p>
           </CardHeader>

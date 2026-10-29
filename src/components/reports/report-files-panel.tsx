@@ -20,9 +20,9 @@ export function ReportFilesPanel({ data }: { data: ReportFilesData }) {
         <p className="font-semibold">보고서 파일 받는 방법 4가지 (현재 올라온 파일 {totalFiles}개)</p>
         <ol className="mt-1 list-decimal space-y-0.5 pl-5 text-xs leading-relaxed">
           <li><b>회차별 하나씩</b> — 아래 멘티 표에서 회차마다 [미리보기]·[다운로드]</li>
-          <li><b>멘토-멘티 1쌍</b> — 멘티 표의 [ZIP]: 그 멘티의 회차 보고서 전부 + 결과보고서 (폴더 “멘토명-멘티명”)</li>
-          <li><b>멘토별</b> — 멘토 표의 [ZIP]: “멘토명 / 멘티명 / 보고서·결과보고서” 폴더 구조</li>
-          <li><b>라운드별</b> — 라운드 표의 [ZIP]: “라운드명 / 멘토명 / 멘티명 / 보고서·결과보고서” 폴더 구조</li>
+          <li><b>멘토-멘티 1쌍</b> — 멘티 표의 [ZIP]: 그 멘티의 회차 보고서 전부 + 관찰의견서 (폴더 “멘토명-멘티명”)</li>
+          <li><b>멘토별</b> — 멘토 표의 [ZIP]: “멘토명 / 멘티명 / 보고서·관찰의견서” 폴더 구조</li>
+          <li><b>라운드별</b> — 라운드 표의 [ZIP]: “라운드명 / 멘토명 / 멘티명 / 보고서·관찰의견서” 폴더 구조</li>
         </ol>
         <p className="mt-1 text-[11px] opacity-80">ZIP 은 이 브라우저에서 파일을 받아 묶습니다. 파일이 많으면 1~2분 걸릴 수 있으니 창을 닫지 마세요.</p>
       </div>
@@ -31,7 +31,7 @@ export function ReportFilesPanel({ data }: { data: ReportFilesData }) {
         <CardHeader>
           <CardTitle className="text-base">제출용 묶음 (라운드별)</CardTitle>
           <p className="text-xs text-muted-foreground">
-            멘토-멘티마다 회차 보고서(회차순)와 결과보고서(관찰의견서)를 <b>PDF 한 개</b>로 합쳐 “책임멘토 멘토링 보고서 및 관찰 의견서(멘토명멘토-멘티명멘티).pdf”로 넣습니다.
+            멘토-멘티마다 회차 보고서(회차순)와 관찰의견서를 <b>PDF 한 개</b>로 합쳐 “책임멘토 멘토링 보고서 및 관찰 의견서(멘토명멘토-멘티명멘티).pdf”로 넣습니다.
             <br />· <b>멘토별</b>: 멘토 이름 폴더(1.수당지급서류 일체_멘토명.pdf + 담당 멘티 보고서) → 이름순 20명씩 “(붙임2)멘토링 보고서 및 관찰의견서(1~20번).zip” → “멘토별 멘토링 보고서 및 수당지급 서류.zip”
             <br />· <b>멘티별</b>: “001. 멘티명” 폴더(고유번호순, 없으면 이름순) → “(멘티별)멘토링 보고서_별첨자료 삽입.zip”
             <br />한글(HWP·HWPX) 파일은 이 브라우저에서 PDF 쪽으로 바꿔 함께 합칩니다(처음 한 번 변환 프로그램 약 12MB 를 받습니다). 이 PC 에 없는 한컴 전용 글꼴은 비슷한 글꼴로 바뀌어 줄바꿈이 조금 다를 수 있습니다.
@@ -110,7 +110,7 @@ export function ReportFilesPanel({ data }: { data: ReportFilesData }) {
           ) : (
             <table className="w-full min-w-[720px] text-sm">
               <thead className="text-left text-xs text-muted-foreground">
-                <tr><th className="py-1.5">멘티</th><th>멘토</th><th>회차 보고서</th><th>결과보고서</th><th className="text-right">②</th></tr>
+                <tr><th className="py-1.5">멘티</th><th>멘토</th><th>회차 보고서</th><th>관찰의견서</th><th className="text-right">②</th></tr>
               </thead>
               <tbody>
                 {data.rows.map((r) => {

@@ -9,7 +9,7 @@ import { fmt, PLATFORM_BRANDING } from '@/lib/programs/branding';
 const ROLES = [
   { icon: Building2, name: '{client}', desc: '발주처. 멘토·멘티별 실시간 진행현황 열람, 리포트, 지급 품의 정산 확인(종결 확정).' },
   { icon: UserCog, name: '{operator}', desc: '운영사. 사업그룹 개설, 멘토·멘티 등록, 멘토 배정·변경, 종결 검수, 정산 확정·지급 품의, 설정 전반.' },
-  { icon: Users, name: '멘토', desc: '담당 멘티 컨설팅 회차 등록(웹 작성/보고서 업로드·사진), 결과보고서 작성, 종결 요청, 추가 회차·중도 종료 요청.' },
+  { icon: Users, name: '멘토', desc: '담당 멘티 컨설팅 회차 등록(웹 작성/보고서 업로드·사진), 관찰의견서 작성, 종결 요청, 추가 회차·중도 종료 요청.' },
   { icon: Store, name: '멘티', desc: '진행현황 열람, 회차 확인 서명, 필수서류·관련 서류 제출, 만족도 조사, 멘토 변경 요청.' },
 ];
 
@@ -53,8 +53,8 @@ const STEP_DETAILS: StepDetail[] = [
   {
     actor: '멘토',
     tone: T_MENTOR,
-    title: '⑤ 결과보고서 · 종결 요청',
-    points: ['필수 회차를 채운 뒤 결과보고서(멘티당 1건) 작성 또는 업로드', '종결 요청 → PDF 단일본으로 제출'],
+    title: '⑤ 관찰의견서 · 종결 요청',
+    points: ['필수 회차를 채운 뒤 관찰의견서(멘티당 1건) 작성 또는 업로드', '종결 요청 → PDF 단일본으로 제출'],
   },
   {
     actor: '{operator}',
@@ -81,7 +81,7 @@ export function InstitutionGuideContent({ branding = PLATFORM_BRANDING }: { bran
           <CardTitle className="text-base">이 플랫폼은</CardTitle>
         </CardHeader>
         <CardContent className="text-sm leading-relaxed text-muted-foreground">
-          멘티와 멘토를 1:1로 연결·배정하고, 컨설팅 회차·보고서·결과보고서·정산까지 <b className="text-foreground">전 과정</b>을 하나의 화면에서 관리합니다.{' '}
+          멘티와 멘토를 1:1로 연결·배정하고, 컨설팅 회차·보고서·관찰의견서·정산까지 <b className="text-foreground">전 과정</b>을 하나의 화면에서 관리합니다.{' '}
           {fmt('{client}·{operator}·멘토·멘티가 각자의 역할로 참여하며, 진행현황을 실시간으로 확인할 수 있습니다.', branding)}
         </CardContent>
       </Card>

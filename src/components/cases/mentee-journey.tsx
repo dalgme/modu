@@ -21,7 +21,7 @@ export function MenteeJourney({
     mentor_assigned: '담당 멘토가 곧 연락드립니다. 일정을 잡고 첫 컨설팅을 진행하세요.',
     in_progress: `컨설팅 ${roundsDone}/${requiredRounds}회 진행. 회차마다 내용을 확인하고 서명해 주세요.`,
     reassignment_pending: '담당 멘토가 변경될 예정입니다. {operator}가 새 멘토를 배정합니다.',
-    closure_requested: '멘토가 결과보고서를 제출했습니다. {operator} 검수 중입니다. 만족도 조사에 참여해 주세요.',
+    closure_requested: '멘토가 관찰의견서를 제출했습니다. {operator} 검수 중입니다. 만족도 조사에 참여해 주세요.',
     revision_requested: '{operator}가 멘토에게 보완을 요청했습니다.',
     settlement_pending: '{operator} 검수가 끝났습니다. 정산 절차가 진행됩니다.',
     settlement_batched: '지급 품의가 진행 중입니다.',

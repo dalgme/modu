@@ -42,7 +42,7 @@ export const CASE_STATUS_META: Record<CaseStatus, StatusMeta> = {
   in_progress: { step: 3, label: '컨설팅 진행 중', short: '진행 중', tone: 'progress' },
   // 멘토 중도 종료 → 재배정 대기. 3단계에 반려 톤으로 표시.
   reassignment_pending: { step: 3, label: '멘토 재배정 대기', short: '재배정 대기', tone: 'rejected' },
-  closure_requested: { step: 4, label: '종결 요청(결과보고서 제출)', short: '종결 요청', tone: 'progress' },
+  closure_requested: { step: 4, label: '종결 요청(관찰의견서 제출)', short: '종결 요청', tone: 'progress' },
   // {operator} 보완 요청 → 멘토 수정 후 재요청. 4단계에 반려 톤.
   revision_requested: { step: 4, label: '{operator} 보완 요청', short: '보완 요청', tone: 'rejected' },
   settlement_pending: { step: 5, label: '{operator} 검수 완료 · 지급 대기', short: '지급 대기', tone: 'approved' },

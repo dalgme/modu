@@ -51,12 +51,12 @@ export async function saveObservationDraft(caseId: string, mentorId: string, con
   void caseId;
   void mentorId;
   void content;
-  if (OBSERVATION_WEB_DISABLED) return { ok: false, error: '결과보고서는 파일 업로드로만 제출합니다. [파일 업로드]를 이용하세요.' };
+  if (OBSERVATION_WEB_DISABLED) return { ok: false, error: '관찰의견서는 파일 업로드로만 제출합니다. [파일 업로드]를 이용하세요.' };
   const admin = createAdminClient();
   const { data: c } = await admin.from('cases').select('id, status').eq('id', caseId).maybeSingle();
   if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
   if (!TRANSITIONS.request_closure.from.includes(c.status) && c.status !== 'mentor_assigned') {
-    return { ok: false, error: '컨설팅 진행 중에만 결과보고서를 작성할 수 있습니다.' };
+    return { ok: false, error: '컨설팅 진행 중에만 관찰의견서를 작성할 수 있습니다.' };
   }
   const { error } = await admin
     .from('observation_reports')
@@ -77,7 +77,7 @@ export async function uploadObservationFile(
   const { data: c } = await admin.from('cases').select('id, status, support_type_id, program_id').eq('id', caseId).maybeSingle();
   if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
   if (!observationEditable(c.status)) {
-    return { ok: false, error: '컨설팅 진행 중(또는 보완 요청) 단계에서만 결과보고서를 올릴 수 있습니다.' };
+    return { ok: false, error: '컨설팅 진행 중(또는 보완 요청) 단계에서만 관찰의견서를 올릴 수 있습니다.' };
   }
   // (2026-09-29) 계획 회차 보고서를 모두 올린 뒤에만 업로드 — 멘토 화면 버튼 조건과 같은 함수
   const [{ data: group }, { data: logs }] = await Promise.all([
@@ -98,7 +98,7 @@ export async function uploadObservationFile(
     return { ok: false, error: '파일 이동에 실패했습니다.' };
   }
   const replaced = await replaceObservationDocument(caseId, {
-    doc_name: staging.fileName || '결과보고서',
+    doc_name: staging.fileName || '관찰의견서',
     storage_path: dest,
     sha256: sha256Hex(buffer),
     file_size: buffer.byteLength,
@@ -116,7 +116,7 @@ export async function uploadObservationFile(
     action: replaced.replacedName !== null ? 'observation.replace' : 'observation.upload',
     entityType: 'cases',
     entityId: caseId,
-    metadata: { case_id: caseId, file_name: staging.fileName || '결과보고서', ...(replaced.replacedName !== null ? { previous_name: replaced.replacedName } : {}) },
+    metadata: { case_id: caseId, file_name: staging.fileName || '관찰의견서', ...(replaced.replacedName !== null ? { previous_name: replaced.replacedName } : {}) },
   });
   return { ok: true, caseId };
 }
@@ -129,11 +129,11 @@ export async function deleteObservationFile(caseId: string, mentorId: string): P
   const admin = createAdminClient();
   const { data: c } = await admin.from('cases').select('id, status, program_id').eq('id', caseId).maybeSingle();
   if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
-  if (!observationEditable(c.status)) return { ok: false, error: '컨설팅 진행 중(또는 보완 요청) 단계에서만 결과보고서를 삭제할 수 있습니다.' };
+  if (!observationEditable(c.status)) return { ok: false, error: '컨설팅 진행 중(또는 보완 요청) 단계에서만 관찰의견서를 삭제할 수 있습니다.' };
   const { data: rows } = await admin.from('documents').select('id, doc_name, storage_path').eq('case_id', caseId).eq('doc_key', 'observation_report');
-  if (!rows || rows.length === 0) return { ok: false, error: '삭제할 결과보고서가 없습니다.' };
+  if (!rows || rows.length === 0) return { ok: false, error: '삭제할 관찰의견서가 없습니다.' };
   const { error } = await admin.from('documents').delete().in('id', rows.map((r) => r.id));
-  if (error) return { ok: false, error: `결과보고서 삭제에 실패했습니다: ${error.message}` };
+  if (error) return { ok: false, error: `관찰의견서 삭제에 실패했습니다: ${error.message}` };
   await admin.storage.from('documents').remove(rows.map((r) => r.storage_path));
   await logAudit(admin, {
     actorId: mentorId,
@@ -162,7 +162,7 @@ async function replaceObservationDocument(
   const { error } = keep
     ? await admin.from('documents').update({ ...doc, uploaded_role: 'mentor', updated_at: new Date().toISOString() }).eq('id', keep.id)
     : await admin.from('documents').insert({ case_id: caseId, doc_key: 'observation_report', uploaded_role: 'mentor', ...doc });
-  if (error) return { ok: false, error: `결과보고서 저장에 실패했습니다: ${error.message}` };
+  if (error) return { ok: false, error: `관찰의견서 저장에 실패했습니다: ${error.message}` };
   // 저장 성공 후에만 이전 파일·중복 행 정리
   const stalePaths = rows.map((d) => d.storage_path).filter((p) => p !== doc.storage_path);
   if (stalePaths.length > 0) await admin.storage.from('documents').remove(stalePaths);
@@ -198,14 +198,14 @@ export async function checkClosureReadiness(caseId: string): Promise<{ ok: boole
   const webOk = !OBSERVATION_WEB_DISABLED && content.summary.trim().length > 0;
   // (2026-10-15) 관찰의견서가 필요 없는 그룹(예: 1기 2라운드)은 회차 보고서만으로 종결 요청
   const obsRequired = await observationRequiredFor(c.support_type_id);
-  if (obsRequired && !(webOk || !!obsFile)) return { ok: false, hint: '결과보고서 파일을 올리면 종결을 요청할 수 있습니다.', ...base };
+  if (obsRequired && !(webOk || !!obsFile)) return { ok: false, hint: '관찰의견서 파일을 올리면 종결을 요청할 수 있습니다.', ...base };
   const policy = (program?.closure_policy ?? {}) as { require_mentee_signature?: boolean; require_group_docs?: boolean };
   if (policy.require_mentee_signature && rounds.some((r) => !r.mentee_signed_at)) return { ok: false, hint: '이 행사는 모든 회차에 멘티 확인 서명이 있어야 종결을 요청할 수 있습니다. 서명이 없는 회차를 확인하세요.', ...base };
   if (policy.require_group_docs) {
     const missing = await missingRequiredMenteeDocs(caseId);
     if (missing.length > 0) return { ok: false, hint: `멘티 필수서류가 누락되어 종결을 요청할 수 없습니다: ${missing.join(', ')}`, ...base };
   }
-  return { ok: true, hint: obsRequired ? '결과보고서를 제출하고 종결을 요청합니다. 운영사 검수 승인 시 정산이 확정됩니다.' : '종결을 요청합니다. 운영사 검수 승인 시 정산이 확정됩니다.', ...base };
+  return { ok: true, hint: obsRequired ? '관찰의견서를 제출하고 종결을 요청합니다. 운영사 검수 승인 시 정산이 확정됩니다.' : '종결을 요청합니다. 운영사 검수 승인 시 정산이 확정됩니다.', ...base };
 }
 
 /**
@@ -254,7 +254,7 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
   const content = obs ? normalizeObservation(obs.content) : EMPTY;
   const hasWeb = !OBSERVATION_WEB_DISABLED && content.summary.trim().length > 0;
   const obsRequired = await observationRequiredFor(c.support_type_id);
-  if (obsRequired && !hasWeb && !obsFile) return { ok: false, error: '결과보고서 파일을 올린 뒤 종결을 요청하세요.' };
+  if (obsRequired && !hasWeb && !obsFile) return { ok: false, error: '관찰의견서 파일을 올린 뒤 종결을 요청하세요.' };
   // 우선순위 (P31): 업로드된 완성본이 웹 작성본(updated_at)보다 나중에 올라왔으면 그 파일을 유지하고 PDF 를 다시 만들지 않는다.
   // 반대(웹 작성본이 더 최신)면 기존처럼 웹 작성본으로 PDF 를 생성해 단일본을 교체한다.
   const fileAt = obsFile ? Math.max(new Date(obsFile.created_at).getTime(), new Date(obsFile.updated_at).getTime()) : 0;
@@ -267,7 +267,7 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
       const branding = await getBranding(c.program_id);
       const mentor = await admin.from('users').select('name').eq('id', mentorId).maybeSingle();
       const html = renderTemplate(OBSERVATION_TEMPLATE, {
-        title: fmt('{program} 결과보고서', branding),
+        title: fmt('{program} 관찰의견서', branding),
         program: branding.programName,
         group: group.name,
         business_name: c.business_name,
@@ -289,7 +289,7 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
       const pdf = await htmlToPdf(html);
       const meta = await uploadFile('documents', caseId, pdf, 'application/pdf', 'pdf');
       const replaced = await replaceObservationDocument(caseId, {
-        doc_name: `결과보고서_${c.business_name}.pdf`,
+        doc_name: `관찰의견서_${c.business_name}.pdf`,
         storage_path: meta.storagePath,
         sha256: meta.sha256,
         file_size: meta.size,
@@ -301,7 +301,7 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
         return replaced;
       }
     } catch (err) {
-      return { ok: false, error: `결과보고서 PDF 생성에 실패했습니다: ${err instanceof Error ? err.message : '알 수 없는 오류'}` };
+      return { ok: false, error: `관찰의견서 PDF 생성에 실패했습니다: ${err instanceof Error ? err.message : '알 수 없는 오류'}` };
     }
     await admin.from('observation_reports').update({ submitted_at: new Date().toISOString() }).eq('case_id', caseId);
   }
@@ -319,7 +319,7 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
     from_status: c.status,
     to_status: 'closure_requested',
     changed_by: mentorId,
-    note: await actingNote(obsRequired ? '결과보고서 제출 · 종결 요청' : '종결 요청', mentorId), // 대행 중이면 표기 (P31)
+    note: await actingNote(obsRequired ? '관찰의견서 제출 · 종결 요청' : '종결 요청', mentorId), // 대행 중이면 표기 (P31)
   });
   await notifyProgramStaff(c.program_id, caseId, 'closure_requested');
   // 멘티 만족도 안내 (P31) — 활성 양식이 있고 아직 응답이 없을 때만, 중립 문구('열렸습니다')로. 문구 자체는 템플릿(survey_opened)+payload.message.

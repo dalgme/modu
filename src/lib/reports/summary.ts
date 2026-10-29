@@ -97,7 +97,7 @@ export function buildNarrative(m: ProgramMetrics, scope: { programName: string; 
     const t = extras.budget.total;
     out.push(`멘토링 예산 ${won(t.budget!)} 중 확정 집행 ${won(t.confirmed)}(${t.gauge ? `${Math.round(t.gauge.approved + t.gauge.clientConfirmed + t.gauge.paid)}%` : '-'}), 예상 ${won(t.forecast)}로 집행 전망은 ${t.gauge ? `${Math.round(t.gauge.total)}%` : '-'}입니다.`);
   }
-  out.push(e.surveyAvg !== null ? `멘티 만족도 평균은 ${e.surveyAvg.toFixed(2)}점(응답 ${e.surveyResponses}건)이고, 결과보고서 제출률은 ${pct(e.observationRate)}입니다.` : `만족도 조사 응답은 아직 없으며, 결과보고서 제출률은 ${pct(e.observationRate)}입니다.`);
+  out.push(e.surveyAvg !== null ? `멘티 만족도 평균은 ${e.surveyAvg.toFixed(2)}점(응답 ${e.surveyResponses}건)이고, 관찰의견서 제출률은 ${pct(e.observationRate)}입니다.` : `만족도 조사 응답은 아직 없으며, 관찰의견서 제출률은 ${pct(e.observationRate)}입니다.`);
   const top = [...m.mentors].sort((a, b2) => b2.roundsDone - a.roundsDone).slice(0, 3);
   if (top.length) out.push(`회차 이행이 많은 멘토는 ${top.map((t) => `${t.name}(${t.roundsDone}회)`).join(', ')}입니다.`);
   if (b.mentorsMissingDocs) out.push(`지급서류(이력서·통장사본·신분증)가 미비한 멘토가 ${b.mentorsMissingDocs}명 있어 품의 전 수령이 필요합니다.`);
@@ -173,7 +173,7 @@ export function sections(s: SummarySnapshot): SummarySection[] {
       kv: [
         ['만족도 평균 / 응답', `${e.surveyAvg?.toFixed(2) ?? '-'} / ${e.surveyResponses}건`],
         ...(client ? [] : ([['운영사 멘토 평가 평균', e.mentorReviewAvg?.toFixed(2) ?? '-']] as [string, string][])),
-        ['결과보고서 제출률', pct(e.observationRate)],
+        ['관찰의견서 제출률', pct(e.observationRate)],
       ],
       tables: [
         { title: '그룹별 만족도', header: ['그룹', '평균', '응답'], rows: e.surveyByGroup.map((g) => [g.name, g.avg?.toFixed(2) ?? '-', g.n]) },

@@ -44,7 +44,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
       <div>
         <h1 className="text-2xl font-semibold">종결 검수</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {ctx.program.name}{ctx.group ? ` · ${ctx.group.name}` : ' · 행사 전체'} — 멘토가 종결을 요청한 케이스를 오래된 순으로 보여줍니다. 회차·결과보고서·서명·만족도 칩을 확인하고 케이스 상세의 검수 패널에서 승인 또는 보완 요청하세요. [멘토 입력 대기] 탭은 멘토가 아직 등록하지 않은 회차 보고서·결과보고서·서명·종결 요청을 모아 보여주며, 대행 로그인으로 대신 처리할 수 있습니다.
+          {ctx.program.name}{ctx.group ? ` · ${ctx.group.name}` : ' · 행사 전체'} — 멘토가 종결을 요청한 케이스를 오래된 순으로 보여줍니다. 회차·관찰의견서·서명·만족도 칩을 확인하고 케이스 상세의 검수 패널에서 승인 또는 보완 요청하세요. [멘토 입력 대기] 탭은 멘토가 아직 등록하지 않은 회차 보고서·관찰의견서·서명·종결 요청을 모아 보여주며, 대행 로그인으로 대신 처리할 수 있습니다.
           {!canReview && ' (현재 등급은 열람만 가능합니다.)'}
         </p>
       </div>
@@ -59,7 +59,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
       />
       {tab === 'mentor-input' ? (
         mentorInput.length === 0 ? (
-          <EmptyState icon={Inbox} title="멘토 입력을 기다리는 케이스가 없습니다" hint="진행일이 지났는데 보고서가 없는 회차, 결과보고서 미작성, 멘티 서명 대기, 종결 요청 가능 케이스가 생기면 여기에 나타납니다." />
+          <EmptyState icon={Inbox} title="멘토 입력을 기다리는 케이스가 없습니다" hint="진행일이 지났는데 보고서가 없는 회차, 관찰의견서 미작성, 멘티 서명 대기, 종결 요청 가능 케이스가 생기면 여기에 나타납니다." />
         ) : (
           <div className="overflow-x-auto rounded-xl border bg-background">
             <table className="w-full text-sm">
@@ -82,7 +82,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
           </div>
         )
       ) : rows.length === 0 ? (
-        <EmptyState icon={Inbox} title={tab === 'pending' ? '검수 대기 케이스가 없습니다' : '보완 요청 중인 케이스가 없습니다'} hint={tab === 'pending' ? '멘토가 결과보고서를 제출하고 종결을 요청하면 여기에 나타납니다.' : '보완을 요청한 케이스는 멘토가 수정 후 다시 종결을 요청할 때까지 여기에 남습니다.'} />
+        <EmptyState icon={Inbox} title={tab === 'pending' ? '검수 대기 케이스가 없습니다' : '보완 요청 중인 케이스가 없습니다'} hint={tab === 'pending' ? '멘토가 관찰의견서를 제출하고 종결을 요청하면 여기에 나타납니다.' : '보완을 요청한 케이스는 멘토가 수정 후 다시 종결을 요청할 때까지 여기에 남습니다.'} />
       ) : (
         <div className="overflow-x-auto rounded-xl border bg-background">
           <table className="w-full text-sm">
@@ -131,7 +131,7 @@ function Row({ r, canReview }: { r: ReviewQueueItem; canReview: boolean }) {
       <td className="px-3 py-2">
         <div className="flex flex-wrap gap-1">
           <Chip ok={roundsOk} warn={!roundsOk} label={`회차 ${r.reportedRounds}/${r.requiredRounds}${r.extraRounds ? ` (+추가 ${r.extraRounds})` : ''}`} />
-          {r.observationRequired ? <Chip ok={r.hasObservation} warn={!r.hasObservation} label={r.hasObservation ? '결과보고서 있음' : '결과보고서 없음'} /> : <Chip ok warn={false} label="결과보고서 불필요 그룹" />}
+          {r.observationRequired ? <Chip ok={r.hasObservation} warn={!r.hasObservation} label={r.hasObservation ? '관찰의견서 있음' : '관찰의견서 없음'} /> : <Chip ok warn={false} label="관찰의견서 불필요 그룹" />}
           {r.signatures && <Chip ok={r.signatures.signed >= r.signatures.total} warn={r.signatures.signed < r.signatures.total} label={`서명 ${r.signatures.signed}/${r.signatures.total}`} />}
           <Chip ok={r.surveyAnswered} label={r.surveyAnswered ? '만족도 응답' : '만족도 미응답'} />
           {r.status === 'ready' && <Chip ok warn={false} label="서류 완비 · 종결 요청 전" />}
@@ -164,7 +164,7 @@ function MentorInputRow({ r, canViewAs }: { r: MentorInputQueueRow; canViewAs: b
       <td className="px-3 py-2">
         <div className="flex flex-wrap gap-1">
           {r.plannedWithoutReport > 0 && <Chip ok={false} warn label={`보고서 대기 ${r.plannedWithoutReport}회차`} />}
-          {!r.hasObservation && <Chip ok={false} warn={roundsOk} label="결과보고서 없음" />}
+          {!r.hasObservation && <Chip ok={false} warn={roundsOk} label="관찰의견서 없음" />}
           {r.pendingSignatures > 0 && <Chip ok={false} warn label={`서명 대기 ${r.pendingSignatures}`} />}
           {r.closureReady && <Chip ok label="종결 요청 가능" />}
         </div>

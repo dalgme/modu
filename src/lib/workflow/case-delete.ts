@@ -145,7 +145,7 @@ export async function resetCaseProgressAction(caseId: string, confirmText: strin
     { label: '서명', run: () => admin.from('signatures').delete().eq('case_id', caseId) },
     { label: '서류', run: () => (progressDocs.length ? admin.from('documents').delete().in('id', progressDocs.map((d) => d.id)) : Promise.resolve({ error: null })) },
     { label: '회차', run: () => admin.from('mentoring_logs').delete().eq('case_id', caseId) },
-    { label: '결과보고서', run: () => admin.from('observation_reports').delete().eq('case_id', caseId) },
+    { label: '관찰의견서', run: () => admin.from('observation_reports').delete().eq('case_id', caseId) },
     { label: '검수 기록', run: () => admin.from('reviews').delete().eq('case_id', caseId) },
     { label: '보완 요청', run: () => admin.from('supplement_requests').delete().eq('case_id', caseId) },
     { label: '추가 회차 요청', run: () => admin.from('round_extension_requests').delete().eq('case_id', caseId) },

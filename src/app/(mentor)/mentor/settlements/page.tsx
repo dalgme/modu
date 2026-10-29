@@ -37,7 +37,7 @@ export default async function Page() {
         </div>
         <div className="rounded-xl border bg-background p-4 text-xs text-muted-foreground">
           <p className="font-semibold text-foreground">정산 흐름</p>
-          <p className="mt-1">회차 보고서 등록 → 결과보고서 제출·종결 요청 → 운영사 검수 승인(확정) → 지급 품의 → 발주처 확인 → 지급. 확정된 건만 아래 표에 나옵니다.</p>
+          <p className="mt-1">회차 보고서 등록 → 관찰의견서 제출·종결 요청 → 운영사 검수 승인(확정) → 지급 품의 → 발주처 확인 → 지급. 확정된 건만 아래 표에 나옵니다.</p>
           {dash.reportPendingCount > 0 && <p className="mt-1 text-amber-700">보고서 미등록 회차 {dash.reportPendingCount}개는 예상액에 포함되지 않습니다. <Link href="/mentor/dashboard" className="underline">대시보드에서 등록</Link></p>}
         </div>
       </div>

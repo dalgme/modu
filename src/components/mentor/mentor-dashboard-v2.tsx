@@ -257,7 +257,7 @@ export function MentorDashboardV2({
       {endedCases.length > 0 && (
         // 종결·중도 종료된 멘티 — 펼친 채로 두고, 카드를 누르면 케이스 화면(회차·보고서·관찰의견서·종결 상황 열람)으로 (2026-10-01)
         <details open className="rounded-xl border bg-background">
-          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">완료·종료된 멘티 <span className="font-normal text-muted-foreground">({endedCases.length}) — 종결 확정 또는 중도 종료. 눌러서 회차·보고서·결과보고서·정산 결과를 다시 볼 수 있습니다</span></summary>
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">완료·종료된 멘티 <span className="font-normal text-muted-foreground">({endedCases.length}) — 종결 확정 또는 중도 종료. 눌러서 회차·보고서·관찰의견서·정산 결과를 다시 볼 수 있습니다</span></summary>
           <ul className="grid gap-2 px-4 pb-4 sm:grid-cols-2">
             {endedCases.map((c) => (
               <li key={c.id} className="flex flex-col gap-1 rounded-lg border bg-muted/30 text-sm">

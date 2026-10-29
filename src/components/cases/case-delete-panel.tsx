@@ -53,7 +53,7 @@ export function CaseDeletePanel({ caseId, ownerName, businessName }: { caseId: s
       <div className="rounded-lg border bg-background p-3">
         <p className="text-sm font-semibold">① 진행 내역 삭제 (권장)</p>
         <p className="mt-1 text-xs text-muted-foreground">
-          회차·보고서·사진·결과보고서·서명·검수 기록·요청·만족도 응답·정산(품의 편성 전)만 지웁니다. <b>라운드(그룹)·멘토 매칭·멘티 정보·사업계획서·멘티 서류는 그대로 남고</b>, 상태는 ‘멘토 배정’(멘토가 없으면 ‘멘티 등록’)으로 돌아갑니다.
+          회차·보고서·사진·관찰의견서·서명·검수 기록·요청·만족도 응답·정산(품의 편성 전)만 지웁니다. <b>라운드(그룹)·멘토 매칭·멘티 정보·사업계획서·멘티 서류는 그대로 남고</b>, 상태는 ‘멘토 배정’(멘토가 없으면 ‘멘티 등록’)으로 돌아갑니다.
         </p>
         {mode !== 'reset' && (
           <Button size="sm" variant="outline" className="mt-2 gap-1 border-destructive/50 text-destructive" onClick={() => { setMode('reset'); setConfirmText(''); }}>

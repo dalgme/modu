@@ -116,7 +116,7 @@ function decideAction(c: CaseListItem, rounds: RoundLite[], nextPlanned: RoundLi
     case 'withdrawn':
       return { key: 'inactive', label: CASE_STATUS_META[c.status].short, hint: '운영사가 처리 중입니다.', href, urgent: false };
     case 'closure_requested':
-      return { key: 'wait_review', label: '운영사 검수 대기', hint: '결과보고서와 종결 요청이 접수되었습니다. 검수 결과를 기다려 주세요.', href, urgent: false };
+      return { key: 'wait_review', label: '운영사 검수 대기', hint: '관찰의견서와 종결 요청이 접수되었습니다. 검수 결과를 기다려 주세요.', href, urgent: false };
     case 'revision_requested':
       return { key: 'revision', label: '보완 후 다시 종결 요청', hint: '운영사가 보완을 요청했습니다. 케이스의 보완 요청 내용을 확인하고 수정한 뒤 다시 종결을 요청하세요.', href, urgent: true };
     case 'settlement_pending':
@@ -141,9 +141,9 @@ function decideAction(c: CaseListItem, rounds: RoundLite[], nextPlanned: RoundLi
     return { key: 'plan_next', label: `${done + 1}회차 일정 등록`, hint: `필수 ${c.requiredRounds}회 중 ${done}회 이행. 다음 회차 일정을 등록하세요.`, href: `${href}#rounds`, urgent: false };
   }
   if (!hasObservation) {
-    return { key: 'observation', label: '결과보고서 업로드', hint: '필수 회차를 모두 이행했습니다. 결과보고서 파일을 올리면 종결을 요청할 수 있습니다.', href: `${href}#observation`, urgent: true };
+    return { key: 'observation', label: '관찰의견서 업로드', hint: '필수 회차를 모두 이행했습니다. 관찰의견서 파일을 올리면 종결을 요청할 수 있습니다.', href: `${href}#observation`, urgent: true };
   }
-  return { key: 'closure', label: '종결 요청', hint: '결과보고서가 준비됐습니다. [종결 요청]을 누르면 운영사 검수 후 정산이 확정됩니다.', href: `${href}#requests`, urgent: true };
+  return { key: 'closure', label: '종결 요청', hint: '관찰의견서가 준비됐습니다. [종결 요청]을 누르면 운영사 검수 후 정산이 확정됩니다.', href: `${href}#requests`, urgent: true };
 }
 
 /** 멘토 대시보드 데이터 — 활성 배정 케이스 기준 (범위: 행사/그룹) */

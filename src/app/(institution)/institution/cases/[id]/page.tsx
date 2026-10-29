@@ -69,8 +69,8 @@ export default async function Page({ params }: { params: { id: string } }) {
         </Card>
         <Card>
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-            <CardTitle className="text-base">[{item.owner_name}] 멘티 결과보고서</CardTitle>
-            <BundleDownloadButton scope="case" id={item.id} label="보고서·결과보고서 ZIP" />
+            <CardTitle className="text-base">[{item.owner_name}] 멘티 관찰의견서</CardTitle>
+            <BundleDownloadButton scope="case" id={item.id} label="보고서·관찰의견서 ZIP" />
           </CardHeader>
           <CardContent className="text-sm">
             {obsFile ? (
@@ -93,7 +93,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         <a
           href={`/api/staff/case-docs-zip?case=${item.id}`}
           className="flex items-center justify-between rounded-lg border bg-background px-4 py-2.5 text-sm font-semibold hover:bg-accent"
-          title="회차 보고서·사진·결과보고서·정산서·필수서류를 종류별 폴더로 정리한 ZIP"
+          title="회차 보고서·사진·관찰의견서·정산서·필수서류를 종류별 폴더로 정리한 ZIP"
         >
           <span>📦 이 케이스 서류 일괄 다운로드 (ZIP)</span>
           <span>↓</span>

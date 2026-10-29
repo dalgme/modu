@@ -223,7 +223,7 @@ export default async function Page({ params }: { params: { id: string } }) {
               <span className="ml-2 text-xs font-normal text-muted-foreground">보고서 등록 {rounds.filter((r) => r.report_registered_at).length}회차</span>
             </CardTitle>
             <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-              <span>회차 등록·보고서·결과보고서는 담당 멘토가 합니다. 멘토를 대신해 처리해야 하면 대행 로그인으로 그 화면에서 등록하세요.</span>
+              <span>회차 등록·보고서·관찰의견서는 담당 멘토가 합니다. 멘토를 대신해 처리해야 하면 대행 로그인으로 그 화면에서 등록하세요.</span>
               {canViewAs && item.mentorId && item.mentorName && <ViewAsStartButton targetUserId={item.mentorId} targetName={item.mentorName} caseId={item.id} returnTo={`/nextlab/cases/${item.id}#rounds`} size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" label={`${item.mentorName} 멘토 대행으로 이 케이스 열기`} />}
             </div>
           </CardHeader>
@@ -234,9 +234,9 @@ export default async function Page({ params }: { params: { id: string } }) {
 
         <Card id="observation" className="scroll-mt-40">
           <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-            <CardTitle className="text-base">[{item.owner_name}] 멘티 결과보고서</CardTitle>
+            <CardTitle className="text-base">[{item.owner_name}] 멘티 관찰의견서</CardTitle>
             {/* ② 이 멘티의 회차 보고서 전부 + 관찰의견서를 "멘토명-멘티명" 폴더로 한 번에 (2026-09-30) */}
-            <BundleDownloadButton scope="case" id={item.id} label="보고서·결과보고서 ZIP" />
+            <BundleDownloadButton scope="case" id={item.id} label="보고서·관찰의견서 ZIP" />
           </CardHeader>
           <CardContent className="text-sm">
             {obsFile ? (
@@ -262,7 +262,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         <a
           href={`/api/staff/case-docs-zip?case=${item.id}`}
           className="flex items-center justify-between rounded-lg border bg-background px-4 py-2.5 text-sm font-semibold hover:bg-accent"
-          title="회차 보고서·사진·결과보고서·정산서·필수서류를 종류별 폴더로 정리한 ZIP"
+          title="회차 보고서·사진·관찰의견서·정산서·필수서류를 종류별 폴더로 정리한 ZIP"
         >
           <span>📦 이 케이스 서류 일괄 다운로드 (ZIP) — 정산 증빙 제출용</span>
           <span>↓</span>

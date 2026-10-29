@@ -38,7 +38,7 @@ export function OverviewVisual({ m, base, trend, scopeLabel }: { m: ProgramMetri
         <Ring value={Math.round(p.closureRate * 100)} label={`종결률 (${p.closed}/${p.cases})`} color="#A78BFA" />
         {/* 운영사 멘토 평가는 내부 지표 — 발주처 화면에는 노출하지 않는다 (P31) */}
         <Kpi label="만족도 평균" value={e.surveyAvg ?? '-'} sub={base === '/institution' ? `응답 ${e.surveyResponses}건` : `응답 ${e.surveyResponses}건 · 운영사 평가 ${e.mentorReviewAvg ?? '-'}`} />
-        <Kpi wide label="완료 회차(정산 확정)" value={p.roundsCompleted} sub={`온 ${p.onlineRounds} · 오프 ${p.offlineRounds} · 결과보고서 ${Math.round(e.observationRate * 100)}%`} />
+        <Kpi wide label="완료 회차(정산 확정)" value={p.roundsCompleted} sub={`온 ${p.onlineRounds} · 오프 ${p.offlineRounds} · 관찰의견서 ${Math.round(e.observationRate * 100)}%`} />
       </KpiBand>
 
       <section className="flex flex-col gap-2">

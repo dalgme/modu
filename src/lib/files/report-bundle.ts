@@ -144,7 +144,7 @@ export async function buildReportBundle(input: {
     }
     if (added === 0) emptyCases += 1;
   }
-  if (wanted.length === 0) return { ok: false, error: '아직 올라온 보고서·결과보고서가 없습니다.' };
+  if (wanted.length === 0) return { ok: false, error: '아직 올라온 보고서·관찰의견서가 없습니다.' };
 
   // 4) 서명 URL (10분) — 100개씩
   const files: BundleFile[] = [];
