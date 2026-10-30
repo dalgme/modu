@@ -109,7 +109,14 @@ export async function updateProgramAction(input: unknown): Promise<Result> {
   await audit(op.id, op.programId, 'program', before, update, op.programId);
   revalidateAll();
   revalidatePath('/', 'layout');
-  return { ok: true };
+  // 기본 회차 수는 새로 만드는 라운드의 초기값일 뿐 — 기존 라운드와 다르면 어디서 바꾸는지 알려 준다 (2026-10-30)
+  let message: string | undefined;
+  if (before && before.default_required_rounds !== columns.default_required_rounds) {
+    const { data: groups } = await admin.from('support_types').select('name, required_rounds').eq('program_id', op.programId);
+    const differ = (groups ?? []).filter((g) => g.required_rounds !== columns.default_required_rounds);
+    if (differ.length) message = `기본 회차 수는 새로 만드는 라운드에만 적용됩니다. 기존 라운드 ${differ.length}개(${differ.map((g) => `${g.name} ${g.required_rounds}회`).join(', ')})는 [사업그룹] 탭 '라운드별 회차 수'에서 바꾸세요.`;
+  }
+  return { ok: true, message };
 }
 
 // ---------------------------------------------------------------- 사업그룹
@@ -162,6 +169,39 @@ async function reportedCountsByCase(caseIds: string[]): Promise<Map<string, numb
   const m = new Map<string, number>();
   for (const r of rows) m.set(r.case_id, (m.get(r.case_id) ?? 0) + 1);
   return m;
+}
+
+/** 회차 수 변경 영향 (P30) — 진행 중 케이스 중 새 회차 수를 넘겨 이행한 건·검수 중인 건 */
+async function roundsChangeImpact(groupId: string, nextRounds: number) {
+  const admin = createAdminClient();
+  const { data: openCasesRaw } = await admin.from('cases').select('id, status, survey_opened_at').eq('support_type_id', groupId).not('status', 'in', `(${OPEN_CASE_STATUSES_EXCL.join(',')})`);
+  const openCases = openCasesRaw ?? [];
+  const reported = openCases.length ? await reportedCountsByCase(openCases.map((c) => c.id)) : new Map<string, number>();
+  const overRounds = openCases.filter((c) => (reported.get(c.id) ?? 0) > nextRounds).length;
+  const inReview = openCases.filter((c) => c.status === 'closure_requested' || c.status === 'revision_requested').length;
+  return { openCases, overRounds, inReview };
+}
+
+function roundsConfirmMessage(from: number, to: number, overRounds: number, inReview: number): string {
+  return `회차 수를 ${from}→${to}회로 바꾸면 새 회차 수를 넘겨 이행한 케이스 ${overRounds}건, 검수 중(종결 요청·보완) 케이스 ${inReview}건에 영향이 있습니다. 추가 회차 표시(is_extra)를 다시 계산하고 목표 회차를 채운 케이스의 만족도 조사를 엽니다. 계속할까요?`;
+}
+
+/** 회차 수 변경 후속 처리 — 미정산 회차의 추가 회차 표시 재계산 + 목표 회차를 채운 케이스의 만족도 개시 */
+async function applyRoundsChange(openCases: { id: string; survey_opened_at: string | null }[], nextRounds: number): Promise<{ extraRecomputed: number; reopenedSurveys: number }> {
+  if (openCases.length === 0) return { extraRecomputed: 0, reopenedSurveys: 0 };
+  const admin = createAdminClient();
+  const caseIds = openCases.map((c) => c.id);
+  // 정산 스냅샷에 든 회차는 불변
+  const logs = await fetchAllIn<{ id: string; round_no: number; is_extra: boolean }>(caseIds, (chunk, from, to) => admin.from('mentoring_logs').select('id, round_no, is_extra').in('case_id', chunk).is('settlement_id', null).range(from, to));
+  const toExtra = logs.filter((l) => l.round_no > nextRounds && !l.is_extra).map((l) => l.id);
+  const toNormal = logs.filter((l) => l.round_no <= nextRounds && l.is_extra).map((l) => l.id);
+  for (let i = 0; i < toExtra.length; i += 200) await admin.from('mentoring_logs').update({ is_extra: true }).in('id', toExtra.slice(i, i + 200));
+  for (let i = 0; i < toNormal.length; i += 200) await admin.from('mentoring_logs').update({ is_extra: false }).in('id', toNormal.slice(i, i + 200));
+  // 목표 회차를 이미 채운 케이스 → 만족도 조사 개시 (registerRoundReport 의 자동 개시와 같은 조건)
+  const reported = await reportedCountsByCase(caseIds);
+  const openSurvey = openCases.filter((c) => !c.survey_opened_at && (reported.get(c.id) ?? 0) >= nextRounds).map((c) => c.id);
+  if (openSurvey.length) await admin.from('cases').update({ survey_opened_at: new Date().toISOString() }).in('id', openSurvey).is('survey_opened_at', null);
+  return { extraRecomputed: toExtra.length + toNormal.length, reopenedSurveys: openSurvey.length };
 }
 
 /**
@@ -310,8 +350,7 @@ export async function upsertGroupAction(input: unknown): Promise<Result> {
     if (!before) return { ok: false, error: '그룹을 찾을 수 없습니다.' };
 
     // 그룹 케이스(종결·중도 종료 제외) — 종료 가드·회차 수 변경 영향 계산 공용
-    const { data: openCasesRaw } = await admin.from('cases').select('id, status, survey_opened_at').eq('support_type_id', d.id).not('status', 'in', `(${OPEN_CASE_STATUSES_EXCL.join(',')})`);
-    const openCases = openCasesRaw ?? [];
+    const { openCases, overRounds, inReview } = await roundsChangeImpact(d.id, d.required_rounds);
 
     // 1) 그룹 종료 가드 (P30): 진행 중 케이스가 남아 있으면 확인 후에만 종료
     if (before.status === 'active' && d.status === 'ended' && openCases.length > 0 && d.confirm_end !== 'true') {
@@ -319,20 +358,9 @@ export async function upsertGroupAction(input: unknown): Promise<Result> {
     }
 
     // 2) 회차 수 변경 영향 (P30)
-    let roundsImpact: { overRounds: number; inReview: number; reopenedSurveys: number; extraRecomputed: number } | null = null;
-    if (before.required_rounds !== d.required_rounds && openCases.length > 0) {
-      const reported = await reportedCountsByCase(openCases.map((c) => c.id));
-      const overRounds = openCases.filter((c) => (reported.get(c.id) ?? 0) > d.required_rounds).length;
-      const inReview = openCases.filter((c) => c.status === 'closure_requested' || c.status === 'revision_requested').length;
-      if ((overRounds > 0 || inReview > 0) && d.confirm_rounds !== 'true') {
-        return {
-          ok: false,
-          needConfirm: true,
-          affected: { overRounds, inReview },
-          error: `회차 수를 ${before.required_rounds}→${d.required_rounds}회로 바꾸면 새 회차 수를 넘겨 이행한 케이스 ${overRounds}건, 검수 중(종결 요청·보완) 케이스 ${inReview}건에 영향이 있습니다. 추가 회차 표시(is_extra)를 다시 계산하고 목표 회차를 채운 케이스의 만족도 조사를 엽니다. 계속할까요?`,
-        };
-      }
-      roundsImpact = { overRounds, inReview, reopenedSurveys: 0, extraRecomputed: 0 };
+    const roundsChanged = before.required_rounds !== d.required_rounds;
+    if (roundsChanged && (overRounds > 0 || inReview > 0) && d.confirm_rounds !== 'true') {
+      return { ok: false, needConfirm: true, affected: { overRounds, inReview }, error: roundsConfirmMessage(before.required_rounds, d.required_rounds, overRounds, inReview) };
     }
 
     // 관찰의견서 필요 여부는 값이 바뀔 때만 쓴다 — 0091 이 적용되지 않은 DB 에서도 다른 그룹 저장이 깨지지 않게
@@ -341,21 +369,10 @@ export async function upsertGroupAction(input: unknown): Promise<Result> {
     const { error } = await admin.from('support_types').update(obsBefore === obsAfter ? row : { ...row, observation_required: obsAfter }).eq('id', d.id);
     if (error) return { ok: false, error: error.code === '23505' ? '같은 코드의 그룹이 있습니다.' : error.code === 'PGRST204' ? '관찰의견서 설정 칸이 아직 DB 에 없습니다(마이그레이션 0091 적용 필요).' : error.message };
 
-    if (roundsImpact) {
-      // 미정산 회차의 is_extra 재계산 (정산 스냅샷에 든 회차는 불변)
-      const caseIds = openCases.map((c) => c.id);
-      const logs = await fetchAllIn<{ id: string; round_no: number; is_extra: boolean }>(caseIds, (chunk, from, to) => admin.from('mentoring_logs').select('id, round_no, is_extra').in('case_id', chunk).is('settlement_id', null).range(from, to));
-      const toExtra = logs.filter((l) => l.round_no > d.required_rounds && !l.is_extra).map((l) => l.id);
-      const toNormal = logs.filter((l) => l.round_no <= d.required_rounds && l.is_extra).map((l) => l.id);
-      for (let i = 0; i < toExtra.length; i += 200) await admin.from('mentoring_logs').update({ is_extra: true }).in('id', toExtra.slice(i, i + 200));
-      for (let i = 0; i < toNormal.length; i += 200) await admin.from('mentoring_logs').update({ is_extra: false }).in('id', toNormal.slice(i, i + 200));
-      roundsImpact.extraRecomputed = toExtra.length + toNormal.length;
-      // 목표 회차를 이미 채운 케이스 → 만족도 조사 개시 (registerRoundReport 의 자동 개시와 같은 조건)
-      const reported = await reportedCountsByCase(caseIds);
-      const openSurvey = openCases.filter((c) => !c.survey_opened_at && (reported.get(c.id) ?? 0) >= d.required_rounds).map((c) => c.id);
-      if (openSurvey.length) await admin.from('cases').update({ survey_opened_at: new Date().toISOString() }).in('id', openSurvey).is('survey_opened_at', null);
-      roundsImpact.reopenedSurveys = openSurvey.length;
-      await audit(op.id, op.programId, 'support_type.required_rounds', { required_rounds: before.required_rounds }, { required_rounds: d.required_rounds, ...roundsImpact }, d.id, 'support_type.required_rounds_changed');
+    let roundsImpact: { extraRecomputed: number; reopenedSurveys: number } | null = null;
+    if (roundsChanged) {
+      roundsImpact = await applyRoundsChange(openCases, d.required_rounds);
+      await audit(op.id, op.programId, 'support_type.required_rounds', { required_rounds: before.required_rounds }, { required_rounds: d.required_rounds, overRounds, inReview, ...roundsImpact }, d.id, 'support_type.required_rounds_changed');
     }
     if (before.status === 'active' && d.status === 'ended') {
       await audit(op.id, op.programId, 'support_type.status', { status: before.status }, { status: 'ended', open_cases: openCases.length }, d.id, 'support_type.ended');
@@ -381,6 +398,32 @@ export async function upsertGroupAction(input: unknown): Promise<Result> {
   }
   revalidateAll();
   return { ok: true, id: ins.id, message };
+}
+
+/**
+ * 라운드(그룹)별 회차 수만 바꾼다 (2026-10-30) — 운영 설정 [사업그룹] 탭 상단 '라운드별 회차 수' 표.
+ * 그룹 수정 폼과 같은 영향 확인(초과 이행·검수 중) → confirm 후 재요청, 같은 후속 처리·감사.
+ */
+export async function setGroupRoundsAction(input: { groupId: string; rounds: number; confirm?: boolean }): Promise<Result> {
+  const op = await operator();
+  if ('error' in op) return { ok: false, error: op.error };
+  const rounds = Number(input.rounds);
+  if (!Number.isInteger(rounds) || rounds < 1 || rounds > 20) return { ok: false, error: '회차 수는 1~20 사이 정수로 입력하세요.' };
+  const admin = createAdminClient();
+  const { data: before } = await admin.from('support_types').select('id, name, required_rounds').eq('id', input.groupId).eq('program_id', op.programId).maybeSingle();
+  if (!before) return { ok: false, error: '이 행사의 라운드(그룹)가 아닙니다.' };
+  if (before.required_rounds === rounds) return { ok: true, message: `${before.name}: 이미 ${rounds}회입니다.` };
+  const { openCases, overRounds, inReview } = await roundsChangeImpact(before.id, rounds);
+  if ((overRounds > 0 || inReview > 0) && !input.confirm) {
+    return { ok: false, needConfirm: true, affected: { overRounds, inReview }, error: roundsConfirmMessage(before.required_rounds, rounds, overRounds, inReview) };
+  }
+  const { error } = await admin.from('support_types').update({ required_rounds: rounds }).eq('id', before.id);
+  if (error) return { ok: false, error: error.message };
+  const impact = await applyRoundsChange(openCases, rounds);
+  await audit(op.id, op.programId, 'support_type.required_rounds', { required_rounds: before.required_rounds }, { required_rounds: rounds, overRounds, inReview, ...impact }, before.id, 'support_type.required_rounds_changed');
+  revalidateAll();
+  revalidatePath('/', 'layout');
+  return { ok: true, id: before.id, message: `${before.name}: ${before.required_rounds}회 → ${rounds}회 · 추가 회차 표시 재계산 ${impact.extraRecomputed}건 · 만족도 조사 개시 ${impact.reopenedSurveys}건` };
 }
 
 /** 그룹 삭제 (P30) — 케이스 0건 · PL(또는 등급 없음) · settings 권한. 그룹 범위 설정 행을 함께 지운다. */
