@@ -7,6 +7,7 @@ import { getProgramSettings, listGroupsWithDocs, listLimits, listRates, listRepo
 import { DEFAULT_ROUND_REPORT_TEMPLATE, ROUND_REPORT_PLACEHOLDERS, previewRoundReportHtml, resolveRoundReportTemplate, templateHasSign } from '@/lib/documents/round-report';
 import { ProgramForm } from '@/components/settings/program-form';
 import { GroupsManager } from '@/components/settings/groups-manager';
+import { GroupRoundsPanel } from '@/components/settings/group-rounds-panel';
 import { RatesLimits } from '@/components/settings/rates-limits';
 import { GatesForm, WithholdingForm } from '@/components/settings/policy-forms';
 import { ReportTemplatesManager } from '@/components/settings/report-templates-manager';
@@ -74,7 +75,16 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   const today = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10);
 
   let body: React.ReactNode = null;
-  if (tab === 'program') body = <ProgramForm program={program} />;
+  if (tab === 'program') {
+    // 라운드별 회차 수를 여기서도 바로 바꿀 수 있게 — '기본 회차 수'만 바꾸고 적용이 안 된다고 느끼는 혼선 방지 (2026-10-30)
+    const groups = await listGroupsWithDocs(ctx.programId);
+    body = (
+      <div className="flex flex-col gap-4">
+        <GroupRoundsPanel groups={groups} defaultRequiredRounds={program.default_required_rounds} />
+        <ProgramForm program={program} />
+      </div>
+    );
+  }
   if (tab === 'groups') {
     const groups = await listGroupsWithDocs(ctx.programId);
     const avail: Record<string, boolean> = {};

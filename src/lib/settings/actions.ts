@@ -114,7 +114,7 @@ export async function updateProgramAction(input: unknown): Promise<Result> {
   if (before && before.default_required_rounds !== columns.default_required_rounds) {
     const { data: groups } = await admin.from('support_types').select('name, required_rounds').eq('program_id', op.programId);
     const differ = (groups ?? []).filter((g) => g.required_rounds !== columns.default_required_rounds);
-    if (differ.length) message = `기본 회차 수는 새로 만드는 라운드에만 적용됩니다. 기존 라운드 ${differ.length}개(${differ.map((g) => `${g.name} ${g.required_rounds}회`).join(', ')})는 [사업그룹] 탭 '라운드별 회차 수'에서 바꾸세요.`;
+    if (differ.length) message = `기본 회차 수는 새로 만드는 라운드에만 적용됩니다. 기존 라운드 ${differ.length}개(${differ.map((g) => `${g.name} ${g.required_rounds}회`).join(', ')})는 이 화면 위쪽 '라운드별 멘토링 회차 수'에서 [적용]을 누르세요.`;
   }
   return { ok: true, message };
 }

@@ -24,7 +24,7 @@ const FIELDS: { name: keyof ProgramRow; label: string; hint?: string; type?: str
   { name: 'email_subject_prefix', label: '이메일 제목 접두어' },
   { name: 'starts_on', label: '행사 시작일', type: 'date' },
   { name: 'ends_on', label: '행사 종료일', type: 'date' },
-  { name: 'default_required_rounds', label: '기본 회차 수', type: 'number', hint: '새로 만드는 라운드(그룹)의 초기값입니다. 이미 있는 라운드의 회차 수는 [사업그룹] 탭 \'라운드별 회차 수\'에서 바꿉니다.' },
+  { name: 'default_required_rounds', label: '새 라운드 기본 회차 수', type: 'number', hint: '새로 만드는 라운드(그룹)의 초기값입니다. 이미 있는 라운드의 회차 수는 이 화면 위쪽 \'라운드별 멘토링 회차 수\'에서 바꿉니다.' },
 ];
 
 /** (P35-B) 개인정보 보호책임자 2명 — 발주처 보호책임자 · 운영사 PL. 침해사고 통지·보존 만료 알림 수신자. */
