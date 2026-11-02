@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useCallback, useEffect, useMemo, useState, useTransition } from 'react';
 import { Trash2 } from 'lucide-react';
 
 import type { LimitRow, RateRow } from '@/lib/settings/data';
-import { addLimitAction, addRateAction, deleteFutureRowAction } from '@/lib/settings/actions';
+import { addLimitAction, addRateAction, applyRepriceAction, deleteFutureRowAction, previewRepriceAction } from '@/lib/settings/actions';
+import type { RepriceSummaryRow } from '@/lib/settlement/reprice';
 import { useConfirm } from '@/components/common/confirm-dialog';
 import { useUnsavedGuard } from '@/hooks/use-unsaved-guard';
 import { AmountInput } from '@/components/ui/amount-input';
@@ -19,8 +20,11 @@ type Mode = 'online' | 'offline';
 const MODE_LABEL: Record<Mode, string> = { online: '온라인', offline: '오프라인' };
 
 /** 오늘 기준 적용 중인 행 — 같은 범위·유형에서 effective_from ≤ today 중 가장 늦은 것 */
-function currentOf<T extends { support_type_id: string | null; effective_from: string }>(rows: T[], groupId: string | null, today: string, pick: (r: T) => boolean = () => true): T | null {
-  const list = rows.filter((r) => r.support_type_id === groupId && r.effective_from <= today && pick(r)).sort((a, b) => (a.effective_from < b.effective_from ? 1 : -1));
+function currentOf<T extends { support_type_id: string | null; effective_from: string; created_at?: string | null }>(rows: T[], groupId: string | null, today: string, pick: (r: T) => boolean = () => true): T | null {
+  // 같은 적용일이면 나중에 만든 행 — 서버 단가 해석(rate-pick.ts)과 같은 규칙
+  const list = rows
+    .filter((r) => r.support_type_id === groupId && r.effective_from <= today && pick(r))
+    .sort((a, b) => (a.effective_from !== b.effective_from ? (a.effective_from < b.effective_from ? 1 : -1) : (a.created_at ?? '') < (b.created_at ?? '') ? 1 : -1));
   return list[0] ?? null;
 }
 
@@ -50,12 +54,35 @@ export function RatesLimits({ rates, limits, groups, today, defaultGroupId = nul
   const dirty = !!(rPrice || rCap || lMentor || lCase);
   useUnsavedGuard(dirty);
 
-  const run = (fn: () => Promise<{ ok: true; id?: string } | { ok: false; error: string }>, ok: string, after?: () => void) =>
+  // 회차 금액 점검 — 지금 단가 표와 다른 미정산 회차 (2026-11-02)
+  const [check, setCheck] = useState<{ summary: RepriceSummaryRow[]; total: number } | null>(null);
+  const loadCheck = useCallback(async () => {
+    const r = await previewRepriceAction();
+    if (r.ok) setCheck({ summary: r.summary, total: r.total });
+  }, []);
+  useEffect(() => {
+    void loadCheck();
+  }, [loadCheck, rates]);
+
+  const run = (fn: () => Promise<{ ok: true; id?: string; message?: string } | { ok: false; error: string }>, ok: string, after?: () => void) =>
     start(async () => {
       const r = await fn();
-      toast(r.ok ? { title: ok } : { title: r.error, variant: 'destructive' });
+      toast(r.ok ? { title: ok, description: r.message } : { title: r.error, variant: 'destructive' });
       if (r.ok) after?.();
+      void loadCheck();
     });
+
+  const applyCheck = async () => {
+    if (!check || check.total === 0) return;
+    const ok = await confirm({
+      title: '현재 단가로 다시 맞추기',
+      description: `정산 전 회차 ${check.total}건의 단가·금액을 회차 날짜에 적용되는 단가로 다시 계산합니다.`,
+      impact: [...check.summary.map((r) => `${r.groupName} · ${MODE_LABEL[r.mode as Mode] ?? r.mode}: ${r.count}건 ${r.fromPrices.map((p) => formatKRW(p)).join('/')} → ${formatKRW(r.toPrice)} (시간당)`), '정산 확정된 회차는 바뀌지 않습니다.'],
+      confirmLabel: '다시 맞추기',
+    });
+    if (!ok) return;
+    run(() => applyRepriceAction(), '회차 금액을 다시 계산했습니다.');
+  };
 
   /** 현재 적용 표 — 행사 기본 + 각 그룹 × 온/오프 */
   const applied = useMemo(() => {
@@ -84,7 +111,8 @@ export function RatesLimits({ rates, limits, groups, today, defaultGroupId = nul
       impact: [
         `단가: ${before ? formatKRW(Number(before.unit_price)) : '(없음)'} → ${formatKRW(price)}`,
         `일일 상한: ${before ? formatKRW(Number(before.daily_cap_amount)) : '(없음)'} → ${formatKRW(cap)}`,
-        before && before.support_type_id !== gid ? '현재는 행사 기본값을 따르고 있어, 이 그룹만 별도 값으로 바뀝니다.' : '적용일 이후 등록되는 회차부터 반영되며 과거 회차 스냅샷은 바뀌지 않습니다.',
+        before && before.support_type_id !== gid ? '현재는 행사 기본값을 따르고 있어, 이 그룹만 별도 값으로 바뀝니다.' : '같은 범위·유형의 이전 단가는 이력으로 남습니다.',
+        `적용일(${rFrom}) 이후 날짜의 회차 중 정산 전 회차(예정·보고서 등록)는 저장 즉시 새 단가로 다시 계산됩니다. 정산 확정된 회차는 바뀌지 않습니다.`,
       ],
       confirmLabel: '추가',
     });
@@ -120,6 +148,35 @@ export function RatesLimits({ rates, limits, groups, today, defaultGroupId = nul
   return (
     <div className="flex flex-col gap-6">
       {dialog}
+
+      {/* 회차 금액 점검 (2026-11-02) */}
+      <section className={cn('rounded-xl border-2 p-4', check && check.total > 0 ? 'border-amber-400 bg-amber-50 dark:bg-amber-950/30' : 'border-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/20')}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="font-semibold">회차 금액 점검</h3>
+            <p className="text-xs text-muted-foreground">정산 전 회차의 단가가 지금 단가 표(회차 날짜 기준)와 같은지 확인합니다.</p>
+          </div>
+          {check && check.total > 0 && (
+            <Button size="sm" disabled={pending} onClick={() => void applyCheck()}>
+              현재 단가로 다시 맞추기 ({check.total}건)
+            </Button>
+          )}
+        </div>
+        {!check ? (
+          <p className="mt-2 text-xs text-muted-foreground">확인 중…</p>
+        ) : check.total === 0 ? (
+          <p className="mt-2 text-sm font-medium text-emerald-800 dark:text-emerald-300">모든 정산 전 회차가 현재 단가 표와 일치합니다.</p>
+        ) : (
+          <ul className="mt-2 flex flex-col gap-1 text-sm">
+            {check.summary.map((r) => (
+              <li key={`${r.groupId}-${r.mode}-${r.toPrice}`} className="tabular-nums">
+                <b>{r.groupName}</b> · {MODE_LABEL[r.mode as Mode] ?? r.mode} {r.count}건 — 저장된 시간당 {r.fromPrices.map((p) => formatKRW(p)).join('/')} → 지금 단가 {formatKRW(r.toPrice)}
+                <span className="ml-1 text-xs text-muted-foreground">(예상 금액 {r.deltaAmount >= 0 ? '+' : ''}{formatKRW(r.deltaAmount)})</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {/* 현재 적용 요약 */}
       <section className="rounded-xl border bg-background p-4">
@@ -170,7 +227,7 @@ export function RatesLimits({ rates, limits, groups, today, defaultGroupId = nul
 
       <section className="rounded-xl border bg-background p-4">
         <h3 className="font-semibold">컨설팅 단가 · 일일 금액 상한</h3>
-        <p className="text-xs text-muted-foreground">유형별 시간당 단가와 같은 멘티·같은 날 합산 상한. 회차 금액 = 시간당 단가 × 운영시간(예: 시간당 100,000원 × 3시간 = 300,000원). 그룹 override 는 그룹을 고르세요. 적용일 이후 등록되는 회차부터 반영됩니다.</p>
+        <p className="text-xs text-muted-foreground">유형별 시간당 단가와 같은 멘티·같은 날 합산 상한. 회차 금액 = 시간당 단가 × 운영시간(예: 시간당 100,000원 × 3시간 = 300,000원). 그룹(라운드)만 바꾸려면 범위에서 그룹을 고르세요. 적용일 이후 날짜의 정산 전 회차는 이미 등록된 것도 저장 즉시 새 단가로 다시 계산됩니다(정산 확정 회차는 그대로).</p>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -239,8 +296,8 @@ export function RatesLimits({ rates, limits, groups, today, defaultGroupId = nul
       </section>
 
       <section className="rounded-xl border bg-background p-4">
-        <h3 className="font-semibold">운영 한도</h3>
-        <p className="text-xs text-muted-foreground">기록용 — 2026-10-01부터 회차 등록 시 하루 횟수 제한(멘토 1일 건수·멘티 1일 회차)은 적용하지 않습니다. 같은 멘티·같은 날 금액 상한(단가 표)과 시간 겹침만 검증합니다.</p>
+        <h3 className="font-semibold">운영 한도 <span className="ml-1 rounded bg-muted px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground">기록용 · 적용 안 됨</span></h3>
+        <p className="text-xs text-muted-foreground">2026-10-01부터 하루 횟수 제한(멘토 1일 건수·멘티 1일 회차)은 회차 등록에 적용하지 않습니다 — 여기 값을 바꿔도 동작은 바뀌지 않습니다. 하루 한도를 바꾸려면 위 <b>단가 표의 &lsquo;일일 상한(멘티·일)&rsquo;</b>(같은 멘티·같은 날 금액 합계)을 바꾸세요.</p>
         <form
           onSubmit={(e) => {
             e.preventDefault();

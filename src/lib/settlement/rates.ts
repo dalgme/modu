@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import type { Enums } from '@/types/database';
+import { pickRateRow } from '@/lib/settlement/rate-pick';
 
 export type ConsultingMode = Enums<'consulting_mode'>;
 
@@ -37,13 +38,12 @@ export async function resolveRate(
   const admin = createAdminClient();
   const { data } = await admin
     .from('consulting_rates')
-    .select('id, mode, unit_price, daily_cap_amount, effective_from, support_type_id')
+    .select('id, mode, unit_price, daily_cap_amount, effective_from, support_type_id, created_at')
     .eq('program_id', programId)
     .eq('mode', mode)
-    .lte('effective_from', onDate)
-    .order('effective_from', { ascending: false });
-  const rows = data ?? [];
-  const pick = (supportTypeId ? rows.find((r) => r.support_type_id === supportTypeId) : undefined) ?? rows.find((r) => r.support_type_id === null);
+    .lte('effective_from', onDate);
+  // 고르는 규칙은 미정산 회차 단가 재적용(reprice.ts)과 같은 함수 (2026-11-02)
+  const pick = pickRateRow(data ?? [], supportTypeId, mode, onDate);
   if (!pick) return null;
   return {
     rateId: pick.id,

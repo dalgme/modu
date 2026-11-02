@@ -8,6 +8,7 @@ import { denyUnless, CAPABILITIES, STAFF_GRADES } from '@/lib/auth/capabilities'
 
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { applyReprice, planProgramReprice, type RepriceScope, type RepriceSummaryRow } from '@/lib/settlement/reprice';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import { policyFromParams } from '@/lib/settlement/compute';
 import { ROUND_REPORT_TEMPLATE_KEY, templateHasSign } from '@/lib/documents/round-report';
@@ -529,8 +530,44 @@ export async function addRateAction(input: unknown): Promise<Result> {
   const { data, error } = await admin.from('consulting_rates').insert(row).select('id').single();
   if (error || !data) return { ok: false, error: error?.code === '23505' ? '같은 범위·유형·적용일의 단가가 이미 있습니다.' : (error?.message ?? '저장 실패') };
   await audit(op.id, op.programId, 'consulting_rate', null, row, data.id);
+  // (2026-11-02) 적용일 이후 일자의 미정산 회차(예정·보고서 등록 후 정산 전)에 새 단가를 바로 반영 — 정산된 회차는 그대로
+  const re = await repriceAndAudit(op, { groupId: d.support_type_id, mode: d.mode, fromDate: d.effective_from }, 'rate.add');
   revalidateAll();
-  return { ok: true, id: data.id };
+  return { ok: true, id: data.id, message: re };
+}
+
+/** 미정산 회차 단가 재적용 + 감사 — 결과 문구(토스트용)를 돌려준다 */
+async function repriceAndAudit(op: { id: string; programId: string }, scope: RepriceScope, reason: string): Promise<string> {
+  try {
+    const { changes, summary } = await planProgramReprice(op.programId, scope);
+    if (changes.length === 0) return '단가가 바뀌는 미정산 회차는 없습니다.';
+    const r = await applyReprice(changes);
+    const delta = changes.reduce((sum, c) => sum + c.toAmount - c.fromAmount, 0);
+    await audit(op.id, op.programId, 'round.repriced', null, { reason, scope, updated: r.updated, delta, summary, log_ids: changes.map((c) => c.logId) }, undefined, 'round.repriced');
+    if (r.error) return `미정산 회차 ${r.updated}건에 새 단가를 반영하다 오류가 났습니다: ${r.error}`;
+    return `미정산 회차 ${r.updated}건에 새 단가를 반영했습니다(예상 금액 ${delta >= 0 ? '+' : ''}${delta.toLocaleString('ko-KR')}원). 정산 확정된 회차는 그대로입니다.`;
+  } catch (e) {
+    console.error('reprice failed:', e);
+    return '단가는 저장했지만 기존 회차 금액 재계산에 실패했습니다. [회차 금액 점검]에서 다시 시도하세요.';
+  }
+}
+
+/** [회차 금액 점검] — 지금 단가 표와 다른 미정산 회차 요약 (반영하지 않음) */
+export async function previewRepriceAction(): Promise<{ ok: true; summary: RepriceSummaryRow[]; total: number } | { ok: false; error: string }> {
+  const op = await operator('settings.money');
+  if ('error' in op) return { ok: false, error: op.error };
+  const { changes, summary } = await planProgramReprice(op.programId);
+  return { ok: true, summary, total: changes.length };
+}
+
+/** [현재 단가로 다시 맞추기] — 미정산 회차 전체를 회차 일자의 단가로 다시 계산 */
+export async function applyRepriceAction(): Promise<Result> {
+  const op = await operator('settings.money');
+  if ('error' in op) return { ok: false, error: op.error };
+  const message = await repriceAndAudit(op, {}, 'manual');
+  revalidateAll();
+  revalidatePath('/', 'layout');
+  return { ok: true, message };
 }
 
 const limitSchema = z.object({
@@ -567,8 +604,14 @@ export async function deleteFutureRowAction(table: 'consulting_rates' | 'operati
   if (row.effective_from <= today) return { ok: false, error: '이미 적용 중이거나 지난 이력은 삭제할 수 없습니다. 새 적용일로 행을 추가하세요.' };
   await admin.from(table).delete().eq('id', id);
   await audit(op.id, op.programId, table, row, null, id);
+  // 지운 예정 단가로 미리 계산된 회차가 있으면 그 날짜의 단가로 되돌린다 (2026-11-02)
+  let message: string | undefined;
+  if (table === 'consulting_rates') {
+    const r = row as { support_type_id: string | null; mode: 'online' | 'offline'; effective_from: string };
+    message = await repriceAndAudit(op, { groupId: r.support_type_id, mode: r.mode, fromDate: r.effective_from }, 'rate.delete');
+  }
   revalidateAll();
-  return { ok: true };
+  return { ok: true, message };
 }
 
 // ---------------------------------------------------------------- 정산(원천징수) · 종결 게이트 · 보고서 서명 정책
