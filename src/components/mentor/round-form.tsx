@@ -271,7 +271,7 @@ export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOp
           })}
         </div>
         {participantOptions.length <= 1 && (
-          <p className="text-[11px] text-muted-foreground">팀원 명단은 운영사가 케이스 상세의 [팀 정보]에서 등록합니다.</p>
+          <p className="text-[11px] text-muted-foreground">목록에 없는 팀원은 이 화면의 [팀원 정보] 칸(회차 목록 위)에서 추가하면 여기에 나타납니다. 운영사도 케이스 상세의 [팀 정보]에서 등록할 수 있습니다.</p>
         )}
       </div>
 

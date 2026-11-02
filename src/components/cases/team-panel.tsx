@@ -104,22 +104,29 @@ function AddMemberForm({ caseId }: { caseId: string }) {
  * 팀 정보 패널 (운영사) — 아이템명·아이템 설명 + 팀원 명단.
  * 팀원은 멘토가 회차 등록 시 참가자로 선택할 수 있다 (팀 대표가 아닌 팀원의 멘토링 참여).
  */
-export function TeamPanel({ caseId, item, itemDescription, members }: {
+export function TeamPanel({ caseId, item, itemDescription, members, mode = 'staff', menteeName, className }: {
   caseId: string;
   item: string | null;
   itemDescription: string | null;
   members: TeamMemberItem[];
+  /** mentor = 멘토 케이스 화면(팀원 명단만 편집, 2026-11-02) · staff = 운영사(아이템 정보 포함) */
+  mode?: 'staff' | 'mentor';
+  menteeName?: string;
+  className?: string;
 }) {
   const [infoState, infoAction] = useFormState<ActionState, FormData>(saveTeamInfoAction, undefined);
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base"><Users className="h-4 w-4" /> 팀 정보</CardTitle>
+        <CardTitle className="flex items-center gap-2 text-base"><Users className="h-4 w-4" /> {mode === 'mentor' ? `[${menteeName ?? '멘티'}] 팀원 정보` : '팀 정보'}</CardTitle>
         <CardDescription>
-          아이템과 팀원 명단입니다. 등록된 팀원은 멘토가 회차 참가자로 선택할 수 있습니다 (팀 대표가 아닌 팀원의 참여 기록).
+          {mode === 'mentor'
+            ? '멘티 팀의 팀원을 등록하면 회차 일정 등록 때 참가자로 고를 수 있습니다. 운영사도 같은 명단을 봅니다.'
+            : '아이템과 팀원 명단입니다. 등록된 팀원은 멘토가 회차 참가자로 선택할 수 있습니다 (팀 대표가 아닌 팀원의 참여 기록). 담당 멘토도 멘토 화면에서 팀원을 추가할 수 있습니다.'}
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {mode === 'staff' && (
         <form action={infoAction} className="flex flex-col gap-2">
           <input type="hidden" name="caseId" value={caseId} />
           <div className="grid gap-2 sm:grid-cols-[1fr_2fr]">
@@ -137,6 +144,7 @@ export function TeamPanel({ caseId, item, itemDescription, members }: {
             <StateLine state={infoState} />
           </div>
         </form>
+        )}
 
         <div className="flex flex-col gap-2">
           <p className="text-xs font-medium text-muted-foreground">팀원 ({members.length}명)</p>

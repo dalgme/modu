@@ -141,6 +141,8 @@ const groupSchema = z.object({
   copy_from: z.string().uuid().optional().or(z.literal('')).transform((v) => v || null),
   // (2026-10-15) 관찰의견서 제출 필요 여부 — yes(기본) / no(예: 1기 2라운드)
   observation_required: z.enum(['yes', 'no']).default('yes'),
+  // (2026-11-02) 관찰의견서 제출 시점 — after_rounds(모든 회차 보고서 후, 기본) / anytime(언제든)
+  observation_upload_timing: z.enum(['after_rounds', 'anytime']).default('after_rounds'),
   /** 가드 확인 플래그 — 화면이 영향 범위를 confirm 한 뒤 'true' 로 재제출 */
   confirm_end: z.string().optional(),
   confirm_rounds: z.string().optional(),
@@ -367,7 +369,11 @@ export async function upsertGroupAction(input: unknown): Promise<Result> {
     // 관찰의견서 필요 여부는 값이 바뀔 때만 쓴다 — 0091 이 적용되지 않은 DB 에서도 다른 그룹 저장이 깨지지 않게
     const obsBefore = (before as { observation_required?: boolean | null }).observation_required !== false;
     const obsAfter = d.observation_required === 'yes';
-    const { error } = await admin.from('support_types').update(obsBefore === obsAfter ? row : { ...row, observation_required: obsAfter }).eq('id', d.id);
+    const timingBefore = (before as { observation_upload_timing?: string | null }).observation_upload_timing ?? 'after_rounds';
+    const patch: typeof row & { observation_required?: boolean; observation_upload_timing?: string } = { ...row };
+    if (obsBefore !== obsAfter) patch.observation_required = obsAfter;
+    if (timingBefore !== d.observation_upload_timing) patch.observation_upload_timing = d.observation_upload_timing;
+    const { error } = await admin.from('support_types').update(patch).eq('id', d.id);
     if (error) return { ok: false, error: error.code === '23505' ? '같은 코드의 그룹이 있습니다.' : error.code === 'PGRST204' ? '관찰의견서 설정 칸이 아직 DB 에 없습니다(마이그레이션 0091 적용 필요).' : error.message };
 
     let roundsImpact: { extraRecomputed: number; reopenedSurveys: number } | null = null;
@@ -386,7 +392,8 @@ export async function upsertGroupAction(input: unknown): Promise<Result> {
       message: roundsImpact ? `회차 수를 변경했습니다. 추가 회차 표시 재계산 ${roundsImpact.extraRecomputed}건 · 만족도 조사 개시 ${roundsImpact.reopenedSurveys}건` : undefined,
     };
   }
-  const insertRow: typeof row & { observation_required?: boolean } = d.observation_required === 'no' ? { ...row, observation_required: false } : row;
+  const insertRow: typeof row & { observation_required?: boolean; observation_upload_timing?: string } = d.observation_required === 'no' ? { ...row, observation_required: false } : { ...row };
+  if (d.observation_upload_timing !== 'after_rounds') insertRow.observation_upload_timing = d.observation_upload_timing;
   const { data: ins, error } = await admin.from('support_types').insert(insertRow).select('id').single();
   if (error || !ins) return { ok: false, error: error?.code === '23505' ? '같은 코드의 그룹이 있습니다.' : (error?.message ?? '저장 실패') };
   await audit(op.id, op.programId, 'support_type', null, row, ins.id);

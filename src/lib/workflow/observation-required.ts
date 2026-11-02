@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { normalizeObservationTiming, type ObservationTiming } from '@/lib/workflow/observation-rule';
 
 /**
  * 그룹별 관찰의견서 제출 필요 여부 (2026-10-15, 0091 `support_types.observation_required`).
@@ -22,4 +23,12 @@ export async function observationRequiredMap(supportTypeIds: (string | null | un
 export async function observationRequiredFor(supportTypeId: string | null | undefined): Promise<boolean> {
   if (!supportTypeId) return true;
   return (await observationRequiredMap([supportTypeId])).get(supportTypeId) ?? true;
+}
+
+/** 그룹(라운드)별 관찰의견서 업로드 시점 (2026-11-02, 0094) — 멘토 화면 버튼과 서버 업로드 게이트가 같이 읽는다 */
+export async function observationTimingFor(supportTypeId: string | null | undefined): Promise<ObservationTiming> {
+  if (!supportTypeId) return 'after_rounds';
+  const { data, error } = await createAdminClient().from('support_types').select('*').eq('id', supportTypeId).maybeSingle();
+  if (error) console.error('[observation-timing] 그룹 조회 실패', error.message);
+  return normalizeObservationTiming((data as { observation_upload_timing?: string } | null)?.observation_upload_timing);
 }

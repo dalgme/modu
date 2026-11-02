@@ -11,7 +11,7 @@ import { queueNotification } from '@/lib/workflow/notifications';
 import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
 import { getRoundAllowance } from '@/lib/data/rounds';
 import { observationEditable, observationUploadGate } from '@/lib/workflow/observation-rule';
-import { observationRequiredFor } from '@/lib/workflow/observation-required';
+import { observationRequiredFor, observationTimingFor } from '@/lib/workflow/observation-required';
 import { missingRequiredMenteeDocs } from '@/lib/workflow/case-documents';
 import { getBranding } from '@/lib/programs/data';
 import { fmt } from '@/lib/programs/branding';
@@ -79,12 +79,12 @@ export async function uploadObservationFile(
   if (!observationEditable(c.status)) {
     return { ok: false, error: '컨설팅 진행 중(또는 보완 요청) 단계에서만 관찰의견서를 올릴 수 있습니다.' };
   }
-  // (2026-09-29) 계획 회차 보고서를 모두 올린 뒤에만 업로드 — 멘토 화면 버튼 조건과 같은 함수
+  // (2026-09-29) 계획 회차 보고서를 모두 올린 뒤에만 업로드 — 라운드 설정이 '언제든지'면 바로 (2026-11-02) · 멘토 화면 버튼 조건과 같은 함수
   const [{ data: group }, { data: logs }] = await Promise.all([
     admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle(),
     admin.from('mentoring_logs').select('round_no, report_registered_at').eq('case_id', caseId).order('round_no'),
   ]);
-  const gate = observationUploadGate(logs ?? [], group?.required_rounds ?? 0);
+  const gate = observationUploadGate(logs ?? [], group?.required_rounds ?? 0, await observationTimingFor(c.support_type_id));
   if (!gate.ok) return { ok: false, error: gate.hint };
   const basename = staging.stagingPath.split('/').pop();
   if (!basename) return { ok: false, error: '잘못된 업로드 경로입니다.' };
@@ -198,14 +198,14 @@ export async function checkClosureReadiness(caseId: string): Promise<{ ok: boole
   const webOk = !OBSERVATION_WEB_DISABLED && content.summary.trim().length > 0;
   // (2026-10-15) 관찰의견서가 필요 없는 그룹(예: 1기 2라운드)은 회차 보고서만으로 종결 요청
   const obsRequired = await observationRequiredFor(c.support_type_id);
-  if (obsRequired && !(webOk || !!obsFile)) return { ok: false, hint: '관찰의견서 파일을 올리면 종결을 요청할 수 있습니다.', ...base };
+  if (obsRequired && !(webOk || !!obsFile)) return { ok: false, hint: '모든 회차 보고서가 등록되었습니다. 관찰의견서 파일을 올리면 종결을 요청할 수 있습니다.', ...base };
   const policy = (program?.closure_policy ?? {}) as { require_mentee_signature?: boolean; require_group_docs?: boolean };
   if (policy.require_mentee_signature && rounds.some((r) => !r.mentee_signed_at)) return { ok: false, hint: '이 행사는 모든 회차에 멘티 확인 서명이 있어야 종결을 요청할 수 있습니다. 서명이 없는 회차를 확인하세요.', ...base };
   if (policy.require_group_docs) {
     const missing = await missingRequiredMenteeDocs(caseId);
     if (missing.length > 0) return { ok: false, hint: `멘티 필수서류가 누락되어 종결을 요청할 수 없습니다: ${missing.join(', ')}`, ...base };
   }
-  return { ok: true, hint: obsRequired ? '관찰의견서를 제출하고 종결을 요청합니다. 운영사 검수 승인 시 정산이 확정됩니다.' : '종결을 요청합니다. 운영사 검수 승인 시 정산이 확정됩니다.', ...base };
+  return { ok: true, hint: '모든 회차 보고서가 등록되었습니다. 종결을 요청하면 운영사 검수 승인 시 정산이 확정됩니다.', ...base };
 }
 
 /**
@@ -319,7 +319,7 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
     from_status: c.status,
     to_status: 'closure_requested',
     changed_by: mentorId,
-    note: await actingNote(obsRequired ? '관찰의견서 제출 · 종결 요청' : '종결 요청', mentorId), // 대행 중이면 표기 (P31)
+    note: await actingNote('종결 요청', mentorId), // 대행 중이면 표기 (P31)
   });
   await notifyProgramStaff(c.program_id, caseId, 'closure_requested');
   // 멘티 만족도 안내 (P31) — 활성 양식이 있고 아직 응답이 없을 때만, 중립 문구('열렸습니다')로. 문구 자체는 템플릿(survey_opened)+payload.message.

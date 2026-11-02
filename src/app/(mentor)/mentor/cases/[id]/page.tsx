@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { observationRequiredFor } from '@/lib/workflow/observation-required';
+import { observationRequiredFor, observationTimingFor } from '@/lib/workflow/observation-required';
 import { notFound } from 'next/navigation';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
@@ -9,6 +9,7 @@ import { getCaseById, getCaseStatusHistory, listMentorCases, listPredecessorCase
 import { menteeLabel } from '@/lib/utils/labels';
 import { getObservationReportFile, getRoundAllowance, listObservationHistory, listPendingRequestsForCase, listRounds } from '@/lib/data/rounds';
 import { listTeamMembers } from '@/lib/data/team-members';
+import { TeamPanel } from '@/components/cases/team-panel';
 import { listCaseDocuments, listRequiredDocSlots } from '@/lib/workflow/case-documents';
 import { RequiredDocsPanel } from '@/components/cases/required-docs-panel';
 import { checkClosureReadiness } from '@/lib/workflow/closure';
@@ -118,7 +119,8 @@ export default async function Page({ params }: { params: { id: string } }) {
   const closureHint = readiness.hint;
   const reported = rounds.filter((r) => r.report_registered_at).length;
   // 관찰의견서 업로드 열림 = 계획 회차 보고서 전부 등록 (서버 uploadObservationFile 과 같은 함수)
-  const obsGate = observationUploadGate(rounds, item.requiredRounds);
+  // 라운드 설정 '언제든지'(2기 등)면 회차 진행과 무관하게 바로 열림 (2026-11-02, 0094)
+  const obsGate = observationUploadGate(rounds, item.requiredRounds, await observationTimingFor(item.support_type_id));
   // 검수 승인(정산 확정) 이후·중도 종료 = 멘토 쪽 절차가 끝난 케이스 — 요청 버튼을 숨기고 열람 전용 안내 (2026-10-01)
   const finished = ['settlement_pending', 'settlement_batched', 'closed', 'withdrawn'].includes(item.status);
   const lastAt = (to: string) => history.filter((h) => h.to_status === to).map((h) => h.created_at).sort().pop() ?? null;
@@ -198,6 +200,18 @@ export default async function Page({ params }: { params: { id: string } }) {
 
         {/* 멘티 사업계획서·참고파일 — 미리보기 전용(행사 설정으로 다운로드 허용 시만 내려받기, 2026-09-30). 담당 확인은 위 notFound 가드 */}
         <BusinessPlanPanel caseId={item.id} viewer="mentor" />
+
+        {/* 멘티 팀원 정보 — 멘토가 직접 등록해 회차 참가자로 고른다 (2026-11-02). 진행 중일 때만 편집 칸 */}
+        {roundsEditable && (
+          <TeamPanel
+            mode="mentor"
+            caseId={item.id}
+            menteeName={item.owner_name}
+            item={item.item}
+            itemDescription={null}
+            members={teamMembers.map((m) => ({ id: m.id, name: m.name, member_role: m.member_role, phone: m.phone, email: m.email, is_representative: m.is_representative }))}
+          />
+        )}
 
         {/* [OOO] 멘티 컨설팅 — 코럴(brand.coral) 머리 박스 + 아래 회차 목록과 여백 (2026-09-30) */}
         <Card id="rounds" className="scroll-mt-36 overflow-hidden border-brand-coral/40 bg-brand-coral/[0.04] dark:bg-brand-coral/10">

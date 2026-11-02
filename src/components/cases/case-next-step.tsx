@@ -59,7 +59,7 @@ const SECTIONS: { anchor: string; label: string }[] = [
   { anchor: '#invite', label: '멘티 계정' },
   { anchor: '#assign', label: '멘토 배정' },
   { anchor: '#profile', label: '멘티 정보' },
-  { anchor: '#team', label: '팀' },
+  { anchor: '#team', label: '팀원' },
   { anchor: '#review', label: '검수' },
   { anchor: '#settlement', label: '정산' },
   { anchor: '#change', label: '멘토 변경' },

@@ -2,7 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 
-import { requireNextlab } from '@/lib/auth/guards';
+import { getRealSessionProfile, mentorOfCaseOrNull, requireNextlab } from '@/lib/auth/guards';
+import { canTransition } from '@/lib/workflow/transitions';
 import { contextOrNull } from '@/lib/programs/context';
 import { denyUnless } from '@/lib/auth/capabilities';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -20,6 +21,23 @@ async function guardCase(caseId: string): Promise<{ ok: true; actorId: string; p
   const { data: c } = await createAdminClient().from('cases').select('id, program_id').eq('id', caseId).maybeSingle();
   if (!c || c.program_id !== ctx.programId) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
   return { ok: true, actorId: actor.id, programId: ctx.programId };
+}
+
+/**
+ * 팀원 명단 편집 권한 (2026-11-02) — 운영사(case.manage) 또는 그 케이스의 담당 멘토(진행 중 단계).
+ * 멘토는 회차 참가자로 고를 팀원을 직접 등록한다. 아이템 정보(saveTeamInfoAction)는 운영사만.
+ * 감사 실행자는 실제 신원(대행 중이면 운영사 — CLAUDE.md §6-1).
+ */
+async function guardTeamEditor(caseId: string): Promise<{ ok: true; actorId: string; programId: string } | { ok: false; error: string }> {
+  const mentor = await mentorOfCaseOrNull(caseId);
+  if (mentor) {
+    const { data: c } = await createAdminClient().from('cases').select('id, program_id, status').eq('id', caseId).maybeSingle();
+    if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
+    if (!canTransition('submit_round', c.status)) return { ok: false, error: '컨설팅 진행 중인 멘티만 팀원을 수정할 수 있습니다.' };
+    const real = await getRealSessionProfile();
+    return { ok: true, actorId: real?.id ?? mentor.id, programId: c.program_id };
+  }
+  return guardCase(caseId);
 }
 
 function revalidate(caseId: string) {
@@ -49,7 +67,7 @@ export async function saveTeamInfoAction(_prev: ActionState, formData: FormData)
 /** 팀원 추가/수정 — memberId 가 있으면 수정 */
 export async function saveTeamMemberAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const caseId = String(formData.get('caseId') ?? '');
-  const g = await guardCase(caseId);
+  const g = await guardTeamEditor(caseId);
   if (!g.ok) return g;
   const memberId = String(formData.get('memberId') ?? '');
   const name = String(formData.get('name') ?? '').trim().slice(0, 40);
@@ -75,7 +93,7 @@ export async function saveTeamMemberAction(_prev: ActionState, formData: FormDat
 export async function deleteTeamMemberAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const caseId = String(formData.get('caseId') ?? '');
   const memberId = String(formData.get('memberId') ?? '');
-  const g = await guardCase(caseId);
+  const g = await guardTeamEditor(caseId);
   if (!g.ok) return g;
   if (!memberId) return { ok: false, error: '대상을 확인할 수 없습니다.' };
   const admin = createAdminClient();

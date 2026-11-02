@@ -1,8 +1,9 @@
 import { TRANSITIONS } from '@/lib/workflow/transitions';
 
 /**
- * 관찰의견서 업로드 열림 규칙 (2026-09-29 사용자 결정) — 서버·클라이언트 중립 파일.
- * "계획된 멘토링 회차별 보고서를 모두 업로드한 뒤에 관찰의견서 [파일 업로드]가 열린다."
+ * 관찰의견서 업로드 열림 규칙 (2026-09-29 사용자 결정, 2026-11-02 라운드별 시점 설정) — 서버·클라이언트 중립 파일.
+ * 기본(after_rounds): "계획된 멘토링 회차별 보고서를 모두 업로드한 뒤에 관찰의견서 [파일 업로드]가 열린다."
+ * anytime: 언제든 열림 — 그룹 설정(운영 설정 > 사업그룹 > 관찰의견서 제출 시점)
  *  - 계획 회차 = 그룹 필수 회차(required_rounds). 등록된 회차가 그보다 적으면 닫힘
  *  - 등록된 회차는 전부 보고서(2단계)까지 등록돼 있어야 함 (추가 회차 포함)
  * 멘토 화면 버튼 조건과 서버 게이트(uploadObservationFile)가 이 함수 하나를 읽는다 — CLAUDE.md §3 불변 규칙.
@@ -12,7 +13,21 @@ export interface ObservationGateRound {
   report_registered_at: string | null;
 }
 
-export function observationUploadGate(rounds: ObservationGateRound[], requiredRounds: number): { ok: boolean; hint: string } {
+/** 그룹(라운드)별 관찰의견서 업로드 시점 (2026-11-02, 0094 `support_types.observation_upload_timing`) */
+export type ObservationTiming = 'after_rounds' | 'anytime';
+
+export function normalizeObservationTiming(v: unknown): ObservationTiming {
+  return v === 'anytime' ? 'anytime' : 'after_rounds';
+}
+
+export const OBSERVATION_TIMING_LABELS: Record<ObservationTiming, string> = {
+  after_rounds: '모든 회차 보고서 등록 후',
+  anytime: '언제든지 (회차 진행 중에도)',
+};
+
+export function observationUploadGate(rounds: ObservationGateRound[], requiredRounds: number, timing: ObservationTiming = 'after_rounds'): { ok: boolean; hint: string } {
+  // 'anytime' 그룹(예: 2기)은 회차 진행과 무관하게 언제든 올린다 — 종결 요청은 따로, 모든 회차 보고서 후에만 열린다
+  if (timing === 'anytime') return { ok: true, hint: '관찰의견서는 언제든 올릴 수 있습니다. 종결 요청은 모든 회차 보고서를 올린 뒤 열립니다.' };
   const reported = rounds.filter((r) => r.report_registered_at).length;
   if (rounds.length < requiredRounds || reported < requiredRounds) {
     return { ok: false, hint: `회차 보고서 ${reported} / ${requiredRounds}건 등록 — 계획된 회차의 보고서를 모두 올리면 관찰의견서 업로드가 열립니다.` };

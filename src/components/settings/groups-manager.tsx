@@ -7,6 +7,7 @@ import type { GroupWithDocs } from '@/lib/settings/data';
 import { deleteGroupAction, deleteGroupDocAction, upsertGroupAction, upsertGroupDocAction } from '@/lib/settings/actions';
 import { Button } from '@/components/ui/button';
 import { GroupRoundsPanel } from '@/components/settings/group-rounds-panel';
+import { OBSERVATION_TIMING_LABELS } from '@/lib/workflow/observation-rule';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
@@ -106,6 +107,14 @@ export function GroupsManager({
           <p className="text-[11px] text-muted-foreground">불필요로 두면 멘토 화면에 관찰의견서 제출란이 없고 [종결 요청]만 보입니다.</p>
         </div>
         <div className="flex flex-col gap-1">
+          <Label>관찰의견서 제출 시점</Label>
+          <select name="observation_upload_timing" defaultValue={(g as { observation_upload_timing?: string | null } | undefined)?.observation_upload_timing === 'anytime' ? 'anytime' : 'after_rounds'} className="h-10 rounded-md border bg-background px-2 text-base sm:h-9 sm:text-sm">
+            <option value="after_rounds">{OBSERVATION_TIMING_LABELS.after_rounds}</option>
+            <option value="anytime">{OBSERVATION_TIMING_LABELS.anytime}</option>
+          </select>
+          <p className="text-[11px] text-muted-foreground">관찰의견서 업로드가 열리는 때입니다. [종결 요청]은 어느 쪽이든 모든 회차 보고서를 올린 뒤에만 열립니다.</p>
+        </div>
+        <div className="flex flex-col gap-1">
           <Label>그룹 원천징수 방식 (일괄)</Label>
           <select name="withholding_method" defaultValue={g?.withholding_method ?? ''} className="h-10 rounded-md border bg-background px-2 text-base sm:h-9 sm:text-sm">
             <option value="">행사 기본 따름</option>
@@ -179,7 +188,7 @@ export function GroupsManager({
                 <span className={`ml-2 rounded-full px-2 py-0.5 text-[11px] ${g.status === 'active' ? 'bg-emerald-100 text-emerald-800' : 'bg-muted text-muted-foreground'}`}>{g.status === 'active' ? '진행 중' : '종료'}</span>
               </p>
               <p className="text-xs text-muted-foreground">
-                {g.round_label} {g.required_rounds}회 · 케이스 {g.caseCount}건{g.starts_on || g.ends_on ? ` · ${g.starts_on ?? '-'} ~ ${g.ends_on ?? '-'}` : ''} · 원천징수 {g.withholding_method ?? '행사 기본'} · 서명 정책 {g.round_report_policy ? '그룹 지정' : '행사 기본'}{(g as { observation_required?: boolean | null }).observation_required === false ? ' · 관찰의견서 불필요' : ''}
+                {g.round_label} {g.required_rounds}회 · 케이스 {g.caseCount}건{g.starts_on || g.ends_on ? ` · ${g.starts_on ?? '-'} ~ ${g.ends_on ?? '-'}` : ''} · 원천징수 {g.withholding_method ?? '행사 기본'} · 서명 정책 {g.round_report_policy ? '그룹 지정' : '행사 기본'}{(g as { observation_required?: boolean | null }).observation_required === false ? ' · 관찰의견서 불필요' : (g as { observation_upload_timing?: string | null }).observation_upload_timing === 'anytime' ? ' · 관찰의견서 언제든 제출' : ' · 관찰의견서 회차 완료 후 제출'}
                 {g.predecessor_support_type_id && ` · 승계 원천: ${groups.find((x) => x.id === g.predecessor_support_type_id)?.name ?? '-'}`}
               </p>
             </div>
