@@ -5,10 +5,11 @@ import { fetchAllIn } from '@/lib/supabase/paginate';
 import { listSupportTypes } from '@/lib/programs/data';
 import { loadInactiveMemberIds } from '@/lib/data/inactive-members';
 import { computeRoundProgress, type RoundProgressResult } from '@/lib/reports/round-progress-shared';
+import { normalizeMentoringOutcome } from '@/lib/workflow/mentoring-outcome';
 
 /**
  * 회차별 진행 현황 데이터 (2026-11-03) — 리포트 [회차별 현황] 탭과 엑셀이 같이 쓴다.
- * 다른 리포트 탭과 달리 비활성화된 멘티를 빼지 않고 '포기'로 분류한다(운영에서 포기 = 비활성화 처리가 많음).
+ * 다른 리포트 탭과 달리 비활성화된 멘티를 빼지 않는다. 분류는 운영사 지정 구분(멘토링 포기·종료) → 상태·비활성화 추정 순.
  */
 export async function loadRoundProgress(programId: string, supportTypeId?: string | null, now = new Date()): Promise<RoundProgressResult> {
   const admin = createAdminClient();
@@ -16,8 +17,8 @@ export async function loadRoundProgress(programId: string, supportTypeId?: strin
   const groups = supportTypeId ? allGroups.filter((g) => g.id === supportTypeId) : allGroups;
   const groupIds = groups.map((g) => g.id);
 
-  const cases = await fetchAllIn<{ id: string; support_type_id: string; status: string; mentee_id: string | null; owner_name: string; business_name: string }>(groupIds, (chunk, from, to) =>
-    admin.from('cases').select('id, support_type_id, status, mentee_id, owner_name, business_name').eq('program_id', programId).in('support_type_id', chunk).order('created_at').range(from, to),
+  const cases = await fetchAllIn<{ id: string; support_type_id: string; status: string; mentee_id: string | null; owner_name: string; business_name: string; mentoring_outcome: string | null }>(groupIds, (chunk, from, to) =>
+    admin.from('cases').select('id, support_type_id, status, mentee_id, owner_name, business_name, mentoring_outcome').eq('program_id', programId).in('support_type_id', chunk).order('created_at').range(from, to),
   );
   const caseIds = cases.map((c) => c.id);
   const [logs, assignments] = await Promise.all([
@@ -46,6 +47,7 @@ export async function loadRoundProgress(programId: string, supportTypeId?: strin
       inactive: !!c.mentee_id && inactive.has(c.mentee_id),
       activeMentorId: active.get(c.id) ?? null,
       finalMentorIds: finals.get(c.id) ?? [],
+      outcome: normalizeMentoringOutcome(c.mentoring_outcome),
     })),
     logs: logs.map((l) => ({ caseId: l.case_id, roundNo: l.round_no, startedAt: l.started_at, endedAt: l.ended_at, reportAt: l.report_registered_at, mentorId: l.mentor_id })),
     now,

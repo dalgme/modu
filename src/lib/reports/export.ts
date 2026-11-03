@@ -126,9 +126,9 @@ export function buildReportWorkbook(tab: string, m: ProgramMetrics, cases: CaseL
       ...rp.groups.map((g) => sumRow(g.name, g.summary)),
     ]);
     const gName = new Map(rp.groups.map((g) => [g.id, g.name]));
-    add('멘티별 분류', ['멘티', '기업(팀)', '그룹', '분류', '상태', '회원 상태', '진행 완료 회차', '보고서 등록 회차'], [...rp.cases]
+    add('멘티별 분류', ['멘티', '기업(팀)', '그룹', '분류', '분류 근거', '상태', '회원 상태', '진행 완료 회차', '보고서 등록 회차'], [...rp.cases]
       .sort((a, b) => (gName.get(a.groupId) ?? '').localeCompare(gName.get(b.groupId) ?? '', 'ko') || a.menteeName.localeCompare(b.menteeName, 'ko'))
-      .map((c) => [c.menteeName, c.businessName && c.businessName !== c.menteeName ? c.businessName : '', gName.get(c.groupId) ?? '', ROUND_PROGRESS_CATEGORY_LABELS[c.category], c.status === 'withdrawn' ? '중도 종료' : (CASE_STATUS_META[c.status as keyof typeof CASE_STATUS_META]?.short ?? c.status), c.inactive ? '비활성' : '활성', c.completedRounds, c.reportRounds]));
+      .map((c) => [c.menteeName, c.businessName && c.businessName !== c.menteeName ? c.businessName : '', gName.get(c.groupId) ?? '', ROUND_PROGRESS_CATEGORY_LABELS[c.category], c.outcome ? '운영사 지정' : c.category === 'ongoing' ? '' : '상태·비활성화 추정', c.status === 'withdrawn' ? '중도 종료' : (CASE_STATUS_META[c.status as keyof typeof CASE_STATUS_META]?.short ?? c.status), c.inactive ? '비활성' : '활성', c.completedRounds, c.reportRounds]));
   }
   if (wb.SheetNames.length === 0) add('빈 시트', ['안내'], [['데이터 없음']]);
   return workbookBuffer(wb);

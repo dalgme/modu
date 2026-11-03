@@ -1,7 +1,8 @@
 /**
  * 회차별 진행 현황 (2026-11-03) — 리포트 [회차별 현황] 탭·엑셀 공용 계산. 서버·클라이언트 중립(순수 함수).
  *
- * 멘티(케이스) 분류 — 운영에서는 '포기'를 중도 종료(withdrawn)보다 회원 비활성화로 처리하는 경우가 많으므로 둘 다 포기로 본다.
+ * 멘티(케이스) 분류 — 운영사가 회원 명단 > 멘티 > [정보 수정]에서 지정한 '멘토링 포기'·'멘토링 종료'(cases.mentoring_outcome)가 우선이다.
+ * 지정이 없으면: 검수 승인 이후 = 종료, 중도 종료(withdrawn) 또는 회원 비활성화 = 포기로 추정한다(운영에서 포기를 비활성화로 처리해 온 경우가 많음).
  *  - ended        회차 진행 후 종료 = 검수 승인 이후(정산 대기·품의·종결)
  *  - gaveUpAfter  회차 진행 후 포기 = 중도 종료 또는 비활성화(행사 비활성화·계정 잠금) + 진행 완료 회차 1회 이상
  *  - gaveUpBefore 회차 진행 안 하고 포기 = 위와 같으나 진행 완료 회차 0회
@@ -45,6 +46,8 @@ export interface RPCaseInput {
   activeMentorId: string | null;
   /** 끝까지 담당한 멘토(종결·중도 종료로 끝난 배정) */
   finalMentorIds?: string[];
+  /** 운영사 지정 멘토링 결과 구분 — 있으면 추정보다 우선 */
+  outcome?: 'gave_up' | 'ended' | null;
 }
 
 export interface RPLogInput {
@@ -82,6 +85,8 @@ export interface RPCaseResult {
   businessName: string | null;
   status: string;
   inactive: boolean;
+  /** 운영사 지정 구분 (없으면 null = 추정 분류) */
+  outcome: 'gave_up' | 'ended' | null;
   category: RoundProgressCategory;
   /** 진행 완료 회차 수 */
   completedRounds: number;
@@ -123,7 +128,9 @@ function isDone(l: RPLogInput, nowMs: number): boolean {
   return Number.isFinite(t) && t <= nowMs;
 }
 
-export function classifyCase(c: Pick<RPCaseInput, 'status' | 'inactive'>, completedRounds: number): RoundProgressCategory {
+export function classifyCase(c: Pick<RPCaseInput, 'status' | 'inactive' | 'outcome'>, completedRounds: number): RoundProgressCategory {
+  if (c.outcome === 'ended') return 'ended';
+  if (c.outcome === 'gave_up') return completedRounds > 0 ? 'gaveUpAfter' : 'gaveUpBefore';
   if (ENDED_STATUSES.has(c.status)) return 'ended';
   if (c.status === 'withdrawn' || c.inactive) return completedRounds > 0 ? 'gaveUpAfter' : 'gaveUpBefore';
   return 'ongoing';
@@ -163,7 +170,7 @@ export function computeRoundProgress(input: { groups: RPGroupInput[]; cases: RPC
     const logs = logsByCase.get(c.id) ?? [];
     const completedRounds = new Set(logs.filter((l) => isDone(l, nowMs)).map((l) => l.roundNo)).size;
     const reportRounds = new Set(logs.filter((l) => !!l.reportAt).map((l) => l.roundNo)).size;
-    return { id: c.id, groupId: c.groupId, menteeName: c.menteeName, businessName: c.businessName ?? null, status: c.status, inactive: c.inactive, category: classifyCase(c, completedRounds), completedRounds, reportRounds };
+    return { id: c.id, groupId: c.groupId, menteeName: c.menteeName, businessName: c.businessName ?? null, status: c.status, inactive: c.inactive, outcome: c.outcome ?? null, category: classifyCase(c, completedRounds), completedRounds, reportRounds };
   });
 
   const groups: GroupRoundProgress[] = input.groups

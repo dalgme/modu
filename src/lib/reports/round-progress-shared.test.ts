@@ -19,6 +19,13 @@ describe('classifyCase', () => {
     expect(classifyCase({ status: 'withdrawn', inactive: false }, 0)).toBe('gaveUpBefore');
     expect(classifyCase({ status: 'mentor_assigned', inactive: false }, 0)).toBe('ongoing');
   });
+  it('운영사 지정 구분이 추정보다 우선', () => {
+    expect(classifyCase({ status: 'in_progress', inactive: true, outcome: 'ended' }, 3)).toBe('ended');
+    expect(classifyCase({ status: 'in_progress', inactive: false, outcome: 'gave_up' }, 2)).toBe('gaveUpAfter');
+    expect(classifyCase({ status: 'mentor_assigned', inactive: false, outcome: 'gave_up' }, 0)).toBe('gaveUpBefore');
+    expect(classifyCase({ status: 'closed', inactive: false, outcome: 'gave_up' }, 4)).toBe('gaveUpAfter');
+    expect(classifyCase({ status: 'withdrawn', inactive: false, outcome: null }, 1)).toBe('gaveUpAfter');
+  });
 });
 
 describe('computeRoundProgress', () => {

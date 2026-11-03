@@ -46,6 +46,8 @@ import { RankBadge } from '@/components/nextlab/matching-lists';
 import { LoginGuideDialog } from '@/components/nextlab/login-guide-dialog';
 import { Search } from 'lucide-react';
 import { forceEndHref, type ForceEndBlock } from '@/lib/workflow/force-end-rule';
+import type { MentoringCaseItem, MentoringOutcome } from '@/lib/workflow/mentoring-outcome';
+import { MentoringOutcomeBadge, MentoringOutcomeControl } from '@/components/nextlab/mentoring-outcome-control';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -86,6 +88,8 @@ export interface MemberItem {
   mentorGroups?: MentorGroupInfo[];
   /** (P36-2) 멘티: 멘토링 1회 이상 진행된 진행 중 케이스 — 있으면 비활성화·잠금·소속 해제 대신 강제 종료 안내 */
   forceEnd?: ForceEndBlock | null;
+  /** (2026-11-03) 멘티: 케이스(라운드)별 멘토링 포기·종료 구분 — 정보 수정 패널·비활성화 탭에서 표시·변경 */
+  mentoringCases?: MentoringCaseItem[];
 }
 
 export interface RosterColumnItem {
@@ -780,6 +784,8 @@ export interface MenteeProgressItem {
   surveyStatus: 'none' | 'open' | 'done';
   /** 진행 단계 순서값 (CASE_STATUSES 인덱스) — 진행현황 정렬용 (P27-02) */
   statusIndex: number;
+  /** (2026-11-03) 운영사 지정 멘토링 포기·종료 구분 */
+  outcome?: MentoringOutcome | null;
 }
 
 /** [만족도 생성] / 진행중 / 완료 표시 (P20) */
@@ -1078,6 +1084,7 @@ export function MembersManager({
                               <div key={p.caseId} className="flex flex-wrap items-center gap-1.5 text-[11px] leading-tight">
                                 <Link href={`/nextlab/cases/${p.caseId}`} className={cn('font-medium hover:underline', p.withdrawn && 'text-destructive')}>{p.withdrawn ? '중도 종료' : p.statusLabel}</Link>
                                 <RoundDots done={p.roundsDone} required={p.requiredRounds} />
+                                <MentoringOutcomeBadge outcome={p.outcome} />
                                 {p.mentorName && (
                                   <span className="text-muted-foreground">
                                     · <MentorName id={p.mentorId} name={p.mentorName} count={p.mentorActiveCount} className="text-[11px]" />
@@ -1173,6 +1180,7 @@ function ForceEndNotice({ block }: { block: ForceEndBlock }) {
 function MemberEditPanel({ member: m }: { member: MemberItem }) {
   return (
     <div className="flex flex-col gap-4">
+      {m.role === 'mentee' && m.mentoringCases && <MentoringOutcomeControl cases={m.mentoringCases} />}
       <MemberDetailsForm member={m} />
       {(m.role === 'nextlab' || m.role === 'institution') && <StaffGroupChips member={m} />}
       <div className="flex flex-wrap items-start gap-2 border-t pt-3">
@@ -1256,13 +1264,14 @@ export function InactiveMembersList({ members }: { members: InactiveMemberItem[]
               <TableHead className="whitespace-nowrap">역할</TableHead>
               <TableHead className="hidden whitespace-nowrap md:table-cell">이메일/핸드폰</TableHead>
               <TableHead className="whitespace-nowrap">비활성 구분</TableHead>
+              <TableHead className="whitespace-nowrap">멘토링 포기·종료 (멘티)</TableHead>
               <TableHead className="text-right">되돌리기</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={6} className="py-10 text-center text-sm text-muted-foreground">
                   {members.length === 0 ? '비활성화된 회원이 없습니다.' : '조건에 맞는 회원이 없습니다.'}
                 </TableCell>
               </TableRow>
@@ -1302,6 +1311,9 @@ export function InactiveMembersList({ members }: { members: InactiveMemberItem[]
                         </div>
                       )}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    {m.role === 'mentee' ? <MentoringOutcomeControl cases={m.mentoringCases ?? []} compact /> : <span className="text-xs text-muted-foreground">-</span>}
                   </TableCell>
                   <TableCell>
                     <div className="flex flex-wrap items-start justify-end gap-2">

@@ -18,7 +18,7 @@ export function RoundProgressPanel({ data, base, generatedAt }: { data: RoundPro
   return (
     <div className="flex flex-col gap-4">
       <p className="text-xs text-muted-foreground">
-        기준 {kstYmd(generatedAt)} {kstHm(generatedAt)} — <b>진행 완료</b> = 회차 종료 시각이 지금 이전. <b>포기</b> = 중도 종료 처리했거나 회원을 비활성화(행사 비활성화·계정 잠금)한 멘티 — 이 탭은 다른 탭과 달리 비활성 멘티도 포기로 셉니다. 멘티 수는 라운드 등록(케이스) 기준입니다.
+        기준 {kstYmd(generatedAt)} {kstHm(generatedAt)} — <b>진행 완료</b> = 회차 종료 시각이 지금 이전. <b>종료·포기 구분</b> = 회원 명단 &gt; 멘티 &gt; [정보 수정]에서 운영사가 지정한 [멘토링 포기]·[멘토링 종료]가 우선이고, 지정이 없으면 검수 승인 이후 = 종료, 중도 종료·회원 비활성화(행사 비활성화·계정 잠금) = 포기로 추정합니다 — 이 탭은 다른 탭과 달리 비활성 멘티도 셉니다. 멘티 수는 라운드 등록(케이스) 기준입니다.
       </p>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -95,7 +95,7 @@ export function RoundProgressPanel({ data, base, generatedAt }: { data: RoundPro
                         {multiGroup && <span className="ml-1 text-xs font-normal text-muted-foreground">{groupName.get(c.groupId) ?? ''}</span>}
                       </Link>
                       <span className="shrink-0 text-xs text-muted-foreground">
-                        완료 {c.completedRounds}회 · {c.status === 'withdrawn' ? '중도 종료' : c.inactive && cat !== 'ended' ? '비활성화' : (CASE_STATUS_META[c.status as CaseStatus]?.short ?? c.status)}
+                        완료 {c.completedRounds}회 · {c.outcome ? '운영사 지정' : c.status === 'withdrawn' ? '중도 종료' : c.inactive && cat !== 'ended' ? '비활성화' : (CASE_STATUS_META[c.status as CaseStatus]?.short ?? c.status)}
                       </span>
                     </li>
                   ))}

@@ -301,6 +301,9 @@ export type Database = {
           intake_note: string | null;
           item: string | null;
           mentee_id: string | null;
+          mentoring_outcome: string | null;
+          mentoring_outcome_at: string | null;
+          mentoring_outcome_by: string | null;
           opened_at: string | null;
           owner_name: string;
           phone: string;
@@ -328,6 +331,9 @@ export type Database = {
           intake_note?: string | null;
           item?: string | null;
           mentee_id?: string | null;
+          mentoring_outcome?: string | null;
+          mentoring_outcome_at?: string | null;
+          mentoring_outcome_by?: string | null;
           opened_at?: string | null;
           owner_name: string;
           phone: string;
@@ -355,6 +361,9 @@ export type Database = {
           intake_note?: string | null;
           item?: string | null;
           mentee_id?: string | null;
+          mentoring_outcome?: string | null;
+          mentoring_outcome_at?: string | null;
+          mentoring_outcome_by?: string | null;
           opened_at?: string | null;
           owner_name?: string;
           phone?: string;

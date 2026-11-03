@@ -13,6 +13,8 @@ import { listSupportTypes } from '@/lib/programs/data';
 import { listMentorDocStatus } from '@/lib/mentor-docs/data';
 import { denyUnless } from '@/lib/auth/capabilities';
 import { CASE_STATUSES, CASE_STATUS_META } from '@/types/case-status';
+import { normalizeMentoringOutcome, type MentoringCaseItem } from '@/lib/workflow/mentoring-outcome';
+import type { CaseListItem } from '@/lib/data/cases';
 import { SubTabs } from '@/components/common/sub-tabs';
 import { RankUploadButton } from '@/components/nextlab/rank-upload';
 import { RosterValuesUploadButton } from '@/components/nextlab/roster-bulk-actions';
@@ -52,6 +54,18 @@ function ActiveHelp() {
       전환 방법: 각 회원 행의 <b>[정보 수정]</b> 을 열고 버튼을 누르세요. 되돌리기는 <b>[비활성화] 탭</b>에서 합니다.
     </div>
   );
+}
+
+/** (2026-11-03) 멘티별 케이스 → 멘토링 포기·종료 구분 편집 항목 */
+function mentoringCasesByMentee(cases: CaseListItem[]): Map<string, MentoringCaseItem[]> {
+  const out = new Map<string, MentoringCaseItem[]>();
+  for (const c of cases) {
+    if (!c.mentee_id) continue;
+    const arr = out.get(c.mentee_id) ?? [];
+    arr.push({ caseId: c.id, groupName: c.supportTypeName, statusLabel: c.status === 'withdrawn' ? '중도 종료' : CASE_STATUS_META[c.status].short, roundsDone: c.roundsDone, requiredRounds: c.requiredRounds, outcome: normalizeMentoringOutcome(c.mentoring_outcome) });
+    out.set(c.mentee_id, arr);
+  }
+  return out;
 }
 
 /** 회원 명단 — 멘티/멘토/관리자 명단 + 회원 등록 (P20) */
@@ -133,9 +147,11 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         mentorActiveCount: c.mentorActiveCount,
         surveyStatus: responded.has(c.id) ? 'done' : c.survey_opened_at ? 'open' : 'none',
         statusIndex: CASE_STATUSES.indexOf(c.status),
+        outcome: normalizeMentoringOutcome(c.mentoring_outcome),
       });
     }
-    const menteeItems = memberItems.map((m) => ({ ...m, rank: rankByMentee.get(m.id) ?? null }));
+    const outcomeCases = mentoringCasesByMentee(cases);
+    const menteeItems = memberItems.map((m) => ({ ...m, rank: rankByMentee.get(m.id) ?? null, mentoringCases: m.role === 'mentee' ? (outcomeCases.get(m.id) ?? []) : undefined }));
     body = (
       <>
         <ActiveHelp />
@@ -219,9 +235,15 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   }
 
   if (tab === 'inactive') {
-    const info = await loadDeactivationInfo(ctx.programId, inactiveItems.map((m) => m.id));
+    const inactiveMenteeIds = new Set(inactiveItems.filter((m) => m.role === 'mentee').map((m) => m.id));
+    const [info, scopeCases] = await Promise.all([
+      loadDeactivationInfo(ctx.programId, inactiveItems.map((m) => m.id)),
+      inactiveMenteeIds.size ? listCases({ programId: ctx.programId, supportTypeId: ctx.supportTypeId ?? undefined, admin: true }) : Promise.resolve([] as CaseListItem[]),
+    ]);
+    const outcomeCases = mentoringCasesByMentee(scopeCases.filter((c) => c.mentee_id && inactiveMenteeIds.has(c.mentee_id)));
     const items: InactiveMemberItem[] = inactiveItems.map((m) => ({
       ...m,
+      mentoringCases: m.role === 'mentee' ? (outcomeCases.get(m.id) ?? []) : undefined,
       memberDeactivatedAt: info[m.id]?.memberAt ?? null,
       removedFromProgram: info[m.id]?.removed ?? false,
       accountLockedAt: info[m.id]?.accountAt ?? null,
