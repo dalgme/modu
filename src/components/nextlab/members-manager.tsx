@@ -786,6 +786,8 @@ export interface MenteeProgressItem {
   statusIndex: number;
   /** (2026-11-03) 운영사 지정 멘토링 포기·종료 구분 */
   outcome?: MentoringOutcome | null;
+  /** 진행 회차 수 (보고서 등록 또는 종료 시각 경과) — '중도 포기·중도 종료' 표시 */
+  progressedRounds?: number;
 }
 
 /** [만족도 생성] / 진행중 / 완료 표시 (P20) */
@@ -1084,7 +1086,7 @@ export function MembersManager({
                               <div key={p.caseId} className="flex flex-wrap items-center gap-1.5 text-[11px] leading-tight">
                                 <Link href={`/nextlab/cases/${p.caseId}`} className={cn('font-medium hover:underline', p.withdrawn && 'text-destructive')}>{p.withdrawn ? '중도 종료' : p.statusLabel}</Link>
                                 <RoundDots done={p.roundsDone} required={p.requiredRounds} />
-                                <MentoringOutcomeBadge outcome={p.outcome} />
+                                <MentoringOutcomeBadge outcome={p.outcome} progressedRounds={p.progressedRounds ?? 0} />
                                 {p.mentorName && (
                                   <span className="text-muted-foreground">
                                     · <MentorName id={p.mentorId} name={p.mentorName} count={p.mentorActiveCount} className="text-[11px]" />
@@ -1159,19 +1161,20 @@ export function MembersManager({
 }
 
 /**
- * (P36-2) 멘토링 1회 이상 진행된 멘티 — 비활성화·계정 잠금·소속 해제 버튼 대신 강제 종료(멘티 중도 종료) 경로를 안내한다.
- * 조건은 서버 게이트와 같은 `requiresForceEnd`(force-end-rule.ts). 중도 종료 후에는 다시 비활성화 버튼이 나온다.
+ * 멘토링을 1회 이상 진행한 멘티 (P36-2 → 2026-11-03 확대) — 비활성화·계정 잠금·소속 해제 버튼 대신 안내.
+ * 그만두거나 마친 경우 위 '멘토링 포기 · 종료 구분'에서 표시하면 '중도 포기'·'중도 종료'로 보이고, 멘토 화면·통계에는 그대로 남는다.
+ * 조건은 서버 게이트와 같은 `blocksDeactivation`(force-end-rule.ts).
  */
 function ForceEndNotice({ block }: { block: ForceEndBlock }) {
   return (
     <div className="flex w-full flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:w-auto sm:max-w-md dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-100">
       <span>
-        {block.groupName ? `${block.groupName} · ` : ''}멘토링 {block.reportedRounds}회 진행 — <b>비활성화할 수 없습니다.</b> 강제 종료(멘티 중도 종료)로
-        처리하면 이행 회차가 부분 정산된 뒤 비활성화할 수 있습니다.
+        {block.groupName ? `${block.groupName} · ` : ''}멘토링 {block.reportedRounds}회 진행 — <b>비활성화하지 않습니다.</b> 그만두었거나 마쳤다면 위 [멘토링 포기]·[멘토링 종료]를 누르세요.
+        명단·멘토 화면에 <b>중도 포기</b>·<b>중도 종료</b>로 표시되고 멘토 화면에서 빠지지 않습니다.
       </span>
-      <Button asChild size="sm" variant="outline" className="self-start border-amber-400">
-        <Link href={forceEndHref(block.caseId)}>강제 종료(중도 종료)로 처리</Link>
-      </Button>
+      <Link href={forceEndHref(block.caseId)} className="self-start text-[11px] text-amber-800 underline dark:text-amber-200">
+        정산까지 정리하려면: 케이스의 [중도 종료 처리](부분 정산) →
+      </Link>
     </div>
   );
 }

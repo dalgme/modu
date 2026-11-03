@@ -25,8 +25,7 @@ import {
   type LoginGuideContext,
   type LoginGuideRecipient,
 } from '@/lib/sms/login-guide-template';
-import { resolveSmsCredentials } from '@/lib/sms/secrets';
-import { sendSolapiSms } from '@/lib/notifications/solapi';
+import { sendTracked } from '@/lib/sms/tracked-send';
 import type { UserRole } from '@/lib/auth/roles';
 import { denyUnless, isPL, isStaffGrade, type CapabilityKey, type StaffGrade } from '@/lib/auth/capabilities';
 import type { ProgramContext } from '@/lib/programs/context';
@@ -883,30 +882,28 @@ export async function sendLoginGuideAction(
   if (!program) return { ok: false, error: '행사를 찾을 수 없습니다.' };
   if (recipients.length === 0) return { ok: false, error: '이 행사 소속(활성) 회원이 아닙니다.' };
   const context: LoginGuideContext = { programName: program.name, loginUrl: `${base}/login`, footer: program.footer };
-  const creds = await resolveSmsCredentials(programId, 'send');
-
   const sendable = recipients.filter((r) => r.skip === null);
   const skipped = recipients.length - sendable.length + (ids.length - recipients.length);
   const textOf = (r: LoginGuideRecipient) => renderLoginGuide(template ?? defaultLoginGuideTemplate(r.role), r, context);
   const tooLong = sendable.find((r) => smsKind(textOf(r)) === 'TOO_LONG');
   if (tooLong) return { ok: false, error: `${tooLong.name} 님 문자가 LMS 한도(2,000바이트)를 넘습니다. 문구를 줄여 주세요.` };
 
-  let sent = 0;
-  let failed = 0;
-  // (P31) 10명 단위 병렬 발송 — 수백 명도 서버 액션 시간 안에 끝난다. 실패는 건별로 집계
-  const BATCH = 10;
-  const auditRows: { actor_id: string; program_id: string; action: string; entity_type: string; entity_id: string; metadata: { phone_last4: string; custom_template: boolean } }[] = [];
-  for (let i = 0; i < sendable.length; i += BATCH) {
-    const batch = sendable.slice(i, i + BATCH);
-    const results = await Promise.allSettled(batch.map((r) => sendSolapiSms(normalizePhone(r.phone)!, textOf(r), creds ? { creds } : {})));
-    results.forEach((res, idx) => {
-      const r = batch[idx]!;
-      if (res.status === 'fulfilled' && res.value.ok) {
-        sent += 1;
-        auditRows.push({ actor_id: actorId, program_id: programId, action: LOGIN_GUIDE_SMS_ACTION, entity_type: 'users', entity_id: r.id, metadata: { phone_last4: normalizePhone(r.phone)!.slice(-4), custom_template: template !== null } });
-      } else failed += 1;
-    });
-  }
+  // (2026-11-03) 솔라피 send-many 1회 호출 + 수신자별 결과 기록(sms_send_items) — 1명당 1회 호출은 발송 API 한도(5초당 100회)에 걸렸다
+  const res = await sendTracked({
+    programId,
+    actorId,
+    kind: 'login_guide',
+    title: '로그인 안내 문자',
+    template: template ?? '(역할별 기본 안내 문구)',
+    items: sendable.map((r) => ({ userId: r.id, name: r.name, phone: normalizePhone(r.phone)!, text: textOf(r) })),
+  });
+  if (!res.ok) return { ok: false, error: res.error };
+  const rejectedIds = new Set(res.rejectedItems.map((r) => r.userId));
+  const sent = res.accepted;
+  const failed = res.rejected;
+  const auditRows = sendable
+    .filter((r) => !rejectedIds.has(r.id))
+    .map((r) => ({ actor_id: actorId, program_id: programId, action: LOGIN_GUIDE_SMS_ACTION, entity_type: 'users', entity_id: r.id, metadata: { phone_last4: normalizePhone(r.phone)!.slice(-4), custom_template: template !== null, batch_id: res.batchId } }));
   // 발송 이력 = 명단의 '안내 발송됨' 표시 근거. insert 실패를 삼키지 않는다(§6-3).
   if (auditRows.length) {
     const { error: auditError } = await createAdminClient().from('audit_logs').insert(auditRows);
@@ -915,5 +912,5 @@ export async function sendLoginGuideAction(
   revalidatePath('/nextlab/members');
   revalidatePath('/nextlab/roster');
   if (sent === 0) return { ok: false, error: `발송된 문자가 없습니다. (실패 ${failed} · 제외 ${skipped} — 비활성·계정 잠금·휴대폰 없음)` };
-  return { ok: true, message: `안내 문자 ${sent}건을 발송했습니다.${failed ? ` 실패 ${failed}건.` : ''}${skipped ? ` 제외 ${skipped}건(비활성·계정 잠금·휴대폰 없음).` : ''}` };
+  return { ok: true, message: `안내 문자 ${sent}건을 솔라피에 접수했습니다.${failed ? ` 접수 실패 ${failed}건 — 문자 발송 > [발송 현황]에서 사유 확인·재발송.` : ''}${skipped ? ` 제외 ${skipped}건(비활성·계정 잠금·휴대폰 없음).` : ''}` };
 }

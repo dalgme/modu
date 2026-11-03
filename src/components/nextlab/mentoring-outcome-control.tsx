@@ -7,7 +7,7 @@ import { cn } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
 import { setMentoringOutcomeAction } from '@/lib/workflow/mentoring-outcome-actions';
-import { MENTORING_OUTCOME_LABELS, type MentoringCaseItem, type MentoringOutcome } from '@/lib/workflow/mentoring-outcome';
+import { MENTORING_OUTCOME_LABELS, mentoringOutcomeLabel, type MentoringCaseItem, type MentoringOutcome } from '@/lib/workflow/mentoring-outcome';
 
 const OPTIONS: { key: MentoringOutcome | null; label: string; on: string }[] = [
   { key: null, label: '구분 없음', on: 'border-primary bg-primary text-primary-foreground' },
@@ -15,12 +15,13 @@ const OPTIONS: { key: MentoringOutcome | null; label: string; on: string }[] = [
   { key: 'ended', label: MENTORING_OUTCOME_LABELS.ended, on: 'border-emerald-600 bg-emerald-600 text-white' },
 ];
 
-/** 멘토링 결과 배지 (명단 진행현황 칸) */
-export function MentoringOutcomeBadge({ outcome, className }: { outcome: MentoringOutcome | null | undefined; className?: string }) {
-  if (!outcome) return null;
+/** 멘토링 결과 배지 — 진행 1회 이상이면 '중도 포기'·'중도 종료' (명단·멘토 화면·케이스 상세) */
+export function MentoringOutcomeBadge({ outcome, progressedRounds, className }: { outcome: MentoringOutcome | null | undefined; progressedRounds: number; className?: string }) {
+  const label = mentoringOutcomeLabel(outcome, progressedRounds);
+  if (!label) return null;
   return (
     <Badge variant="outline" className={cn('w-fit text-[10px]', outcome === 'gave_up' ? 'border-rose-400 text-rose-700 dark:text-rose-300' : 'border-emerald-400 text-emerald-700 dark:text-emerald-300', className)}>
-      {MENTORING_OUTCOME_LABELS[outcome]}
+      {label}
     </Badge>
   );
 }
@@ -37,7 +38,7 @@ export function MentoringOutcomeControl({ cases, compact = false }: { cases: Men
         <div>
           <div className="text-sm font-semibold">멘토링 포기 · 종료 구분</div>
           <p className="text-xs text-muted-foreground">
-            멘토링을 중간에 그만둔 멘티는 [멘토링 포기], 멘토링을 마친 멘티는 [멘토링 종료]를 누르세요. 리포트 [회차별 현황]의 종료·포기 분류에 쓰이며, 케이스 진행 단계·정산은 바뀌지 않습니다.
+            그만둔 멘티는 [멘토링 포기], 마친 멘티는 [멘토링 종료]를 누르세요. <b>멘토링을 1회 이상 진행했으면 &lsquo;중도 포기&rsquo;·&lsquo;중도 종료&rsquo;로 표시되고 비활성화하지 않으며 멘토 화면에도 그대로 남습니다.</b> 진행 없이 그만둔 멘티는 표시 후 지금처럼 비활성화하면 됩니다. 케이스 진행 단계·정산은 바뀌지 않고 리포트 [회차별 현황]에 반영됩니다.
           </p>
         </div>
       )}
@@ -73,8 +74,9 @@ function OutcomeRow({ item, compact }: { item: MentoringCaseItem; compact: boole
       <span className="min-w-0 font-medium">
         {item.groupName ?? '-'}
         <span className="ml-1 font-normal text-muted-foreground">
-          {item.statusLabel} · 보고서 {item.roundsDone}/{item.requiredRounds}회
+          {item.statusLabel} · 진행 {item.progressedRounds}회 · 보고서 {item.roundsDone}/{item.requiredRounds}회
         </span>
+        {value && <span className="ml-1 text-[11px] font-semibold text-violet-700 dark:text-violet-300">→ &lsquo;{mentoringOutcomeLabel(value, item.progressedRounds)}&rsquo;로 표시</span>}
       </span>
       <div role="radiogroup" aria-label={`${item.groupName ?? ''} 멘토링 구분`} className="flex flex-wrap gap-1">
         {OPTIONS.map((o) => {

@@ -11,6 +11,8 @@ import { normalizePhone } from '@/lib/utils/phone';
 import { loadLoginGuideRecipients } from '@/lib/data/members';
 import type { LoginGuideContext, LoginGuideRecipient } from '@/lib/sms/login-guide-template';
 import { bulkFieldsUsed, fallbackBulkRecipient, renderBulkSms, validateBulkSmsText } from '@/lib/sms/bulk-sms-fields';
+import { listSmsBatchItems, sendTracked, syncSmsBatch } from '@/lib/sms/tracked-send';
+import { isRetryable } from '@/lib/sms/send-status';
 
 const INSTITUTION_READ_ONLY = '발주처 계정은 문자 발송을 할 수 없습니다.';
 
@@ -44,11 +46,6 @@ async function scopeRecipients(programId: string, ids: string[]): Promise<string
   return ids.filter((id) => ok.has(id));
 }
 
-/** 발송사 응답이 인증·잔액 오류면 나머지 발송을 멈춘다 (전부 같은 이유로 실패하므로) */
-function isFatalProviderError(msg: string): boolean {
-  const m = msg.toLowerCase();
-  return ['balance', '잔액', '401', '403', 'auth', 'not_configured', 'credentials_unavailable', 'sender_missing'].some((k) => m.includes(k));
-}
 import {
   listReminderSettings,
   sendReminderForSetting,
@@ -59,7 +56,7 @@ import {
 export type TestSmsResult = { ok: true; providerId?: string } | { ok: false; error: string };
 
 export type BulkSmsResult =
-  | { ok: true; sent: number; failed: number; total: number; /** 실패 수신자 (P31 — [실패자만 다시 선택]) */ failedRecipients: { id: string; name: string; phone: string }[] }
+  | { ok: true; sent: number; failed: number; total: number; /** 실패 수신자 (P31 — [실패자만 다시 선택]) */ failedRecipients: { id: string; name: string; phone: string }[]; batchId?: string }
   | { ok: false; error: string };
 export type BalanceResult =
   | { ok: true; balance: number; point: number }
@@ -214,52 +211,107 @@ export async function sendBulkSmsAction(input: {
   }
   const textFor = (t: (typeof targets)[number]) => (render ? render(t) : text);
 
-  let sent = 0;
-  let failed = 0;
-  const failedIds: string[] = [];
-  let fatal: string | null = null;
-  let attempted = 0;
-  const BATCH = 10;
-  for (let i = 0; i < targets.length && !fatal; i += BATCH) {
-    const batch = targets.slice(i, i + BATCH);
-    const results = await Promise.allSettled(batch.map((t) => sendSms(t.phone, textFor(t), g.ctx.programId)));
-    attempted += batch.length;
-    results.forEach((r, idx) => {
-      const id = batch[idx]!.id;
-      if (r.status === 'fulfilled' && r.value.ok) sent += 1;
-      else {
-        failed += 1;
-        failedIds.push(id);
-        const msg = r.status === 'fulfilled' ? (r.value.ok ? '' : r.value.error) : r.reason instanceof Error ? r.reason.message : String(r.reason);
-        if (!fatal && isFatalProviderError(msg)) fatal = msg;
-      }
-    });
-  }
-  // 발송사 오류로 중단된 경우 시도하지 못한 수신자도 실패로 집계
-  for (const t of targets.slice(attempted)) {
-    failed += 1;
-    failedIds.push(t.id);
-  }
+  // (2026-11-03) 솔라피 send-many 1회 호출 — 예전 1명당 1회 호출은 발송 API 한도(5초당 100회)에 걸려 100·200건 이후가 전부 거부됐다.
+  //  수신자별 결과는 sms_send_items 에 남고 [발송 현황]에서 수신 완료·실패 사유를 확인·재발송한다.
+  const res = await sendTracked({
+    programId: g.ctx.programId,
+    actorId: g.actorId,
+    kind: 'bulk',
+    template: text,
+    items: targets.map((t) => ({ userId: t.id, name: t.name, phone: t.phone, text: textFor(t) })),
+  });
+  if (!res.ok) return { ok: false, error: res.error };
+  const sent = res.accepted;
+  const failed = res.rejected;
+  const failedIds = res.rejectedItems.map((r) => r.userId).filter((x): x is string => !!x);
 
   const { error: auditError } = await admin.from('audit_logs').insert({
     actor_id: g.actorId,
     program_id: g.ctx.programId,
     action: 'sms.bulk_send',
-    entity_type: 'users',
-    entity_id: g.actorId,
-    metadata: { total: targets.length, count: targets.length, sent, failed, failed_ids: failedIds.slice(0, 200), dropped_out_of_scope: rawIds.length - ids.length, fatal_error: fatal, role: g.ctx.role, name_substituted: fieldsUsed.includes('name'), fields_used: fieldsUsed },
+    entity_type: 'sms_send_batches',
+    entity_id: res.batchId,
+    metadata: { batch_id: res.batchId, total: targets.length, count: targets.length, sent, failed, failed_ids: failedIds, dropped_out_of_scope: rawIds.length - ids.length, role: g.ctx.role, name_substituted: fieldsUsed.includes('name'), fields_used: fieldsUsed, via: 'send-many' },
   });
   if (auditError) console.error('bulk sms audit failed:', auditError.message);
 
-  if (fatal) {
-    return { ok: false, error: `발송사 오류로 중단했습니다 (${sent}건 발송 · ${failed}건 미발송): ${fatal}. 문자 API 자격증명·잔액을 확인하세요.` };
-  }
   if (sent === 0) {
-    return { ok: false, error: `발송에 모두 실패했습니다. (${failed}건)` };
+    const reason = res.rejectedItems[0]?.reason;
+    return { ok: false, error: `솔라피가 ${failed}건 모두 접수하지 않았습니다${reason ? ` — ${reason}` : ''}. [발송 현황]에서 사유를 확인하세요.` };
   }
   const failedSet = new Set(failedIds);
   const failedRecipients = targets.filter((t) => failedSet.has(t.id)).map((t) => ({ id: t.id, name: t.name, phone: t.phone }));
-  return { ok: true, sent, failed, total: targets.length, failedRecipients };
+  return { ok: true, sent, failed, total: targets.length, failedRecipients, batchId: res.batchId };
+}
+
+export type SmsBatchActionResult = { ok: true; message: string; batchId?: string } | { ok: false; error: string };
+
+/** [발송 현황] 수신 결과 새로고침 — 솔라피에서 전송 중 건의 최종 상태·실패 사유를 가져온다 */
+export async function syncSmsBatchAction(batchId: string): Promise<SmsBatchActionResult> {
+  const g = await smsGate();
+  if (!g.ok) {
+    // 발주처 열람 전용도 결과 새로고침은 허용 (발송이 아님)
+    const profile = await requireStaff();
+    const ctx = await contextOrNull(profile);
+    if (!ctx) return { ok: false, error: g.error };
+    const r = await syncSmsBatch(ctx.programId, batchId);
+    return r.ok ? { ok: true, message: r.updated ? `${r.updated}건의 결과를 갱신했습니다.` : '새로 바뀐 결과가 없습니다.' } : r;
+  }
+  const r = await syncSmsBatch(g.ctx.programId, batchId);
+  return r.ok ? { ok: true, message: r.updated ? `${r.updated}건의 결과를 갱신했습니다.` : '새로 바뀐 결과가 없습니다.' } : r;
+}
+
+/**
+ * [실패자 다시 보내기] — 그 발송 묶음의 접수 실패·수신 실패 건(아직 다시 보내지 않은 것)을 같은 문구로 재발송한다.
+ * 수신자가 여전히 이 행사의 활성 소속인지·현재 휴대폰 번호를 다시 확인한다(번호가 바뀌었으면 새 번호로).
+ */
+export async function retrySmsBatchAction(batchId: string): Promise<SmsBatchActionResult> {
+  const g = await smsGate();
+  if (!g.ok) return { ok: false, error: g.error };
+  const admin = createAdminClient();
+  const { data: batch } = await admin.from('sms_send_batches').select('id, program_id, text_template, kind').eq('id', batchId).maybeSingle();
+  if (!batch || batch.program_id !== g.ctx.programId) return { ok: false, error: '이 행사의 발송 기록이 아닙니다.' };
+  const items = (await listSmsBatchItems(g.ctx.programId, batchId)).filter((it) => isRetryable(it.status) && !it.retriedInBatchId);
+  if (items.length === 0) return { ok: false, error: '다시 보낼 실패 건이 없습니다.' };
+
+  const userIds = items.map((it) => it.userId).filter((x): x is string => !!x);
+  const inScope = new Set(await scopeRecipients(g.ctx.programId, userIds));
+  const users = await fetchAllIn<{ id: string; phone: string | null; is_active: boolean }>(userIds, (chunk, from, to) => admin.from('users').select('id, phone, is_active').in('id', chunk).range(from, to));
+  const userOf = new Map(users.map((u) => [u.id, u]));
+  const sendable = items
+    .map((it) => {
+      if (!it.userId) return { it, phone: normalizePhone(it.phone) };
+      const u = userOf.get(it.userId);
+      if (!u || !u.is_active || !inScope.has(it.userId)) return null;
+      return { it, phone: normalizePhone(u.phone) ?? normalizePhone(it.phone) };
+    })
+    .filter((x): x is { it: (typeof items)[number]; phone: string } => !!x && !!x.phone);
+  if (sendable.length === 0) return { ok: false, error: '다시 보낼 수 있는 대상이 없습니다 (비활성·소속 해제·휴대폰 없음).' };
+
+  const res = await sendTracked({
+    programId: g.ctx.programId,
+    actorId: g.actorId,
+    kind: 'retry',
+    title: '실패자 재발송',
+    template: batch.text_template,
+    parentBatchId: batchId,
+    items: sendable.map(({ it, phone }) => ({ userId: it.userId, name: it.name, phone, text: it.text })),
+  });
+  if (!res.ok) return res;
+  const ids = sendable.map((s) => s.it.id);
+  for (let i = 0; i < ids.length; i += 200) {
+    await admin.from('sms_send_items').update({ retried_in_batch_id: res.batchId }).in('id', ids.slice(i, i + 200));
+  }
+  const { error: auditError } = await admin.from('audit_logs').insert({
+    actor_id: g.actorId,
+    program_id: g.ctx.programId,
+    action: 'sms.retry_send',
+    entity_type: 'sms_send_batches',
+    entity_id: res.batchId,
+    metadata: { batch_id: res.batchId, parent_batch_id: batchId, total: sendable.length, sent: res.accepted, failed: res.rejected, skipped: items.length - sendable.length },
+  });
+  if (auditError) console.error('retry sms audit failed:', auditError.message);
+  return { ok: true, batchId: res.batchId, message: `실패 ${items.length}건 중 ${sendable.length}건을 다시 보냈습니다 — 접수 ${res.accepted}건${res.rejected ? ` · 접수 실패 ${res.rejected}건` : ''}${items.length - sendable.length ? ` · 제외 ${items.length - sendable.length}건(비활성·소속 해제·휴대폰 없음)` : ''}. 1~2분 뒤 [결과 새로고침]으로 수신 여부를 확인하세요.` };
 }
 
 /** 관리자: 문자 잔액 조회 (플랫폼 계정) */

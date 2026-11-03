@@ -5,6 +5,7 @@ import { listMentorCases, listMenteeCases, type CaseListItem } from '@/lib/data/
 import { resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import { CASE_STATUS_META, type CaseStatus } from '@/types/case-status';
 import { menteeLabel } from '@/lib/utils/labels';
+import { mentoringOutcomeLabel, normalizeMentoringOutcome } from '@/lib/workflow/mentoring-outcome';
 
 /**
  * 멘토·멘티 대시보드 "다음 할 일" 데이터 (P28) — 케이스별 회차 상태를 한 번에 읽어
@@ -45,6 +46,9 @@ export interface MentorCaseTodo {
   /** 서명 정책이 켜진 그룹에서 멘티 서명이 없는 이행 회차 수 */
   unsignedRounds: number;
   hasObservation: boolean;
+  /** (2026-11-03) 운영사 표시 '중도 포기'·'중도 종료'(진행 1회 이상) / '멘토링 포기'·'멘토링 종료' — 없으면 null */
+  outcomeLabel: string | null;
+  outcome: 'gave_up' | 'ended' | null;
   action: { key: MentorActionKey; label: string; hint: string; href: string; urgent: boolean };
 }
 
@@ -189,6 +193,8 @@ export async function loadMentorDashboard(mentorId: string, programId: string, s
       reportPending,
       unsignedRounds: signOn ? rows.filter((r) => r.reported && !r.signed).length : 0,
       hasObservation: hasObs.has(c.id),
+      outcome: normalizeMentoringOutcome(c.mentoring_outcome),
+      outcomeLabel: mentoringOutcomeLabel(normalizeMentoringOutcome(c.mentoring_outcome), c.roundsProgressed),
       action: decideAction(c, rows, nextPlanned, reportPending, hasObs.has(c.id), href),
     };
   });

@@ -6,6 +6,8 @@ import type { CaseListItem } from '@/lib/data/cases';
 import type { Tables } from '@/types/database';
 import type { Branding } from '@/lib/programs/branding';
 import { StatusBadge } from '@/components/cases/status-badge';
+import { MentoringOutcomeBadge } from '@/components/nextlab/mentoring-outcome-control';
+import { normalizeMentoringOutcome } from '@/lib/workflow/mentoring-outcome';
 import { ProcessStepBar } from '@/components/cases/process-step-bar';
 import { CaseDetailCard } from '@/components/cases/case-detail-card';
 import { CaseInfoWide } from '@/components/cases/case-info-wide';
@@ -73,7 +75,11 @@ export function CaseDetailShell({
             <span>· {item.supportTypeName ?? '-'} · 회차 {item.roundsDone}/{item.requiredRounds}</span>
           </p>
         </div>
-        <StatusBadge status={item.status} branding={branding} showStep />
+        <div className="flex flex-wrap items-center gap-1.5">
+          {/* (2026-11-03) 운영사가 표시한 '중도 포기'·'중도 종료' — 진행 1회 이상이면 비활성화하지 않고 화면에 남는다 */}
+          <MentoringOutcomeBadge outcome={normalizeMentoringOutcome(item.mentoring_outcome)} progressedRounds={item.roundsProgressed} className="px-2.5 py-1 text-xs font-bold" />
+          <StatusBadge status={item.status} branding={branding} showStep />
+        </div>
       </div>
       <ProcessStepBar status={item.status} branding={branding} />
 

@@ -11,6 +11,16 @@ export const MENTORING_OUTCOME_LABELS: Record<MentoringOutcome, string> = {
   ended: '멘토링 종료',
 };
 
+/**
+ * 화면 표시 이름 (2026-11-03) — 멘토링을 1회 이상 진행한 뒤면 '중도 포기'·'중도 종료'(비활성화하지 않고 멘토 화면에 남는다),
+ * 진행 없이 포기·종료면 '멘토링 포기'·'멘토링 종료'. 진행 회차 = 보고서 등록 또는 종료 시각 경과.
+ */
+export function mentoringOutcomeLabel(outcome: MentoringOutcome | null | undefined, progressedRounds: number): string | null {
+  if (!outcome) return null;
+  if (progressedRounds >= 1) return outcome === 'gave_up' ? '중도 포기' : '중도 종료';
+  return MENTORING_OUTCOME_LABELS[outcome];
+}
+
 export function normalizeMentoringOutcome(v: unknown): MentoringOutcome | null {
   return v === 'gave_up' || v === 'ended' ? v : null;
 }
@@ -22,6 +32,8 @@ export interface MentoringCaseItem {
   statusLabel: string;
   /** 보고서까지 등록된 회차 수 */
   roundsDone: number;
+  /** 진행 회차 수 (보고서 등록 또는 종료 시각 경과) — 표시 이름 결정 */
+  progressedRounds: number;
   requiredRounds: number;
   outcome: MentoringOutcome | null;
 }

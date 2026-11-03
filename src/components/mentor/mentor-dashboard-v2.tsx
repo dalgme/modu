@@ -188,6 +188,11 @@ export function MentorDashboardV2({
                         <div className="min-w-0">
                           <p className="truncate text-lg font-bold leading-tight">{t.label}</p>
                           {t.groupName && <span className="mt-1 inline-block rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{t.groupName}</span>}
+                          {t.outcomeLabel && (
+                            <span className={cn('ml-1 mt-1 inline-block rounded-full border px-2 py-0.5 text-[11px] font-bold', t.outcome === 'gave_up' ? 'border-rose-400 bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300' : 'border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300')}>
+                              {t.outcomeLabel}
+                            </span>
+                          )}
                         </div>
                         <StatusBadge status={t.status} branding={branding} short className="shrink-0" />
                       </div>

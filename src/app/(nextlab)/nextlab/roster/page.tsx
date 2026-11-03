@@ -62,7 +62,7 @@ function mentoringCasesByMentee(cases: CaseListItem[]): Map<string, MentoringCas
   for (const c of cases) {
     if (!c.mentee_id) continue;
     const arr = out.get(c.mentee_id) ?? [];
-    arr.push({ caseId: c.id, groupName: c.supportTypeName, statusLabel: c.status === 'withdrawn' ? '중도 종료' : CASE_STATUS_META[c.status].short, roundsDone: c.roundsDone, requiredRounds: c.requiredRounds, outcome: normalizeMentoringOutcome(c.mentoring_outcome) });
+    arr.push({ caseId: c.id, groupName: c.supportTypeName, statusLabel: c.status === 'withdrawn' ? '중도 종료' : CASE_STATUS_META[c.status].short, roundsDone: c.roundsDone, progressedRounds: c.roundsProgressed, requiredRounds: c.requiredRounds, outcome: normalizeMentoringOutcome(c.mentoring_outcome) });
     out.set(c.mentee_id, arr);
   }
   return out;
@@ -148,6 +148,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         surveyStatus: responded.has(c.id) ? 'done' : c.survey_opened_at ? 'open' : 'none',
         statusIndex: CASE_STATUSES.indexOf(c.status),
         outcome: normalizeMentoringOutcome(c.mentoring_outcome),
+        progressedRounds: c.roundsProgressed,
       });
     }
     const outcomeCases = mentoringCasesByMentee(cases);

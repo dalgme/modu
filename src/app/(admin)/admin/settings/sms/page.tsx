@@ -21,6 +21,8 @@ import { BellRing, CalendarClock, History, Send, Zap } from 'lucide-react';
 import { listScheduledMessages } from '@/lib/data/scheduled-messages';
 import { SmsComposer } from '@/components/admin/sms-composer';
 import { SmsSendList } from '@/components/admin/sms-send-list';
+import { SmsSendHistory, type HistoryLegacyDetail } from '@/components/admin/sms-send-history';
+import { listLegacySmsSends, listSmsBatchItems, listSmsBatches, loadLegacySmsSend, syncSmsBatch } from '@/lib/sms/tracked-send';
 import { ScheduledMessagesList } from '@/components/admin/scheduled-messages-list';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -48,7 +50,7 @@ const TABS = [
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
-export default async function Page({ searchParams }: { searchParams: { tab?: string; to?: string } }) {
+export default async function Page({ searchParams }: { searchParams: { tab?: string; to?: string; batch?: string; legacy?: string } }) {
   const profile = await requireStaff();
   const ctx = await requireContext(profile);
   const configured = solapiConfigured();
@@ -63,9 +65,34 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   // 수신자는 행사별 API 만 있어도 필요하다. 잔액·발송 리스트는 플랫폼 공통 연동일 때만.
   const [balance, messages, recipients] = await Promise.all([
     configured ? getSolapiBalance() : Promise.resolve(null),
-    configured ? getSolapiMessages(120) : Promise.resolve(null),
+    // 플랫폼 공통 계정 발송 내역은 행사별 문자 API 를 쓰지 않는 행사에서만 의미가 있다
+    configured && !programSmsActive && tab === 'history' ? getSolapiMessages(120) : Promise.resolve(null),
     configured || programSmsActive ? listSmsRecipients(ctx.programId, ctx.supportTypeId) : Promise.resolve([]),
   ]);
+
+  // (2026-11-03) 발송 현황 — 발송 묶음별 수신 결과(솔라피 조회로 채움) + 기록 이전 일괄 발송
+  let history: React.ReactNode = null;
+  if (tab === 'history') {
+    const isId = (v?: string) => !!v && /^[0-9a-f-]{36}$/i.test(v);
+    let batches = await listSmsBatches(ctx.programId);
+    const sel = isId(searchParams.batch) ? batches.find((b) => b.id === searchParams.batch) ?? null : null;
+    // 선택한 묶음에 전송 중 건이 있고 마지막 확인이 1분 넘었으면 솔라피에서 결과를 가져온다
+    if (sel && sel.counts.pending > 0 && (!sel.lastSyncedAt || Date.now() - Date.parse(sel.lastSyncedAt) > 60_000)) {
+      const r = await syncSmsBatch(ctx.programId, sel.id);
+      if (!r.ok) console.error('[sms] sync failed:', r.error);
+      batches = await listSmsBatches(ctx.programId);
+    }
+    const selected = sel ? batches.find((b) => b.id === sel.id) ?? null : null;
+    const [items, legacy] = await Promise.all([selected ? listSmsBatchItems(ctx.programId, selected.id) : Promise.resolve([]), listLegacySmsSends(ctx.programId)]);
+    let legacyDetail: HistoryLegacyDetail | null = null;
+    if (!selected && isId(searchParams.legacy)) {
+      const r = await loadLegacySmsSend(ctx.programId, searchParams.legacy!);
+      legacyDetail = r.ok
+        ? { auditId: searchParams.legacy!, rows: r.rows, sampleText: r.sampleText, missingFailed: r.missingFailed }
+        : { auditId: searchParams.legacy!, rows: [], sampleText: null, missingFailed: 0, error: r.error };
+    }
+    history = <SmsSendHistory batches={batches} selected={selected} items={items} legacy={legacy} legacyDetail={legacyDetail} canSend={canSend} />;
+  }
 
   // 예약 발송 (Solapi 연동 여부와 무관하게 DB 조회)
   const scheduled = await listScheduledMessages(ctx.programId);
@@ -243,16 +270,20 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
       {tab === 'history' && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">문자발송 현황 (회원별 · 날짜별)</CardTitle>
+            <CardTitle className="text-base">문자 발송 현황 (수신 결과 · 실패 사유 · 재발송)</CardTitle>
             <p className="text-xs text-muted-foreground">
-              플랫폼 회원(등록된 휴대폰)에게 발송된 내역을 날짜별로 묶어 회원 이름과 함께 보여줍니다. &lsquo;전체&rsquo;로 전환하면 비회원 번호 발송분까지 확인할 수 있습니다. 플랫폼 공통 발신번호({[solapiSender(1), solapiSender(2)].filter(Boolean).join(' · ') || '-'})로 보낸 문자만 표시됩니다.
+              일괄 문자·로그인 안내를 보낸 묶음마다 수신자별 결과를 보여 줍니다. <b>수신 완료</b> = 이통사가 휴대폰 도착을 확인한 문자, <b>수신 실패</b> = 이통사가 전달하지 못한 문자(사유 표시), <b>접수 실패</b> = 솔라피가 받지 않은 문자입니다. [자세히]에서 결과를 새로고침하고 실패자에게 다시 보낼 수 있습니다.
             </p>
           </CardHeader>
-          <CardContent>
-            {messages && !messages.ok ? (
-              <p className="py-6 text-center text-sm text-status-rejected">발송 리스트 조회 실패: {messages.error}</p>
-            ) : (
-              <SmsSendList messages={list} recipients={recipients} />
+          <CardContent className="flex flex-col gap-6">
+            {history}
+            {messages && (
+              <details className="text-sm">
+                <summary className="cursor-pointer text-xs text-muted-foreground">플랫폼 공통 발신번호({[solapiSender(1), solapiSender(2)].filter(Boolean).join(' · ') || '-'})로 보낸 최근 문자</summary>
+                <div className="mt-2">
+                  {!messages.ok ? <p className="py-6 text-center text-sm text-status-rejected">발송 리스트 조회 실패: {messages.error}</p> : <SmsSendList messages={list} recipients={recipients} />}
+                </div>
+              </details>
             )}
           </CardContent>
         </Card>

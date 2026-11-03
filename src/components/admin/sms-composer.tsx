@@ -253,8 +253,8 @@ export function SmsComposer({
     setConfirmOpen(false);
     if (result.ok) {
       toast({
-        title: `문자 발송 완료 (성공 ${result.sent}건${result.failed ? ` · 실패 ${result.failed}건` : ''})`,
-        description: result.failed ? '실패 수신자는 아래 [실패자만 다시 선택]으로 재발송할 수 있습니다.' : '발송 현황에서 상태를 확인하세요.',
+        title: `솔라피 접수 완료 (접수 ${result.sent}건${result.failed ? ` · 접수 실패 ${result.failed}건` : ''})`,
+        description: `실제 휴대폰 도착 여부는 1~2분 뒤 [발송 현황]에서 확인하세요.${result.failed ? ' 실패자는 발송 현황 [실패자 다시 보내기] 또는 아래 [실패자만 다시 선택]으로 재발송할 수 있습니다.' : ''}`,
       });
       setLastFailed(result.failedRecipients ?? []);
       if (!result.failed) setText('');

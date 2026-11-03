@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { sendSolapiSms, solapiConfigured } from '@/lib/notifications/solapi';
+import { sendTracked } from '@/lib/sms/tracked-send';
 import { loadLoginGuideRecipients } from '@/lib/data/members';
 import type { LoginGuideContext, LoginGuideRecipient } from '@/lib/sms/login-guide-template';
 import { fallbackBulkRecipient, renderBulkSms, usesBulkFields } from '@/lib/sms/bulk-sms-fields';
@@ -22,20 +23,22 @@ export interface ScheduledDispatchSummary {
  */
 export async function dispatchScheduledMessages(limit = 20): Promise<ScheduledDispatchSummary> {
   const summary: ScheduledDispatchSummary = { processed: 0, sent: 0, failed: 0 };
-  if (!solapiConfigured()) return summary;
 
   const admin = createAdminClient();
   const nowIso = new Date().toISOString();
 
   const { data: due } = await admin
     .from('scheduled_messages')
-    .select('id, text, sender_index, recipient_ids, program_id')
+    .select('id, text, sender_index, recipient_ids, program_id, created_by')
     .eq('status', 'pending')
     .lte('scheduled_at', nowIso)
     .order('scheduled_at', { ascending: true })
     .limit(limit);
 
   for (const job of due ?? []) {
+    // 먼저 선점(dispatched_at) — 겹친 cron 실행이 같은 예약을 두 번 보내지 않게
+    const { data: claimed } = await admin.from('scheduled_messages').update({ dispatched_at: nowIso }).eq('id', job.id).eq('status', 'pending').is('dispatched_at', null).select('id');
+    if (!claimed || claimed.length === 0) continue;
     summary.processed += 1;
 
     // 발송 시점 기준 최신 연락처 조회 (활성 회원만)
@@ -50,11 +53,33 @@ export async function dispatchScheduledMessages(limit = 20): Promise<ScheduledDi
       const targets = (users ?? []).filter((u) => u.is_active && (u.phone ?? '').replace(/\D/g, '').length >= 10);
 
       const textFor = await buildScheduledRenderer(job.text, job.program_id, targets.map((u) => u.id));
-      const senderIndex = job.sender_index === 2 ? 2 : 1;
-      for (const u of targets) {
-        const r = await sendSolapiSms(u.phone as string, textFor(u), { senderIndex });
-        if (r.ok) sent += 1;
-        else failed += 1;
+      if (job.program_id) {
+        // (2026-11-03) 행사 예약 문자 = 행사 문자 API(없으면 플랫폼)로 send-many 1회 호출 + 수신 결과 기록([발송 현황])
+        const res = await sendTracked({
+          programId: job.program_id,
+          actorId: job.created_by,
+          kind: 'bulk',
+          title: '예약 문자',
+          template: job.text,
+          items: targets.map((u) => ({ userId: u.id, name: u.name, phone: (u.phone as string).replace(/\D/g, ''), text: textFor(u) })),
+        });
+        if (res.ok) {
+          sent = res.accepted;
+          failed = res.rejected;
+        } else {
+          console.error('[scheduled-sms] tracked send failed:', res.error);
+          failed = targets.length;
+        }
+      } else {
+        if (!solapiConfigured()) failed = targets.length;
+        else {
+          const senderIndex = job.sender_index === 2 ? 2 : 1;
+          for (const u of targets) {
+            const r = await sendSolapiSms(u.phone as string, textFor(u), { senderIndex });
+            if (r.ok) sent += 1;
+            else failed += 1;
+          }
+        }
       }
     }
 

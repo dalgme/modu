@@ -5,6 +5,7 @@ import { menteeLoginKey } from '@/lib/auth/identifier';
 import { hiddenMatchingGroupIds } from '@/lib/matching/visibility';
 import type { Tables } from '@/types/database';
 import type { CaseStatus } from '@/types/case-status';
+import { isProgressedRound } from '@/lib/workflow/force-end-rule';
 
 export type CaseRow = Tables<'cases'>;
 
@@ -21,6 +22,8 @@ export interface CaseListItem extends CaseRow {
   roundsDone: number;
   /** 등록된 회차 전체(계획 포함) */
   roundsPlanned: number;
+  /** (2026-11-03) 진행 회차 = 보고서 등록 또는 종료 시각 경과 — '중도 포기·중도 종료' 표시·비활성화 차단 기준 */
+  roundsProgressed: number;
   /** 담당 멘토 — 활성 배정. 종결·중도 종료 케이스는 마지막 배정(mentorEnded=true) */
   mentorName: string | null;
   mentorId: string | null;
@@ -115,14 +118,17 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
     fetchAllIn<{ case_id: string; mentor_id: string; assigned_at: string; is_active: boolean; end_kind: string | null }>(caseIds, (chunk, from, to) =>
       supabase.from('mentor_assignments').select('case_id, mentor_id, assigned_at, is_active, end_kind').in('case_id', chunk).order('assigned_at', { ascending: false }).range(from, to),
     ),
-    fetchAllIn<{ case_id: string; report_registered_at: string | null }>(caseIds, (chunk, from, to) => supabase.from('mentoring_logs').select('case_id, report_registered_at').in('case_id', chunk).range(from, to)),
+    fetchAllIn<{ case_id: string; report_registered_at: string | null; ended_at: string | null }>(caseIds, (chunk, from, to) => supabase.from('mentoring_logs').select('case_id, report_registered_at, ended_at').in('case_id', chunk).range(from, to)),
   ]);
   const typeMap = new Map((types ?? []).map((t) => [t.id, t]));
   const roundsByCase = new Map<string, number>();
   const plannedByCase = new Map<string, number>();
+  const progressedByCase = new Map<string, number>();
+  const nowMs = Date.now();
   for (const l of logs ?? []) {
     plannedByCase.set(l.case_id, (plannedByCase.get(l.case_id) ?? 0) + 1);
     if (l.report_registered_at) roundsByCase.set(l.case_id, (roundsByCase.get(l.case_id) ?? 0) + 1);
+    if (isProgressedRound(l, nowMs)) progressedByCase.set(l.case_id, (progressedByCase.get(l.case_id) ?? 0) + 1);
   }
 
   // 케이스별 담당 배정: 활성 배정 우선, 없으면(종결·중도 종료) 가장 최근 배정 — 종결 후에도 멘토가 명단·리포트에 남는다 (P30)
@@ -169,6 +175,7 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
       requiredRounds: t?.required_rounds ?? 0,
       roundsDone: roundsByCase.get(c.id) ?? 0,
       roundsPlanned: plannedByCase.get(c.id) ?? 0,
+      roundsProgressed: progressedByCase.get(c.id) ?? 0,
       mentorName: a ? (mentorNameById.get(a.mentor_id) ?? null) : null,
       mentorId: a?.mentor_id ?? null,
       mentorPhone: a ? (mentorPhoneById.get(a.mentor_id) ?? null) : null,
@@ -217,13 +224,15 @@ export async function listMentorEndedCases(mentorId: string, programId: string, 
   if (ids.length === 0) return [];
   const [{ data: cases }, logs] = await Promise.all([
     admin.from('cases').select('*, support_types(name, code, required_rounds)').in('id', ids).in('status', ['closed', 'withdrawn']).order('closed_at', { ascending: false }),
-    fetchAllIn<{ case_id: string; report_registered_at: string | null }>(ids, (chunk, from, to) => admin.from('mentoring_logs').select('case_id, report_registered_at').in('case_id', chunk).range(from, to)),
+    fetchAllIn<{ case_id: string; report_registered_at: string | null; ended_at: string | null }>(ids, (chunk, from, to) => admin.from('mentoring_logs').select('case_id, report_registered_at, ended_at').in('case_id', chunk).range(from, to)),
   ]);
   const done = new Map<string, number>();
   const planned = new Map<string, number>();
+  const progressed = new Map<string, number>();
   for (const l of logs) {
     planned.set(l.case_id, (planned.get(l.case_id) ?? 0) + 1);
     if (l.report_registered_at) done.set(l.case_id, (done.get(l.case_id) ?? 0) + 1);
+    if (isProgressedRound(l)) progressed.set(l.case_id, (progressed.get(l.case_id) ?? 0) + 1);
   }
   const assignedAt = new Map(scoped.map((a) => [a.case_id, a.assigned_at]));
   return (cases ?? []).map((row) => {
@@ -235,6 +244,7 @@ export async function listMentorEndedCases(mentorId: string, programId: string, 
       requiredRounds: support_types?.required_rounds ?? 0,
       roundsDone: done.get(c.id) ?? 0,
       roundsPlanned: planned.get(c.id) ?? 0,
+      roundsProgressed: progressed.get(c.id) ?? 0,
       mentorName: null,
       mentorId,
       mentorAssignedAt: assignedAt.get(c.id) ?? null,

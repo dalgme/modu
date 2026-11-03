@@ -3071,6 +3071,105 @@ export type Database = {
           },
         ];
       };
+      sms_send_batches: {
+        Row: {
+          id: string;
+          program_id: string;
+          created_by: string | null;
+          created_at: string;
+          kind: string;
+          title: string | null;
+          text_template: string;
+          parent_batch_id: string | null;
+          credential_source: string | null;
+          provider_group_ids: string[];
+          total: number;
+          last_synced_at: string | null;
+        };
+        Insert: {
+          id?: string;
+          program_id: string;
+          created_by?: string | null;
+          created_at?: string;
+          kind?: string;
+          title?: string | null;
+          text_template?: string;
+          parent_batch_id?: string | null;
+          credential_source?: string | null;
+          provider_group_ids?: string[];
+          total?: number;
+          last_synced_at?: string | null;
+        };
+        Update: {
+          id?: string;
+          program_id?: string;
+          created_by?: string | null;
+          created_at?: string;
+          kind?: string;
+          title?: string | null;
+          text_template?: string;
+          parent_batch_id?: string | null;
+          credential_source?: string | null;
+          provider_group_ids?: string[];
+          total?: number;
+          last_synced_at?: string | null;
+        };
+        Relationships: [];
+      };
+      sms_send_items: {
+        Row: {
+          id: string;
+          batch_id: string;
+          program_id: string;
+          user_id: string | null;
+          name: string;
+          phone: string;
+          text: string;
+          status: string;
+          provider_message_id: string | null;
+          provider_group_id: string | null;
+          status_code: string | null;
+          reason: string | null;
+          retried_in_batch_id: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          batch_id: string;
+          program_id: string;
+          user_id?: string | null;
+          name?: string;
+          phone: string;
+          text: string;
+          status?: string;
+          provider_message_id?: string | null;
+          provider_group_id?: string | null;
+          status_code?: string | null;
+          reason?: string | null;
+          retried_in_batch_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          batch_id?: string;
+          program_id?: string;
+          user_id?: string | null;
+          name?: string;
+          phone?: string;
+          text?: string;
+          status?: string;
+          provider_message_id?: string | null;
+          provider_group_id?: string | null;
+          status_code?: string | null;
+          reason?: string | null;
+          retried_in_batch_id?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       signatures: {
         Row: {
           case_id: string;
