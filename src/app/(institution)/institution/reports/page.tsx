@@ -8,6 +8,7 @@ import { listDelayedCases } from '@/lib/reports/delays';
 import { computeMonthlyTrend } from '@/lib/reports/trend';
 import { REPORT_TABS, ReportsBody, type ReportTab } from '@/components/reports/reports-body';
 import { loadReportFiles } from '@/lib/data/report-files';
+import { loadRoundProgress } from '@/lib/reports/round-progress';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,6 +35,9 @@ export default async function Page({ searchParams }: { searchParams: SP }) {
   const mentorProgress = tab === 'cases' && searchParams.view === 'mentor' ? (await loadMatchingLists(ctx.programId, groupId, { excludeInactiveMentees: true })).mentorRows.map((r) => ({ ...r, reviews: [], reviewAvg: null })) : undefined;
   const filtered = tab === 'cases' ? filterAndSortCases(cases, searchParams) : cases;
   const reportFiles = tab === 'files' ? await loadReportFiles(ctx.programId, groupId) : undefined;
+  // (2026-11-03) 회차별 현황 — 비활성 멘티도 '포기'로 분류해야 하므로 별도 로더
+  const generatedAt = new Date().toISOString();
+  const roundProgress = tab === 'rounds' ? await loadRoundProgress(ctx.programId, groupId, new Date(generatedAt)) : undefined;
   return (
     <main className="flex flex-col gap-5">
       <div>
@@ -43,6 +47,8 @@ export default async function Page({ searchParams }: { searchParams: SP }) {
       <ReportsBody
         scopeLabel={ctx.group ? ctx.group.name : '행사 전체'}
         reportFiles={reportFiles}
+        roundProgress={roundProgress}
+        generatedAt={generatedAt}
         m={m}
         tab={tab}
         base="/institution"

@@ -12,6 +12,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { recordSecurityEventSafe } from '@/lib/ops/security-events';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import { contentDisposition } from '@/lib/http/download';
+import { loadRoundProgress } from '@/lib/reports/round-progress';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -38,7 +39,7 @@ export async function GET(request: Request): Promise<Response> {
   const { m, cases: allCases, settlements, excludedCaseIds } = await loadReportData(ctx.programId, groupId, period, { excludeInactiveMentees: excludeInactive });
   const cases = tab === 'cases' ? filterAndSortCases(allCases, params) : allCases;
   const admin = createAdminClient();
-  const [trend, lists, delays, budget, profiles] = await Promise.all([
+  const [trend, lists, delays, budget, profiles, roundProgress] = await Promise.all([
     tab === 'trend' || tab === 'overview' ? computeMonthlyTrend(ctx.programId, groupId, year ? { year } : { months: 12 }) : Promise.resolve(undefined),
     (tab === 'cases' && view === 'mentor') || tab === 'mentors' ? loadMatchingLists(ctx.programId, groupId, { excludeInactiveMentees: excludeInactive }) : Promise.resolve(undefined),
     tab === 'overview' ? listDelayedCases(ctx.programId, groupId).then((ds) => ds.filter((d) => !excludedCaseIds.has(d.caseId))) : Promise.resolve(undefined),
@@ -46,6 +47,7 @@ export async function GET(request: Request): Promise<Response> {
     tab === 'cases' || tab === 'overview'
       ? fetchAllIn<{ case_id: string; external_no: string | null; rank: number | null }>(cases.map((c) => c.id), (chunk, from, to) => admin.from('mentee_profiles').select('case_id, external_no, rank').in('case_id', chunk).range(from, to))
       : Promise.resolve([] as { case_id: string; external_no: string | null; rank: number | null }[]),
+    tab === 'rounds' ? loadRoundProgress(ctx.programId, groupId) : Promise.resolve(undefined),
   ]);
   const caseExtras: Record<string, { externalNo: string | null; rank: number | null }> = {};
   for (const p of profiles) caseExtras[p.case_id] = { externalNo: p.external_no, rank: p.rank };
@@ -60,10 +62,11 @@ export async function GET(request: Request): Promise<Response> {
     scopeName,
     filterLabel: tab === 'cases' ? [view === 'mentor' ? '멘토 진행현황' : null, caseFilterLabel(params, mentorName)].filter(Boolean).join(' · ') || null : null,
     caseExtras,
+    roundProgress,
   });
   const filename = reportFileName(ctx.program.name, tab, m, scopeName);
   // (P35-B) 대량 반출 이벤트
-  await recordSecurityEventSafe({ kind: 'export', severity: 'info', userId: profile.id, path: '/api/reports/export', detail: { route: 'reports-export', tab, rows: cases.length, program_id: ctx.programId } });
+  await recordSecurityEventSafe({ kind: 'export', severity: 'info', userId: profile.id, path: '/api/reports/export', detail: { route: 'reports-export', tab, rows: roundProgress ? roundProgress.cases.length : cases.length, program_id: ctx.programId } });
   return new Response(new Uint8Array(buf), {
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

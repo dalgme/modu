@@ -10,6 +10,7 @@ import type { SettlementItem } from '@/lib/data/settlements';
 import type { DelayedCase } from '@/lib/reports/delays-shared';
 import { DELAY_LABELS } from '@/lib/reports/delays-shared';
 import type { BudgetOverview } from '@/lib/reports/budget';
+import { ROUND_PROGRESS_CATEGORY_LABELS, type RoundProgressResult, type RoundProgressSummary } from '@/lib/reports/round-progress-shared';
 import { CASE_STATUSES, CASE_STATUS_META } from '@/types/case-status';
 import { WITHHOLDING_LABELS } from '@/lib/settlement/compute';
 import { SETTLEMENT_STATUS_LABELS } from '@/lib/settlement/labels';
@@ -18,6 +19,7 @@ import { excelFileName, kstDate, kstDateTime, sheetName, sheetWithMeta, workbook
 /** 리포트 탭 한국어 라벨 (파일명·시트명) */
 export const REPORT_TAB_LABELS: Record<string, string> = {
   overview: '개요',
+  rounds: '회차별현황',
   trend: '월별추이',
   cases: '진행현황',
   mentors: '멘토실적',
@@ -32,7 +34,7 @@ export const SETTLEMENT_KIND_LABELS: Record<string, string> = { closure: '종결
 /** 엑셀 파일명 — `{행사}_{그룹|전체}_리포트_{탭}[_기간]_{YYYY-MM-DD KST}.xlsx` (라우트가 사용) */
 export function reportFileName(programName: string, tab: string, m: ProgramMetrics, scopeName?: string | null): string {
   const p = m.scope.period;
-  const period = p && (p.from || p.to) ? `_${p.from ?? ''}~${p.to ?? ''}` : '';
+  const period = p && (p.from || p.to) && tab !== 'rounds' ? `_${p.from ?? ''}~${p.to ?? ''}` : '';
   return excelFileName(programName, scopeName ?? null, `리포트_${REPORT_TAB_LABELS[tab] ?? tab}${period}`);
 }
 
@@ -51,6 +53,8 @@ export interface ReportExportExtra {
   filterLabel?: string | null;
   /** 케이스별 고유번호·순위 (mentee_profiles) — 케이스 시트 컬럼 */
   caseExtras?: Record<string, { externalNo: string | null; rank: number | null }>;
+  /** 회차별 현황 (2026-11-03) */
+  roundProgress?: RoundProgressResult;
 }
 
 /** 리포트 엑셀 — 탭별 시트 (수치는 metrics 한 곳에서). extra 로 월별 추이·멘토 진행현황·지연·예산 시트를 덧붙인다 (P30·P31) */
@@ -58,7 +62,7 @@ export function buildReportWorkbook(tab: string, m: ProgramMetrics, cases: CaseL
   const wb = XLSX.utils.book_new();
   const period = periodLabel(m.scope.period);
   const institution = extra.role === 'institution';
-  const meta = { 기준일: kstDateTime(m.scope.generatedAt), 범위: `${programName} · ${extra.scopeName ?? '행사 전체'}`, 필터: [period !== '전체 기간' ? `기간 ${period}` : null, extra.filterLabel].filter(Boolean).join(' · ') || undefined };
+  const meta = { 기준일: kstDateTime(m.scope.generatedAt), 범위: `${programName} · ${extra.scopeName ?? '행사 전체'}`, 필터: [period !== '전체 기간' && tab !== 'rounds' ? `기간 ${period}` : null, extra.filterLabel].filter(Boolean).join(' · ') || undefined };
   const add = (name: string, header: string[], rows: unknown[][], money?: string[]) => XLSX.utils.book_append_sheet(wb, sheetWithMeta(header, rows, { ...meta, money }), sheetName(name));
 
   if (tab === 'overview') {
@@ -110,6 +114,21 @@ export function buildReportWorkbook(tab: string, m: ProgramMetrics, cases: CaseL
   if (tab === 'overview' && extra.budget) {
     const bRow = (r: BudgetOverview['total']) => [r.name, r.budget ?? '', r.confirmed, r.forecast, r.confirmed + r.forecast, r.budget ? Math.round(((r.confirmed + r.forecast) / r.budget) * 1000) / 10 : ''];
     add('예산', ['구분', '예산(지급총액)', '확정', '예상', '합계', '집행률(%)'], [bRow(extra.budget.total), ...extra.budget.groups.map(bRow)], ['확정', '예상']);
+  }
+  if (tab === 'rounds' && extra.roundProgress) {
+    const rp = extra.roundProgress;
+    add('회차별 현황', ['그룹', '회차', '일정 등록', '일정 미등록', '진행 완료', '진행 미완료', '미완료 중 예정', '보고서 등록', '보고서 대기', '제외(일정 기준)', '제외(완료 기준)'], rp.groups.flatMap((g) =>
+      g.rounds.map((r) => [g.name, `${r.roundNo}회차${r.extra ? '(추가)' : ''}`, r.registered, r.unregistered ?? '', r.completed, r.notCompleted ?? '', r.notCompletedScheduled ?? '', r.reports, r.reportPending, r.excludedRegistration, r.excludedCompletion]),
+    ));
+    const sumRow = (name: string, x: RoundProgressSummary) => [name, x.total, x.ongoing, x.ongoingUnassigned, x.ended, x.gaveUpAfter, x.gaveUpBefore, x.participatingMentees, x.participatingMentors, x.currentMentors];
+    add('종료·진행 요약', ['범위', '전체 멘티', '진행 중', '진행 중 멘토 미배정', ROUND_PROGRESS_CATEGORY_LABELS.ended, ROUND_PROGRESS_CATEGORY_LABELS.gaveUpAfter, ROUND_PROGRESS_CATEGORY_LABELS.gaveUpBefore, '진행 멘티(진행 안 하고 포기 제외)', '진행 멘토', '현재 진행 중 담당 멘토'], [
+      ...(rp.groups.length > 1 ? [sumRow('합계', rp.summary)] : []),
+      ...rp.groups.map((g) => sumRow(g.name, g.summary)),
+    ]);
+    const gName = new Map(rp.groups.map((g) => [g.id, g.name]));
+    add('멘티별 분류', ['멘티', '기업(팀)', '그룹', '분류', '상태', '회원 상태', '진행 완료 회차', '보고서 등록 회차'], [...rp.cases]
+      .sort((a, b) => (gName.get(a.groupId) ?? '').localeCompare(gName.get(b.groupId) ?? '', 'ko') || a.menteeName.localeCompare(b.menteeName, 'ko'))
+      .map((c) => [c.menteeName, c.businessName && c.businessName !== c.menteeName ? c.businessName : '', gName.get(c.groupId) ?? '', ROUND_PROGRESS_CATEGORY_LABELS[c.category], c.status === 'withdrawn' ? '중도 종료' : (CASE_STATUS_META[c.status as keyof typeof CASE_STATUS_META]?.short ?? c.status), c.inactive ? '비활성' : '활성', c.completedRounds, c.reportRounds]));
   }
   if (wb.SheetNames.length === 0) add('빈 시트', ['안내'], [['데이터 없음']]);
   return workbookBuffer(wb);

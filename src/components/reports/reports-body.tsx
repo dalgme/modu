@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { AlertTriangle, ClipboardList, Coins, FolderDown, LayoutDashboard, Layers, Smile, TrendingUp, Users } from 'lucide-react';
+import { AlertTriangle, ClipboardList, Coins, FolderDown, LayoutDashboard, Layers, ListChecks, Smile, TrendingUp, Users } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 import { ExcelButton } from '@/components/common/excel-button';
@@ -27,10 +27,14 @@ import type { Branding } from '@/lib/programs/branding';
 import { formatKRW } from '@/lib/utils/format';
 import type { ReportFilesData } from '@/lib/data/report-files';
 import { ReportFilesPanel } from '@/components/reports/report-files-panel';
+import type { RoundProgressResult } from '@/lib/reports/round-progress-shared';
+import { RoundProgressPanel } from '@/components/reports/round-progress-panel';
 
 /** 리포트 탭 (P26-03: 잔여 과업 탭 제거 — 지연 케이스는 개요로, 잔여 회차 표는 진행현황과 중복) */
 export const REPORT_TABS = [
   { key: 'overview', label: '개요', icon: LayoutDashboard },
+  // (2026-11-03) 회차별 일정 등록·진행 완료·보고서 등록 + 종료·포기 구분 + 진행 멘티·멘토 수
+  { key: 'rounds', label: '회차별 현황', icon: ListChecks },
   { key: 'trend', label: '월별 추이', icon: TrendingUp },
   { key: 'cases', label: '진행현황', icon: ClipboardList },
   { key: 'mentors', label: '멘토 실적', icon: Users },
@@ -66,6 +70,8 @@ export function ReportsBody({
   totalCases,
   reportFiles,
   scopeLabel = '행사 전체',
+  roundProgress,
+  generatedAt,
 }: {
   m: ProgramMetrics;
   tab: ReportTab;
@@ -98,6 +104,10 @@ export function ReportsBody({
   reportFiles?: ReportFilesData;
   /** 개요 탭 핵심 지표 밴드 제목의 범위 (2026-10-01) */
   scopeLabel?: string;
+  /** [회차별 현황] 탭 데이터 (2026-11-03) */
+  roundProgress?: RoundProgressResult;
+  /** 회차별 현황 기준 시각 (ISO) */
+  generatedAt?: string;
 }) {
   const reportsHref = `${base}/reports`;
   const periodQs = period?.from || period?.to ? `${period.from ? `&from=${period.from}` : ''}${period.to ? `&to=${period.to}` : ''}` : '';
@@ -122,7 +132,7 @@ export function ReportsBody({
       </div>
 
       {/* 기간 칩 (P30) — 회차 = 보고서 등록일 · 정산 = 확정일 · 케이스 신규/종결 = 등록일/종결일 */}
-      {periodPresets.length > 0 && tab !== 'trend' && tab !== 'files' && (
+      {periodPresets.length > 0 && tab !== 'trend' && tab !== 'files' && tab !== 'rounds' && (
         <div className="flex flex-wrap items-center gap-2 text-xs">
           <span className="font-semibold text-muted-foreground">기간</span>
           {periodPresets.map((pp) => {
@@ -148,6 +158,8 @@ export function ReportsBody({
       )}
 
       {tab === 'files' && reportFiles && <ReportFilesPanel data={reportFiles} />}
+
+      {tab === 'rounds' && roundProgress && <RoundProgressPanel data={roundProgress} base={base} generatedAt={generatedAt ?? new Date().toISOString()} />}
 
       {tab === 'overview' && (
         <div className="flex flex-col gap-4">
