@@ -31,6 +31,9 @@ import { hasCapability } from '@/lib/auth/capabilities';
 import { SmsApiSection } from '@/components/settings/sms-api-section';
 import { MatchingPublishPanel } from '@/components/settings/matching-publish-panel';
 import { loadMatchingPublishOverview } from '@/lib/matching/publish-data';
+import { listDeletionArchives } from '@/lib/archive/test-account';
+import { DeletionArchivePanel } from '@/components/settings/deletion-archive-panel';
+import { GroupSurveyPanel } from '@/components/settings/group-survey-panel';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,13 +47,14 @@ const TABS = [
   { key: 'publish', label: '매칭 공개' },
   { key: 'gates', label: '종결 게이트·서명 정책' },
   { key: 'reports', label: '보고서 양식' },
-  { key: 'survey', label: '만족도 양식' },
+  { key: 'survey', label: '설문조사(만족도)' },
   { key: 'mentor-docs', label: '멘토 서류 수령' },
   { key: 'files', label: '파일 보안' },
   { key: 'tags', label: '키워드 사전' },
   { key: 'permissions', label: '담당 권한' },
   { key: 'succession', label: '승계 개설' },
   { key: 'audit', label: '감사 로그' },
+  { key: 'archive', label: '삭제 보관함' },
   { key: 'sms-api', label: '문자 API' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
@@ -59,7 +63,7 @@ type TabKey = (typeof TABS)[number]['key'];
 const SETTING_GROUPS: { label: string; keys: string[]; extra?: { href: string; label: string } }[] = [
   { label: '필수 준비', keys: ['program', 'groups', 'rates', 'matching', 'publish'] },
   { label: '운영 정책', keys: ['withholding', 'budget', 'gates', 'reports', 'survey', 'mentor-docs', 'files', 'tags'], extra: { href: '/admin/settings/sms?tab=auto', label: '문자 자동발송' } },
-  { label: '관리', keys: ['permissions', 'succession', 'audit', 'sms-api'] },
+  { label: '관리', keys: ['permissions', 'succession', 'audit', 'archive', 'sms-api'] },
 ];
 
 /** 운영 설정 (docs/MODU-DESIGN.md §16) — 탭별 서버 렌더. 승계 개설·감사 로그도 미니탭 (P20) */
@@ -135,7 +139,13 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   }
   if (tab === 'survey') {
     const [templates, groups] = await Promise.all([listSurveyTemplates(ctx.programId), listGroupsWithDocs(ctx.programId)]);
-    body = <SurveyTemplatesManager templates={templates} groups={groups.map((g) => ({ id: g.id, name: g.name }))} />;
+    // (2026-11-03) 라운드별 설문조사 사용/미사용 — 양식 관리 위에
+    body = (
+      <div className="flex flex-col gap-4">
+        <GroupSurveyPanel groups={groups.map((g) => ({ id: g.id, name: g.name, status: g.status, surveyEnabled: (g as { survey_enabled?: boolean }).survey_enabled !== false }))} canEdit={hasCapability(ctx, 'settings')} />
+        <SurveyTemplatesManager templates={templates} groups={groups.map((g) => ({ id: g.id, name: g.name }))} />
+      </div>
+    );
   }
   if (tab === 'mentor-docs') {
     // (P32) 멘토 서류 수령 체크 — 행사 공통 + 그룹별 서류명 목록·사용 여부
@@ -182,6 +192,8 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
       </div>
     );
   }
+  // (2026-11-03) 테스트 계정 완전 삭제 보관함 — 복원은 case.delete 권한(기본 PL) + 비밀번호
+  if (tab === 'archive') body = <DeletionArchivePanel rows={await listDeletionArchives(ctx.programId)} canRestore={hasCapability(ctx, 'case.delete')} />;
   if (tab === 'sms-api') body = <SmsApiSection programId={ctx.programId} programName={ctx.program.name} />;
   if (tab === 'audit') {
     // 기간·수행자·구분·대상 id 서버 필터 + 페이지 (P31)

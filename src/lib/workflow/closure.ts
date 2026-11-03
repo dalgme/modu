@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { isGroupSurveyEnabled } from '@/lib/surveys/group-survey';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { isPL, isStaffGrade, resolveGrants, type CapabilityKey } from '@/lib/auth/capabilities';
 import { getRealSessionProfile } from '@/lib/auth/guards';
@@ -342,6 +343,7 @@ async function surveyOpenNudgeNeeded(caseId: string): Promise<boolean> {
   const admin = createAdminClient();
   const { data: c } = await admin.from('cases').select('program_id, support_type_id').eq('id', caseId).maybeSingle();
   if (!c) return false;
+  if (!(await isGroupSurveyEnabled(c.support_type_id))) return false; // (2026-11-03) 라운드에서 설문을 끈 경우
   const [{ data: response }, { data: templates }] = await Promise.all([
     admin.from('survey_responses').select('id').eq('case_id', caseId).maybeSingle(),
     admin.from('survey_templates').select('id, support_type_id').eq('program_id', c.program_id).eq('is_active', true),

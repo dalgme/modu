@@ -24,6 +24,8 @@ export interface CaseListItem extends CaseRow {
   roundsPlanned: number;
   /** (2026-11-03) 진행 회차 = 보고서 등록 또는 종료 시각 경과 — '중도 포기·중도 종료' 표시·비활성화 차단 기준 */
   roundsProgressed: number;
+  /** (2026-11-03) 이 라운드의 만족도 설문 사용 여부 (support_types.survey_enabled) */
+  surveyEnabled: boolean;
   /** 담당 멘토 — 활성 배정. 종결·중도 종료 케이스는 마지막 배정(mentorEnded=true) */
   mentorName: string | null;
   mentorId: string | null;
@@ -114,7 +116,7 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
   const typeIds = Array.from(new Set(cases.map((c) => c.support_type_id)));
   // 회차·배정은 1,000행 캡을 넘을 수 있어 페이지로 읽는다 (P30)
   const [{ data: types }, assigns, logs] = await Promise.all([
-    supabase.from('support_types').select('id, name, code, required_rounds').in('id', typeIds),
+    supabase.from('support_types').select('id, name, code, required_rounds, survey_enabled').in('id', typeIds),
     fetchAllIn<{ case_id: string; mentor_id: string; assigned_at: string; is_active: boolean; end_kind: string | null }>(caseIds, (chunk, from, to) =>
       supabase.from('mentor_assignments').select('case_id, mentor_id, assigned_at, is_active, end_kind').in('case_id', chunk).order('assigned_at', { ascending: false }).range(from, to),
     ),
@@ -176,6 +178,7 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
       roundsDone: roundsByCase.get(c.id) ?? 0,
       roundsPlanned: plannedByCase.get(c.id) ?? 0,
       roundsProgressed: progressedByCase.get(c.id) ?? 0,
+      surveyEnabled: t?.survey_enabled !== false,
       mentorName: a ? (mentorNameById.get(a.mentor_id) ?? null) : null,
       mentorId: a?.mentor_id ?? null,
       mentorPhone: a ? (mentorPhoneById.get(a.mentor_id) ?? null) : null,
@@ -223,7 +226,7 @@ export async function listMentorEndedCases(mentorId: string, programId: string, 
   const ids = Array.from(new Set(scoped.map((a) => a.case_id)));
   if (ids.length === 0) return [];
   const [{ data: cases }, logs] = await Promise.all([
-    admin.from('cases').select('*, support_types(name, code, required_rounds)').in('id', ids).in('status', ['closed', 'withdrawn']).order('closed_at', { ascending: false }),
+    admin.from('cases').select('*, support_types(name, code, required_rounds, survey_enabled)').in('id', ids).in('status', ['closed', 'withdrawn']).order('closed_at', { ascending: false }),
     fetchAllIn<{ case_id: string; report_registered_at: string | null; ended_at: string | null }>(ids, (chunk, from, to) => admin.from('mentoring_logs').select('case_id, report_registered_at, ended_at').in('case_id', chunk).range(from, to)),
   ]);
   const done = new Map<string, number>();
@@ -236,7 +239,7 @@ export async function listMentorEndedCases(mentorId: string, programId: string, 
   }
   const assignedAt = new Map(scoped.map((a) => [a.case_id, a.assigned_at]));
   return (cases ?? []).map((row) => {
-    const { support_types, ...c } = row as typeof row & { support_types: { name: string; code: string; required_rounds: number } | null };
+    const { support_types, ...c } = row as typeof row & { support_types: { name: string; code: string; required_rounds: number; survey_enabled?: boolean } | null };
     return {
       ...(c as CaseRow),
       supportTypeName: support_types?.name ?? null,
@@ -245,6 +248,7 @@ export async function listMentorEndedCases(mentorId: string, programId: string, 
       roundsDone: done.get(c.id) ?? 0,
       roundsPlanned: planned.get(c.id) ?? 0,
       roundsProgressed: progressed.get(c.id) ?? 0,
+      surveyEnabled: support_types?.survey_enabled !== false,
       mentorName: null,
       mentorId,
       mentorAssignedAt: assignedAt.get(c.id) ?? null,

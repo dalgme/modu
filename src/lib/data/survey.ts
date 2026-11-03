@@ -24,6 +24,11 @@ export async function getCaseSurvey(caseId: string): Promise<CaseSurvey | null> 
   const { data: response } = await supabase.from('survey_responses').select('*').eq('case_id', caseId).maybeSingle();
 
   let template: SurveyTemplate | null = null;
+  // (2026-11-03) 라운드에서 설문을 끈 경우 — 이미 받은 응답은 보여 주되 새 양식은 내지 않는다
+  if (!response) {
+    const { data: g } = await admin.from('support_types').select('survey_enabled').eq('id', c.support_type_id).maybeSingle();
+    if (g?.survey_enabled === false) return null;
+  }
   if (response) {
     const { data } = await admin.from('survey_templates').select('*').eq('id', response.template_id).maybeSingle();
     template = data ?? null;

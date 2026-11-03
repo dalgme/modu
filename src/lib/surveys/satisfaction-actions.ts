@@ -6,6 +6,7 @@ import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
 import { denyUnless } from '@/lib/auth/capabilities';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { isGroupSurveyEnabled } from '@/lib/surveys/group-survey';
 
 export type SurveyOpenResult = { ok: true } | { ok: false; error: string };
 
@@ -22,8 +23,9 @@ export async function openCaseSurveyAction(caseId: string): Promise<SurveyOpenRe
   if (denied) return { ok: false, error: denied };
 
   const admin = createAdminClient();
-  const { data: c } = await admin.from('cases').select('id, program_id, status, survey_opened_at').eq('id', caseId).maybeSingle();
+  const { data: c } = await admin.from('cases').select('id, program_id, status, survey_opened_at, support_type_id').eq('id', caseId).maybeSingle();
   if (!c || c.program_id !== ctx.programId) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
+  if (!(await isGroupSurveyEnabled(c.support_type_id))) return { ok: false, error: '이 라운드는 만족도 설문을 사용하지 않도록 설정돼 있습니다. (운영 설정 > 만족도 양식 > 라운드별 사용)' };
   if (c.status === 'withdrawn') return { ok: false, error: '중도 종료된 케이스에는 만족도 조사를 열 수 없습니다.' };
   if (c.survey_opened_at) return { ok: false, error: '이미 만족도 조사가 열려 있습니다.' };
 

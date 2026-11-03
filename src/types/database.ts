@@ -540,6 +540,57 @@ export type Database = {
           },
         ];
       };
+      deletion_archives: {
+        Row: {
+          id: string;
+          program_id: string;
+          kind: string;
+          label: string;
+          target_user_id: string;
+          summary: Json;
+          payload: Json;
+          storage_moves: Json;
+          reason: string | null;
+          created_by: string | null;
+          created_at: string;
+          restored_at: string | null;
+          restored_by: string | null;
+          restore_result: Json | null;
+        };
+        Insert: {
+          id?: string;
+          program_id: string;
+          kind?: string;
+          label: string;
+          target_user_id: string;
+          summary?: Json;
+          payload: Json;
+          storage_moves?: Json;
+          reason?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          restored_at?: string | null;
+          restored_by?: string | null;
+          restore_result?: Json | null;
+        };
+        Update: {
+          id?: string;
+          program_id?: string;
+          kind?: string;
+          label?: string;
+          target_user_id?: string;
+          summary?: Json;
+          payload?: Json;
+          storage_moves?: Json;
+          reason?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          restored_at?: string | null;
+          restored_by?: string | null;
+          restore_result?: Json | null;
+        };
+        Relationships: [];
+      };
       direct_messages: {
         Row: {
           body: string;
@@ -3403,6 +3454,7 @@ export type Database = {
       };
       support_types: {
         Row: {
+          survey_enabled: boolean;
           mentoring_budget: number | null;
           observation_required?: boolean;
           observation_upload_timing?: string;
@@ -3427,6 +3479,7 @@ export type Database = {
           withholding_method: string | null;
         };
         Insert: {
+          survey_enabled?: boolean;
           mentoring_budget?: number | null;
           observation_required?: boolean;
           observation_upload_timing?: string;
@@ -3451,6 +3504,7 @@ export type Database = {
           withholding_method?: string | null;
         };
         Update: {
+          survey_enabled?: boolean;
           mentoring_budget?: number | null;
           observation_required?: boolean;
           observation_upload_timing?: string;

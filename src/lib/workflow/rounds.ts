@@ -274,7 +274,7 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
   // (P31) 단가·추가 회차 판정은 보고서 등록 시점(수행일 기준)으로 재확정 — 계획 등록 뒤 단가 적용일·필수 회차·추가 승인이 바뀌었을 수 있다.
   // 같은 날 합산 금액 상한·시간 겹침도 등록과 같은 규칙으로 다시 통과해야 한다. 정산에 포함된 회차는 위에서 이미 차단.
   const [{ data: group }, allowance] = await Promise.all([
-    admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle(),
+    admin.from('support_types').select('required_rounds, survey_enabled').eq('id', c.support_type_id).maybeSingle(),
     getRoundAllowance(log.case_id),
   ]);
   if (!group) return { ok: false, error: '사업그룹을 찾을 수 없습니다.' };
@@ -381,7 +381,7 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
 
   // 목표 회차(그룹 required_rounds) 보고서 등록 완료 → 멘티 만족도 조사 자동 개시 (P20)
   const { count: reported } = await admin.from('mentoring_logs').select('id', { count: 'exact', head: true }).eq('case_id', log.case_id).not('report_registered_at', 'is', null);
-  if ((reported ?? 0) >= group.required_rounds) {
+  if ((reported ?? 0) >= group.required_rounds && group.survey_enabled !== false) {
     await admin.from('cases').update({ survey_opened_at: new Date().toISOString() }).eq('id', log.case_id).is('survey_opened_at', null);
   }
 

@@ -115,6 +115,10 @@ export async function sendAutoSurveyReminders(): Promise<{ scanned: number; sent
     .is('survey_reminded_at', null)
     .neq('status', 'withdrawn');
   if (offIds.length > 0) casesQ = casesQ.not('program_id', 'in', `(${offIds.join(',')})`);
+  // (2026-11-03) 설문을 끈 라운드의 케이스는 독려하지 않는다
+  const { data: offGroups } = await admin.from('support_types').select('id').eq('survey_enabled', false);
+  const offGroupIds = (offGroups ?? []).map((g) => g.id);
+  if (offGroupIds.length > 0) casesQ = casesQ.not('support_type_id', 'in', `(${offGroupIds.join(',')})`);
   const { data: cases } = await casesQ.limit(200);
   const list = cases ?? [];
   let sent = 0;

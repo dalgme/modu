@@ -48,6 +48,7 @@ import { Search } from 'lucide-react';
 import { forceEndHref, type ForceEndBlock } from '@/lib/workflow/force-end-rule';
 import type { MentoringCaseItem, MentoringOutcome } from '@/lib/workflow/mentoring-outcome';
 import { MentoringOutcomeBadge, MentoringOutcomeControl } from '@/components/nextlab/mentoring-outcome-control';
+import { TestAccountDeleteButton } from '@/components/nextlab/test-account-delete';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -788,6 +789,8 @@ export interface MenteeProgressItem {
   outcome?: MentoringOutcome | null;
   /** 진행 회차 수 (보고서 등록 또는 종료 시각 경과) — '중도 포기·중도 종료' 표시 */
   progressedRounds?: number;
+  /** (2026-11-03) 이 라운드의 만족도 설문 사용 여부 */
+  surveyEnabled?: boolean;
 }
 
 /** [만족도 생성] / 진행중 / 완료 표시 (P20) */
@@ -803,6 +806,7 @@ function SurveyControl({ item }: { item: MenteeProgressItem }) {
     return <Badge variant="outline" className="w-fit text-[10px] text-sky-700" title="멘티에게 만족도 조사가 노출 중입니다. 개시 1주일 미응답 시 자동 리마인드 문자가 발송됩니다.">만족도 진행중</Badge>;
   }
   if (item.withdrawn) return null;
+  if (item.surveyEnabled === false) return <span className="text-[10px] text-muted-foreground" title="운영 설정 > 만족도 양식 > 라운드별 사용에서 이 라운드의 설문을 껐습니다.">설문 미사용</span>;
   return (
     <>
       {confirmDialog}
@@ -1199,6 +1203,8 @@ function MemberEditPanel({ member: m }: { member: MemberItem }) {
         )}
         <ResetPasswordForm member={m} />
         <DeleteMemberForm member={m} />
+        {/* (2026-11-03) 테스트 멘티 — 연결 데이터까지 보관 후 완전 삭제 (운영 설정 > 삭제 보관함에서 복원) */}
+        {m.role === 'mentee' && <TestAccountDeleteButton userId={m.id} name={m.name} />}
       </div>
     </div>
   );
@@ -1322,6 +1328,7 @@ export function InactiveMembersList({ members }: { members: InactiveMemberItem[]
                     <div className="flex flex-wrap items-start justify-end gap-2">
                       {!m.memberActive && <ToggleActiveForm member={m} />}
                       {!m.is_active && <LockAccountForm member={m} />}
+                      {m.role === 'mentee' && <TestAccountDeleteButton userId={m.id} name={m.name} compact />}
                     </div>
                   </TableCell>
                 </TableRow>

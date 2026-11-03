@@ -8,7 +8,7 @@
  */
 
 export const REPORT_TAB_KEYS = ['overview', 'rounds', 'trend', 'cases', 'mentors', 'groups', 'settlement', 'survey', 'files'] as const;
-export const SETTINGS_TAB_KEYS = ['program', 'groups', 'rates', 'withholding', 'budget', 'matching', 'gates', 'reports', 'survey', 'mentor-docs', 'files', 'notifications', 'tags', 'permissions', 'succession', 'audit', 'sms-api'] as const;
+export const SETTINGS_TAB_KEYS = ['program', 'groups', 'rates', 'withholding', 'budget', 'matching', 'gates', 'reports', 'survey', 'mentor-docs', 'files', 'notifications', 'tags', 'permissions', 'succession', 'audit', 'archive', 'sms-api'] as const;
 export const ROSTER_TAB_KEYS = ['mentee', 'mentor', 'mentee-match', 'mentor-match', 'institution', 'nextlab', 'register'] as const;
 export const BOARD_TAB_KEYS = ['requests', 'all', 'inquiries', 'qna', 'messages', 'faq'] as const;
 export const REVIEW_TAB_KEYS = ['pending', 'revision', 'mentor-input'] as const;

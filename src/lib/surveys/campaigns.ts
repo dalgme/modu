@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { isGroupSurveyEnabled } from '@/lib/surveys/group-survey';
 import { randomBytes } from 'node:crypto';
 
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -58,6 +59,9 @@ export async function createCampaign(input: {
   const admin = createAdminClient();
   const { data: tpl } = await admin.from('survey_templates').select('id, program_id').eq('id', input.templateId).maybeSingle();
   if (!tpl || tpl.program_id !== input.programId) return { ok: false, error: '이 행사의 조사 양식이 아닙니다.' };
+  // (2026-11-03) 설문을 끈 라운드를 대상으로 한 조사는 만들 수 없다
+  const targetGroup = input.audience.kind === 'role' ? (input.audience.supportTypeId ?? input.supportTypeId) : input.supportTypeId;
+  if (targetGroup && !(await isGroupSurveyEnabled(targetGroup))) return { ok: false, error: '이 라운드는 설문조사를 사용하지 않도록 설정돼 있습니다. (운영 설정 > 만족도 양식 > 라운드별 사용)' };
   const audience = await resolveAudience(input.programId, input.audience);
   if (audience.length === 0) return { ok: false, error: '대상자가 없습니다. 대상 범위를 확인하세요.' };
   const { data: users } = await admin.from('users').select('id, name, phone').in('id', audience.map((a) => a.userId));

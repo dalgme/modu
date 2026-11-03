@@ -149,6 +149,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         statusIndex: CASE_STATUSES.indexOf(c.status),
         outcome: normalizeMentoringOutcome(c.mentoring_outcome),
         progressedRounds: c.roundsProgressed,
+        surveyEnabled: c.surveyEnabled,
       });
     }
     const outcomeCases = mentoringCasesByMentee(cases);

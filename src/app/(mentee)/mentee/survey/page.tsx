@@ -28,7 +28,7 @@ export default async function Page({ searchParams }: { searchParams: { case?: st
       </div>
       {pick.cases.length > 1 && c && <MenteeCaseSwitcher href="/mentee/survey" cases={pick.cases} currentId={c.id} pending={pick.pending} hint="survey" />}
       {!c && <p className="text-sm text-muted-foreground">아직 등록된 컨설팅이 없습니다. 운영사에 문의해 주세요.</p>}
-      {c && !survey && <p className="text-sm text-muted-foreground">아직 준비된 만족도 양식이 없습니다.</p>}
+      {c && !survey && <p className="text-sm text-muted-foreground">{c.surveyEnabled === false ? '이 라운드는 만족도 조사를 진행하지 않습니다.' : '아직 준비된 만족도 양식이 없습니다.'}</p>}
       {c && survey && survey.response && (
         <div className="flex items-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50/50 px-4 py-3 text-sm">
           <CheckCircle2 className="h-5 w-5 text-emerald-600" /> {formatDateTime(survey.response.submitted_at)} 에 응답을 제출했습니다. 감사합니다.

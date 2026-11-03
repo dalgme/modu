@@ -1,5 +1,6 @@
 'use server';
 
+import { isGroupSurveyEnabled } from '@/lib/surveys/group-survey';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 
@@ -190,7 +191,7 @@ function roundsConfirmMessage(from: number, to: number, overRounds: number, inRe
 }
 
 /** 회차 수 변경 후속 처리 — 미정산 회차의 추가 회차 표시 재계산 + 목표 회차를 채운 케이스의 만족도 개시 */
-async function applyRoundsChange(openCases: { id: string; survey_opened_at: string | null }[], nextRounds: number): Promise<{ extraRecomputed: number; reopenedSurveys: number }> {
+async function applyRoundsChange(openCases: { id: string; survey_opened_at: string | null }[], nextRounds: number, groupId: string): Promise<{ extraRecomputed: number; reopenedSurveys: number }> {
   if (openCases.length === 0) return { extraRecomputed: 0, reopenedSurveys: 0 };
   const admin = createAdminClient();
   const caseIds = openCases.map((c) => c.id);
@@ -202,7 +203,9 @@ async function applyRoundsChange(openCases: { id: string; survey_opened_at: stri
   for (let i = 0; i < toNormal.length; i += 200) await admin.from('mentoring_logs').update({ is_extra: false }).in('id', toNormal.slice(i, i + 200));
   // 목표 회차를 이미 채운 케이스 → 만족도 조사 개시 (registerRoundReport 의 자동 개시와 같은 조건)
   const reported = await reportedCountsByCase(caseIds);
-  const openSurvey = openCases.filter((c) => !c.survey_opened_at && (reported.get(c.id) ?? 0) >= nextRounds).map((c) => c.id);
+  // (2026-11-03) 설문을 끈 라운드는 개시하지 않는다
+  const surveyOn = await isGroupSurveyEnabled(groupId);
+  const openSurvey = !surveyOn ? [] : openCases.filter((c) => !c.survey_opened_at && (reported.get(c.id) ?? 0) >= nextRounds).map((c) => c.id);
   if (openSurvey.length) await admin.from('cases').update({ survey_opened_at: new Date().toISOString() }).in('id', openSurvey).is('survey_opened_at', null);
   return { extraRecomputed: toExtra.length + toNormal.length, reopenedSurveys: openSurvey.length };
 }
@@ -378,7 +381,7 @@ export async function upsertGroupAction(input: unknown): Promise<Result> {
 
     let roundsImpact: { extraRecomputed: number; reopenedSurveys: number } | null = null;
     if (roundsChanged) {
-      roundsImpact = await applyRoundsChange(openCases, d.required_rounds);
+      roundsImpact = await applyRoundsChange(openCases, d.required_rounds, d.id);
       await audit(op.id, op.programId, 'support_type.required_rounds', { required_rounds: before.required_rounds }, { required_rounds: d.required_rounds, overRounds, inReview, ...roundsImpact }, d.id, 'support_type.required_rounds_changed');
     }
     if (before.status === 'active' && d.status === 'ended') {
@@ -409,6 +412,28 @@ export async function upsertGroupAction(input: unknown): Promise<Result> {
 }
 
 /**
+ * 라운드(그룹)별 만족도 설문 사용/미사용 (2026-11-03) — 운영 설정 [만족도 양식] 탭 상단.
+ * 끄면 자동 개시·멘티 노출·응답·독려 문자·[만족도 생성]·그 라운드 대상 조사 개설이 꺼진다. 이미 받은 응답은 그대로.
+ */
+export async function setGroupSurveyEnabledAction(input: { groupId: string; enabled: boolean }): Promise<Result> {
+  const op = await operator();
+  if ('error' in op) return { ok: false, error: op.error };
+  const admin = createAdminClient();
+  const { data: g } = await admin.from('support_types').select('id, name, survey_enabled').eq('id', input.groupId).eq('program_id', op.programId).maybeSingle();
+  if (!g) return { ok: false, error: '이 행사의 라운드(그룹)가 아닙니다.' };
+  const enabled = !!input.enabled;
+  if ((g.survey_enabled !== false) === enabled) return { ok: true, message: `${g.name}: 이미 ${enabled ? '사용' : '미사용'}입니다.` };
+  const { error } = await admin.from('support_types').update({ survey_enabled: enabled }).eq('id', g.id);
+  if (error) return { ok: false, error: error.message };
+  await audit(op.id, op.programId, 'support_type.survey_enabled', { survey_enabled: g.survey_enabled !== false }, { survey_enabled: enabled }, g.id, 'support_type.survey_enabled');
+  revalidateAll();
+  revalidatePath('/nextlab/roster');
+  revalidatePath('/mentee/survey');
+  revalidatePath('/mentee/dashboard');
+  return { ok: true, message: `${g.name}: 만족도 설문을 ${enabled ? '사용합니다' : '사용하지 않습니다'}.` };
+}
+
+/**
  * 라운드(그룹)별 회차 수만 바꾼다 (2026-10-30) — 운영 설정 [사업그룹] 탭 상단 '라운드별 회차 수' 표.
  * 그룹 수정 폼과 같은 영향 확인(초과 이행·검수 중) → confirm 후 재요청, 같은 후속 처리·감사.
  */
@@ -427,7 +452,7 @@ export async function setGroupRoundsAction(input: { groupId: string; rounds: num
   }
   const { error } = await admin.from('support_types').update({ required_rounds: rounds }).eq('id', before.id);
   if (error) return { ok: false, error: error.message };
-  const impact = await applyRoundsChange(openCases, rounds);
+  const impact = await applyRoundsChange(openCases, rounds, before.id);
   await audit(op.id, op.programId, 'support_type.required_rounds', { required_rounds: before.required_rounds }, { required_rounds: rounds, overRounds, inReview, ...impact }, before.id, 'support_type.required_rounds_changed');
   revalidateAll();
   revalidatePath('/', 'layout');
