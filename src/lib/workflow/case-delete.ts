@@ -6,6 +6,7 @@ import { realRoleOrNull } from '@/lib/auth/guards';
 import { contextOrNull } from '@/lib/programs/context';
 import { denyUnless } from '@/lib/auth/capabilities';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { rebalanceGroupSessions } from '@/lib/workflow/group-mentoring';
 
 export type CaseDeleteResult = { ok: true } | { ok: false; error: string };
 
@@ -62,9 +63,12 @@ export async function deleteCaseAction(caseId: string, confirmText: string): Pro
   }
 
   // mentoring_logs.settlement_id → settlements FK 순환을 피하기 위해 참조 해제 후 케이스 삭제(CASCADE)
+  const { data: groupLogs } = await admin.from('mentoring_logs').select('group_session_id').eq('case_id', caseId).not('group_session_id', 'is', null);
   await admin.from('mentoring_logs').update({ settlement_id: null }).eq('case_id', caseId).not('settlement_id', 'is', null);
   const { error } = await admin.from('cases').delete().eq('id', caseId);
   if (error) return { ok: false, error: `삭제 실패: ${error.message}` };
+  // 그룹멘토링에 함께했던 다른 멘티 회차로 수당(1회분) 재배정 (2026-11-04)
+  await rebalanceGroupSessions((groupLogs ?? []).map((l) => l.group_session_id));
 
   const { error: auditError } = await admin.from('audit_logs').insert({
     actor_id: actor.id,
@@ -153,10 +157,12 @@ export async function resetCaseProgressAction(caseId: string, confirmText: strin
     { label: '멘토 변경 요청', run: () => admin.from('mentor_change_requests').delete().eq('case_id', caseId) },
     { label: '만족도 응답', run: () => admin.from('survey_responses').delete().eq('case_id', caseId) },
   ];
+  const { data: groupLogs } = await admin.from('mentoring_logs').select('group_session_id').eq('case_id', caseId).not('group_session_id', 'is', null);
   for (const s of steps) {
     const { error } = await s.run();
     if (error) return { ok: false, error: `${s.label} 삭제 실패: ${error.message}` };
   }
+  await rebalanceGroupSessions((groupLogs ?? []).map((l) => l.group_session_id));
 
   // 배정: 활성 배정이 없고 마지막 배정이 종결·중도 종료로 끝났으면 다시 활성화 (매칭 정보 유지)
   const list = assigns ?? [];

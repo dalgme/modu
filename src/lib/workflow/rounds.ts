@@ -13,6 +13,14 @@ import { renderRoundReport, resolveRoundReportPolicy } from '@/lib/documents/rou
 import type { WorkflowResult } from '@/lib/workflow/cases';
 import { roundReportFileName } from '@/lib/workflow/round-report-name';
 import { firstEmptyRoundNo } from '@/lib/workflow/round-slots';
+import { GROUP_LOG_EDIT_ERROR } from '@/lib/workflow/group-mentoring-rule';
+
+/** 그룹멘토링 수당 재배정 (지연 import — group-mentoring.ts 가 rounds.ts 를 다시 불러오는 순환 회피) */
+async function rebalanceGroup(sessionId: string | null | undefined): Promise<void> {
+  if (!sessionId) return;
+  const { rebalanceGroupSession } = await import('@/lib/workflow/group-mentoring');
+  await rebalanceGroupSession(sessionId);
+}
 
 /** 회차 참가자 (스냅샷 — 팀원 명단이 나중에 바뀌어도 회차 기록은 유지) */
 export interface RoundParticipant {
@@ -246,7 +254,7 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
   const admin = createAdminClient();
   const { data: log } = await admin
     .from('mentoring_logs')
-    .select('id, case_id, mentor_id, round_no, mode, started_at, ended_at, settlement_id, report_registered_at, cases!inner(status, program_id, support_type_id, mentee_id, owner_name)')
+    .select('id, case_id, mentor_id, round_no, mode, started_at, ended_at, settlement_id, report_registered_at, group_session_id, cases!inner(status, program_id, support_type_id, mentee_id, owner_name)')
     .eq('id', input.logId)
     .maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
@@ -287,6 +295,7 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
     started: new Date(log.started_at),
     ended: new Date(log.ended_at),
     excludeLogId: log.id,
+    groupSessionId: log.group_session_id,
   });
   if (!v.ok) return v;
   const isExtra = log.round_no > group.required_rounds;
@@ -361,6 +370,9 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
     await rollback();
     return { ok: false, error: upErr?.message ?? '이미 보고서가 등록된 회차입니다. 새로고침 후 확인하세요.' };
   }
+
+  // 그룹멘토링 회차면 수당(1회분) 대표 회차를 다시 맞춘다 — 보고서가 처음 등록된 멘티 회차가 수당을 갖는다
+  if (log.group_session_id) await rebalanceGroup(log.group_session_id);
 
   // 웹 작성 보고서 → 행사/그룹 양식 PDF (멘토 자동 서명 정책 반영). 실패해도 등록은 유지(감사로그).
   if (reportKind === 'web') await renderRoundReport(log.id);
@@ -521,11 +533,12 @@ export async function updatePlannedRound(input: {
   const admin = createAdminClient();
   const { data: log } = await admin
     .from('mentoring_logs')
-    .select('id, case_id, round_no, settlement_id, report_registered_at, cases!inner(status, program_id, support_type_id)')
+    .select('id, case_id, round_no, settlement_id, report_registered_at, group_session_id, cases!inner(status, program_id, support_type_id)')
     .eq('id', input.logId)
     .maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
   if (input.caseId && log.case_id !== input.caseId) return { ok: false, error: '이 케이스의 회차가 아닙니다.' };
+  if (log.group_session_id) return { ok: false, error: GROUP_LOG_EDIT_ERROR };
   if (log.settlement_id) return { ok: false, error: '정산에 포함된 회차는 수정할 수 없습니다.' };
   if (log.report_registered_at) return { ok: false, error: '보고서가 등록된 회차는 일정을 바꿀 수 없습니다. (내용 수정은 [회차 수정])' };
   const c = log.cases as unknown as { status: string; program_id: string; support_type_id: string };
@@ -603,7 +616,7 @@ export async function deletePlannedRound(logId: string, mentorId: string, caseId
   const admin = createAdminClient();
   const { data: log } = await admin
     .from('mentoring_logs')
-    .select('id, case_id, round_no, settlement_id, report_registered_at, cases!inner(status, program_id, support_type_id)')
+    .select('id, case_id, round_no, settlement_id, report_registered_at, group_session_id, cases!inner(status, program_id, support_type_id)')
     .eq('id', logId)
     .maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
@@ -638,8 +651,10 @@ export async function deletePlannedRound(logId: string, mentorId: string, caseId
     action: 'round.plan_delete',
     entityType: 'mentoring_logs',
     entityId: logId,
-    metadata: { case_id: log.case_id, round_no: log.round_no, renumbered: keepNumbers ? 0 : (after ?? []).length },
+    metadata: { case_id: log.case_id, round_no: log.round_no, renumbered: keepNumbers ? 0 : (after ?? []).length, ...(log.group_session_id ? { group_session_id: log.group_session_id } : {}) },
   });
+  // 그룹멘토링에서 이 멘티만 빠졌으면 남은 참여 회차로 수당을 다시 배정(모두 빠지면 세션 정리)
+  await rebalanceGroup(log.group_session_id);
   return { ok: true, caseId: log.case_id };
 }
 
@@ -649,7 +664,7 @@ export async function deletePlannedRound(logId: string, mentorId: string, caseId
  */
 export async function deleteRound(logId: string, mentorId: string, caseId?: string): Promise<WorkflowResult> {
   const admin = createAdminClient();
-  const { data: log } = await admin.from('mentoring_logs').select('id, case_id, round_no, mentor_id, settlement_id, mentee_signed_at, report_registered_at, cases!inner(status, program_id)').eq('id', logId).maybeSingle();
+  const { data: log } = await admin.from('mentoring_logs').select('id, case_id, round_no, mentor_id, settlement_id, mentee_signed_at, report_registered_at, group_session_id, cases!inner(status, program_id)').eq('id', logId).maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
   if (caseId && log.case_id !== caseId) return { ok: false, error: '이 케이스의 회차가 아닙니다.' };
   if (log.report_registered_at && log.mentor_id !== mentorId) return { ok: false, error: '다른 멘토가 보고서를 등록한 회차는 삭제할 수 없습니다.' };
@@ -673,8 +688,9 @@ export async function deleteRound(logId: string, mentorId: string, caseId?: stri
     action: 'round.delete',
     entityType: 'mentoring_logs',
     entityId: logId,
-    metadata: { case_id: log.case_id, round_no: log.round_no },
+    metadata: { case_id: log.case_id, round_no: log.round_no, ...(log.group_session_id ? { group_session_id: log.group_session_id } : {}) },
   });
+  await rebalanceGroup(log.group_session_id);
   return { ok: true, caseId: log.case_id };
 }
 
@@ -692,6 +708,8 @@ export async function validateRoundSchedule(input: {
   started: Date;
   ended: Date;
   excludeLogId?: string | null;
+  /** 그룹멘토링 회차 — 같은 세션의 다른 멘티 회차는 시간 겹침에서 뺀다 */
+  groupSessionId?: string | null;
 }): Promise<{ ok: true; day: string; rate: NonNullable<Awaited<ReturnType<typeof resolveRate>>>; amount: number } | { ok: false; error: string }> {
   const admin = createAdminClient();
   const { started, ended } = input;
@@ -714,10 +732,10 @@ export async function validateRoundSchedule(input: {
     const remain = Math.max(0, rate.dailyCapAmount - sameModeAmount);
     return { ok: false, error: `같은 날 ${input.mode === 'online' ? '온라인' : '오프라인'} 일일 상한(${rate.dailyCapAmount.toLocaleString('ko-KR')}원)을 넘습니다. 남은 한도 ${remain.toLocaleString('ko-KR')}원.` };
   }
-  let mentorDayQ = admin.from('mentoring_logs').select('id, case_id, started_at, ended_at').eq('mentor_id', input.mentorId).gte('started_at', dayStart).lte('started_at', dayEnd);
+  let mentorDayQ = admin.from('mentoring_logs').select('id, case_id, started_at, ended_at, group_session_id').eq('mentor_id', input.mentorId).gte('started_at', dayStart).lte('started_at', dayEnd);
   if (input.excludeLogId) mentorDayQ = mentorDayQ.neq('id', input.excludeLogId);
   const { data: mentorDay } = await mentorDayQ;
-  const overlap = (mentorDay ?? []).find((r) => new Date(r.started_at) < ended && new Date(r.ended_at) > started);
+  const overlap = (mentorDay ?? []).find((r) => !(input.groupSessionId && r.group_session_id === input.groupSessionId) && new Date(r.started_at) < ended && new Date(r.ended_at) > started);
   if (overlap) return { ok: false, error: '같은 시간대에 이미 등록된 회차가 있습니다. 시간을 확인하세요.' };
   return { ok: true, day, rate, amount };
 }
@@ -741,10 +759,11 @@ export async function correctRound(input: {
   const admin = createAdminClient();
   const { data: log } = await admin
     .from('mentoring_logs')
-    .select('id, case_id, mentor_id, round_no, mode, started_at, ended_at, place, unit_price_snapshot, amount_snapshot, rate_id, settlement_id, report_kind, report_registered_at, mentee_signed_at, cases!inner(status, program_id, support_type_id)')
+    .select('id, case_id, mentor_id, round_no, mode, started_at, ended_at, place, unit_price_snapshot, amount_snapshot, rate_id, settlement_id, report_kind, report_registered_at, mentee_signed_at, group_session_id, cases!inner(status, program_id, support_type_id)')
     .eq('id', input.logId)
     .maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
+  if (log.group_session_id) return { ok: false, error: '그룹멘토링 회차는 일정을 정정할 수 없습니다. (참여 멘티 전원의 일정이 함께 묶여 있음 — 멘토가 [그룹멘토링] 화면에서 수정)' };
   if (log.case_id !== input.caseId) return { ok: false, error: '이 케이스의 회차가 아닙니다.' };
   if (log.settlement_id) return { ok: false, error: '정산에 포함된 회차는 정정할 수 없습니다. 정산 확정을 먼저 취소하세요.' };
   const c = log.cases as unknown as { status: string; program_id: string; support_type_id: string };
@@ -845,7 +864,7 @@ async function attachPhotos(
  */
 export async function dropPlannedRoundsOfMentor(caseId: string, mentorId: string, actorId: string | null): Promise<number> {
   const admin = createAdminClient();
-  const { data: planned } = await admin.from('mentoring_logs').select('id, round_no').eq('case_id', caseId).eq('mentor_id', mentorId).is('report_registered_at', null).is('settlement_id', null);
+  const { data: planned } = await admin.from('mentoring_logs').select('id, round_no, group_session_id').eq('case_id', caseId).eq('mentor_id', mentorId).is('report_registered_at', null).is('settlement_id', null);
   if (!planned || planned.length === 0) return 0;
   const { error } = await admin.from('mentoring_logs').delete().in('id', planned.map((p) => p.id));
   if (error) {
@@ -862,6 +881,7 @@ export async function dropPlannedRoundsOfMentor(caseId: string, mentorId: string
     no += 1;
     if (r.round_no !== no) await admin.from('mentoring_logs').update({ round_no: no, is_extra: no > required }).eq('id', r.id);
   }
+  for (const sid of Array.from(new Set(planned.map((p) => p.group_session_id).filter(Boolean)))) await rebalanceGroup(sid);
   await logAudit(admin, { actorId, programId: c?.program_id ?? null, action: 'round.plan_dropped', entityType: 'cases', entityId: caseId, metadata: { case_id: caseId, mentor_id: mentorId, dropped: planned.length } });
   return planned.length;
 }

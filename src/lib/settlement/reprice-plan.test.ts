@@ -45,4 +45,11 @@ describe('planReprice', () => {
     const l = log('kst', '2026-09-30', { startedAt: '2026-09-30T15:30:00Z', endedAt: '2026-09-30T16:30:00Z', amount: 80000 });
     expect(planReprice([l], rates)[0]).toMatchObject({ day: '2026-10-01', toPrice: 100000, toAmount: 100000 });
   });
+  it('그룹멘토링 비대표 참여 회차는 0원 유지, 대표 회차만 새 단가', () => {
+    const holder = log('h', '2026-10-08');
+    const peer = log('p', '2026-10-08', { unitPrice: 0, amount: 0, feeZero: true });
+    const plan = planReprice([holder, peer], rates);
+    expect(plan.map((p) => p.logId)).toEqual(['h']);
+    expect(plan[0]).toMatchObject({ toPrice: 100000, toAmount: 200000 });
+  });
 });

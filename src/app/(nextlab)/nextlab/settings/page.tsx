@@ -17,6 +17,7 @@ import { StaffPermissionsForm } from '@/components/settings/staff-permissions-fo
 import { MentorDocChecklistManager, type MentorDocChecklistScope } from '@/components/settings/mentor-doc-checklist-manager';
 import { getChecklistForScope } from '@/lib/mentor-docs/data';
 import { listSupportTypes } from '@/lib/programs/data';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { listCases, mapSuccessors } from '@/lib/data/cases';
 import { AUDIT_PAGE_SIZE, countProgramAuditRows, listAuditActors, loadProgramAuditRows, parseAuditQuery } from '@/lib/audit/rows';
 import { SuccessionPanel } from '@/components/nextlab/succession-panel';
@@ -34,6 +35,8 @@ import { loadMatchingPublishOverview } from '@/lib/matching/publish-data';
 import { listDeletionArchives } from '@/lib/archive/test-account';
 import { DeletionArchivePanel } from '@/components/settings/deletion-archive-panel';
 import { GroupSurveyPanel } from '@/components/settings/group-survey-panel';
+import { GroupMentoringPanel } from '@/components/settings/group-mentoring-panel';
+import { groupMentoringSetting } from '@/lib/workflow/group-mentoring-rule';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,6 +48,7 @@ const TABS = [
   { key: 'budget', label: '예산' },
   { key: 'matching', label: '매칭 규칙' },
   { key: 'publish', label: '매칭 공개' },
+  { key: 'group-mentoring', label: '그룹멘토링' },
   { key: 'gates', label: '종결 게이트·서명 정책' },
   { key: 'reports', label: '보고서 양식' },
   { key: 'survey', label: '설문조사(만족도)' },
@@ -62,7 +66,7 @@ type TabKey = (typeof TABS)[number]['key'];
 /** 설정 탭 묶음 — 필수 준비(운영 시작 전) / 운영 정책 / 관리 */
 const SETTING_GROUPS: { label: string; keys: string[]; extra?: { href: string; label: string } }[] = [
   { label: '필수 준비', keys: ['program', 'groups', 'rates', 'matching', 'publish'] },
-  { label: '운영 정책', keys: ['withholding', 'budget', 'gates', 'reports', 'survey', 'mentor-docs', 'files', 'tags'], extra: { href: '/admin/settings/sms?tab=auto', label: '문자 자동발송' } },
+  { label: '운영 정책', keys: ['group-mentoring', 'withholding', 'budget', 'gates', 'reports', 'survey', 'mentor-docs', 'files', 'tags'], extra: { href: '/admin/settings/sms?tab=auto', label: '문자 자동발송' } },
   { label: '관리', keys: ['permissions', 'succession', 'audit', 'archive', 'sms-api'] },
 ];
 
@@ -114,6 +118,21 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   if (tab === 'matching') {
     const groups = await listSupportTypes(ctx.programId);
     body = <MatchingRulesForm value={{ groups: groups.map((g) => ({ id: g.id, name: g.name, code: g.code, maxMenteesPerMentor: g.max_mentees_per_mentor ?? 2 })) }} />;
+  }
+  if (tab === 'group-mentoring') {
+    // (2026-11-04) 라운드별 그룹멘토링 사용 여부·멘토 1인당 최대 횟수
+    const groups = await listSupportTypes(ctx.programId);
+    const { data: sessions } = await createAdminClient().from('group_mentoring_sessions').select('support_type_id, mentor_id').eq('program_id', ctx.programId);
+    body = (
+      <GroupMentoringPanel
+        canEdit={hasCapability(ctx, 'settings')}
+        groups={groups.map((g) => {
+          const raw = g as { group_mentoring_enabled?: boolean; group_mentoring_max_per_mentor?: number };
+          const mine = (sessions ?? []).filter((x) => x.support_type_id === g.id);
+          return { id: g.id, name: g.name, status: g.status, enabled: groupMentoringSetting(raw).enabled, maxPerMentor: raw.group_mentoring_max_per_mentor ?? 1, sessions: mine.length, mentors: new Set(mine.map((x) => x.mentor_id)).size };
+        })}
+      />
+    );
   }
   if (tab === 'publish') {
     body = <MatchingPublishPanel groups={await loadMatchingPublishOverview(ctx.programId)} canEdit={hasCapability(ctx, 'case.assign')} />;

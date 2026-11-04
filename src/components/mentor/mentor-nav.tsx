@@ -18,10 +18,11 @@ const TABS = [
 ];
 
 /** 멘토 상단 탭 내비게이션 (운영사 내비와 동일한 pill·sticky 스타일). (P32) 위촉 서류 탭 제거 — 서류 수령은 운영사가 체크 */
-export function MentorNav() {
+export function MentorNav({ showGroupMentoring = false }: { showGroupMentoring?: boolean }) {
   const pathname = usePathname();
   useScrollActiveTab(pathname);
-  const tabs = TABS;
+  // 그룹멘토링 탭 — 이 행사에 그룹멘토링을 쓰는 라운드가 있을 때만 (2026-11-04)
+  const tabs = showGroupMentoring ? [TABS[0]!, TABS[1]!, { href: '/mentor/group-mentoring', label: '그룹멘토링' }, ...TABS.slice(2)] : TABS;
   return (
     <nav className="sticky top-14 z-30 border-b bg-background/90 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/75">
       <div className="mx-auto flex max-w-6xl no-scrollbar gap-1.5 overflow-x-auto px-4 py-2">

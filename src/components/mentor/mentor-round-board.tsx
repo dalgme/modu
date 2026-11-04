@@ -11,6 +11,7 @@ import { roundModeLabel, roundReportFileName } from '@/lib/workflow/round-report
 import { RoundForm, type LastRoundDefaults, type ParticipantOption } from '@/components/mentor/round-form';
 import { RoundReportForm } from '@/components/mentor/round-report-form';
 import { PlannedRoundEditor } from '@/components/mentor/rounds-list';
+import { GroupBadge } from '@/components/mentor/group-badge';
 import { FileActions } from '@/components/files/file-preview';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -67,7 +68,7 @@ export function MentorRoundBoard({
   const now = Date.now();
 
   const remove = (r: RoundItem) => {
-    if (!confirm(`${r.round_no}회차를 삭제할까요?${r.report_registered_at ? `\n일정과 보고서 파일이 함께 삭제되고 ${r.round_no}회차 자리는 비워집니다. 다른 회차 번호는 그대로이며, 다음 [예정 등록]이 이 자리를 채웁니다.` : ''}`)) return;
+    if (!confirm(`${r.round_no}회차를 삭제할까요?${r.groupPeers ? '\n그룹멘토링에서 이 멘티만 빠집니다(다른 멘티 회차는 그대로).' : ''}${r.report_registered_at ? `\n일정과 보고서 파일이 함께 삭제되고 ${r.round_no}회차 자리는 비워집니다. 다른 회차 번호는 그대로이며, 다음 [예정 등록]이 이 자리를 채웁니다.` : ''}`)) return;
     start(async () => {
       const res = r.report_registered_at ? await deleteRoundAction(caseId, r.id) : await deletePlannedRoundAction(caseId, r.id);
       toast(res.ok ? { title: '삭제했습니다.' } : { title: res.error, variant: 'destructive' });
@@ -105,7 +106,9 @@ export function MentorRoundBoard({
           const reported = !!r.report_registered_at;
           const future = new Date(r.started_at).getTime() > now;
           const own = r.mentor_id === viewerMentorId;
-          const canEditSchedule = editable && !reported && !r.locked && own;
+          const isGroup = r.groupPeers !== null;
+          // 그룹멘토링 회차 일정은 참여 멘티 전원이 묶여 있어 [그룹멘토링] 화면에서 함께 수정한다 (서버 updatePlannedRound 와 같은 조건)
+          const canEditSchedule = editable && !reported && !r.locked && own && !isGroup;
           const canUpload = editable && !reported && !r.locked && !future && own;
           // 등록된 보고서 수정 업로드 — 정산 전·본인 회차 (replaceRoundReport 서버 게이트와 같은 조건)
           const canReplace = editable && reported && !r.locked && own;
@@ -119,6 +122,7 @@ export function MentorRoundBoard({
                 <span className="rounded-md border-2 border-primary bg-primary/10 px-3 py-1 text-sm font-bold text-primary">
                   {r.round_no}회차{r.is_extra ? ' (추가)' : ''}
                 </span>
+                {isGroup && <GroupBadge peers={r.groupPeers!} holder={r.group_fee_holder} />}
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                   <b>{roundModeLabel(r.mode)}</b>
                   <span className="text-muted-foreground">/</span>
@@ -150,7 +154,7 @@ export function MentorRoundBoard({
                       size="sm"
                       variant="outline"
                       disabled={!canEditSchedule || pending}
-                      title={canEditSchedule ? undefined : '이 회차는 수정할 수 없습니다.'}
+                      title={canEditSchedule ? undefined : isGroup ? '그룹멘토링 일정은 [그룹멘토링] 화면에서 함께 수정합니다.' : '이 회차는 수정할 수 없습니다.'}
                       onClick={() => setEditing(r)}
                     >
                       일정 수정
@@ -216,3 +220,4 @@ export function MentorRoundBoard({
     </>
   );
 }
+

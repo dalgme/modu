@@ -38,9 +38,9 @@ export async function planProgramReprice(programId: string, scope: RepriceScope 
     admin.from('support_types').select('id, name').eq('program_id', programId),
   ]);
   const groupOf = new Map(cases.map((c) => [c.id, c.support_type_id]));
-  const rows = await fetchAllIn<{ id: string; case_id: string; mode: string; started_at: string; ended_at: string; unit_price_snapshot: number; amount_snapshot: number; rate_id: string | null; settlement_id: string | null }>(
+  const rows = await fetchAllIn<{ id: string; case_id: string; mode: string; started_at: string; ended_at: string; unit_price_snapshot: number; amount_snapshot: number; rate_id: string | null; settlement_id: string | null; group_session_id: string | null; group_fee_holder: boolean }>(
     cases.map((c) => c.id),
-    (chunk, f, t) => admin.from('mentoring_logs').select('id, case_id, mode, started_at, ended_at, unit_price_snapshot, amount_snapshot, rate_id, settlement_id').in('case_id', chunk).is('settlement_id', null).range(f, t),
+    (chunk, f, t) => admin.from('mentoring_logs').select('id, case_id, mode, started_at, ended_at, unit_price_snapshot, amount_snapshot, rate_id, settlement_id, group_session_id, group_fee_holder').in('case_id', chunk).is('settlement_id', null).range(f, t),
   );
   const logs: RepriceLog[] = rows
     .filter((r) => r.started_at && r.ended_at)
@@ -55,6 +55,7 @@ export async function planProgramReprice(programId: string, scope: RepriceScope 
       amount: Number(r.amount_snapshot),
       rateId: r.rate_id,
       settled: !!r.settlement_id,
+      feeZero: !!r.group_session_id && !r.group_fee_holder,
     }));
   const changes = planReprice(logs, rates, { groupId: scope.groupId ?? null, mode: scope.mode ?? null, fromDate: scope.fromDate ?? null });
   const nameOf = new Map((groups.data ?? []).map((g) => [g.id, g.name]));

@@ -54,7 +54,7 @@ export interface ParticipantOption {
 }
 
 /** 시각 선택 — 24시간제, **정시만**(00분). 멘토링 시간은 1시간 단위로만 등록한다 (2026-10-06, 분 단위는 수당 지급 불가) */
-function TimeSelect({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
+export function TimeSelect({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
   const [h] = value.split(':');
   const cls = 'h-10 rounded-md border border-input bg-background px-2 text-base tabular-nums sm:text-sm';
   return (
@@ -69,7 +69,7 @@ function TimeSelect({ id, value, onChange }: { id: string; value: string; onChan
 }
 
 /** 시작 시각을 바꾸면 종료가 시작보다 빠르지 않게 60분 뒤로 따라간다 */
-function plusMinutes(hhmm: string, add: number): string {
+export function plusMinutes(hhmm: string, add: number): string {
   const [h, m] = hhmm.split(':').map(Number);
   const total = Math.min(23 * 60, (h ?? 0) * 60 + (m ?? 0) + add);
   return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;

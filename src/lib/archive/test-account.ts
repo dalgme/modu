@@ -4,6 +4,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import { phoneTempPassword } from '@/lib/auth/admin-accounts';
 import type { Json } from '@/types/database';
+import { rebalanceGroupSessions } from '@/lib/workflow/group-mentoring';
 
 /**
  * 테스트 멘티 계정 완전 삭제 + 보관함(복원) — 2026-11-03.
@@ -258,6 +259,8 @@ export async function archiveAndDeleteTestMentee(input: { programId: string; use
     if (r) return r;
     r = await fail('케이스', (await admin.from('cases').delete().in('id', caseIds)).error);
     if (r) return r;
+    // 그룹멘토링에 함께했던 다른 멘티 회차로 수당(1회분)을 다시 배정 (2026-11-04)
+    await rebalanceGroupSessions((caseRows.mentoring_logs ?? []).map((l) => l.group_session_id as string | null));
   }
   if (notifs.length) {
     const r = await fail('알림', (await loose.from('notifications').delete().in('id', notifs.map((n) => n.id))).error);
@@ -360,7 +363,12 @@ export async function restoreDeletionArchive(input: { programId: string; archive
   const ownIds = new Set(p.cases.map((c) => c.id as string));
   await put('cases', p.cases.map((c) => (c.predecessor_case_id && !alive.has(c.predecessor_case_id as string) && !ownIds.has(c.predecessor_case_id as string) ? { ...c, predecessor_case_id: null } : c)));
   await put('settlement_batches', p.settlement_batches);
+  // 그룹멘토링 세션이 그사이 정리됐으면(참여 회차가 모두 빠짐) 링크를 비운다 (2026-11-04)
+  const sessIds = Array.from(new Set(((p.case_rows.mentoring_logs ?? []) as Record<string, unknown>[]).map((l) => l.group_session_id as string | null).filter((x): x is string => !!x)));
+  const aliveSess = new Set(sessIds.length ? ((await admin.from('group_mentoring_sessions').select('id').in('id', sessIds)).data ?? []).map((x) => x.id) : []);
+  if (p.case_rows.mentoring_logs) p.case_rows.mentoring_logs = (p.case_rows.mentoring_logs as Record<string, unknown>[]).map((l) => (l.group_session_id && !aliveSess.has(l.group_session_id as string) ? { ...l, group_session_id: null, group_fee_holder: false } : l));
   for (const { table, pk } of CASE_TABLES) await put(table, p.case_rows[table] ?? [], pk);
+  await rebalanceGroupSessions(aliveSess);
   await put('direct_messages', p.direct_messages);
   await put('notifications', p.notifications);
   await put('inquiries', p.inquiries);

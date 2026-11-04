@@ -7,8 +7,9 @@
  * 플랫폼 정산은 멘티(케이스)×멘토 단위로 확정하므로 원천징수액이 조금 다를 수 있다 — 화면·엑셀에 안내.
  */
 
-export type SlotMode = '온라인' | '오프라인' | '예정' | '미시행' | '타멘토';
-export const SLOT_MODES: readonly SlotMode[] = ['온라인', '오프라인', '예정', '미시행', '타멘토'];
+/** 그룹참여 = 그룹멘토링에서 수당 대표가 아닌 참여 회차 — 시행(멘티 1회)으로 세지만 수당은 0원(세션 1회분은 대표 회차에) (2026-11-04) */
+export type SlotMode = '온라인' | '오프라인' | '예정' | '미시행' | '타멘토' | '그룹참여';
+export const SLOT_MODES: readonly SlotMode[] = ['온라인', '오프라인', '예정', '미시행', '타멘토', '그룹참여'];
 
 export interface AllowanceSlot {
   mode: SlotMode;

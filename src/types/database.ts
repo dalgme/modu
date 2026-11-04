@@ -906,6 +906,48 @@ export type Database = {
         };
         Relationships: [];
       };
+      group_mentoring_sessions: {
+        Row: {
+          id: string;
+          program_id: string;
+          support_type_id: string;
+          mentor_id: string;
+          mode: Database['public']['Enums']['consulting_mode'];
+          started_at: string;
+          ended_at: string;
+          place: string | null;
+          created_by: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          program_id: string;
+          support_type_id: string;
+          mentor_id: string;
+          mode: Database['public']['Enums']['consulting_mode'];
+          started_at: string;
+          ended_at: string;
+          place?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          program_id?: string;
+          support_type_id?: string;
+          mentor_id?: string;
+          mode?: Database['public']['Enums']['consulting_mode'];
+          started_at?: string;
+          ended_at?: string;
+          place?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       inquiries: {
         Row: {
           program_id: string | null;
@@ -1926,6 +1968,8 @@ export type Database = {
       };
       mentoring_logs: {
         Row: {
+          group_session_id: string | null;
+          group_fee_holder: boolean;
           corrected_at: string | null;
           amount_snapshot: number;
           case_id: string;
@@ -1952,6 +1996,8 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
+          group_session_id?: string | null;
+          group_fee_holder?: boolean;
           corrected_at?: string | null;
           amount_snapshot: number;
           case_id: string;
@@ -1978,6 +2024,8 @@ export type Database = {
           updated_at?: string;
         };
         Update: {
+          group_session_id?: string | null;
+          group_fee_holder?: boolean;
           corrected_at?: string | null;
           amount_snapshot?: number;
           case_id?: string;
@@ -3454,6 +3502,8 @@ export type Database = {
       };
       support_types: {
         Row: {
+          group_mentoring_enabled: boolean;
+          group_mentoring_max_per_mentor: number;
           survey_enabled: boolean;
           mentoring_budget: number | null;
           observation_required?: boolean;
@@ -3479,6 +3529,8 @@ export type Database = {
           withholding_method: string | null;
         };
         Insert: {
+          group_mentoring_enabled?: boolean;
+          group_mentoring_max_per_mentor?: number;
           survey_enabled?: boolean;
           mentoring_budget?: number | null;
           observation_required?: boolean;
@@ -3504,6 +3556,8 @@ export type Database = {
           withholding_method?: string | null;
         };
         Update: {
+          group_mentoring_enabled?: boolean;
+          group_mentoring_max_per_mentor?: number;
           survey_enabled?: boolean;
           mentoring_budget?: number | null;
           observation_required?: boolean;

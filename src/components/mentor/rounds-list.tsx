@@ -8,6 +8,7 @@ import type { RoundItem } from '@/lib/data/rounds';
 import { deleteRoundAction, collectRoundSignatureAction, updatePlannedRoundAction, deletePlannedRoundAction } from '@/lib/workflow/mentor-actions';
 import { correctRoundAction } from '@/lib/workflow/round-correction-actions';
 import { RoundReportForm } from '@/components/mentor/round-report-form';
+import { GroupBadge } from '@/components/mentor/group-badge';
 import { HourlyOnlyNotice, PastScheduleNotice } from '@/components/mentor/round-form';
 import { FileActions } from '@/components/files/file-preview';
 import { SignaturePad } from '@/components/common/signature-pad';
@@ -262,6 +263,7 @@ export function RoundsList({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">{r.round_no}회차{r.is_extra ? ' (추가)' : ''}</span>
+              {r.groupPeers && <GroupBadge peers={r.groupPeers} holder={r.group_fee_holder} />}
               <span className="font-medium">{r.mode === 'online' ? '온라인' : '오프라인'}</span>
               <span className="text-muted-foreground">{formatDateTime(r.started_at)} ~ {formatDateTime(r.ended_at).slice(-5)}</span>
               {durationLabel(r.started_at, r.ended_at) && <span className="text-xs font-medium text-primary">({durationLabel(r.started_at, r.ended_at)})</span>}
@@ -283,13 +285,13 @@ export function RoundsList({
               {(r as RoundItem & { corrected_at?: string | null }).corrected_at && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">운영사 정정</span>}
             </div>
             <div className="flex items-center gap-1">
-              {operatorCorrect && !r.locked && (
+              {operatorCorrect && !r.locked && !r.groupPeers && (
                 <Button size="sm" variant="outline" disabled={pending} onClick={() => setCorrecting((v) => (v === r.id ? null : r.id))}>
                   정정
                 </Button>
               )}
               {/* 계획(미보고) 회차: 개별 일정 수정·삭제 (P20) */}
-              {editable && !r.report_registered_at && !r.locked && (
+              {editable && !r.report_registered_at && !r.locked && !r.groupPeers && (
                 <Button size="sm" variant="outline" disabled={pending} onClick={() => setEditingPlan((v) => (v === r.id ? null : r.id))}>
                   일정 수정
                 </Button>

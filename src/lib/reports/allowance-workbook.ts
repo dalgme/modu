@@ -61,8 +61,8 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
     fetchAllIn<{ case_id: string; mentor_id: string; is_active: boolean; end_kind: string | null }>(caseIds, (chunk, f, t) =>
       admin.from('mentor_assignments').select('case_id, mentor_id, is_active, end_kind').in('case_id', chunk).range(f, t),
     ),
-    fetchAllIn<{ case_id: string; round_no: number; mentor_id: string; mode: string; started_at: string; ended_at: string; report_registered_at: string | null; unit_price_snapshot: number; amount_snapshot: number }>(caseIds, (chunk, f, t) =>
-      admin.from('mentoring_logs').select('case_id, round_no, mentor_id, mode, started_at, ended_at, report_registered_at, unit_price_snapshot, amount_snapshot').in('case_id', chunk).range(f, t),
+    fetchAllIn<{ case_id: string; round_no: number; mentor_id: string; mode: string; started_at: string; ended_at: string; report_registered_at: string | null; unit_price_snapshot: number; amount_snapshot: number; group_session_id: string | null; group_fee_holder: boolean }>(caseIds, (chunk, f, t) =>
+      admin.from('mentoring_logs').select('case_id, round_no, mentor_id, mode, started_at, ended_at, report_registered_at, unit_price_snapshot, amount_snapshot, group_session_id, group_fee_holder').in('case_id', chunk).range(f, t),
     ),
     fetchAll<{ user_id: string; withholding_method: string | null }>((f, t) =>
       admin.from('support_type_members').select('user_id, withholding_method').eq('support_type_id', groupId).eq('member_role', 'mentor').range(f, t),
@@ -126,6 +126,13 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
               notes.push(`${n}회차 보고서 미등록`);
               continue;
             }
+            if (l.group_session_id && !l.group_fee_holder) {
+              // 그룹멘토링 비대표 참여 회차 — 멘티 1회로 세고 수당은 함께한 멘티 회차(대표)에 1회분
+              slots.push({ mode: '그룹참여', hours });
+              notes.push(`${n}회차 그룹멘토링(수당은 함께한 멘티 회차에 1회분)`);
+              continue;
+            }
+            if (l.group_session_id) notes.push(`${n}회차 그룹멘토링 수당 1회분`);
             slots.push({ mode: l.mode === 'online' ? '온라인' : '오프라인', hours });
           }
           return { mentee: caseById.get(caseId)?.owner_name ?? '-', slots, notes };
@@ -195,6 +202,7 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
     ['예정', C.plan, '일정만 등록되고 보고서가 아직 없음 → 0원 (보고서를 등록하면 수당 대상)'],
     ['미시행', C.none, '회차 기록 없음 → 0원'],
     ['타멘토', C.other, '다른 멘토가 진행(그 멘토 줄에 계상) → 0원'],
+    ['그룹참여', 'FFFFF2CC', '그룹멘토링 참여 회차 — 멘티 1회로 세지만 수당은 함께한 멘티 회차에 1회분만 → 0원'],
   ];
   legend.forEach(([k, fill, d], i) => {
     const r = 16 + i;
@@ -264,13 +272,14 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
       const hoursOf = (word: string) => Array.from({ length: roundCount }, (_, n) => `IF(${col(RC(n).mode)}${r}="${word}",N(${col(RC(n).hours)}${r}),0)`).join('+');
       d.getCell(r, K.on).value = fx(modes('온라인'), on);
       d.getCell(r, K.off).value = fx(modes('오프라인'), off);
-      d.getCell(r, K.done).value = fx(`${col(K.on)}${r}+${col(K.off)}${r}`, on + off);
+      const grp = row.slots.filter((x) => x.mode === '그룹참여').length;
+      d.getCell(r, K.done).value = fx(`${col(K.on)}${r}+${col(K.off)}${r}+${modes('그룹참여')}`, on + off + grp);
       d.getCell(r, K.onH).value = fx(hoursOf('온라인'), onH);
       d.getCell(r, K.offH).value = fx(hoursOf('오프라인'), offH);
       d.getCell(r, K.fee).value = fx(Array.from({ length: roundCount }, (_, n) => `${col(RC(n).fee)}${r}`).join('+'), fee);
       d.getCell(r, K.note).value = row.notes.join(' / ') || null;
       d.getCell(r, K.key).value = b.no;
-      Object.assign(tot, { done: tot.done + on + off, on: tot.on + on, off: tot.off + off, onH: tot.onH + onH, offH: tot.offH + offH, fee: tot.fee + fee });
+      Object.assign(tot, { done: tot.done + on + off + grp, on: tot.on + on, off: tot.off + off, onH: tot.onH + onH, offH: tot.offH + offH, fee: tot.fee + fee });
       gross += fee;
       r += 1;
     }
@@ -327,7 +336,7 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
       const ref = `${col(g.mode)}${FIRST}:${col(g.fee)}${LAST}`;
       const m = `$${col(g.mode)}${FIRST}`;
       const rule = (word: string, fill: string, color: string) => ({ type: 'expression' as const, priority: pri++, formulae: [`${m}="${word}"`], style: { fill: { type: 'pattern' as const, pattern: 'solid' as const, bgColor: { argb: fill } }, font: { color: { argb: color } } } });
-      d.addConditionalFormatting({ ref, rules: [rule('온라인', C.on, 'FF1F4E79'), rule('오프라인', C.off, 'FF833C0B'), rule('예정', C.plan, 'FF375623'), rule('미시행', C.none, 'FFA6A6A6'), rule('타멘토', C.other, 'FF5B3F8C')] });
+      d.addConditionalFormatting({ ref, rules: [rule('온라인', C.on, 'FF1F4E79'), rule('오프라인', C.off, 'FF833C0B'), rule('예정', C.plan, 'FF375623'), rule('미시행', C.none, 'FFA6A6A6'), rule('타멘토', C.other, 'FF5B3F8C'), rule('그룹참여', 'FFFFF2CC', 'FF7F6000')] });
     }
     d.addConditionalFormatting({ ref: `${col(K.gross)}${FIRST}:${col(K.gross)}${LAST}`, rules: [{ type: 'dataBar', priority: pri++, cfvo: [{ type: 'num', value: 0 }, { type: 'max' }], color: { argb: 'FF9BC2E6' } } as unknown as ExcelJS.ConditionalFormattingRule] });
   }
@@ -357,7 +366,7 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
     const on = cnt('온라인'), off = cnt('오프라인');
     s.getCell(rr, 1).value = b.no; s.getCell(rr, 2).value = b.name;
     s.getCell(rr, 3).value = fx(`COUNTIF(${keyRng},A${rr})`, be - bs + 1);
-    s.getCell(rr, 4).value = fx(sumif(K.done, rr), on + off);
+    s.getCell(rr, 4).value = fx(sumif(K.done, rr), on + off + cnt('그룹참여'));
     s.getCell(rr, 5).value = fx(sumif(K.on, rr), on);
     s.getCell(rr, 6).value = fx(sumif(K.off, rr), off);
     s.getCell(rr, 7).value = fx(sumif(K.onH, rr), hrs('온라인'));
@@ -459,7 +468,7 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
   }
   const comboEnd = gr - 1;
   g.getCell(gr, 2).value = '합계'; g.mergeCells(gr, 2, gr, 3);
-  g.getCell(gr, 4).value = fx(combos.length ? `SUM(D10:D${comboEnd})` : '0', tot.done);
+  g.getCell(gr, 4).value = fx(combos.length ? `SUM(D10:D${comboEnd})` : '0', tot.on + tot.off);
   g.getCell(gr, 6).value = fx(combos.length ? `SUM(F10:F${comboEnd})` : '0', combos.reduce((a, c3) => a + Math.round(c3.n * c3.h * (c3.mode === '온라인' ? rates.online : rates.offline)), 0));
   for (let c2 = 2; c2 <= 6; c2++) { const cell = g.getCell(gr, c2); cell.font = font({ bold: true }); cell.fill = solid(C.head2); cell.border = BOX; cell.alignment = { horizontal: c2 <= 3 ? 'center' : 'right' }; }
   g.getCell(gr, 4).numFmt = '#,##0"회"'; g.getCell(gr, 6).numFmt = MONEY;

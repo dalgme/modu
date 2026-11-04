@@ -18,6 +18,8 @@ export interface RepriceLog {
   amount: number;
   rateId: string | null;
   settled: boolean;
+  /** 그룹멘토링에서 수당 대표가 아닌 참여 회차 — 세션 1회분은 대표 회차만 갖으므로 0원 유지 (2026-11-04) */
+  feeZero?: boolean;
 }
 
 export interface RepriceChange {
@@ -44,12 +46,13 @@ export function planReprice(logs: RepriceLog[], rates: RateRowLike[], opts: { gr
     if (l.settled) continue;
     if (opts.groupId && l.groupId !== opts.groupId) continue;
     if (opts.mode && l.mode !== opts.mode) continue;
+    if (l.feeZero && Number(l.amount) === 0 && Number(l.unitPrice) === 0) continue; // 그룹 비대표 회차 — 이미 0원
     const day = kstDay(l.startedAt);
     if (opts.fromDate && day < opts.fromDate) continue;
     const rate = pickRateRow(rates, l.groupId, l.mode, day);
     if (!rate) continue; // 그 날짜에 단가가 없으면 그대로 둔다
-    const toPrice = Number(rate.unit_price);
-    const toAmount = roundAmount(toPrice, l.startedAt, l.endedAt);
+    const toPrice = l.feeZero ? 0 : Number(rate.unit_price);
+    const toAmount = l.feeZero ? 0 : roundAmount(toPrice, l.startedAt, l.endedAt);
     if (toPrice === Number(l.unitPrice) && toAmount === Number(l.amount) && rate.id === l.rateId) continue;
     out.push({ logId: l.id, caseId: l.caseId, groupId: l.groupId, mode: l.mode, day, fromPrice: Number(l.unitPrice), toPrice, fromAmount: Number(l.amount), toAmount, rateId: rate.id });
   }

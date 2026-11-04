@@ -1,5 +1,6 @@
 'use server';
 
+import { GROUP_MAX_PER_MENTOR_LIMIT } from '@/lib/workflow/group-mentoring-rule';
 import { isGroupSurveyEnabled } from '@/lib/surveys/group-survey';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
@@ -431,6 +432,31 @@ export async function setGroupSurveyEnabledAction(input: { groupId: string; enab
   revalidatePath('/mentee/survey');
   revalidatePath('/mentee/dashboard');
   return { ok: true, message: `${g.name}: 만족도 설문을 ${enabled ? '사용합니다' : '사용하지 않습니다'}.` };
+}
+
+/**
+ * 라운드(그룹)별 그룹멘토링 설정 (2026-11-04) — 운영 설정 [그룹멘토링] 탭.
+ * 사용 여부 + 멘토 1인당 최대 횟수. 끄더라도 이미 등록된 그룹멘토링 회차·보고서·수당은 그대로 둔다(새 등록만 막힘).
+ */
+export async function setGroupMentoringAction(input: { groupId: string; enabled: boolean; maxPerMentor: number }): Promise<Result> {
+  const op = await operator();
+  if ('error' in op) return { ok: false, error: op.error };
+  const max = Math.floor(Number(input.maxPerMentor));
+  if (!Number.isFinite(max) || max < 0 || max > GROUP_MAX_PER_MENTOR_LIMIT) return { ok: false, error: `멘토 1인당 횟수는 0~${GROUP_MAX_PER_MENTOR_LIMIT}회 사이로 입력하세요.` };
+  const enabled = !!input.enabled;
+  if (enabled && max < 1) return { ok: false, error: '그룹멘토링을 사용하려면 멘토 1인당 횟수를 1회 이상으로 정하세요.' };
+  const admin = createAdminClient();
+  const { data: g } = await admin.from('support_types').select('*').eq('id', input.groupId).eq('program_id', op.programId).maybeSingle();
+  if (!g) return { ok: false, error: '이 행사의 라운드(그룹)가 아닙니다.' };
+  const before = { group_mentoring_enabled: !!g.group_mentoring_enabled, group_mentoring_max_per_mentor: g.group_mentoring_max_per_mentor ?? 1 };
+  const after = { group_mentoring_enabled: enabled, group_mentoring_max_per_mentor: max };
+  if (before.group_mentoring_enabled === after.group_mentoring_enabled && before.group_mentoring_max_per_mentor === after.group_mentoring_max_per_mentor) return { ok: true, message: `${g.name}: 변경 사항이 없습니다.` };
+  const { error } = await admin.from('support_types').update(after).eq('id', g.id);
+  if (error) return { ok: false, error: error.message.includes('group_mentoring') ? '그룹멘토링 설정 칸이 아직 DB 에 없습니다. 마이그레이션 0098 적용 후 다시 시도하세요.' : error.message };
+  await audit(op.id, op.programId, 'support_type.group_mentoring', before, after, g.id, 'support_type.group_mentoring');
+  revalidateAll();
+  revalidatePath('/mentor/group-mentoring');
+  return { ok: true, message: enabled ? `${g.name}: 그룹멘토링 사용 · 멘토 1인당 ${max}회` : `${g.name}: 그룹멘토링을 사용하지 않습니다.` };
 }
 
 /**

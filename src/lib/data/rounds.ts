@@ -13,6 +13,21 @@ export interface RoundItem extends RoundRow {
   report: { id: string; url: string | null; name: string; createdAt: string; updatedAt: string | null } | null;
   /** 정산에 포함되어 잠김 */
   locked: boolean;
+  /** 그룹멘토링 회차면 함께 참여한 다른 멘티 이름 (2026-11-04), 아니면 null */
+  groupPeers: string[] | null;
+}
+
+/** 케이스 회차 중 그룹멘토링 세션별 다른 참여 멘티 이름 — 다른 케이스라 서비스롤로 읽는다(이름만) */
+async function groupPeersOf(caseId: string, sessionIds: string[]): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  if (sessionIds.length === 0) return out;
+  const admin = createAdminClient();
+  const { data: peers } = await admin.from('mentoring_logs').select('case_id, group_session_id').in('group_session_id', sessionIds).neq('case_id', caseId);
+  const ids = Array.from(new Set((peers ?? []).map((p) => p.case_id)));
+  const { data: cs } = ids.length ? await admin.from('cases').select('id, owner_name').in('id', ids) : { data: [] as { id: string; owner_name: string | null }[] };
+  const nameOf = new Map((cs ?? []).map((c) => [c.id, c.owner_name ?? '-']));
+  for (const sid of sessionIds) out.set(sid, (peers ?? []).filter((p) => p.group_session_id === sid).map((p) => nameOf.get(p.case_id) ?? '-'));
+  return out;
 }
 
 export const photoDocKey = (logId: string) => `mentoring_photo:${logId}`;
@@ -34,6 +49,7 @@ export async function listRounds(caseId: string): Promise<RoundItem[]> {
   const mentorName = new Map((mentors ?? []).map((m) => [m.id, m.name]));
   // 받는 파일 이름 = "멘토명-멘티명-N회차 보고서" (2026-09-30 파일명 규칙)
   const dlNames = await downloadNamesForCase(caseId);
+  const peers = await groupPeersOf(caseId, Array.from(new Set(rows.map((r) => r.group_session_id).filter((x): x is string => !!x))));
   const out: RoundItem[] = [];
   for (const r of rows) {
     const photoDocs = (docs ?? []).filter((d) => d.doc_key === photoDocKey(r.id));
@@ -44,7 +60,7 @@ export async function listRounds(caseId: string): Promise<RoundItem[]> {
     const report = reportDoc
       ? { id: reportDoc.id, name: reportDoc.doc_name, url: await createCaseScopedSignedUrl('documents', caseId, reportDoc.storage_path, 600, dlNames.get(reportDoc.id) ?? reportDoc.doc_name), createdAt: reportDoc.created_at, updatedAt: reportDoc.updated_at ?? null }
       : null;
-    out.push({ ...r, mentorName: mentorName.get(r.mentor_id) ?? null, photos, report, locked: r.settlement_id !== null });
+    out.push({ ...r, mentorName: mentorName.get(r.mentor_id) ?? null, photos, report, locked: r.settlement_id !== null, groupPeers: r.group_session_id ? peers.get(r.group_session_id) ?? [] : null });
   }
   return out;
 }

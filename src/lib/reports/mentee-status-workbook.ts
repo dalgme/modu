@@ -55,8 +55,8 @@ export async function buildMenteeStatusWorkbook(programId: string, groupId: stri
     fetchAllIn<{ case_id: string; mentor_id: string; is_active: boolean; assigned_at: string; ended_at: string | null; end_kind: string | null }>(caseIds, (chunk, f, t) =>
       admin.from('mentor_assignments').select('case_id, mentor_id, is_active, assigned_at, ended_at, end_kind').in('case_id', chunk).range(f, t),
     ),
-    fetchAllIn<{ case_id: string; round_no: number; mentor_id: string; mode: Mode; started_at: string; ended_at: string; report_registered_at: string | null; amount_snapshot: number }>(caseIds, (chunk, f, t) =>
-      admin.from('mentoring_logs').select('case_id, round_no, mentor_id, mode, started_at, ended_at, report_registered_at, amount_snapshot').in('case_id', chunk).range(f, t),
+    fetchAllIn<{ case_id: string; round_no: number; mentor_id: string; mode: Mode; started_at: string; ended_at: string; report_registered_at: string | null; amount_snapshot: number; group_session_id: string | null }>(caseIds, (chunk, f, t) =>
+      admin.from('mentoring_logs').select('case_id, round_no, mentor_id, mode, started_at, ended_at, report_registered_at, amount_snapshot, group_session_id').in('case_id', chunk).range(f, t),
     ),
     fetchAllIn<{ case_id: string; extra_rounds: number }>(caseIds, (chunk, f, t) =>
       admin.from('round_extension_requests').select('case_id, extra_rounds').eq('status', 'approved').in('case_id', chunk).range(f, t),
@@ -111,7 +111,7 @@ export async function buildMenteeStatusWorkbook(programId: string, groupId: stri
       const slots = Array.from({ length: roundCount }, (_, i) => {
         const l = ls.find((x) => x.round_no === i + 1);
         if (!l) return '';
-        const mode = l.mode === 'online' ? '온라인' : '오프라인';
+        const mode = `${l.group_session_id ? '그룹 ' : ''}${l.mode === 'online' ? '온라인' : '오프라인'}`;
         const h = hoursOf(l);
         const other = final && l.mentor_id !== final.mentor_id ? ` · ${userById.get(l.mentor_id)?.name ?? '다른'} 멘토` : '';
         return `${l.report_registered_at ? mode : `예정 ${mode}`} ${h}시간${other}\n${kstYmd(l.started_at)}`;
