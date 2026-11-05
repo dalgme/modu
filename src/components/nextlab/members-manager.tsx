@@ -49,6 +49,7 @@ import { forceEndHref, type ForceEndBlock } from '@/lib/workflow/force-end-rule'
 import type { MentoringCaseItem, MentoringOutcome } from '@/lib/workflow/mentoring-outcome';
 import { MentoringOutcomeBadge, MentoringOutcomeControl } from '@/components/nextlab/mentoring-outcome-control';
 import { TestAccountDeleteButton } from '@/components/nextlab/test-account-delete';
+import { MenteeRoundControls } from '@/components/nextlab/mentee-round-controls';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -1188,6 +1189,8 @@ function MemberEditPanel({ member: m }: { member: MemberItem }) {
   return (
     <div className="flex flex-col gap-4">
       {m.role === 'mentee' && m.mentoringCases && <MentoringOutcomeControl cases={m.mentoringCases} />}
+      {/* (2026-11-05) 멘티 라운드 선택 — 멘토 [그룹 지정]처럼 칩으로 추가·빼기 */}
+      {m.role === 'mentee' && m.memberActive && <MenteeRoundControls userId={m.id} name={m.name} />}
       <MemberDetailsForm member={m} />
       {(m.role === 'nextlab' || m.role === 'institution') && <StaffGroupChips member={m} />}
       <div className="flex flex-wrap items-start gap-2 border-t pt-3">
