@@ -26,6 +26,8 @@ import { listLegacySmsSends, listSmsBatchItems, listSmsBatches, loadLegacySmsSen
 import { ScheduledMessagesList } from '@/components/admin/scheduled-messages-list';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import { getDelayNudgeTemplate } from '@/lib/sms/delay-nudge-settings';
+import { DEFAULT_DELAY_NUDGE_TEMPLATE, sampleDelayNudge } from '@/lib/sms/delay-nudge-template';
 
 // Solapi 잔액·발송리스트를 매 요청 최신 조회. 대량 발송(수백 명 순차)이 길어질 수 있어 함수 시간을 늘린다.
 export const dynamic = 'force-dynamic';
@@ -121,9 +123,10 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   let autoSend: React.ReactNode = null;
   if (tab === 'auto') {
     const admin = createAdminClient();
-    const [{ data: prow }, reminderSettings] = await Promise.all([
+    const [{ data: prow }, reminderSettings, delayTemplate] = await Promise.all([
       admin.from('programs').select('notification_settings').eq('id', ctx.programId).maybeSingle(),
       listReminderSettings(ctx.programId),
+      getDelayNudgeTemplate(ctx.programId),
     ]);
     const raw = prow?.notification_settings;
     const settings: Record<string, boolean> = {};
@@ -137,9 +140,11 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
       common ? `행사 공통 ${common.enabled ? `켬 (매주 ${WEEKDAY_LABELS[common.weekday] ?? '-'} ${hhmm(common.sendHour, common.sendMinute)})` : '끔'}` : '행사 공통 미설정(미발송)',
       groupRows.length > 0 ? `그룹별 설정 ${groupRows.length}개 (켬 ${groupRows.filter((x) => x.enabled).length})` : null,
     ].filter(Boolean).join(' · ');
+    const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
     const rows = buildAutoSendCatalog({
       branding: ctx.branding,
-      appUrl: (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, ''),
+      appUrl,
+      delayNudge: { preview: sampleDelayNudge(delayTemplate, ctx.program.name, appUrl), customized: !!delayTemplate },
       reminder: {
         status: reminderStatus,
         preview: renderMentorReminder(common?.template ?? DEFAULT_MENTOR_REMINDER_TEMPLATE, { program: ctx.program.name, group: ctx.group?.name ?? '그룹명', mentor: '홍길동', companies: ['김멘티', '이멘티'] }),
@@ -158,6 +163,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         settings={settings}
         canEdit={canEditAuto}
         channelLabels={channelLabels}
+        delayNudge={{ template: delayTemplate ?? DEFAULT_DELAY_NUDGE_TEMPLATE, customized: !!delayTemplate, canEdit: profile.role === 'nextlab' && denyUnless(ctx, 'sms') === null, programName: ctx.program.name, appUrl }}
         scopeNote={ctx.group ? `지금 범위는 '${ctx.group.name}' 이지만, 자동발송 설정은 행사(${ctx.program.name}) 전체에 한 번에 적용됩니다. 그룹별로 다르게 둘 수 있는 것은 멘토 리마인더뿐입니다.` : null}
         readOnlyReason={canEditAuto ? null : '열람 전용입니다. 설정 변경은 운영 설정 권한이 있는 운영사 담당자만 할 수 있습니다.'}
       />

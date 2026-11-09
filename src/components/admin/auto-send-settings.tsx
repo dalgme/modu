@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useState, useTransition } from 'react';
-import { ArrowUpRight, BellOff, BellRing, ChevronDown, Eye, Hand, Lock, ShieldCheck } from 'lucide-react';
+import { ArrowUpRight, BellOff, BellRing, ChevronDown, Eye, Hand, Lock, Pencil, ShieldCheck } from 'lucide-react';
 
 import { AUTO_SEND_STAGES } from '@/lib/notifications/templates';
 import { updateNotificationSettingsAction } from '@/lib/settings/notification-actions';
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useUnsavedGuard } from '@/hooks/use-unsaved-guard';
 import { cn } from '@/lib/utils';
+import { DelayNudgeTemplateEditor, type DelayNudgeEditorProps } from '@/components/admin/delay-nudge-template-editor';
 
 /**
  * (P36) 문자 발송 › 자동발송 탭 — 플랫폼이 업무 단계마다 자동으로 보내는 문자를 한곳에서 보고 켜고 끈다.
@@ -24,7 +25,10 @@ export function AutoSendSettings({
   channelLabels,
   scopeNote,
   readOnlyReason,
+  delayNudge,
 }: {
+  /** (2026-11-09) 지연 독려 문자 문구 편집 — 이 탭에서 고친다 */
+  delayNudge?: DelayNudgeEditorProps;
   rows: AutoSendRow[];
   settings: Record<string, boolean>;
   canEdit: boolean;
@@ -45,6 +49,7 @@ export function AutoSendSettings({
   }, [settings, toggles]);
   const [state, setState] = useState<Record<string, boolean>>(initial);
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [editing, setEditing] = useState<string | null>(null);
   const [offOnly, setOffOnly] = useState(false);
   const dirty = toggles.some((t) => state[t.key] !== initial[t.key]);
   useUnsavedGuard(dirty);
@@ -115,7 +120,7 @@ export function AutoSendSettings({
                 const on = c.kind === 'toggle' ? state[c.key] : c.kind !== 'manual';
                 const isOpen = !!open[r.id];
                 return (
-                  <li key={r.id} className={cn('flex flex-col gap-2 px-4 py-3', c.kind === 'toggle' && !on && 'bg-amber-50/40 dark:bg-amber-950/10')}>
+                  <li key={r.id} id={r.editor === 'delay_nudge' ? 'delay-nudge' : undefined} className={cn('flex flex-col gap-2 px-4 py-3', c.kind === 'toggle' && !on && 'bg-amber-50/40 dark:bg-amber-950/10')}>
                     <div className="flex items-start gap-3">
                       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
                         <span className="flex flex-wrap items-center gap-1.5 text-sm font-medium">
@@ -172,6 +177,16 @@ export function AutoSendSettings({
                             {c.linkLabel} <ArrowUpRight className="h-3 w-3" />
                           </Link>
                         )}
+                        {r.editor === 'delay_nudge' && delayNudge && (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-0.5 rounded-md border border-primary bg-primary/10 px-2 py-1 text-[11px] font-semibold text-primary hover:bg-primary/20"
+                            aria-expanded={editing === r.id}
+                            onClick={() => setEditing((cur) => (cur === r.id ? null : r.id))}
+                          >
+                            <Pencil className="h-3 w-3" /> 문구 수정
+                          </button>
+                        )}
                         {(r.preview || r.previewNote) && (
                           <button
                             type="button"
@@ -184,6 +199,9 @@ export function AutoSendSettings({
                         )}
                       </div>
                     </div>
+                    {r.editor === 'delay_nudge' && delayNudge && editing === r.id && (
+                      <DelayNudgeTemplateEditor {...delayNudge} onClose={() => setEditing(null)} />
+                    )}
                     {isOpen && (
                       <div className="rounded-lg border bg-muted/30 p-3">
                         {r.preview ? <pre className="whitespace-pre-wrap break-words font-sans text-xs leading-relaxed">{r.preview}</pre> : null}

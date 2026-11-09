@@ -12,6 +12,9 @@ import { listDelayedCases } from '@/lib/reports/delays';
 import { DELAY_NUDGE_ACTION } from '@/lib/reports/delay-nudges';
 import type { DelayedCase } from '@/lib/reports/delays-shared';
 import type { Json } from '@/types/database';
+import { menteeLabel } from '@/lib/utils/labels';
+import { renderDelayNudge } from '@/lib/sms/delay-nudge-template';
+import { getDelayNudgeTemplate } from '@/lib/sms/delay-nudge-settings';
 
 export type NudgeResult = { ok: true; sent: number; failed: number; skipped: number } | { ok: false; error: string };
 
@@ -63,12 +66,18 @@ async function prepare(caseIds: string[]): Promise<Prepared> {
   const { data: mentors } = await admin.from('users').select('id, name, phone').in('id', Array.from(byMentor.keys()));
   const mentorById = new Map((mentors ?? []).map((m) => [m.id, m]));
   const base = (process.env.NEXT_PUBLIC_APP_URL ?? '').replace(/\/$/, '');
+  // 문구 = 행사별로 고친 문구(문자 발송 › 자동발송 탭), 없으면 기본 문구 — 미리보기와 발송이 같은 함수 (2026-11-09)
+  const template = await getDelayNudgeTemplate(ctx.programId);
 
   const items: NudgePreviewMentor[] = Array.from(byMentor.entries()).map(([mentorId, list]) => {
     const m = mentorById.get(mentorId);
     const digits = (m?.phone ?? '').replace(/\D/g, '');
-    const lines = list.slice(0, 5).map((d) => `· ${d.ownerName}/${d.businessName} (${d.roundsDone}/${d.requiredRounds}회, ${d.days}일 경과)`);
-    const text = `[${ctx.program.name}] ${m?.name ?? ''} 멘토님, 진행이 멈춘 멘토링이 ${list.length}건 있습니다.\n${lines.join('\n')}${list.length > 5 ? `\n외 ${list.length - 5}건` : ''}\n${base}/mentor/dashboard 에서 일정을 등록해 주세요.`;
+    const text = renderDelayNudge(template, {
+      program: ctx.program.name,
+      name: m?.name ?? '',
+      link: `${base}/mentor/dashboard`,
+      cases: list.map((d) => ({ menteeName: menteeLabel(d.ownerName, d.businessName), roundsDone: d.roundsDone, requiredRounds: d.requiredRounds, days: d.days })),
+    });
     return {
       mentorId,
       name: m?.name ?? '(이름 없음)',

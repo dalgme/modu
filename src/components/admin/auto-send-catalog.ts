@@ -40,6 +40,8 @@ export interface AutoSendRow {
   /** 실제 문구(예시 값으로 치환). null = 미리보기 없음 */
   preview: string | null;
   previewNote?: string;
+  /** 이 탭에서 문구를 고칠 수 있는 항목 (2026-11-09: 지연 독려 문자) */
+  editor?: 'delay_nudge';
 }
 
 export interface AutoSendCatalogInput {
@@ -48,6 +50,8 @@ export interface AutoSendCatalogInput {
   appUrl: string;
   /** 멘토 리마인더 요약 — 페이지가 listReminderSettings 로 계산 */
   reminder: { status: string; preview: string };
+  /** 지연 독려 문자 — 행사 문구(없으면 기본)로 만든 예시 */
+  delayNudge: { preview: string; customized: boolean };
 }
 
 const SAMPLE_MENTOR = '홍길동';
@@ -141,7 +145,9 @@ export function buildAutoSendCatalog(input: AutoSendCatalogInput): AutoSendRow[]
     recipients: '멘토',
     channel: 'direct',
     control: { kind: 'manual', href: '/nextlab/reports', linkLabel: '리포트' },
-    preview: null,
+    preview: input.delayNudge.preview,
+    previewNote: `${input.delayNudge.customized ? '이 행사에서 고친 문구' : '기본 문구'}입니다. 이름·멘티 목록은 예시 값이며 [문구 수정]으로 고칠 수 있습니다.`,
+    editor: 'delay_nudge',
   });
 
   // ---- 시스템·보안 — 항상 발송

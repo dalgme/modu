@@ -219,6 +219,10 @@ export function DelayList({ items, caseHrefBase, canNudge, lastNudges = {} }: { 
                     수신 {cur.name} · {cur.phoneMasked ?? '휴대폰 없음(제외)'} · {cur.text.length}자
                   </p>
                   <pre className="whitespace-pre-wrap font-sans text-[12px] leading-relaxed">{cur.text}</pre>
+                  {/* (2026-11-09) 문구는 문자 발송 › 자동발송 탭의 '지연 독려 문자'에서 고친다 */}
+                  <Link href="/admin/settings/sms?tab=auto#delay-nudge" className="mt-2 inline-block text-[11px] font-semibold text-primary underline-offset-2 hover:underline">
+                    문구 수정하기 → 문자 발송 › 자동발송 › 지연 독려 문자
+                  </Link>
                 </div>
               );
             })()}
