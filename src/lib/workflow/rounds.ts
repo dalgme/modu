@@ -14,6 +14,7 @@ import type { WorkflowResult } from '@/lib/workflow/cases';
 import { roundReportFileName } from '@/lib/workflow/round-report-name';
 import { observationRequiredFor } from '@/lib/workflow/observation-required';
 import { firstEmptyRoundNo } from '@/lib/workflow/round-slots';
+import { OVERLAP_LOOKBACK_MS, roundSpanError } from '@/lib/workflow/round-time';
 import { GROUP_LOG_EDIT_ERROR } from '@/lib/workflow/group-mentoring-rule';
 
 /** 그룹멘토링 수당 재배정 (지연 import — group-mentoring.ts 가 rounds.ts 를 다시 불러오는 순환 회피) */
@@ -116,12 +117,11 @@ export async function submitRound(input: RoundInput): Promise<RoundResult> {
 
   const started = new Date(input.startedAt);
   const ended = new Date(input.endedAt);
-  if (Number.isNaN(started.getTime()) || Number.isNaN(ended.getTime())) return { ok: false, error: '일시를 확인하세요.' };
-  if (ended <= started) return { ok: false, error: '종료 시각은 시작 시각보다 늦어야 합니다.' };
+  // (2026-11-10) 자정을 넘는 회차 허용(다음 날까지·최대 12시간) — 회차 날짜는 시작한 날 (round-time.ts)
+  { const spanErr = roundSpanError(started, ended); if (spanErr) return { ok: false, error: spanErr }; }
   if (!isWholeHours(started, ended)) return { ok: false, error: HOURLY_ONLY_ERROR };
   // 사전(계획) 등록 허용 — 단, 너무 먼 미래는 차단
   if (started.getTime() > Date.now() + PLAN_MAX_FUTURE_MS) return { ok: false, error: '60일 이후의 일정은 미리 등록할 수 없습니다.' };
-  if (kstDate(started) !== kstDate(ended)) return { ok: false, error: '한 회차는 같은 날 안에서 끝나야 합니다.' };
   const day = kstDate(started);
 
   const participants = normalizeParticipants(input.participants);
@@ -171,8 +171,9 @@ export async function submitRound(input: RoundInput): Promise<RoundResult> {
     .from('mentoring_logs')
     .select('id, case_id, started_at, ended_at')
     .eq('mentor_id', input.mentorId)
-    .gte('started_at', dayStart)
-    .lte('started_at', dayEnd);
+    // 앞 날짜 밤에 시작해 자정을 넘긴 회차도 겹침 검사에 넣는다 (2026-11-10)
+    .gte('started_at', new Date(started.getTime() - OVERLAP_LOOKBACK_MS).toISOString())
+    .lt('started_at', ended.toISOString());
   const overlap = (mentorDay ?? []).find((r) => new Date(r.started_at) < ended && new Date(r.ended_at) > started);
   if (overlap) return { ok: false, error: '같은 시간대에 이미 등록된 회차가 있습니다. 시간을 확인하세요.' };
 
@@ -548,11 +549,9 @@ export async function updatePlannedRound(input: {
 
   const started = new Date(input.startedAt);
   const ended = new Date(input.endedAt);
-  if (Number.isNaN(started.getTime()) || Number.isNaN(ended.getTime())) return { ok: false, error: '일시를 확인하세요.' };
-  if (ended <= started) return { ok: false, error: '종료 시각은 시작 시각보다 늦어야 합니다.' };
+  { const spanErr = roundSpanError(started, ended); if (spanErr) return { ok: false, error: spanErr }; }
   if (!isWholeHours(started, ended)) return { ok: false, error: HOURLY_ONLY_ERROR };
   if (started.getTime() > Date.now() + PLAN_MAX_FUTURE_MS) return { ok: false, error: '60일 이후의 일정으로는 변경할 수 없습니다.' };
-  if (kstDate(started) !== kstDate(ended)) return { ok: false, error: '한 회차는 같은 날 안에서 끝나야 합니다.' };
   const day = kstDate(started);
 
   // (2026-10-01) 회차 등록 횟수 제한(멘토 1일 건수·멘티 1일 회차)은 적용하지 않는다 — 금액 상한·시간 겹침만 검증
@@ -579,8 +578,8 @@ export async function updatePlannedRound(input: {
     .from('mentoring_logs')
     .select('id, case_id, started_at, ended_at')
     .eq('mentor_id', input.mentorId)
-    .gte('started_at', dayStart)
-    .lte('started_at', dayEnd)
+    .gte('started_at', new Date(started.getTime() - OVERLAP_LOOKBACK_MS).toISOString())
+    .lt('started_at', ended.toISOString())
     .neq('id', log.id);
   const overlap = (mentorDay ?? []).find((r) => new Date(r.started_at) < ended && new Date(r.ended_at) > started);
   if (overlap) return { ok: false, error: '같은 시간대에 이미 등록된 회차가 있습니다. 시간을 확인하세요.' };
@@ -714,9 +713,7 @@ export async function validateRoundSchedule(input: {
 }): Promise<{ ok: true; day: string; rate: NonNullable<Awaited<ReturnType<typeof resolveRate>>>; amount: number } | { ok: false; error: string }> {
   const admin = createAdminClient();
   const { started, ended } = input;
-  if (Number.isNaN(started.getTime()) || Number.isNaN(ended.getTime())) return { ok: false, error: '일시를 확인하세요.' };
-  if (ended <= started) return { ok: false, error: '종료 시각은 시작 시각보다 늦어야 합니다.' };
-  if (kstDate(started) !== kstDate(ended)) return { ok: false, error: '한 회차는 같은 날 안에서 끝나야 합니다.' };
+  { const spanErr = roundSpanError(started, ended); if (spanErr) return { ok: false, error: spanErr }; }
   const day = kstDate(started);
   const rate = await resolveRate(input.programId, input.supportTypeId, input.mode, day);
   if (!rate) return { ok: false, error: noRateError(day) };
@@ -733,7 +730,7 @@ export async function validateRoundSchedule(input: {
     const remain = Math.max(0, rate.dailyCapAmount - sameModeAmount);
     return { ok: false, error: `같은 날 ${input.mode === 'online' ? '온라인' : '오프라인'} 일일 상한(${rate.dailyCapAmount.toLocaleString('ko-KR')}원)을 넘습니다. 남은 한도 ${remain.toLocaleString('ko-KR')}원.` };
   }
-  let mentorDayQ = admin.from('mentoring_logs').select('id, case_id, started_at, ended_at, group_session_id').eq('mentor_id', input.mentorId).gte('started_at', dayStart).lte('started_at', dayEnd);
+  let mentorDayQ = admin.from('mentoring_logs').select('id, case_id, started_at, ended_at, group_session_id').eq('mentor_id', input.mentorId).gte('started_at', new Date(started.getTime() - OVERLAP_LOOKBACK_MS).toISOString()).lt('started_at', ended.toISOString());
   if (input.excludeLogId) mentorDayQ = mentorDayQ.neq('id', input.excludeLogId);
   const { data: mentorDay } = await mentorDayQ;
   const overlap = (mentorDay ?? []).find((r) => !(input.groupSessionId && r.group_session_id === input.groupSessionId) && new Date(r.started_at) < ended && new Date(r.ended_at) > started);

@@ -8,6 +8,7 @@
  * 날짜는 전부 KST 'YYYY-MM-DD' 문자열로 다룬다(`src/lib/utils/kst.ts`) — 서버(UTC)·브라우저(KST) 어디서 계산해도 같다.
  */
 import { KST_WEEKDAYS, kstHm, kstTodayYmd, kstYmd } from '@/lib/utils/kst';
+import { roundTimeRangeLabel } from '@/lib/workflow/round-time';
 
 /**
  * 회차 상태 (P12 2단계 기준)
@@ -167,11 +168,11 @@ export function dateWithWeekday(iso: string): string {
   return `${ymd.replace(/-/g, '.')}(${KST_WEEKDAYS[d.getUTCDay()]})`;
 }
 
-/** 'HH:MM~HH:MM' (KST) */
+/** 'HH:MM~HH:MM' (KST) — 자정을 넘기면 '~24:00' / '~02:00(다음 날)' (2026-11-10, round-time.ts) */
 export function timeRange(startedAt: string, endedAt: string): string {
   const s = kstHm(startedAt);
   const e = kstHm(endedAt);
-  return e ? `${s}~${e}` : s;
+  return e ? roundTimeRangeLabel(startedAt, endedAt) || `${s}~${e}` : s;
 }
 
 export interface MonthCell {

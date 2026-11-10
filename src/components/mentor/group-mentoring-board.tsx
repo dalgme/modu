@@ -9,7 +9,8 @@ import type { GroupMentoringRound, GroupSessionItem } from '@/lib/workflow/group
 import { createGroupSessionAction, deleteGroupSessionAction, updateGroupSessionAction } from '@/lib/workflow/group-mentoring-actions';
 import { GROUP_MIN_MENTEES } from '@/lib/workflow/group-mentoring-rule';
 import { amountForMinutes } from '@/lib/settlement/round-amount';
-import { HourlyOnlyNotice, PastScheduleNotice, TimeSelect, plusMinutes } from '@/components/mentor/round-form';
+import { HourlyOnlyNotice, PastScheduleNotice, TimeSelect, endAfterStartChange, plusMinutes } from '@/components/mentor/round-form';
+import { OVERNIGHT_MAX_MINUTES, roundSpan, roundTimeRangeLabel } from '@/lib/workflow/round-time';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -17,7 +18,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { useConfirm } from '@/components/common/confirm-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { kstHm, kstMd, kstTodayYmd, toKstParts } from '@/lib/utils/kst';
+import { kstMd, kstTodayYmd, toKstParts } from '@/lib/utils/kst';
 
 const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'] as const;
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -98,9 +99,9 @@ function ScheduleFields({
       <div className="flex flex-col gap-1">
         <Label>시간 (24시간제 · 1시간 단위)</Label>
         <div className="flex flex-wrap items-center gap-1">
-          <TimeSelect id="g-start" value={startTime} onChange={(v) => { setStartTime(v); if (endTime <= v) setEndTime(plusMinutes(v, 60)); }} />
+          <TimeSelect id="g-start" value={startTime} onChange={(v) => { setEndTime(endAfterStartChange(date, startTime, endTime, v)); setStartTime(v); }} />
           <span className="text-sm text-muted-foreground">~</span>
-          <TimeSelect id="g-end" value={endTime} onChange={setEndTime} />
+          <TimeSelect id="g-end" value={endTime} onChange={setEndTime} startHm={startTime} />
         </div>
       </div>
       <div className="flex flex-col gap-1">
@@ -130,9 +131,11 @@ function useSchedule(initial?: GroupSessionItem) {
   const [endTime, setEndTime] = useState(e.time);
   const [mode, setMode] = useState<'online' | 'offline'>(initial?.mode ?? 'offline');
   const [place, setPlace] = useState(initial?.place ?? '');
-  const startDate = useMemo(() => new Date(`${date}T${startTime}:00+09:00`), [date, startTime]);
-  const endDate = useMemo(() => new Date(`${date}T${endTime}:00+09:00`), [date, endTime]);
-  const minutes = Math.round((endDate.getTime() - startDate.getTime()) / 60000);
+  // 종료가 시작과 같거나 이르면 다음 날 (2026-11-10, round-time.ts) — 서버 검증과 같은 규칙
+  const span = useMemo(() => roundSpan(date, startTime, endTime), [date, startTime, endTime]);
+  const startDate = useMemo(() => new Date(span?.startIso ?? NaN), [span]);
+  const endDate = useMemo(() => new Date(span?.endIso ?? NaN), [span]);
+  const minutes = span ? (span.overnight && span.minutes > OVERNIGHT_MAX_MINUTES ? -1 : span.minutes) : 0;
   return { date, setDate, startTime, setStartTime, endTime, setEndTime, mode, setMode, place, setPlace, startDate, endDate, minutes };
 }
 
@@ -149,7 +152,7 @@ function CreateDialog({ round, blocked }: { round: GroupMentoringRound; blocked:
   const toggle = (id: string) => setPicked((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const submit = () => {
     if (picked.size < GROUP_MIN_MENTEES) return toast({ title: `멘티를 ${GROUP_MIN_MENTEES}명 이상 선택하세요.`, variant: 'destructive' });
-    if (sc.minutes <= 0) return toast({ title: '종료 시각이 시작 시각보다 늦어야 합니다.', variant: 'destructive' });
+    if (sc.minutes <= 0) return toast({ title: sc.minutes === 0 ? '시작과 종료 시각이 같습니다.' : `자정을 넘는 회차는 최대 ${OVERNIGHT_MAX_MINUTES / 60}시간까지 등록할 수 있습니다.`, variant: 'destructive' });
     start(async () => {
       const r = await createGroupSessionAction({ supportTypeId: round.groupId, caseIds: Array.from(picked), mode: sc.mode, startedAt: sc.startDate.toISOString(), endedAt: sc.endDate.toISOString(), place: sc.place });
       if (!r.ok) {
@@ -246,7 +249,7 @@ function SessionRow({ index, session, round }: { index: number; session: GroupSe
         <span className="flex flex-wrap items-center gap-x-2 text-sm tabular-nums">
           <b>{session.mode === 'online' ? '온라인' : '오프라인'}</b>
           <span className="text-muted-foreground">/</span>
-          {kstMd(session.startedAt)}({weekday}) {kstHm(session.startedAt)}~{kstHm(session.endedAt)}
+          {kstMd(session.startedAt)}({weekday}) {roundTimeRangeLabel(session.startedAt, session.endedAt)}
           {session.place && <><span className="text-muted-foreground">/</span>{session.place}</>}
           <span className="text-muted-foreground">/</span>
           수당 {session.fee.toLocaleString('ko-KR')}원 (1회분)
@@ -292,7 +295,7 @@ function EditForm({ session, round, onDone }: { session: GroupSessionItem; round
   const [pending, start] = useTransition();
   const sc = useSchedule(session);
   const submit = () => {
-    if (sc.minutes <= 0) return toast({ title: '종료 시각이 시작 시각보다 늦어야 합니다.', variant: 'destructive' });
+    if (sc.minutes <= 0) return toast({ title: sc.minutes === 0 ? '시작과 종료 시각이 같습니다.' : `자정을 넘는 회차는 최대 ${OVERNIGHT_MAX_MINUTES / 60}시간까지 등록할 수 있습니다.`, variant: 'destructive' });
     start(async () => {
       const r = await updateGroupSessionAction({ sessionId: session.id, mode: sc.mode, startedAt: sc.startDate.toISOString(), endedAt: sc.endDate.toISOString(), place: sc.place, caseIds: session.participants.map((p) => p.caseId) });
       if (!r.ok) {

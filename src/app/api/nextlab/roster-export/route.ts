@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { roundTimeRangeLabel } from '@/lib/workflow/round-time';
 import * as XLSX from 'xlsx';
 
 import { realRoleOrNull } from '@/lib/auth/guards';
@@ -66,7 +67,8 @@ export async function GET(request: Request): Promise<Response> {
       cases.filter((c) => listedCaseIds.has(c.id)).map((c) => ({ id: c.id, support_type_id: c.support_type_id })),
     );
     const maxRound = Math.max(breakdown.maxRound, ...lists.menteeRows.map((r) => r.requiredRounds), 0);
-    const when = (a: string, b: string) => `${kstDateTime(a)}~${kstTime(b)}`;
+    // 자정을 넘긴 회차는 '~24:00' / '~02:00(다음 날)' (2026-11-10)
+    const when = (a: string, b: string) => `${kstDateTime(a)}~${roundTimeRangeLabel(a, b).split('~')[1] ?? kstTime(b)}`;
     filter = '세금분·실지급분: 정산 확정 회차는 확정액 배분, 미확정 이행 회차는 같은 계산식의 예상치 · 보고서 미제출 회차는 금액 없음';
     if (kind === 'mentee-match') {
       title = '멘티 매칭 리스트';

@@ -1,5 +1,6 @@
 'use client';
 
+import { roundTimeRangeLabel } from '@/lib/workflow/round-time';
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
@@ -106,7 +107,7 @@ export function ScheduleCalendar({
         <b>{hm(e.startedAt)}</b> {menteeLabel(e.ownerName, e.businessName)}{showRoundNo && ` ${e.roundNo}회차`} · {e.mode === 'online' ? '온라인' : '오프라인'}
         {full && (
           <>
-            <span>~{hm(e.endedAt)}</span>
+            <span>~{roundTimeRangeLabel(e.startedAt, e.endedAt).split('~')[1] ?? hm(e.endedAt)}</span>
             {e.place && <span>· {e.place}</span>}
             {e.mentorName && <span>· 멘토 {e.mentorName}</span>}
             <span className="font-semibold">[{STATUS_LABEL[st]}]</span>

@@ -9,7 +9,8 @@ import { deleteRoundAction, collectRoundSignatureAction, updatePlannedRoundActio
 import { correctRoundAction } from '@/lib/workflow/round-correction-actions';
 import { RoundReportForm } from '@/components/mentor/round-report-form';
 import { GroupBadge } from '@/components/mentor/group-badge';
-import { HourlyOnlyNotice, PastScheduleNotice } from '@/components/mentor/round-form';
+import { HourlyOnlyNotice, PastScheduleNotice, TimeSelect, endAfterStartChange } from '@/components/mentor/round-form';
+import { OVERNIGHT_MAX_MINUTES, roundSpan, roundTimeRangeLabel } from '@/lib/workflow/round-time';
 import { FileActions } from '@/components/files/file-preview';
 import { SignaturePad } from '@/components/common/signature-pad';
 import { Button } from '@/components/ui/button';
@@ -36,8 +37,14 @@ export function PlannedRoundEditor({ caseId, round, onClose }: { caseId: string;
   const [place, setPlace] = useState(round.place ?? '');
 
   const submit = () => {
-    if (!date || !startTime || !endTime) {
+    // 종료가 시작과 같거나 이르면 다음 날 (2026-11-10, round-time.ts)
+    const span = roundSpan(date, startTime, endTime);
+    if (!span) {
       toast({ title: '일자와 시각을 입력하세요.', variant: 'destructive' });
+      return;
+    }
+    if (span.minutes <= 0 || (span.overnight && span.minutes > OVERNIGHT_MAX_MINUTES)) {
+      toast({ title: span.minutes <= 0 ? '시작과 종료 시각이 같습니다.' : `자정을 넘는 회차는 최대 ${OVERNIGHT_MAX_MINUTES / 60}시간까지 등록할 수 있습니다.`, variant: 'destructive' });
       return;
     }
     start(async () => {
@@ -45,8 +52,8 @@ export function PlannedRoundEditor({ caseId, round, onClose }: { caseId: string;
         caseId,
         logId: round.id,
         mode,
-        startedAt: new Date(`${date}T${startTime}:00+09:00`).toISOString(),
-        endedAt: new Date(`${date}T${endTime}:00+09:00`).toISOString(),
+        startedAt: span.startIso,
+        endedAt: span.endIso,
         place,
       });
       toast(r.ok ? { title: '일정을 수정했습니다.' } : { title: r.error, variant: 'destructive' });
@@ -67,14 +74,14 @@ export function PlannedRoundEditor({ caseId, round, onClose }: { caseId: string;
           일자
           <input type="date" value={date} onChange={(ev) => setDate(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
         </label>
-        <label className="flex flex-col gap-1 text-xs">
-          시작
-          <input type="time" step={3600} value={startTime} onChange={(ev) => setStartTime(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
+        <div className="flex flex-col gap-1 text-xs">
+          시작 (24시간제)
+          <TimeSelect id={`s-${round.id}`} value={startTime} onChange={(v) => { setEndTime(endAfterStartChange(date, startTime, endTime, v)); setStartTime(v); }} />
+        </div>
+        <div className="flex flex-col gap-1 text-xs">
           종료
-          <input type="time" step={3600} value={endTime} onChange={(ev) => setEndTime(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
-        </label>
+          <TimeSelect id={`e-${round.id}`} value={endTime} onChange={setEndTime} startHm={startTime} />
+        </div>
         <label className="flex flex-col gap-1 text-xs">
           방법
           <select value={mode} onChange={(ev) => setMode(ev.target.value as 'online' | 'offline')} className="h-9 rounded-md border bg-background px-2">
@@ -111,8 +118,14 @@ function OperatorCorrectEditor({ caseId, round, onClose }: { caseId: string; rou
   const [reason, setReason] = useState('');
 
   const submit = () => {
-    if (!date || !startTime || !endTime) {
+    // 종료가 시작과 같거나 이르면 다음 날 (2026-11-10, round-time.ts)
+    const span = roundSpan(date, startTime, endTime);
+    if (!span) {
       toast({ title: '일자와 시각을 입력하세요.', variant: 'destructive' });
+      return;
+    }
+    if (span.minutes <= 0 || (span.overnight && span.minutes > OVERNIGHT_MAX_MINUTES)) {
+      toast({ title: span.minutes <= 0 ? '시작과 종료 시각이 같습니다.' : `자정을 넘는 회차는 최대 ${OVERNIGHT_MAX_MINUTES / 60}시간까지 등록할 수 있습니다.`, variant: 'destructive' });
       return;
     }
     if (!reason.trim()) {
@@ -124,7 +137,7 @@ function OperatorCorrectEditor({ caseId, round, onClose }: { caseId: string; rou
       const r = await correctRoundAction(
         caseId,
         round.id,
-        { mode, startedAt: new Date(`${date}T${startTime}:00+09:00`).toISOString(), endedAt: new Date(`${date}T${endTime}:00+09:00`).toISOString(), place },
+        { mode, startedAt: span.startIso, endedAt: span.endIso, place },
         reason,
       );
       toast(r.ok ? { title: '회차를 정정했습니다.' } : { title: r.error, variant: 'destructive' });
@@ -144,14 +157,14 @@ function OperatorCorrectEditor({ caseId, round, onClose }: { caseId: string; rou
           일자
           <input type="date" value={date} onChange={(ev) => setDate(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
         </label>
-        <label className="flex flex-col gap-1 text-xs">
-          시작
-          <input type="time" step={3600} value={startTime} onChange={(ev) => setStartTime(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
-        </label>
-        <label className="flex flex-col gap-1 text-xs">
+        <div className="flex flex-col gap-1 text-xs">
+          시작 (24시간제)
+          <TimeSelect id={`s-${round.id}`} value={startTime} onChange={(v) => { setEndTime(endAfterStartChange(date, startTime, endTime, v)); setStartTime(v); }} />
+        </div>
+        <div className="flex flex-col gap-1 text-xs">
           종료
-          <input type="time" step={3600} value={endTime} onChange={(ev) => setEndTime(ev.target.value)} className="h-9 rounded-md border bg-background px-2" />
-        </label>
+          <TimeSelect id={`e-${round.id}`} value={endTime} onChange={setEndTime} startHm={startTime} />
+        </div>
         <label className="flex flex-col gap-1 text-xs">
           방법
           <select value={mode} onChange={(ev) => setMode(ev.target.value as 'online' | 'offline')} className="h-9 rounded-md border bg-background px-2">
@@ -265,7 +278,7 @@ export function RoundsList({
               <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">{r.round_no}회차{r.is_extra ? ' (추가)' : ''}</span>
               {r.groupPeers && <GroupBadge peers={r.groupPeers} holder={r.group_fee_holder} />}
               <span className="font-medium">{r.mode === 'online' ? '온라인' : '오프라인'}</span>
-              <span className="text-muted-foreground">{formatDateTime(r.started_at)} ~ {formatDateTime(r.ended_at).slice(-5)}</span>
+              <span className="text-muted-foreground">{formatDateTime(r.started_at).slice(0, -5)}{roundTimeRangeLabel(r.started_at, r.ended_at)}</span>
               {durationLabel(r.started_at, r.ended_at) && <span className="text-xs font-medium text-primary">({durationLabel(r.started_at, r.ended_at)})</span>}
               {r.place && <span className="text-muted-foreground">· {r.place}</span>}
               <span className="text-xs text-muted-foreground">· {Number(r.amount_snapshot).toLocaleString('ko-KR')}원</span>

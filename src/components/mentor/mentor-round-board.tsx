@@ -8,6 +8,7 @@ import type { RoundItem } from '@/lib/data/rounds';
 import { deleteRoundAction, deletePlannedRoundAction } from '@/lib/workflow/mentor-actions';
 import { canMentorDeleteRound, firstEmptyRoundNo } from '@/lib/workflow/round-slots';
 import { roundModeLabel, roundReportFileName } from '@/lib/workflow/round-report-name';
+import { roundTimeRangeLabel } from '@/lib/workflow/round-time';
 import { RoundForm, type LastRoundDefaults, type ParticipantOption } from '@/components/mentor/round-form';
 import { RoundReportForm } from '@/components/mentor/round-report-form';
 import { PlannedRoundEditor } from '@/components/mentor/rounds-list';
@@ -132,7 +133,7 @@ export function MentorRoundBoard({
                   <span className="tabular-nums">{kstMd(r.started_at)}({weekday})</span>
                   <span className="text-muted-foreground">/</span>
                   <span className="tabular-nums">
-                    {kstHm(r.started_at)}~{kstHm(r.ended_at)}
+                    {roundTimeRangeLabel(r.started_at, r.ended_at)}
                     {durationLabel(r.started_at, r.ended_at) && <span className="ml-1 text-xs text-primary">({durationLabel(r.started_at, r.ended_at)})</span>}
                   </span>
                   <span className="text-muted-foreground">/</span>

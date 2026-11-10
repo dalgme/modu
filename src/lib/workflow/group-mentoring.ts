@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { OVERLAP_LOOKBACK_MS, roundSpanError } from '@/lib/workflow/round-time';
 import { HOURLY_ONLY_ERROR, isWholeHours, roundAmount } from '@/lib/settlement/round-amount';
 import { resolveRate, kstDate, type ConsultingMode } from '@/lib/settlement/rates';
 import { actingNote } from '@/lib/auth/impersonation';
@@ -199,19 +200,18 @@ function checkTimes(input: ScheduleInput): Result<{ started: Date; ended: Date; 
   const ended = new Date(input.endedAt);
   if (input.mode !== 'online' && input.mode !== 'offline') return { ok: false, error: '방법을 선택하세요.' };
   if (Number.isNaN(started.getTime()) || Number.isNaN(ended.getTime())) return { ok: false, error: '일시를 확인하세요.' };
-  if (ended <= started) return { ok: false, error: '종료 시각은 시작 시각보다 늦어야 합니다.' };
+  { const spanErr = roundSpanError(started, ended); if (spanErr) return { ok: false, error: spanErr }; }
   if (!isWholeHours(started, ended)) return { ok: false, error: HOURLY_ONLY_ERROR };
   if (started.getTime() > Date.now() + PLAN_MAX_FUTURE_MS) return { ok: false, error: '60일 이후의 일정은 미리 등록할 수 없습니다.' };
-  if (kstDate(started) !== kstDate(ended)) return { ok: false, error: '한 회차는 같은 날 안에서 끝나야 합니다.' };
   return { ok: true, started, ended, day: kstDate(started) };
 }
 
 /** 같은 시간대의 다른 회차(이 세션 제외)가 있는지 — 멘토 기준 */
 async function mentorOverlap(mentorId: string, day: string, started: Date, ended: Date, excludeSessionId: string | null): Promise<boolean> {
   const admin = createAdminClient();
-  const dayStart = new Date(`${day}T00:00:00+09:00`).toISOString();
-  const dayEnd = new Date(`${day}T23:59:59.999+09:00`).toISOString();
-  const { data } = await admin.from('mentoring_logs').select('id, started_at, ended_at, group_session_id').eq('mentor_id', mentorId).gte('started_at', dayStart).lte('started_at', dayEnd);
+  void day;
+  // 앞 날짜 밤에 시작해 자정을 넘긴 회차도 겹침 검사에 넣는다 (2026-11-10)
+  const { data } = await admin.from('mentoring_logs').select('id, started_at, ended_at, group_session_id').eq('mentor_id', mentorId).gte('started_at', new Date(started.getTime() - OVERLAP_LOOKBACK_MS).toISOString()).lt('started_at', ended.toISOString());
   return (data ?? []).some((r) => (!excludeSessionId || r.group_session_id !== excludeSessionId) && new Date(r.started_at) < ended && new Date(r.ended_at) > started);
 }
 

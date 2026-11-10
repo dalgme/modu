@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { kstTodayYmd, toKstParts } from '@/lib/utils/kst';
+import { OVERNIGHT_MAX_MINUTES, hmPlus, roundSpan, roundTimeRangeLabel } from '@/lib/workflow/round-time';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
@@ -53,26 +54,39 @@ export interface ParticipantOption {
   subLabel?: string;
 }
 
-/** 시각 선택 — 24시간제, **정시만**(00분). 멘토링 시간은 1시간 단위로만 등록한다 (2026-10-06, 분 단위는 수당 지급 불가) */
-export function TimeSelect({ id, value, onChange }: { id: string; value: string; onChange: (v: string) => void }) {
+/**
+ * 시각 선택 — 24시간제, **정시만**(00분). 멘토링 시간은 1시간 단위로만 등록한다 (2026-10-06, 분 단위는 수당 지급 불가).
+ * 종료 칸(startHm 지정)은 시작보다 이르거나 같은 시각을 '다음 날'로 보여 준다 — 00:00 = 자정(24:00), 02:00(다음 날) (2026-11-10, round-time.ts)
+ */
+export function TimeSelect({ id, value, onChange, startHm }: { id: string; value: string; onChange: (v: string) => void; startHm?: string }) {
   const [h] = value.split(':');
   const cls = 'h-10 rounded-md border border-input bg-background px-2 text-base tabular-nums sm:text-sm';
   return (
     <span className="inline-flex items-center gap-1">
       <select id={id} value={h} onChange={(e) => onChange(`${e.target.value}:00`)} className={cls} aria-label="시">
-        {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((hh) => (
-          <option key={hh} value={hh}>{hh}:00</option>
-        ))}
+        {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map((hh) => {
+          const nextDay = !!startHm && `${hh}:00` <= startHm;
+          return (
+            <option key={hh} value={hh}>
+              {nextDay ? (hh === '00' ? '24:00 (자정)' : `${hh}:00 (다음 날)`) : `${hh}:00`}
+            </option>
+          );
+        })}
       </select>
     </span>
   );
 }
 
-/** 시작 시각을 바꾸면 종료가 시작보다 빠르지 않게 60분 뒤로 따라간다 */
+/** 종료 기본값 — 시작 + n분, 자정을 넘으면 다음 날 시각으로 돈다 (round-time.ts hmPlus) */
 export function plusMinutes(hhmm: string, add: number): string {
-  const [h, m] = hhmm.split(':').map(Number);
-  const total = Math.min(23 * 60, (h ?? 0) * 60 + (m ?? 0) + add);
-  return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+  return hmPlus(hhmm, add);
+}
+
+/** 시작 시각을 바꿀 때 종료 시각 — 기존 운영시간(1~12시간)을 유지, 아니면 1시간 */
+export function endAfterStartChange(date: string, prevStart: string, prevEnd: string, nextStart: string): string {
+  const span = roundSpan(date, prevStart, prevEnd);
+  const keep = span && span.minutes > 0 && span.minutes <= OVERNIGHT_MAX_MINUTES ? span.minutes : 60;
+  return hmPlus(nextStart, keep);
 }
 
 /** 1시간 단위 등록 강조 안내 (2026-10-06) — 등록·일정 수정·정정 화면 공용 */
@@ -122,15 +136,17 @@ export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOp
   const [mode, setMode] = useState<'online' | 'offline'>(lastRound?.mode ?? 'offline');
   const [date, setDate] = useState(todayKst());
   const [startTime, setStartTime] = useState(lastStart?.time ?? '14:00');
-  const [endTime, setEndTime] = useState(lastEnd && lastStart && lastEnd.time > lastStart.time ? lastEnd.time : plusMinutes(lastStart?.time ?? '14:00', 60));
+  const [endTime, setEndTime] = useState(lastEnd && lastStart && lastEnd.time !== lastStart.time ? lastEnd.time : plusMinutes(lastStart?.time ?? '14:00', 60));
   const [place, setPlace] = useState(lastRound?.place ?? '');
   const [selected, setSelected] = useState<Set<string>>(() => new Set(participantOptions.length ? [participantOptions[0]!.key] : []));
   const full = nextRoundNo > maxRounds;
 
   // 일시는 항상 한국시간(+09:00)으로 해석 — 단말 시간대와 무관 (P31)
-  const startDate = useMemo(() => new Date(`${date}T${startTime}:00+09:00`), [date, startTime]);
-  const endDate = useMemo(() => new Date(`${date}T${endTime}:00+09:00`), [date, endTime]);
-  const minutes = Math.round((endDate.getTime() - startDate.getTime()) / 60000);
+  // 종료가 시작과 같거나 이르면 다음 날 (21:00~00:00, 23:00~02:00) — 서버 검증과 같은 규칙 (round-time.ts)
+  const span = useMemo(() => roundSpan(date, startTime, endTime), [date, startTime, endTime]);
+  const startDate = useMemo(() => new Date(span?.startIso ?? NaN), [span]);
+  const endDate = useMemo(() => new Date(span?.endIso ?? NaN), [span]);
+  const minutes = span ? (span.overnight && span.minutes > OVERNIGHT_MAX_MINUTES ? -1 : span.minutes) : 0;
   const isPlan = startDate.getTime() > Date.now();
   const chosen = participantOptions.filter((p) => selected.has(p.key));
 
@@ -145,7 +161,8 @@ export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOp
 
   const submit = () => {
     if (Number.isNaN(startDate.getTime())) return toast({ title: '일자를 선택하세요.', variant: 'destructive' });
-    if (minutes <= 0) return toast({ title: '종료 시각이 시작 시각보다 늦어야 합니다.', variant: 'destructive' });
+    if (minutes === 0) return toast({ title: '시작과 종료 시각이 같습니다.', variant: 'destructive' });
+    if (minutes < 0) return toast({ title: `자정을 넘는 회차는 최대 ${OVERNIGHT_MAX_MINUTES / 60}시간까지 등록할 수 있습니다.`, variant: 'destructive' });
     if (chosen.length === 0) return toast({ title: '참가자를 1명 이상 선택하세요.', variant: 'destructive' });
     const participants: RoundParticipant[] = chosen.map((p) => ({ name: p.name, role: p.role }));
     start(async () => {
@@ -209,18 +226,18 @@ export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOp
           <Input id="r-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
         <div className="flex flex-col gap-1">
-          <Label>시간 (24시간제 · 1시간 단위)</Label>
+          <Label>시간 (24시간제 · 1시간 단위 · 자정 넘김 가능)</Label>
           <div className="flex flex-wrap items-center gap-1">
             <TimeSelect
               id="r-start"
               value={startTime}
               onChange={(v) => {
+                setEndTime(endAfterStartChange(date, startTime, endTime, v));
                 setStartTime(v);
-                if (endTime <= v) setEndTime(plusMinutes(v, 60));
               }}
             />
             <span className="text-sm text-muted-foreground">~</span>
-            <TimeSelect id="r-end" value={endTime} onChange={setEndTime} />
+            <TimeSelect id="r-end" value={endTime} onChange={setEndTime} startHm={startTime} />
             <span className={`ml-1 whitespace-nowrap rounded-md px-2 py-1 text-xs font-semibold tabular-nums ${minutes > 0 ? 'bg-primary/10 text-primary' : 'bg-destructive/10 text-destructive'}`}>
               {minutes > 0 ? `${durationLabel(minutes)} 운영` : '시간 확인'}
             </span>
@@ -278,7 +295,7 @@ export function RoundForm({ caseId, nextRoundNo, maxRounds, rates, participantOp
       {/* 선택 요약 — 등록 전 한눈에 확인 */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg bg-muted/50 px-3 py-2.5 text-sm">
         <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4 text-primary" /> <b>{dateLabel}</b></span>
-        <span className="inline-flex items-center gap-1.5 tabular-nums"><Clock className="h-4 w-4 text-primary" /> {startTime} ~ {endTime} <b className="text-primary">({durationLabel(Math.max(0, minutes))})</b></span>
+        <span className="inline-flex items-center gap-1.5 tabular-nums"><Clock className="h-4 w-4 text-primary" /> {span && minutes > 0 ? roundTimeRangeLabel(span.startIso, span.endIso) : `${startTime} ~ ${endTime}`} <b className="text-primary">({durationLabel(Math.max(0, minutes))})</b></span>
         <span className="inline-flex items-center gap-1.5"><Monitor className="h-4 w-4 text-primary" /> <b>{mode === 'online' ? '온라인' : '오프라인'}</b></span>
         {/* 회차 금액 = 시간당 단가 × 운영시간 (P50) — 서버 저장과 같은 함수 */}
         {rates[mode] != null && minutes > 0 && (
