@@ -41,7 +41,7 @@ export function RoundReportForm({
   /** 회차 행의 버튼으로 레이어 팝업을 연다 (2026-09-29 멘토 회차 행) — false 면 기존처럼 제자리에서 펼친다 */
   dialog?: boolean;
   triggerLabel?: string;
-  /** 저장 파일명 안내 — "책임멘토 멘토링 보고서 및 결과보고서(멘토 멘토-멘티 멘티)_N회차" (확장자는 고른 파일에서). 실제 이름은 서버가 같은 규칙(roundReportFileName)으로 붙인다 */
+  /** 저장 파일명 안내 — "책임멘토 멘토링 보고서 및 관찰 의견서(멘토멘토-멘티멘티)_N회차" 또는 관찰의견서 없는 라운드 "책임멘토 멘토링 보고서(…)_N회차" (확장자는 고른 파일에서). 실제 이름은 서버가 같은 규칙(roundReportFileName)으로 붙인다 */
   savedNameBase?: string;
   /** 등록된 보고서 파일 교체(수정 등록, 2026-09-30) — 파일 하나만 받아 replaceRoundReportAction 으로 바꾼다 */
   replace?: boolean;

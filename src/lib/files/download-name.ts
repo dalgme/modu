@@ -2,6 +2,7 @@ import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { buildDownloadName } from '@/lib/files/download-name-rule';
+import { observationRequiredFor } from '@/lib/workflow/observation-required';
 
 type DocRow = { id: string; doc_key: string; doc_name: string; storage_path: string; uploaded_by: string | null; created_at: string };
 
@@ -33,6 +34,7 @@ export async function downloadNamesForCase(caseId: string): Promise<Map<string, 
   const { data: reqDefs } = c.support_type_id
     ? await admin.from('support_type_documents').select('doc_key, doc_name').eq('support_type_id', c.support_type_id)
     : { data: [] as { doc_key: string; doc_name: string }[] };
+  const obsRequired = await observationRequiredFor(c.support_type_id);
   const reqLabel = new Map((reqDefs ?? []).map((d) => [d.doc_key, d.doc_name]));
 
   const mentorIds = new Set<string>([...(logs ?? []).map((l) => l.mentor_id), ...(assigns ?? []).map((a) => a.mentor_id), ...(settles ?? []).map((s) => s.mentor_id)].filter(Boolean) as string[]);
@@ -73,6 +75,7 @@ export async function downloadNamesForCase(caseId: string): Promise<Map<string, 
         roundNo: log?.round_no ?? null,
         label: reqKey ? reqLabel.get(reqKey) ?? null : null,
         seq: seqOf(d),
+        observationRequired: obsRequired,
       }),
     );
     // 저장 경로에만 확장자가 있는 경우 보정

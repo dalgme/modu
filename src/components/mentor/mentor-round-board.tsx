@@ -46,6 +46,7 @@ export function MentorRoundBoard({
   rates,
   participantOptions,
   lastRound,
+  observationRequired = true,
 }: {
   caseId: string;
   menteeName: string;
@@ -56,6 +57,8 @@ export function MentorRoundBoard({
   rates: { online: number | null; offline: number | null };
   participantOptions: ParticipantOption[];
   lastRound: LastRoundDefaults | null;
+  /** 라운드가 관찰의견서를 내는지 — 저장 파일명 안내("…및 관찰 의견서(…)" / "책임멘토 멘토링 보고서(…)") */
+  observationRequired?: boolean;
 }) {
   const router = useRouter();
   const { toast } = useToast();
@@ -168,7 +171,7 @@ export function MentorRoundBoard({
                         roundNo={r.round_no}
                         dialog
                         triggerLabel="보고서 업로드"
-                        savedNameBase={roundReportFileName({ mentorName: r.mentorName, menteeName, roundNo: r.round_no, mode: r.mode })}
+                        savedNameBase={roundReportFileName({ mentorName: r.mentorName, menteeName, roundNo: r.round_no, mode: r.mode, observationRequired })}
                       />
                     ) : (
                       <Button size="sm" disabled title={future ? '멘토링을 진행한 뒤(예정 시각 이후) 올릴 수 있습니다.' : '이 회차는 올릴 수 없습니다.'}>
@@ -184,7 +187,7 @@ export function MentorRoundBoard({
                       dialog
                       replace
                       triggerLabel="보고서 수정 업로드"
-                      savedNameBase={roundReportFileName({ mentorName: r.mentorName, menteeName, roundNo: r.round_no, mode: r.mode })}
+                      savedNameBase={roundReportFileName({ mentorName: r.mentorName, menteeName, roundNo: r.round_no, mode: r.mode, observationRequired })}
                     />
                   )}
                   {canDelete && (

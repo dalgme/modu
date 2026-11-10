@@ -12,6 +12,7 @@ import { getRoundAllowance, photoDocKey, reportDocKey } from '@/lib/data/rounds'
 import { renderRoundReport, resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import type { WorkflowResult } from '@/lib/workflow/cases';
 import { roundReportFileName } from '@/lib/workflow/round-report-name';
+import { observationRequiredFor } from '@/lib/workflow/observation-required';
 import { firstEmptyRoundNo } from '@/lib/workflow/round-slots';
 import { GROUP_LOG_EDIT_ERROR } from '@/lib/workflow/group-mentoring-rule';
 
@@ -314,9 +315,9 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
   };
 
   if (input.reportFile) {
-    // 저장 파일명 = roundReportFileName (2026-10-06 "책임멘토 멘토링 보고서 및 결과보고서(…)_N회차") + 원래 확장자 — 내려받을 때도 이 이름(서명 URL 다운로드명 = doc_name)
-    const { data: mentorRow } = await admin.from('users').select('name').eq('id', log.mentor_id).maybeSingle();
-    const reportName = roundReportFileName({ mentorName: mentorRow?.name, menteeName: c.owner_name, roundNo: log.round_no, mode: log.mode, originalName: input.reportFile.fileName });
+    // 저장 파일명 = roundReportFileName (2026-11-10 "책임멘토 멘토링 보고서 및 관찰 의견서(…)_N회차", 관찰의견서 없는 라운드는 "책임멘토 멘토링 보고서(…)_N회차") + 원래 확장자
+    const [{ data: mentorRow }, obsRequired] = await Promise.all([admin.from('users').select('name').eq('id', log.mentor_id).maybeSingle(), observationRequiredFor(c.support_type_id)]);
+    const reportName = roundReportFileName({ mentorName: mentorRow?.name, menteeName: c.owner_name, roundNo: log.round_no, mode: log.mode, originalName: input.reportFile.fileName, observationRequired: obsRequired });
     const moved = await moveStaging('documents', log.case_id, input.reportFile.stagingPath, REPORT_MAX_BYTES);
     if (!moved.ok) return { ok: false, error: moved.error };
     movedFiles.push({ bucket: 'documents', path: moved.dest });
@@ -409,7 +410,7 @@ export async function replaceRoundReport(input: { logId: string; mentorId: strin
   const admin = createAdminClient();
   const { data: log } = await admin
     .from('mentoring_logs')
-    .select('id, case_id, mentor_id, round_no, mode, settlement_id, report_registered_at, cases!inner(status, program_id, owner_name)')
+    .select('id, case_id, mentor_id, round_no, mode, settlement_id, report_registered_at, cases!inner(status, program_id, support_type_id, owner_name)')
     .eq('id', input.logId)
     .maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
@@ -417,15 +418,15 @@ export async function replaceRoundReport(input: { logId: string; mentorId: strin
   if (log.mentor_id !== input.mentorId) return { ok: false, error: '다른 멘토가 진행한 회차의 보고서는 바꿀 수 없습니다.' };
   if (log.settlement_id) return { ok: false, error: '정산에 포함된 회차는 보고서를 바꿀 수 없습니다.' };
   if (!log.report_registered_at) return { ok: false, error: '아직 보고서가 등록되지 않은 회차입니다. [보고서 업로드]를 이용하세요.' };
-  const c = log.cases as unknown as { status: string; program_id: string; owner_name: string | null };
+  const c = log.cases as unknown as { status: string; program_id: string; support_type_id: string; owner_name: string | null };
   const denied = assertTransition('submit_round', c.status as never);
   if (denied) return { ok: false, error: denied };
   if (!isStaging(input.reportFile.stagingPath)) return { ok: false, error: '잘못된 업로드 경로입니다.' };
   const bad = validateReportFile(input.reportFile.fileName, input.reportFile.mimeType);
   if (bad) return { ok: false, error: bad };
 
-  const { data: mentorRow } = await admin.from('users').select('name').eq('id', log.mentor_id).maybeSingle();
-  const reportName = roundReportFileName({ mentorName: mentorRow?.name, menteeName: c.owner_name, roundNo: log.round_no, mode: log.mode, originalName: input.reportFile.fileName });
+  const [{ data: mentorRow }, obsRequired] = await Promise.all([admin.from('users').select('name').eq('id', log.mentor_id).maybeSingle(), observationRequiredFor(c.support_type_id)]);
+  const reportName = roundReportFileName({ mentorName: mentorRow?.name, menteeName: c.owner_name, roundNo: log.round_no, mode: log.mode, originalName: input.reportFile.fileName, observationRequired: obsRequired });
   const moved = await moveStaging('documents', log.case_id, input.reportFile.stagingPath, REPORT_MAX_BYTES);
   if (!moved.ok) return { ok: false, error: moved.error };
   const { data: old } = await admin.from('documents').select('id, storage_path').eq('case_id', log.case_id).eq('doc_key', reportDocKey(log.id)).order('created_at');

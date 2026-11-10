@@ -5,6 +5,7 @@ import { fetchAllIn } from '@/lib/supabase/paginate';
 import { safeFileName } from '@/lib/http/download';
 import { buildDownloadName } from '@/lib/files/download-name-rule';
 import { reportDocKey } from '@/lib/data/rounds';
+import { observationRequiredMap } from '@/lib/workflow/observation-required';
 import { kstYmd } from '@/lib/utils/kst';
 
 /**
@@ -90,6 +91,7 @@ export async function buildReportBundle(input: {
   const mentorIds = Array.from(new Set([...logs.map((l) => l.mentor_id), ...assigns.map((a) => a.mentor_id)]));
   const users = await fetchAllIn<{ id: string; name: string }>(mentorIds, (chunk, from, to) => admin.from('users').select('id, name').in('id', chunk).range(from, to));
   const mentorName = new Map(users.map((u) => [u.id, u.name]));
+  const obsRequired = await observationRequiredMap(cases.map((c) => c.support_type_id));
   const reportByLog = new Map(docs.filter((d) => d.doc_key.startsWith('mentoring_report:')).map((d) => [d.doc_key, d]));
   const obsByCase = new Map(docs.filter((d) => d.doc_key === 'observation_report').map((d) => [d.case_id, d]));
   const logsByCase = new Map<string, typeof logs>();
@@ -131,8 +133,8 @@ export async function buildReportBundle(input: {
       if (input.scope === 'case' && input.mentorId && l.mentor_id !== input.mentorId) continue;
       const d = reportByLog.get(reportDocKey(l.id));
       if (!d) continue;
-      // 파일명 규칙 "멘토명-멘티명-N회차 보고서" (2026-09-30)
-      push(dirFor(c, l.mentor_id), buildDownloadName({ docKey: `mentoring_report:${l.id}`, sourceName: d.doc_name || d.storage_path, menteeName: c.owner_name, mentorName: mentorName.get(l.mentor_id) ?? null, roundNo: l.round_no }), d.storage_path);
+      // 파일명 규칙 = roundReportTitle (2026-11-10: 관찰의견서 라운드면 "…및 관찰 의견서(…)_N회차", 아니면 "책임멘토 멘토링 보고서(…)_N회차")
+      push(dirFor(c, l.mentor_id), buildDownloadName({ docKey: `mentoring_report:${l.id}`, sourceName: d.doc_name || d.storage_path, menteeName: c.owner_name, mentorName: mentorName.get(l.mentor_id) ?? null, roundNo: l.round_no, observationRequired: obsRequired.get(c.support_type_id) ?? true }), d.storage_path);
       added += 1;
     }
     const obs = obsByCase.get(c.id);

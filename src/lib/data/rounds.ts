@@ -58,7 +58,7 @@ export async function listRounds(caseId: string): Promise<RoundItem[]> {
       photoDocs.map(async (d) => ({ id: d.id, name: d.doc_name, url: await createCaseScopedSignedUrl('photos', caseId, d.storage_path, 600) })),
     );
     const report = reportDoc
-      ? { id: reportDoc.id, name: reportDoc.doc_name, url: await createCaseScopedSignedUrl('documents', caseId, reportDoc.storage_path, 600, dlNames.get(reportDoc.id) ?? reportDoc.doc_name), createdAt: reportDoc.created_at, updatedAt: reportDoc.updated_at ?? null }
+      ? { id: reportDoc.id, name: dlNames.get(reportDoc.id) ?? reportDoc.doc_name, url: await createCaseScopedSignedUrl('documents', caseId, reportDoc.storage_path, 600, dlNames.get(reportDoc.id) ?? reportDoc.doc_name), createdAt: reportDoc.created_at, updatedAt: reportDoc.updated_at ?? null }
       : null;
     out.push({ ...r, mentorName: mentorName.get(r.mentor_id) ?? null, photos, report, locked: r.settlement_id !== null, groupPeers: r.group_session_id ? peers.get(r.group_session_id) ?? [] : null });
   }

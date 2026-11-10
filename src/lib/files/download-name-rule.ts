@@ -19,6 +19,8 @@ export interface DownloadNameInput {
   label?: string | null;
   /** 같은 구분의 n번째(1부터). 같은 구분이 하나뿐이면 null */
   seq?: number | null;
+  /** 그 케이스 라운드가 관찰의견서를 내는지(support_types.observation_required) — 회차 보고서 이름에 쓴다. 기본 true */
+  observationRequired?: boolean;
 }
 
 /** 파일 이름에 쓸 수 없는 문자 정리 */
@@ -33,13 +35,22 @@ export function fileExt(name: string | null | undefined): string {
 }
 
 /**
- * 회차 보고서 이름 (2026-10-06 사용자 결정) — '책임멘토 멘토링 보고서 및 결과보고서(김진태 멘토-전시우 멘티)_1회차'.
- * 회차마다 파일이 하나씩이라 같은 케이스 안에서 구분되도록 끝에 회차를 붙인다. 저장 파일명·다운로드 파일명이 같은 함수를 쓴다.
+ * 회차 보고서 이름 (2026-11-10 사용자 결정, 구 2026-10-06 '…및 결과보고서(김진태 멘토-전시우 멘티)').
+ *  - 관찰의견서를 내는 라운드(observation_required)  : '책임멘토 멘토링 보고서 및 관찰 의견서(김진태멘토-전시우멘티)_1회차'
+ *  - 관찰의견서가 없는 라운드(예: 1기 2라운드)        : '책임멘토 멘토링 보고서(김진태멘토-전시우멘티)_1회차'
+ * 회차마다 파일이 하나씩이라 같은 케이스 안에서 구분되도록 끝에 회차를 붙인다. 저장 파일명·다운로드 파일명·묶음 ZIP 이 같은 함수를 쓴다.
+ * 괄호 안 모양은 제출용 묶음 합본 이름(round-package-shared `pairPdfName`)과 같다.
  */
-export function roundReportTitle(mentorName: string | null | undefined, menteeName: string | null | undefined, roundNo?: number | null): string {
+export function roundReportTitle(
+  mentorName: string | null | undefined,
+  menteeName: string | null | undefined,
+  roundNo?: number | null,
+  observationRequired = true,
+): string {
   const mentor = cleanNamePart(mentorName) || '멘토';
   const mentee = cleanNamePart(menteeName) || '멘티';
-  return `책임멘토 멘토링 보고서 및 결과보고서(${mentor} 멘토-${mentee} 멘티)${roundNo ? `_${roundNo}회차` : ''}`;
+  const title = observationRequired ? '책임멘토 멘토링 보고서 및 관찰 의견서' : '책임멘토 멘토링 보고서';
+  return `${title}(${mentor}멘토-${mentee}멘티)${roundNo ? `_${roundNo}회차` : ''}`;
 }
 
 /** doc_key → 파일 구분명과 이름 모양 */
@@ -58,7 +69,7 @@ export function docKind(docKey: string, roundNo?: number | null, label?: string 
 }
 
 export function buildDownloadName(input: DownloadNameInput): string {
-  if (input.docKey.startsWith('mentoring_report:')) return `${roundReportTitle(input.mentorName, input.menteeName, input.roundNo).slice(0, 150)}${input.seq ? ` ${input.seq}` : ''}${fileExt(input.sourceName)}`;
+  if (input.docKey.startsWith('mentoring_report:')) return `${roundReportTitle(input.mentorName, input.menteeName, input.roundNo, input.observationRequired ?? true).slice(0, 150)}${input.seq ? ` ${input.seq}` : ''}${fileExt(input.sourceName)}`;
   const { kind, shape } = docKind(input.docKey, input.roundNo, input.label);
   const mentor = cleanNamePart(input.mentorName);
   const mentee = cleanNamePart(input.menteeName);
