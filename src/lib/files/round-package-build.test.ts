@@ -118,3 +118,23 @@ describe('assembleRoundPackage', () => {
     expect(r.problems[0]).toContain('한글 파일을 PDF 로 바꾸지 못해');
   });
 });
+
+describe('mergePartsToPdf (멘티 보고서 합본 공용)', () => {
+  it('회차 순서대로 합치고, 합치지 못한 회차는 failed 로 돌려준다', async () => {
+    const { mergePartsToPdf } = await import('./round-package-build');
+    const files: Record<string, Uint8Array> = { r1: await pdfOf(2), r2: new TextEncoder().encode('DOCX'), r3: await pdfOf(1), r4: new TextEncoder().encode('HWP') };
+    const r = await mergePartsToPdf(
+      [
+        { label: '1회차 보고서', sourceName: 'a.pdf', kind: 'pdf', url: 'r1' },
+        { label: '2회차 보고서', sourceName: 'b.docx', kind: 'other', url: 'r2' },
+        { label: '3회차 보고서', sourceName: 'c.pdf', kind: 'pdf', url: 'r3' },
+        { label: '4회차 보고서', sourceName: 'd.hwp', kind: 'hwp', url: 'r4' },
+      ],
+      async (u) => files[u]!,
+      async () => [{ bytes: PNG_1PX, format: 'png', widthPt: 595, heightPt: 842 }],
+    );
+    expect(r.merged).toEqual([0, 2, 3]);
+    expect(r.failed.map((f) => [f.index, f.reason])).toEqual([[1, 'unsupported']]);
+    expect(await pageCount(r.pdf!)).toBe(4);
+  });
+});

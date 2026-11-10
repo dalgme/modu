@@ -91,6 +91,7 @@ export async function resolveDocAccess(docId: string): Promise<DocAccess> {
   const menteeVisible =
     d.uploaded_by === me.id ||
     d.doc_key.startsWith('mentoring_report:') ||
+    d.doc_key === 'mentoring_report_merged' ||
     d.doc_key.startsWith('mentoring_photo:') ||
     d.doc_key.startsWith('req') ||
     business;

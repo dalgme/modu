@@ -16,6 +16,7 @@ const safe = (s: string) => s.replace(/[\\/:*?"<>|]/g, '_').trim() || '파일';
 /** doc_key → ZIP 폴더 (정산 증빙 제출 시 찾기 쉽게 종류별 정리) */
 function folderOf(docKey: string): string {
   if (docKey.startsWith('mentoring_report:')) return '회차 보고서';
+  if (docKey === 'mentoring_report_merged') return '회차 보고서 합본';
   if (docKey.startsWith('mentoring_photo:')) return '회차 사진';
   if (docKey === 'observation_report') return '관찰의견서';
   if (docKey.startsWith('settlement_statement')) return '정산서';

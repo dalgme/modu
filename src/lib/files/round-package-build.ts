@@ -1,6 +1,6 @@
 import type JSZipType from 'jszip';
 
-import { MENTOR_PACKAGE_NAME, chunkRanges, mentorChunkZipName, originalPartName, type PackageDoc, type RoundPackageManifest } from '@/lib/files/round-package-shared';
+import { MENTOR_PACKAGE_NAME, chunkRanges, mentorChunkZipName, originalPartName, type PackageDoc, type PackagePart, type RoundPackageManifest } from '@/lib/files/round-package-shared';
 
 /**
  * 라운드 제출용 묶음 조립 (2026-10-27) — 브라우저에서 실행(테스트는 Node). 서버 목록(RoundPackageManifest)을 받아
@@ -41,37 +41,52 @@ interface Entry {
   bytes: Uint8Array;
 }
 
-async function buildDoc(doc: PackageDoc, folder: string, fetchBytes: Fetcher, problems: string[], renderHwp?: HwpRenderer): Promise<Entry[]> {
+/** 부품을 한 PDF 로 합치지 못한 이유 */
+export type MergeFailure = 'fetch' | 'hwp' | 'unsupported' | 'unreadable';
+
+export interface MergeOutcome {
+  /** 합친 PDF (합친 부품이 하나도 없으면 null) */
+  pdf: Uint8Array | null;
+  /** 합친 부품 (parts 의 순번) */
+  merged: number[];
+  failed: { index: number; part: PackagePart; reason: MergeFailure; bytes: Uint8Array | null }[];
+}
+
+/**
+ * 부품(PDF·JPG·PNG·한글)을 순서대로 한 PDF 로 합친다 (2026-11-10 공용화 — 제출용 묶음·멘티 보고서 합본).
+ * 한글(HWP·HWPX)은 renderHwp(브라우저 rhwp)가 있으면 쪽 이미지로, 없거나 실패하면 failed 로 돌려준다.
+ */
+export async function mergePartsToPdf(parts: PackagePart[], fetchBytes: Fetcher, renderHwp?: HwpRenderer): Promise<MergeOutcome> {
   const { PDFDocument } = await import('pdf-lib');
   const out = await PDFDocument.create();
-  const extras: Entry[] = [];
-  let merged = 0;
-  for (const part of doc.parts) {
+  const merged: number[] = [];
+  const failed: MergeOutcome['failed'] = [];
+  for (let index = 0; index < parts.length; index++) {
+    const part = parts[index]!;
     let bytes: Uint8Array;
     try {
       if (!part.url) throw new Error('주소 없음');
       bytes = await fetchBytes(part.url);
     } catch {
-      problems.push(`${folder} / ${doc.name} — ${part.label}: 파일을 받지 못함`);
+      failed.push({ index, part, reason: 'fetch', bytes: null });
       continue;
     }
     if (part.kind === 'hwp' && renderHwp) {
       try {
         const pages = await renderHwp(bytes);
+        if (pages.length === 0) throw new Error('빈 문서');
         for (const pg of pages) {
           const img = pg.format === 'png' ? await out.embedPng(pg.bytes) : await out.embedJpg(pg.bytes);
           out.addPage([pg.widthPt, pg.heightPt]).drawImage(img, { x: 0, y: 0, width: pg.widthPt, height: pg.heightPt });
         }
-        merged += 1;
+        merged.push(index);
       } catch {
-        extras.push({ name: originalPartName(doc.name, part.label, part.sourceName), bytes });
-        problems.push(`${folder} / ${doc.name} — ${part.label}: 한글 파일을 PDF 로 바꾸지 못해(암호·배포용·손상 등) 원본을 함께 넣음`);
+        failed.push({ index, part, reason: 'hwp', bytes });
       }
       continue;
     }
     if (part.kind === 'other' || part.kind === 'hwp') {
-      extras.push({ name: originalPartName(doc.name, part.label, part.sourceName), bytes });
-      problems.push(`${folder} / ${doc.name} — ${part.label}: ${part.sourceName.split('.').pop()?.toUpperCase() ?? '원본'} 파일이라 PDF 에 합치지 못해 원본을 함께 넣음`);
+      failed.push({ index, part, reason: 'unsupported', bytes });
       continue;
     }
     try {
@@ -87,14 +102,35 @@ async function buildDoc(doc: PackageDoc, folder: string, fetchBytes: Fetcher, pr
         const page = out.addPage([pw, ph]);
         page.drawImage(img, { x: (pw - img.width * scale) / 2, y: (ph - img.height * scale) / 2, width: img.width * scale, height: img.height * scale });
       }
-      merged += 1;
+      merged.push(index);
     } catch {
-      extras.push({ name: originalPartName(doc.name, part.label, part.sourceName), bytes });
-      problems.push(`${folder} / ${doc.name} — ${part.label}: PDF 를 읽지 못해(암호·손상) 원본을 함께 넣음`);
+      failed.push({ index, part, reason: 'unreadable', bytes });
     }
   }
+  return { pdf: merged.length > 0 ? await out.save() : null, merged, failed };
+}
+
+/** 합치지 못한 이유 → 안내 문구 */
+export function mergeFailureText(part: PackagePart, reason: MergeFailure): string {
+  if (reason === 'fetch') return '파일을 받지 못해';
+  if (reason === 'hwp') return '한글 파일을 PDF 로 바꾸지 못해(암호·배포용·손상 등)';
+  if (reason === 'unsupported') return `${part.sourceName.split('.').pop()?.toUpperCase() ?? '원본'} 파일이라 PDF 에 합치지 못해`;
+  return 'PDF 를 읽지 못해(암호·손상)';
+}
+
+async function buildDoc(doc: PackageDoc, folder: string, fetchBytes: Fetcher, problems: string[], renderHwp?: HwpRenderer): Promise<Entry[]> {
+  const r = await mergePartsToPdf(doc.parts, fetchBytes, renderHwp);
+  const extras: Entry[] = [];
+  for (const f of r.failed) {
+    if (f.reason === 'fetch' || !f.bytes) {
+      problems.push(`${folder} / ${doc.name} — ${f.part.label}: 파일을 받지 못함`);
+      continue;
+    }
+    extras.push({ name: originalPartName(doc.name, f.part.label, f.part.sourceName), bytes: f.bytes });
+    problems.push(`${folder} / ${doc.name} — ${f.part.label}: ${mergeFailureText(f.part, f.reason)} 원본을 함께 넣음`);
+  }
   const entries: Entry[] = [];
-  if (merged > 0) entries.push({ name: doc.name, bytes: await out.save() });
+  if (r.pdf) entries.push({ name: doc.name, bytes: r.pdf });
   return entries.concat(extras);
 }
 

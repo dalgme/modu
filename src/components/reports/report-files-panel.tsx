@@ -2,6 +2,8 @@ import type { ReportFilesData } from '@/lib/data/report-files';
 import { FileActions } from '@/components/files/file-preview';
 import { BundleDownloadButton } from '@/components/files/bundle-download-button';
 import { RoundPackageButton } from '@/components/files/round-package-button';
+import { MergedReportBulkButton, MergedReportButton } from '@/components/files/merged-report-button';
+import { mergedProps } from '@/components/files/merged-report-section';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 /**
@@ -23,9 +25,36 @@ export function ReportFilesPanel({ data }: { data: ReportFilesData }) {
           <li><b>멘토-멘티 1쌍</b> — 멘티 표의 [ZIP]: 그 멘티의 회차 보고서 전부 + 관찰의견서 (폴더 “멘토명-멘티명”)</li>
           <li><b>멘토별</b> — 멘토 표의 [ZIP]: “멘토명 / 멘티명 / 보고서·관찰의견서” 폴더 구조</li>
           <li><b>라운드별</b> — 라운드 표의 [ZIP]: “라운드명 / 멘토명 / 멘티명 / 보고서·관찰의견서” 폴더 구조</li>
+          <li><b>멘티별 합본 PDF</b> — 멘티마다 회차 보고서를 회차 순서대로 <b>PDF 한 개</b>로 합쳐 따로 저장해 두고 받습니다(아래 ‘멘티별 회차 보고서 합본’ · 멘티 표의 [합본 PDF])</li>
         </ol>
         <p className="mt-1 text-[11px] opacity-80">ZIP 은 이 브라우저에서 파일을 받아 묶습니다. 파일이 많으면 1~2분 걸릴 수 있으니 창을 닫지 마세요.</p>
       </div>
+
+      <Card className="border-2 border-emerald-300 dark:border-emerald-800">
+        <CardHeader>
+          <CardTitle className="text-base">멘티별 회차 보고서 합본 PDF</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            멘티 한 명의 회차 보고서(1회차 → 마지막 회차)를 <b>PDF 한 개</b>로 합쳐 플랫폼에 따로 저장합니다. 저장된 합본은 아래 멘티 표의 [합본 PDF]에서 바로 [미리보기]·[다운로드]할 수 있습니다.
+            <br />보고서가 새로 올라오거나 바뀌면 ‘다시 만들기’가 표시됩니다. 한글(HWP·HWPX)은 이 브라우저에서 PDF 쪽으로 바꿔 합치며(처음 한 번 변환 프로그램 약 12MB), 바꾸지 못한 파일(암호·배포용·Word 등)은 빠진 회차로 알려 드립니다.
+            <br />라운드 일괄 만들기는 멘티 수만큼 시간이 걸립니다(한 명에 몇 초). 끝날 때까지 이 창을 닫지 마세요.
+          </p>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="w-full min-w-[480px] text-sm">
+            <thead className="text-left text-xs text-muted-foreground"><tr><th className="py-1.5">라운드(사업그룹)</th><th>멘티</th><th>합본 필요</th><th className="text-right">만들기</th></tr></thead>
+            <tbody>
+              {data.groups.map((g) => (
+                <tr key={g.id} className="border-t">
+                  <td className="py-2 font-medium">{g.name}</td>
+                  <td className="tabular-nums">{g.caseCount}명</td>
+                  <td className="tabular-nums">{g.mergeTodo.length}명</td>
+                  <td className="py-2 text-right"><MergedReportBulkButton caseIds={g.mergeTodo} label="없거나 바뀐 합본 모두 만들기" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
 
       <Card className="border-2 border-sky-300 dark:border-sky-800">
         <CardHeader>
@@ -103,14 +132,14 @@ export function ReportFilesPanel({ data }: { data: ReportFilesData }) {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-base">① 회차별 파일 · ② 멘토-멘티 ZIP</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-base">① 회차별 파일 · ② 멘토-멘티 ZIP · 멘티별 합본 PDF</CardTitle></CardHeader>
         <CardContent className="overflow-x-auto">
           {data.rows.length === 0 ? (
             <p className="text-sm text-muted-foreground">등록된 멘티가 없습니다.</p>
           ) : (
-            <table className="w-full min-w-[720px] text-sm">
+            <table className="w-full min-w-[900px] text-sm">
               <thead className="text-left text-xs text-muted-foreground">
-                <tr><th className="py-1.5">멘티</th><th>멘토</th><th>회차 보고서</th><th>관찰의견서</th><th className="text-right">②</th></tr>
+                <tr><th className="py-1.5">멘티</th><th>멘토</th><th>회차 보고서</th><th>관찰의견서</th><th>합본 PDF</th><th className="text-right">②</th></tr>
               </thead>
               <tbody>
                 {data.rows.map((r) => {
@@ -152,6 +181,7 @@ export function ReportFilesPanel({ data }: { data: ReportFilesData }) {
                           <span className="text-xs text-muted-foreground">미제출</span>
                         )}
                       </td>
+                      <td className="py-2"><MergedReportButton caseId={r.caseId} status={mergedProps(r.merged)} compact={false} /></td>
                       <td className="py-2 text-right">{files > 0 ? <BundleDownloadButton scope="case" id={r.caseId} label="ZIP" size="xs" /> : null}</td>
                     </tr>
                   );

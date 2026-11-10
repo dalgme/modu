@@ -3,6 +3,8 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAll, fetchAllIn } from '@/lib/supabase/paginate';
 import { reportDocKey } from '@/lib/data/rounds';
+import { mergedReportStatusForCases } from '@/lib/files/merged-report';
+import type { MergedReportStatus } from '@/lib/files/merged-report-shared';
 
 /**
  * 리포트 [보고서 파일] 탭 데이터 (2026-09-30) — 운영사·발주처 공용.
@@ -25,10 +27,13 @@ export interface ReportFileRow {
   requiredRounds: number;
   rounds: ReportFileRound[];
   observation: { docId: string; name: string } | null;
+  /** 회차 보고서 합본 PDF (2026-11-10) */
+  merged: MergedReportStatus;
 }
 
 export interface ReportFilesData {
-  groups: { id: string; name: string; caseCount: number; fileCount: number }[];
+  /** mergeTodo = 합본이 없거나 다시 만들어야 하는 멘티(보고서 있는 경우만) */
+  groups: { id: string; name: string; caseCount: number; fileCount: number; mergeTodo: string[] }[];
   mentors: { id: string; name: string; caseCount: number; fileCount: number }[];
   rows: ReportFileRow[];
 }
@@ -55,6 +60,7 @@ export async function loadReportFiles(programId: string, groupId: string | null)
       admin.from('mentor_assignments').select('case_id, mentor_id, is_active, assigned_at').in('case_id', chunk).range(from, to),
     ),
   ]);
+  const mergedStatus = await mergedReportStatusForCases(caseIds);
   const mentorIds = Array.from(new Set([...logs.map((l) => l.mentor_id), ...assigns.map((a) => a.mentor_id)]));
   const users = await fetchAllIn<{ id: string; name: string }>(mentorIds, (chunk, from, to) => admin.from('users').select('id, name').in('id', chunk).range(from, to));
   const nameOf = new Map(users.map((u) => [u.id, u.name]));
@@ -100,12 +106,25 @@ export async function loadReportFiles(programId: string, groupId: string | null)
       requiredRounds: g?.required_rounds ?? 0,
       rounds,
       observation: obs ? { docId: obs.id, name: obs.doc_name } : null,
+      merged: mergedStatus.get(c.id) ?? { doc: null, reportRounds: [], includedRounds: [], missingRounds: [], stale: false },
     });
   }
   return {
     groups: groupsAll
       .filter((g) => !groupId || g.id === groupId)
-      .map((g) => ({ id: g.id, name: g.name, caseCount: groupStat.get(g.id)?.caseCount ?? 0, fileCount: groupStat.get(g.id)?.fileCount ?? 0 })),
+      .map((g) => ({
+        id: g.id,
+        name: g.name,
+        caseCount: groupStat.get(g.id)?.caseCount ?? 0,
+        fileCount: groupStat.get(g.id)?.fileCount ?? 0,
+        mergeTodo: cases
+          .filter((c) => c.support_type_id === g.id)
+          .map((c) => c.id)
+          .filter((id) => {
+            const m = mergedStatus.get(id);
+            return !!m && m.reportRounds.length > 0 && (!m.doc || m.stale);
+          }),
+      })),
     mentors: Array.from(mentorStat.entries())
       .map(([id, s]) => ({ id, name: nameOf.get(id) ?? '(이름 없음)', caseCount: s.cases.size, fileCount: s.fileCount }))
       .sort((a, b) => a.name.localeCompare(b.name, 'ko')),

@@ -22,6 +22,8 @@ import { CaseDetailBackNav } from '@/components/cases/case-detail-back-nav';
 import { CaseDocumentsPanel } from '@/components/cases/case-documents-panel';
 import { MentorRoundBoard } from '@/components/mentor/mentor-round-board';
 import { BundleDownloadButton } from '@/components/files/bundle-download-button';
+import { MergedReportSection, mergedProps } from '@/components/files/merged-report-section';
+import { mergedReportStatusFor } from '@/lib/files/merged-report';
 import { BusinessPlanPanel } from '@/components/files/business-plan-panel';
 import { observationEditable, observationUploadGate } from '@/lib/workflow/observation-rule';
 import { ObservationForm } from '@/components/mentor/observation-form';
@@ -81,6 +83,7 @@ export default async function Page({ params }: { params: { id: string } }) {
     // 관찰의견서 파일 변경 이력(업로드·수정·삭제) — 2026-09-30
     listObservationHistory(item.id),
   ]);
+  const merged = await mergedReportStatusFor(item.id);
   // 제목의 회차 이름은 지금 들어간 그룹이 아니라 이 케이스의 그룹 기준
   const caseGroupLabel =
     item.support_type_id === ctx.supportTypeId
@@ -242,6 +245,7 @@ export default async function Page({ params }: { params: { id: string } }) {
               lastRound={lastRound}
               observationRequired={obsRequired}
             />
+            <MergedReportSection caseId={item.id} status={mergedProps(merged)} canBuild={!finished} />
           </CardContent>
         </Card>
 

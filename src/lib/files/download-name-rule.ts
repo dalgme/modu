@@ -59,6 +59,7 @@ export function docKind(docKey: string, roundNo?: number | null, label?: string 
   if (docKey.startsWith('mentoring_report:')) return { kind: `${n}보고서`, shape: 'pair' };
   if (docKey.startsWith('mentoring_photo:')) return { kind: `${n}사진`, shape: 'pair' };
   if (docKey === 'observation_report') return { kind: '관찰의견서', shape: 'pair' };
+  if (docKey === 'mentoring_report_merged') return { kind: '보고서 합본', shape: 'pair' };
   if (docKey.startsWith('settlement_statement')) return { kind: '정산서', shape: 'pair' };
   if (docKey === 'business_plan') return { kind: '사업계획서', shape: 'mentee' };
   if (docKey === 'business_ref') return { kind: '참고자료', shape: 'mentee' };
@@ -68,7 +69,16 @@ export function docKind(docKey: string, roundNo?: number | null, label?: string 
   return { kind: '첨부파일', shape: 'mentee' };
 }
 
+/**
+ * 멘티별 회차 보고서 합본 이름 (2026-11-10) — 회차 보고서 이름에서 회차 대신 '_전체회차'.
+ * 예) '책임멘토 멘토링 보고서(김진태멘토-전시우멘티)_전체회차.pdf'. 멘토가 바뀐 멘티는 멘토 이름을 '·'로 잇는다.
+ */
+export function mergedReportFileName(mentorNames: string | null | undefined, menteeName: string | null | undefined, observationRequired = true): string {
+  return `${roundReportTitle(mentorNames, menteeName, null, observationRequired).slice(0, 150)}_전체회차.pdf`;
+}
+
 export function buildDownloadName(input: DownloadNameInput): string {
+  if (input.docKey === 'mentoring_report_merged') return mergedReportFileName(input.mentorName, input.menteeName, input.observationRequired ?? true);
   if (input.docKey.startsWith('mentoring_report:')) return `${roundReportTitle(input.mentorName, input.menteeName, input.roundNo, input.observationRequired ?? true).slice(0, 150)}${input.seq ? ` ${input.seq}` : ''}${fileExt(input.sourceName)}`;
   const { kind, shape } = docKind(input.docKey, input.roundNo, input.label);
   const mentor = cleanNamePart(input.mentorName);

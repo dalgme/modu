@@ -57,6 +57,12 @@ export async function downloadNamesForCase(caseId: string): Promise<Map<string, 
     return list.length > 1 ? list.findIndex((x) => x.id === d.id) + 1 : null;
   };
 
+  // 보고서 합본 = 보고서가 등록된 회차를 진행한 멘토들(회차 순, '·' 로 잇기)
+  const reportLogIds = new Set((docs as DocRow[]).filter((d) => d.doc_key.startsWith('mentoring_report:')).map((d) => d.doc_key.split(':')[1]!));
+  const mergedMentors = Array.from(
+    new Set([...(logs ?? [])].filter((l) => reportLogIds.has(l.id)).sort((a, b) => a.round_no - b.round_no).map((l) => nameOf.get(l.mentor_id)).filter(Boolean) as string[]),
+  ).join('·') || (currentMentor ? nameOf.get(currentMentor) ?? null : null);
+
   for (const d of docs as DocRow[]) {
     const logId = d.doc_key.includes(':') && (d.doc_key.startsWith('mentoring_report:') || d.doc_key.startsWith('mentoring_photo:')) ? d.doc_key.split(':')[1]! : null;
     const log = logId ? logById.get(logId) : undefined;
@@ -71,7 +77,7 @@ export async function downloadNamesForCase(caseId: string): Promise<Map<string, 
         docKey: d.doc_key,
         sourceName: d.doc_name || d.storage_path,
         menteeName: c.owner_name,
-        mentorName: mentorId ? nameOf.get(mentorId) ?? null : null,
+        mentorName: d.doc_key === 'mentoring_report_merged' ? mergedMentors : mentorId ? nameOf.get(mentorId) ?? null : null,
         roundNo: log?.round_no ?? null,
         label: reqKey ? reqLabel.get(reqKey) ?? null : null,
         seq: seqOf(d),

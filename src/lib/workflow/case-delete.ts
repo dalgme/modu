@@ -96,7 +96,7 @@ export async function deleteCaseAction(caseId: string, confirmText: string): Pro
 
 /** 진행 내역 삭제 시 지우는 서류 — 멘토링 산출물만. 사업계획서·필수서류·멘티 서류는 남긴다 */
 function isProgressDoc(docKey: string): boolean {
-  return docKey.startsWith('mentoring_report:') || docKey.startsWith('mentoring_photo:') || docKey === 'observation_report' || docKey.startsWith('settlement_statement');
+  return docKey.startsWith('mentoring_report:') || docKey === 'mentoring_report_merged' || docKey.startsWith('mentoring_photo:') || docKey === 'observation_report' || docKey.startsWith('settlement_statement');
 }
 
 /**

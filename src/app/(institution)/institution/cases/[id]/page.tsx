@@ -21,6 +21,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileActions } from '@/components/files/file-preview';
 import { ObservationFileLog } from '@/components/files/observation-file-log';
 import { BundleDownloadButton } from '@/components/files/bundle-download-button';
+import { MergedReportSection, mergedProps } from '@/components/files/merged-report-section';
+import { mergedReportStatusFor } from '@/lib/files/merged-report';
 
 export const maxDuration = 60;
 
@@ -42,6 +44,7 @@ export default async function Page({ params }: { params: { id: string } }) {
     getCaseSurvey(item.id),
     listObservationHistory(item.id),
   ]);
+  const merged = await mergedReportStatusFor(item.id);
 
   return (
     <main className="flex flex-col gap-5">
@@ -65,6 +68,7 @@ export default async function Page({ params }: { params: { id: string } }) {
           </CardHeader>
           <CardContent>
             <RoundsList caseId={item.id} rounds={rounds} editable={false} />
+            <MergedReportSection caseId={item.id} status={mergedProps(merged)} />
           </CardContent>
         </Card>
         <Card>

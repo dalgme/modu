@@ -47,6 +47,8 @@ import { fmt } from '@/lib/programs/branding';
 import { FileActions } from '@/components/files/file-preview';
 import { ObservationFileLog } from '@/components/files/observation-file-log';
 import { BundleDownloadButton } from '@/components/files/bundle-download-button';
+import { MergedReportSection, mergedProps } from '@/components/files/merged-report-section';
+import { mergedReportStatusFor } from '@/lib/files/merged-report';
 
 export const maxDuration = 60;
 
@@ -80,6 +82,7 @@ export default async function Page({ params }: { params: { id: string } }) {
     listCaseAuditRows(params.id, ctx.programId, 50),
     listObservationHistory(item.id),
   ]);
+  const merged = await mergedReportStatusFor(item.id);
   const teamMembers = await listTeamMembers(item.id);
   // 담당 외 그룹 안내: 현재 범위 그룹이 있는데 다르면 'scope', 내 담당 그룹 지정이 있는데 포함되지 않으면 'duty'
   const scopeReason: 'scope' | 'duty' | null = ctx.supportTypeId && ctx.supportTypeId !== item.support_type_id ? 'scope' : myGroupIds.length > 0 && !myGroupIds.includes(item.support_type_id) ? 'duty' : null;
@@ -229,6 +232,7 @@ export default async function Page({ params }: { params: { id: string } }) {
           </CardHeader>
           <CardContent>
             <RoundsList caseId={item.id} rounds={rounds} editable={false} operatorCorrect={hasCapability(ctx, 'case.manage')} />
+            <MergedReportSection caseId={item.id} status={mergedProps(merged)} />
           </CardContent>
         </Card>
 
