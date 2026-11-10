@@ -4,7 +4,7 @@
  *  A) 멘토별: "멘토별 멘토링 보고서 및 수당지급 서류.zip"
  *       └ 멘토별 멘토링 보고서 및 수당지급 서류/
  *            └ (붙임2)멘토링 보고서 및 관찰의견서(1~20번).zip   ← 멘토 이름순 20명씩
- *                 └ 강석우/ 1.수당지급서류 일체_강석우.pdf
+ *                 └ 1. 강석우/ 1.수당지급서류 일체_강석우.pdf   ← 멘토 폴더 = 이름순 번호
  *                           책임멘토 멘토링 보고서 및 관찰 의견서(강석우멘토-남준현멘티).pdf
  *  B) 멘티별: "(멘티별)멘토링 보고서_별첨자료 삽입.zip"
  *       └ 001. 남준현/ 책임멘토 멘토링 보고서 및 관찰 의견서(강석우멘토-남준현멘티).pdf
@@ -61,6 +61,11 @@ export function chunkRanges(total: number, size = MENTOR_CHUNK): { start: number
   const out: { start: number; end: number }[] = [];
   for (let s = 1; s <= total; s += size) out.push({ start: s, end: Math.min(s + size - 1, total) });
   return out;
+}
+
+/** 멘토 폴더 "1. 이름" (2026-11-10) — 이름순 번호. 20명 묶음 ZIP 의 "(1~20번)" 과 같은 번호(묶음이 바뀌어도 이어서 센다) */
+export function mentorFolderName(index: number, name: string): string {
+  return `${index}. ${cleanName(name, '멘토')}`;
 }
 
 /** 멘티 폴더 "001. 이름" — 100명 이상이면 자릿수를 늘린다 */

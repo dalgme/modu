@@ -416,7 +416,7 @@ export type AutoBatchOutcome = { mentorId: string; batchId: string | null; error
  * 제출되면 발주처 정산 확인(4단계)으로 넘어간다. 품의 제목 = "[그룹] 멘토명 지급 품의 · 멘티명".
  * **조건 없이** 항상 실행한다(지급서류 수령 여부와 무관). 예외적인 실패(DB 오류 등)에도 검수 승인은 유지되고, 그 정산은 지급 대기로 남아 운영사가 수동 편성한다 — 실패 사유는 감사(batch.auto_failed)에 남긴다.
  */
-export async function autoBatchSettlements(caseId: string, settlementIds: string[], actorId: string): Promise<AutoBatchOutcome[]> {
+export async function autoBatchSettlements(caseId: string, settlementIds: string[], actorId: string, opts: { note?: string; titleSuffix?: string } = {}): Promise<AutoBatchOutcome[]> {
   if (settlementIds.length === 0) return [];
   const admin = createAdminClient();
   const { data: c } = await admin.from('cases').select('program_id, owner_name, support_type_id').eq('id', caseId).maybeSingle();
@@ -434,8 +434,8 @@ export async function autoBatchSettlements(caseId: string, settlementIds: string
 
   const out: AutoBatchOutcome[] = [];
   for (const [mentorId, ids] of Array.from(byMentor.entries())) {
-    const title = `${group?.name ? `[${group.name}] ` : ''}${nameOf.get(mentorId) ?? '멘토'} 지급 품의 · ${c.owner_name}`;
-    const created = await createBatch({ programId: c.program_id, title, settlementIds: ids, actorId, note: '검수 승인 시 자동 편성·제출' });
+    const title = `${group?.name ? `[${group.name}] ` : ''}${nameOf.get(mentorId) ?? '멘토'} 지급 품의 · ${c.owner_name}${opts.titleSuffix ? ` ${opts.titleSuffix}` : ''}`;
+    const created = await createBatch({ programId: c.program_id, title, settlementIds: ids, actorId, note: opts.note ?? '검수 승인 시 자동 편성·제출' });
     if (!created.ok) {
       await audit(actorId, c.program_id, 'batch.auto_failed', caseId, { case_id: caseId, mentor_id: mentorId, settlement_ids: ids, step: 'create', error: created.error }, 'cases');
       out.push({ mentorId, batchId: null, error: created.error });

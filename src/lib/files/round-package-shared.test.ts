@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { chunkRanges, cleanName, compareExternalNo, dedupeNames, mentorChunkZipName, menteeFolderName, originalPartName, pairPdfName, partKindOf, paymentPdfName } from './round-package-shared';
+import { chunkRanges, cleanName, compareExternalNo, dedupeNames, mentorChunkZipName, menteeFolderName, mentorFolderName, originalPartName, pairPdfName, partKindOf, paymentPdfName } from './round-package-shared';
 
 describe('round-package names', () => {
   it('합본·지급서류 이름 = 요청 형식 그대로', () => {
@@ -19,6 +19,11 @@ describe('round-package names', () => {
   it('멘티 폴더 번호 001. — 1000명 이상이면 자릿수 증가', () => {
     expect(menteeFolderName(1, 400, '남준현')).toBe('001. 남준현');
     expect(menteeFolderName(12, 1200, '김/예슬')).toBe('0012. 김 예슬');
+  });
+
+  it('멘토 폴더 번호 "1. 이름" — 이름순, 묶음이 바뀌어도 이어서', () => {
+    expect(mentorFolderName(1, '강석우')).toBe('1. 강석우');
+    expect(mentorFolderName(21, '김민수')).toBe('21. 김민수');
   });
 
   it('동명이인 폴더·이름 정리·정렬', () => {

@@ -14,6 +14,9 @@ import { SubTabs } from '@/components/common/sub-tabs';
 import { EmptyState } from '@/components/common/empty-state';
 import { ExcelButton } from '@/components/common/excel-button';
 import { MentoringExportBar } from '@/components/reports/mentoring-export-bar';
+import { PriorMentorBacklog } from '@/components/settlement/prior-mentor-backlog';
+import { listPriorMentorBacklog } from '@/lib/settlement/prior-mentors';
+import { hasCapability } from '@/lib/auth/capabilities';
 import { formatDate, formatKRW } from '@/lib/utils/format';
 
 export const dynamic = 'force-dynamic';
@@ -158,12 +161,13 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     );
   }
 
-  const [settlements, batches, pendingCount, scopedBatched] = await Promise.all([
+  const [settlements, batches, pendingCount, scopedBatched, priorBacklog] = await Promise.all([
     listSettlements({ programId: ctx.programId, supportTypeId: groupId, status: tab === 'pending' ? ['pending'] : undefined }),
     listBatches(ctx.programId),
     tab === 'pending' ? Promise.resolve(null) : listSettlements({ programId: ctx.programId, supportTypeId: groupId, status: ['pending'] }).then((r) => r.length),
     // 그룹 범위면 그 그룹의 정산 건이 든 품의만 보여준다 (품의 자체는 행사 단위)
     groupId ? listSettlements({ programId: ctx.programId, supportTypeId: groupId, status: ['batched', 'confirmed', 'paid'] }) : Promise.resolve(null),
+    listPriorMentorBacklog(ctx.programId),
   ]);
   const pendingN = tab === 'pending' ? settlements.length : (pendingCount ?? 0);
   const batchIdsInScope = scopedBatched ? new Set(scopedBatched.map((s) => s.batch_id).filter((x): x is string => !!x)) : null;
@@ -178,6 +182,9 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
 
       <SettlementFlowStrip current={drafts.length > 0 ? 3 : 2} />
       {kpiRow}
+      {priorBacklog.caseIds.length > 0 && (
+        <PriorMentorBacklog cases={priorBacklog.caseIds.length} unsettledRounds={priorBacklog.unsettledRounds} pendingPartials={priorBacklog.pendingPartials} canRun={hasCapability(ctx, 'settlement') && hasCapability(ctx, 'settlement.submit')} />
+      )}
       {submitted.length > 0 && (
         <p className="rounded-lg border border-sky-300 bg-sky-50/60 px-3 py-2 text-sm text-sky-900 dark:bg-sky-950/20 dark:text-sky-100">
           {fmt('{client} 정산 확인을 기다리는 품의', ctx.branding)} {submitted.length}건이 있습니다. 확인이 끝나면 품의 상세에서 [지급 완료]를 눌러 지급을 기록하세요.

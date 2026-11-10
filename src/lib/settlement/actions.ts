@@ -303,3 +303,36 @@ export async function decideExtensionAction(requestId: string, decision: 'approv
   }
   return r;
 }
+
+/**
+ * 밀려 있는 선행 멘토 정산 일괄 진행 (2026-11-10) — 멘토가 중간에 바뀐 진행 중 멘티에서 이전 멘토의
+ * 미정산(보고서 등록) 회차를 부분 정산하고, 이전 멘토의 지급 대기 부분 정산을 품의로 자동 편성·제출한다.
+ * 새로 바뀌는 멘토 교체·중도 종료는 처리 시점에 자동으로 이 절차를 밟는다(prior-mentors.ts).
+ */
+export async function settlePriorMentorsBacklogAction(): Promise<{ ok: true; message: string; errors: string[] } | { ok: false; error: string }> {
+  const profile = await realRoleOrNull(['nextlab']);
+  if (!profile) return { ok: false, error: OPERATOR_ONLY };
+  const ctx = await contextOrNull(profile);
+  if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'settlement'); if (denied) return { ok: false, error: denied }; }
+  { const denied = denyUnless(ctx, 'settlement.submit'); if (denied) return { ok: false, error: denied }; }
+  const { listPriorMentorBacklog, settlePriorMentors } = await import('@/lib/settlement/prior-mentors');
+  const backlog = await listPriorMentorBacklog(ctx.programId);
+  if (backlog.caseIds.length === 0) return { ok: true, message: '밀려 있는 선행 멘토 정산이 없습니다.', errors: [] };
+  let created = 0;
+  let batched = 0;
+  const errors: string[] = [];
+  for (const caseId of backlog.caseIds) {
+    try {
+      const r = await settlePriorMentors(caseId, profile.id, '선행 멘토 정산 일괄 진행');
+      created += r.createdIds.length;
+      batched += r.batchedIds.length;
+      errors.push(...r.errors);
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : '정산 처리 중 오류');
+    }
+    revalidateCase(caseId);
+  }
+  revalidateBatches();
+  return { ok: true, message: `멘티 ${backlog.caseIds.length}명 — 새 부분 정산 ${created}건, 품의 편성·제출 ${batched}건.`, errors };
+}

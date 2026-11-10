@@ -284,7 +284,8 @@ export async function assignMentor(caseId: string, mentorId: string, actorId: st
 
 /**
  * T3 멘토 교체(상태 유지). 현재 활성 배정을 종료(end_kind=reassigned)하고 새 배정을 만든다.
- * 회차는 케이스 누적이라 승계된다. 이미 이행한 회차의 정산은 P4(부분 정산)에서 처리.
+ * 회차는 케이스 누적이라 승계된다. 이전 멘토가 이미 이행(보고서 등록)한 회차는 교체 시점에 부분 정산하고
+ * 지급 품의를 자동 편성·제출한다(2026-11-10 — 종결 검수까지 미루지 않음, prior-mentors.ts).
  */
 const ASSIGN_RACE_ERROR = '다른 담당자가 방금 배정했습니다. 새로고침하세요.';
 
@@ -324,12 +325,22 @@ export async function reassignMentor(
   const capacityErr = await assertMentorCapacity(newMentorId, c.support_type_id);
   if (capacityErr) return { ok: false, error: capacityErr };
 
+  // (2026-11-10) 정산 먼저 — 이전 멘토가 이미 보고서까지 등록한 회차는 교체 시점에 부분 정산(partial)으로 확정한다.
+  // 멘티의 종결 검수(새 멘토의 남은 회차 완료)까지 이전 멘토 정산이 밀리지 않게. 실패하면 교체하지 않는다(금액 전이 반쪽 성공 금지).
+  const { createSettlementSnapshot, rollbackSettlements } = await import('@/lib/settlement/settle');
+  const snap = await createSettlementSnapshot({ caseId, mentorId: current.mentor_id, kind: 'partial', actorId, note: reason ? `멘토 교체: ${reason}` : '멘토 교체' });
+  if (!snap.ok) return { ok: false, error: `이전 멘토 부분 정산 실패로 교체를 진행하지 않았습니다: ${snap.error}` };
+  const createdSettlements = snap.settlementId ? [snap.settlementId] : [];
+
   const now = new Date().toISOString();
   const { error: endErr } = await admin
     .from('mentor_assignments')
     .update({ is_active: false, ended_at: now, ended_by: actorId, end_kind: 'reassigned', end_reason: reason ?? null })
     .eq('id', current.id);
-  if (endErr) return { ok: false, error: endErr.message };
+  if (endErr) {
+    await rollbackSettlements(createdSettlements, actorId, '멘토 교체 실패로 자동 취소');
+    return { ok: false, error: endErr.message };
+  }
 
   const { error: insErr } = await admin
     .from('mentor_assignments')
@@ -339,6 +350,7 @@ export async function reassignMentor(
       .from('mentor_assignments')
       .update({ is_active: true, ended_at: null, ended_by: null, end_kind: null, end_reason: null })
       .eq('id', current.id);
+    await rollbackSettlements(createdSettlements, actorId, '멘토 교체 실패로 자동 취소');
     return { ok: false, error: insErr.code === '23505' ? ASSIGN_RACE_ERROR : insErr.message };
   }
 
@@ -364,8 +376,11 @@ export async function reassignMentor(
     action: 'case.reassign_mentor',
     entity_type: 'cases',
     entity_id: caseId,
-    metadata: { from_mentor_id: current.mentor_id, to_mentor_id: newMentorId, reason: reason ?? null },
+    metadata: { from_mentor_id: current.mentor_id, to_mentor_id: newMentorId, reason: reason ?? null, settlement_id: snap.settlementId },
   });
+  // 이전 멘토 정산 → 지급 품의 자동 편성·제출 (실패해도 교체는 유지 — 정산은 지급 대기로 남는다)
+  const { settlePriorMentorsSafely } = await import('@/lib/settlement/prior-mentors');
+  await settlePriorMentorsSafely(caseId, actorId, '멘토 교체');
   return { ok: true, caseId };
 }
 

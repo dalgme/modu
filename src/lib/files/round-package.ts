@@ -6,10 +6,9 @@ import { reportDocKey } from '@/lib/data/rounds';
 import {
   MENTEE_PACKAGE_NAME,
   MENTOR_PACKAGE_NAME,
-  cleanName,
   compareExternalNo,
-  dedupeNames,
   menteeFolderName,
+  mentorFolderName,
   pairPdfName,
   partKindOf,
   paymentPdfName,
@@ -107,7 +106,8 @@ export async function buildRoundPackage(programId: string, groupId: string, kind
   let folders: PackageFolder[] = [];
   if (kind === 'mentor') {
     const ordered = mentorIds.slice().sort((a, b) => (nameOf.get(a) ?? '').localeCompare(nameOf.get(b) ?? '', 'ko'));
-    const folderNames = dedupeNames(ordered.map((id) => cleanName(nameOf.get(id), '멘토')));
+    // 이름순 번호 "1. 멘토명" (2026-11-10) — 번호가 붙어 동명이인도 폴더가 겹치지 않는다
+    const folderNames = ordered.map((id, i) => mentorFolderName(i + 1, nameOf.get(id) ?? '멘토'));
     const noPay: string[] = [];
     const noReport: string[] = [];
     folders = ordered.map((mentorId, i) => {

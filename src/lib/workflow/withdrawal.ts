@@ -5,6 +5,7 @@ import { queueNotification } from '@/lib/workflow/notifications';
 import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
 import { createSettlementSnapshot, rollbackSettlements, settleLeftoverMentors } from '@/lib/settlement/settle';
 import { dropPlannedRoundsOfMentor } from '@/lib/workflow/rounds';
+import { settlePriorMentorsSafely } from '@/lib/settlement/prior-mentors';
 import type { WorkflowResult } from '@/lib/workflow/cases';
 
 /**
@@ -13,6 +14,8 @@ import type { WorkflowResult } from '@/lib/workflow/cases';
  *  2) 상태 전이가 경쟁으로 실패하면 방금 만든 스냅샷을 취소한다.
  *  3) 종료된 멘토의 계획(미보고) 회차는 정리한다 — 새 멘토의 상한·보고서 등록을 막지 않게.
  *  4) 끝나면 미배정 케이스 추천을 다시 계산한다(이탈 멘토가 슬롯을 비웠으므로).
+ *  5) (2026-11-10) 멘토만 바뀌는 두 경로(자진 종료 승인·강제 종료)는 종료된 멘토의 부분 정산을 바로 지급 품의로 편성·제출한다
+ *     (settlePriorMentorsSafely). 멘티 중도 종료는 [복귀] 가능성이 있어 기존대로 운영사가 편성한다.
  */
 
 async function rebalanceSafely(programId: string, actorId: string | null): Promise<void> {
@@ -115,6 +118,8 @@ export async function decideMentorWithdrawal(requestId: string, actorId: string,
   await queueNotification(admin, { caseId: c.id, programId: c.program_id, recipientId: req.mentor_id, triggerEvent: 'mentor_ended' });
   if (c.mentee_id) await queueNotification(admin, { caseId: c.id, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'mentor_ended' });
   await admin.from('audit_logs').insert({ actor_id: actorId, program_id: c.program_id, action: 'mentor.withdrawal_approved', entity_type: 'cases', entity_id: c.id, metadata: { request_id: requestId, settlement_id: snap.settlementId } });
+  // (2026-11-10) 종료된 멘토의 부분 정산 → 지급 품의 자동 편성·제출 (멘티의 종결까지 미루지 않음)
+  await settlePriorMentorsSafely(c.id, actorId, '멘토 자진 중도 종료');
   await rebalanceSafely(c.program_id, actorId);
   return { ok: true, caseId: c.id };
 }
@@ -152,6 +157,7 @@ export async function forceEndMentor(caseId: string, actorId: string, reason: st
   await queueNotification(admin, { caseId, programId: c.program_id, recipientId: assign.mentor_id, triggerEvent: 'mentor_ended' });
   if (c.mentee_id) await queueNotification(admin, { caseId, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'mentor_ended' });
   await admin.from('audit_logs').insert({ actor_id: actorId, program_id: c.program_id, action: 'mentor.force_ended', entity_type: 'cases', entity_id: caseId, metadata: { assignment_id: assign.id, reason: reason.trim(), settlement_id: snap.settlementId } });
+  await settlePriorMentorsSafely(caseId, actorId, '운영사 강제 종료');
   await rebalanceSafely(c.program_id, actorId);
   return { ok: true, caseId };
 }
