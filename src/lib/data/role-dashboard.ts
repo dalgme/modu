@@ -6,6 +6,7 @@ import { resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import { CASE_STATUS_META, type CaseStatus } from '@/types/case-status';
 import { menteeLabel } from '@/lib/utils/labels';
 import { mentoringOutcomeLabel, normalizeMentoringOutcome } from '@/lib/workflow/mentoring-outcome';
+import { observationRequiredMap } from '@/lib/workflow/observation-required';
 
 /**
  * 멘토·멘티 대시보드 "다음 할 일" 데이터 (P28) — 케이스별 회차 상태를 한 번에 읽어
@@ -112,7 +113,7 @@ async function signaturePolicyByGroup(programId: string, groupIds: string[]): Pr
   return out;
 }
 
-function decideAction(c: CaseListItem, rounds: RoundLite[], nextPlanned: RoundLite | null, reportPending: RoundLite[], hasObservation: boolean, href: string): MentorCaseTodo['action'] {
+function decideAction(c: CaseListItem, rounds: RoundLite[], nextPlanned: RoundLite | null, reportPending: RoundLite[], hasObservation: boolean, href: string, observationRequired = true): MentorCaseTodo['action'] {
   const done = rounds.filter((r) => r.reported).length;
   switch (c.status) {
     case 'registered':
@@ -120,7 +121,7 @@ function decideAction(c: CaseListItem, rounds: RoundLite[], nextPlanned: RoundLi
     case 'withdrawn':
       return { key: 'inactive', label: CASE_STATUS_META[c.status].short, hint: '운영사가 처리 중입니다.', href, urgent: false };
     case 'closure_requested':
-      return { key: 'wait_review', label: '운영사 검수 대기', hint: '관찰의견서와 종결 요청이 접수되었습니다. 검수 결과를 기다려 주세요.', href, urgent: false };
+      return { key: 'wait_review', label: '운영사 검수 대기', hint: observationRequired ? '관찰의견서와 종결 요청이 접수되었습니다. 검수 결과를 기다려 주세요.' : '종결 요청이 접수되었습니다. 검수 결과를 기다려 주세요.', href, urgent: false };
     case 'revision_requested':
       return { key: 'revision', label: '보완 후 다시 종결 요청', hint: '운영사가 보완을 요청했습니다. 케이스의 보완 요청 내용을 확인하고 수정한 뒤 다시 종결을 요청하세요.', href, urgent: true };
     case 'settlement_pending':
@@ -144,6 +145,10 @@ function decideAction(c: CaseListItem, rounds: RoundLite[], nextPlanned: RoundLi
   if (done < c.requiredRounds) {
     return { key: 'plan_next', label: `${done + 1}회차 일정 등록`, hint: `필수 ${c.requiredRounds}회 중 ${done}회 이행. 다음 회차 일정을 등록하세요.`, href: `${href}#rounds`, urgent: false };
   }
+  // 관찰의견서가 필요 없는 라운드(예: 1기 2라운드, observation_required=false)는 이 단계를 건너뛰고 바로 종결 요청 (2026-11-11)
+  if (!observationRequired) {
+    return { key: 'closure', label: '종결 요청', hint: '필수 회차 보고서를 모두 등록했습니다. [종결 요청]을 누르면 운영사 검수 후 정산이 확정됩니다.', href: `${href}#requests`, urgent: true };
+  }
   if (!hasObservation) {
     return { key: 'observation', label: '관찰의견서 업로드', hint: '필수 회차를 모두 이행했습니다. 관찰의견서 파일을 올리면 종결을 요청할 수 있습니다.', href: `${href}#observation`, urgent: true };
   }
@@ -155,7 +160,7 @@ export async function loadMentorDashboard(mentorId: string, programId: string, s
   const cases = await listMentorCases(mentorId, { programId, supportTypeId: supportTypeId ?? undefined });
   const ids = cases.map((c) => c.id);
   const admin = createAdminClient();
-  const [logs, { data: obs }, policy, { data: settled }, { data: extRows }] = await Promise.all([
+  const [logs, { data: obs }, policy, { data: settled }, { data: extRows }, obsRequired] = await Promise.all([
     loadLogs(ids),
     // 관찰의견서 = 업로드 파일(documents.observation_report)만 인정 (2026-09-30 웹 작성 폐지)
     ids.length ? admin.from('documents').select('case_id').eq('doc_key', 'observation_report').in('case_id', ids) : Promise.resolve({ data: [] as { case_id: string }[] }),
@@ -163,6 +168,8 @@ export async function loadMentorDashboard(mentorId: string, programId: string, s
     ids.length ? admin.from('settlements').select('case_id, net').eq('mentor_id', mentorId).in('case_id', ids).neq('status', 'canceled') : Promise.resolve({ data: [] as { case_id: string; net: number }[] }),
     // 승인된 추가 회차 — 보고서 등록 현황의 총회차에 포함 (getRoundAllowance 와 같은 규칙)
     ids.length ? admin.from('round_extension_requests').select('case_id, extra_rounds').eq('status', 'approved').in('case_id', ids) : Promise.resolve({ data: [] as { case_id: string; extra_rounds: number }[] }),
+    // 라운드별 관찰의견서 제출 여부 (P53) — 필요 없는 라운드는 '관찰의견서 업로드' 할 일을 띄우지 않는다
+    observationRequiredMap(cases.map((c) => c.support_type_id)),
   ]);
   const extraByCase = new Map<string, number>();
   for (const r of extRows ?? []) extraByCase.set(r.case_id, (extraByCase.get(r.case_id) ?? 0) + Number(r.extra_rounds ?? 0));
@@ -195,7 +202,7 @@ export async function loadMentorDashboard(mentorId: string, programId: string, s
       hasObservation: hasObs.has(c.id),
       outcome: normalizeMentoringOutcome(c.mentoring_outcome),
       outcomeLabel: mentoringOutcomeLabel(normalizeMentoringOutcome(c.mentoring_outcome), c.roundsProgressed),
-      action: decideAction(c, rows, nextPlanned, reportPending, hasObs.has(c.id), href),
+      action: decideAction(c, rows, nextPlanned, reportPending, hasObs.has(c.id), href, obsRequired.get(c.support_type_id) ?? true),
     };
   });
   const ORDER: Record<MentorActionKey, number> = { report: 0, revision: 1, plan_first: 2, observation: 3, closure: 4, upcoming: 5, plan_next: 6, wait_review: 7, settled: 8, inactive: 9 };

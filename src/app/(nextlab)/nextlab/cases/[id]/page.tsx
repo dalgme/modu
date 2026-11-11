@@ -46,6 +46,7 @@ import { CASE_STATUS_META } from '@/types/case-status';
 import { fmt } from '@/lib/programs/branding';
 import { FileActions } from '@/components/files/file-preview';
 import { ObservationFileLog } from '@/components/files/observation-file-log';
+import { observationRequiredFor } from '@/lib/workflow/observation-required';
 import { BundleDownloadButton } from '@/components/files/bundle-download-button';
 import { MergedReportSection, mergedProps } from '@/components/files/merged-report-section';
 import { mergedReportStatusFor } from '@/lib/files/merged-report';
@@ -119,6 +120,8 @@ export default async function Page({ params }: { params: { id: string } }) {
   // 검수 승인 가능 여부는 서버 판정 함수 그대로 (§3 불변 규칙: 버튼 조건 = 서버 게이트, P31)
   // (2026-10-01) 회차 보고서·관찰의견서가 모두 등록되면 종결 요청 전이라도 승인 가능 — 전이 상수(review_approve.from) 상태에서 판정
   const approval = canTransition('review_approve', item.status) ? await canApproveClosure(item.id) : { ok: false, reason: null as string | null };
+  // 라운드별 관찰의견서 제출 여부 (P53) — '지금 할 일' 문구에서 관찰의견서를 뺄지
+  const obsRequiredHere = await observationRequiredFor(item.support_type_id);
   const showReview = item.status === 'closure_requested' || (canTransition('review_approve', item.status) && approval.ok);
   const estimateProps = estimates.map((e) => ({
     mentorId: e.mentorId,
@@ -143,6 +146,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         menteeLinked={!!item.mentee_id}
         mentorInput={{ plannedWithoutReport: rounds.filter((r) => !r.report_registered_at && new Date(r.started_at).getTime() <= Date.now()).length, hasObservation: !!obsFile }}
         approvable={approval.ok}
+        observationRequired={obsRequiredHere}
       />
       {/* 종결 요청 상태에서는 검수 패널을 "지금 할 일" 바로 아래에 — 스크롤 없이 승인/보완 (2026-09-24) */}
       {showReview && (

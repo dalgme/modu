@@ -158,6 +158,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         required={item.requiredRounds}
         maxRounds={maxRounds}
         hasObservation={hasObservation || !obsRequired}
+        observationRequired={obsRequired}
         closureOk={closureOk}
         closureHint={closureHint}
         revisionNote={revisionNote}

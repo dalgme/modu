@@ -11,6 +11,8 @@ export function MentorCaseNextStep(p: {
   required: number;
   maxRounds: number;
   hasObservation: boolean;
+  /** false = 관찰의견서가 필요 없는 라운드 — 문구에서 관찰의견서를 빼고 종결 요청으로 안내 */
+  observationRequired?: boolean;
   closureOk: boolean;
   closureHint: string;
   revisionNote: { comment: string | null; at: string } | null;
@@ -21,16 +23,17 @@ export function MentorCaseNextStep(p: {
   let desc = '';
   let anchor: string | null = null;
   let tone: 'action' | 'wait' | 'done' = 'wait';
+  const obsReq = p.observationRequired ?? true;
   switch (p.status) {
     case 'revision_requested':
       title = '운영사가 보완을 요청했습니다';
-      desc = p.revisionNote?.comment ? `사유: ${p.revisionNote.comment} (${formatDateTime(p.revisionNote.at)})` : '요청 내용을 확인해 회차·관찰의견서를 수정한 뒤 다시 [종결 요청]을 누르세요.';
+      desc = p.revisionNote?.comment ? `사유: ${p.revisionNote.comment} (${formatDateTime(p.revisionNote.at)})` : `요청 내용을 확인해 회차${obsReq ? '·관찰의견서' : ''}를 수정한 뒤 다시 [종결 요청]을 누르세요.`;
       anchor = '#requests';
       tone = 'action';
       break;
     case 'closure_requested':
       title = '종결 요청 접수 — 운영사 검수 대기';
-      desc = '검수가 끝나면 정산이 확정되고 문자로 통보됩니다. 회차·관찰의견서는 잠깁니다.';
+      desc = `검수가 끝나면 정산이 확정되고 문자로 통보됩니다. 회차${obsReq ? '·관찰의견서' : ''}는 잠깁니다.`;
       break;
     case 'settlement_pending':
     case 'settlement_batched':
@@ -67,7 +70,7 @@ export function MentorCaseNextStep(p: {
         title = `${p.reported + 1}회차 일정을 등록하세요`;
         desc = `필수 ${p.required}회 중 ${p.reported}회 이행(보고서 기준)${p.maxRounds > p.required ? ` · 추가 회차 승인으로 최대 ${p.maxRounds}회` : ''}.`;
         anchor = '#rounds';
-      } else if (!p.hasObservation) {
+      } else if (obsReq && !p.hasObservation) {
         title = '관찰의견서 파일을 올리세요';
         desc = '필수 회차를 모두 이행했습니다. 관찰의견서 파일(멘티당 1건)을 [파일 업로드]로 올리면 종결을 요청할 수 있습니다.';
         anchor = '#observation';
