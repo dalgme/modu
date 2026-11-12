@@ -2,9 +2,8 @@
 
 import { revalidatePath } from 'next/cache';
 
-import { mentorOrNull, mentorOfCaseOrNull, getRealSessionProfile, MENTOR_ONLY_ERROR, NOT_ASSIGNED_ERROR } from '@/lib/auth/guards';
+import { mentorOrNull, mentorOfCaseOrNull, MENTOR_ONLY_ERROR, NOT_ASSIGNED_ERROR } from '@/lib/auth/guards';
 import { getImpersonation } from '@/lib/auth/impersonation';
-import { createAdminClient } from '@/lib/supabase/admin';
 import { submitRound, updateRound, deleteRound, updatePlannedRound, deletePlannedRound, registerRoundReport, replaceRoundReport, type RoundInput, type RoundReportInput, type RoundResult } from '@/lib/workflow/rounds';
 import type { ConsultingMode } from '@/lib/settlement/rates';
 import {
@@ -155,23 +154,3 @@ export async function saveMentorSignatureAction(dataUrl: string): Promise<{ ok: 
   return r;
 }
 
-/**
- * 멘토: 멘티 현장 서명 수집 (P20) — 멘토 단말(스마트폰) 터치로 멘티가 직접 서명한다.
- * 서명 자체는 멘티 명의(signatures.signer_type = mentee), 감사 실행자는 멘토로 남는다.
- * 운영사가 멘토 대행 중이면 허용하되 감사 실행자는 **실제 담당자**(getRealSessionProfile)로, metadata 에 on_behalf_of·collected_by_operator·via 를 남긴다 (P31).
- */
-export async function collectRoundSignatureAction(caseId: string, logId: string, dataUrl: string): Promise<WorkflowResult> {
-  const profile = await mentorOfCaseOrNull(caseId);
-  if (!profile) return { ok: false, error: NOT_ASSIGNED_ERROR };
-  const imp = await getImpersonation();
-  const real = imp && imp.target.id === profile.id ? await getRealSessionProfile() : null;
-  const admin = createAdminClient();
-  const { data: c } = await admin.from('cases').select('mentee_id').eq('id', caseId).maybeSingle();
-  if (!c?.mentee_id) return { ok: false, error: '멘티 계정이 아직 연결되지 않았습니다.' };
-  const { data: mentee } = await admin.from('users').select('id, name').eq('id', c.mentee_id).maybeSingle();
-  if (!mentee) return { ok: false, error: '멘티 계정을 찾을 수 없습니다.' };
-  const { signRound } = await import('@/lib/workflow/mentee');
-  const result = await signRound(caseId, logId, mentee, dataUrl, { collectedBy: { id: profile.id, operatorActorId: real?.id ?? null } });
-  if (result.ok) revalidate(caseId);
-  return result;
-}

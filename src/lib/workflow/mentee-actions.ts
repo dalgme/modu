@@ -3,11 +3,10 @@
 import { revalidatePath } from 'next/cache';
 
 import { roleOrNull, realRoleOrNull } from '@/lib/auth/guards';
-import { getImpersonation } from '@/lib/auth/impersonation';
 import { denyUnless } from '@/lib/auth/capabilities';
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { decideMentorChange, requestMentorChange, signRound, submitSurvey } from '@/lib/workflow/mentee';
+import { decideMentorChange, requestMentorChange, submitSurvey } from '@/lib/workflow/mentee';
 import type { WorkflowResult } from '@/lib/workflow/cases';
 
 const MENTEE_ONLY = '멘티 본인만 실행할 수 있습니다.';
@@ -22,16 +21,6 @@ async function menteeOfCase(caseId: string): Promise<{ id: string; name: string 
   if (!profile) return null;
   const { data } = await createAdminClient().from('cases').select('id').eq('id', caseId).eq('mentee_id', profile.id).maybeSingle();
   return data ? { id: profile.id, name: profile.name } : null;
-}
-
-export async function signRoundAction(caseId: string, logId: string, dataUrl: string): Promise<WorkflowResult> {
-  // 대행 중 서명 차단 (P31) — 서명은 멘티 본인 명의의 증빙. 담당자는 멘토 화면의 [현장 서명]으로 멘티에게 직접 받는다.
-  if (await getImpersonation()) return { ok: false, error: '회차 서명은 멘티 본인만 할 수 있습니다. 담당자는 멘토 화면의 [현장 서명]을 이용하세요.' };
-  const mentee = await menteeOfCase(caseId);
-  if (!mentee) return { ok: false, error: MENTEE_ONLY };
-  const r = await signRound(caseId, logId, mentee, dataUrl);
-  if (r.ok) revalidate(caseId);
-  return r;
 }
 
 /** 만족도 응답 — 대행 중에도 허용(전화 응답 대리 입력 등). 감사로그에 via:'view-as' 가 남는다 (P31). */

@@ -137,7 +137,6 @@ const groupSchema = z.object({
   sort_order: z.coerce.number().int().default(0),
   withholding_method: z.enum(['other_income', 'business_income', 'none', '']).optional().transform((v) => v || null),
   report_policy_mode: z.enum(['inherit', 'custom']).default('inherit'),
-  mentee_confirm_signature: z.coerce.boolean().optional(),
   mentor_auto_sign: z.coerce.boolean().optional(),
   /** 새 그룹: 설정을 복사해 올 그룹 (P30) */
   copy_from: z.string().uuid().optional().or(z.literal('')).transform((v) => v || null),
@@ -335,7 +334,7 @@ export async function upsertGroupAction(input: unknown): Promise<Result> {
     if (await predecessorCycle(d.predecessor_support_type_id, d.id, op.programId)) return { ok: false, error: '승계 원천이 순환합니다(A→C→A). 원천 그룹을 다시 확인하세요.' };
   }
   if (d.copy_from && !(await groupInProgram(d.copy_from, op.programId))) return { ok: false, error: '설정을 복사할 그룹이 이 행사의 그룹이 아닙니다.' };
-  const round_report_policy = d.report_policy_mode === 'custom' ? { mentee_confirm_signature: !!d.mentee_confirm_signature, mentor_auto_sign: !!d.mentor_auto_sign } : null;
+  const round_report_policy = d.report_policy_mode === 'custom' ? { mentor_auto_sign: !!d.mentor_auto_sign } : null;
   const row = {
     program_id: op.programId,
     code: d.code,
@@ -706,7 +705,6 @@ export async function updateWithholdingAction(input: unknown): Promise<Result> {
 }
 
 const closureSchema = z.object({
-  require_mentee_signature: z.coerce.boolean().default(false),
   require_group_docs: z.coerce.boolean().default(false),
 });
 
@@ -724,7 +722,7 @@ export async function updateClosurePolicyAction(input: unknown): Promise<Result>
   return { ok: true };
 }
 
-const reportPolicySchema = z.object({ mentee_confirm_signature: z.coerce.boolean().default(true), mentor_auto_sign: z.coerce.boolean().default(false) });
+const reportPolicySchema = z.object({ mentor_auto_sign: z.coerce.boolean().default(false) });
 
 /** 행사 기본 서명 정책. 활성 행사 양식(그룹 null)에 멘토 서명 컬럼이 없으면 켤 수 없다. */
 export async function updateRoundReportPolicyAction(input: unknown): Promise<Result> {
@@ -733,7 +731,7 @@ export async function updateRoundReportPolicyAction(input: unknown): Promise<Res
   const parsed = reportPolicySchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: '입력값을 확인하세요.' };
   const admin = createAdminClient();
-  if (parsed.data.mentee_confirm_signature || parsed.data.mentor_auto_sign) {
+  if (parsed.data.mentor_auto_sign) {
     const { data: tpl } = await admin.from('document_templates').select('html_content').eq('program_id', op.programId).eq('template_key', ROUND_REPORT_TEMPLATE_KEY).is('support_type_id', null).eq('is_active', true).maybeSingle();
     const html = tpl?.html_content ?? null;
     // 행사 양식이 없으면 내장 기본 양식(멘토 서명 컬럼 포함)을 쓰므로 허용

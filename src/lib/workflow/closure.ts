@@ -174,7 +174,7 @@ async function replaceObservationDocument(
 
 /**
  * 종결 요청 가능 여부 판정 (멘토 화면 버튼 조건 = requestClosure 서버 게이트와 같은 규칙, P28).
- * 상태 전이 · 필수 회차(보고서 등록 기준) · 관찰의견서 · (정책) 멘티 서명 · (정책) 그룹 필수서류.
+ * 상태 전이 · 필수 회차(보고서 등록 기준) · 관찰의견서 · (정책) 그룹 필수서류. (멘티 서명 게이트는 2026-11-12 폐지)
  */
 export async function checkClosureReadiness(caseId: string): Promise<{ ok: boolean; hint: string; reported: number; required: number }> {
   const admin = createAdminClient();
@@ -183,7 +183,7 @@ export async function checkClosureReadiness(caseId: string): Promise<{ ok: boole
   const [{ data: group }, { data: program }, { data: logs }, { data: obs }, { data: obsFile }] = await Promise.all([
     admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle(),
     admin.from('programs').select('closure_policy').eq('id', c.program_id).maybeSingle(),
-    admin.from('mentoring_logs').select('round_no, mentee_signed_at, report_registered_at').eq('case_id', caseId).order('round_no'),
+    admin.from('mentoring_logs').select('round_no, report_registered_at').eq('case_id', caseId).order('round_no'),
     admin.from('observation_reports').select('content').eq('case_id', caseId).maybeSingle(),
     admin.from('documents').select('id').eq('case_id', caseId).eq('doc_key', 'observation_report').maybeSingle(),
   ]);
@@ -200,8 +200,7 @@ export async function checkClosureReadiness(caseId: string): Promise<{ ok: boole
   // (2026-10-15) 관찰의견서가 필요 없는 그룹(예: 1기 2라운드)은 회차 보고서만으로 종결 요청
   const obsRequired = await observationRequiredFor(c.support_type_id);
   if (obsRequired && !(webOk || !!obsFile)) return { ok: false, hint: '모든 회차 보고서가 등록되었습니다. 관찰의견서 파일을 올리면 종결을 요청할 수 있습니다.', ...base };
-  const policy = (program?.closure_policy ?? {}) as { require_mentee_signature?: boolean; require_group_docs?: boolean };
-  if (policy.require_mentee_signature && rounds.some((r) => !r.mentee_signed_at)) return { ok: false, hint: '이 행사는 모든 회차에 멘티 확인 서명이 있어야 종결을 요청할 수 있습니다. 서명이 없는 회차를 확인하세요.', ...base };
+  const policy = (program?.closure_policy ?? {}) as { require_group_docs?: boolean };
   if (policy.require_group_docs) {
     const missing = await missingRequiredMenteeDocs(caseId);
     if (missing.length > 0) return { ok: false, hint: `멘티 필수서류가 누락되어 종결을 요청할 수 없습니다: ${missing.join(', ')}`, ...base };
@@ -210,7 +209,7 @@ export async function checkClosureReadiness(caseId: string): Promise<{ ok: boole
 }
 
 /**
- * T5 종결 요청 — 필수 회차 충족 + 관찰의견서(웹 작성본 또는 업로드본) + (설정) 멘티 서명 전부.
+ * T5 종결 요청 — 필수 회차 충족 + 관찰의견서(웹 작성본 또는 업로드본) + (설정) 그룹 필수서류.
  * 웹 작성본이면 PDF 를 생성해 단일본으로 저장한다.
  */
 export async function requestClosure(caseId: string, mentorId: string): Promise<WorkflowResult> {
@@ -227,7 +226,7 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
   const [{ data: group }, { data: program }, { data: logs }, { data: obs }, { data: obsFile }, allowance] = await Promise.all([
     admin.from('support_types').select('required_rounds, name').eq('id', c.support_type_id).maybeSingle(),
     admin.from('programs').select('closure_policy').eq('id', c.program_id).maybeSingle(),
-    admin.from('mentoring_logs').select('id, round_no, mode, started_at, ended_at, place, mentee_signed_at, report_registered_at').eq('case_id', caseId).order('round_no'),
+    admin.from('mentoring_logs').select('id, round_no, mode, started_at, ended_at, place, report_registered_at').eq('case_id', caseId).order('round_no'),
     admin.from('observation_reports').select('*').eq('case_id', caseId).maybeSingle(),
     admin.from('documents').select('id, created_at, updated_at').eq('case_id', caseId).eq('doc_key', 'observation_report').maybeSingle(),
     getRoundAllowance(caseId),
@@ -243,10 +242,7 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
   if (unreported.length > 0) {
     return { ok: false, error: `보고서가 등록되지 않은 회차가 있습니다 (${unreported.join('·')}회차). 각 회차의 [보고서 업로드]를 먼저 완료하세요.` };
   }
-  const policy = (program?.closure_policy ?? {}) as { require_mentee_signature?: boolean; require_group_docs?: boolean };
-  if (policy.require_mentee_signature && rounds.some((r) => !r.mentee_signed_at)) {
-    return { ok: false, error: '모든 회차에 멘티 서명이 있어야 종결을 요청할 수 있습니다.' };
-  }
+  const policy = (program?.closure_policy ?? {}) as { require_group_docs?: boolean };
   if (policy.require_group_docs) {
     const missing = await missingRequiredMenteeDocs(caseId);
     if (missing.length > 0) return { ok: false, error: `멘티 필수서류가 누락되어 종결을 요청할 수 없습니다: ${missing.join(', ')}` };
@@ -275,7 +271,7 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
         owner_name: c.owner_name,
         mentor_name: mentor.data?.name ?? '',
         rounds_table: rounds
-          .map((r) => `<tr><td>${r.round_no}</td><td>${r.mode === 'online' ? '온라인' : '오프라인'}</td><td>${fmtDate(r.started_at)}</td><td>${esc(r.place ?? '')}</td><td>${r.mentee_signed_at ? '서명' : '-'}</td></tr>`)
+          .map((r) => `<tr><td>${r.round_no}</td><td>${r.mode === 'online' ? '온라인' : '오프라인'}</td><td>${fmtDate(r.started_at)}</td><td>${esc(r.place ?? '')}</td></tr>`)
           .join(''),
         summary: nl(content.summary),
         strengths: nl(content.strengths),
@@ -499,7 +495,7 @@ const OBSERVATION_TEMPLATE = `
   <tr><th>담당 멘토</th><td>{{mentor_name}}</td></tr>
 </table>
 <table class="rounds">
-  <tr><th>회차</th><th>유형</th><th>일자</th><th>장소</th><th>멘티 서명</th></tr>
+  <tr><th>회차</th><th>유형</th><th>일자</th><th>장소</th></tr>
   {{{rounds_table}}}
 </table>
 <table>

@@ -2,78 +2,15 @@ import 'server-only';
 
 import { isGroupSurveyEnabled } from '@/lib/surveys/group-survey';
 import { createAdminClient } from '@/lib/supabase/admin';
-import { dataUrlToBuffer, sha256Hex } from '@/lib/storage/files';
 import { logAudit } from '@/lib/workflow/audit';
 import { queueNotification } from '@/lib/workflow/notifications';
 import { notifyProgramStaff } from '@/lib/workflow/closure';
 import { reassignMentor } from '@/lib/workflow/cases';
 import { TRANSITIONS } from '@/lib/workflow/transitions';
 import { getCaseSurvey, scaleOptions, choiceOptions } from '@/lib/data/survey';
-import { renderRoundReport, resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import type { WorkflowResult } from '@/lib/workflow/cases';
 import type { Json } from '@/types/database';
 
-/** 멘티 회차 서명 — signatures(log_id) + mentoring_logs.mentee_signed_at. 1회차 1서명(유니크 인덱스).
- *  opts.collectedBy = 멘토 현장 수집(멘토 단말 터치 서명, P20) — 감사 실행자를 멘토로 남긴다.
- *  collectedBy.operatorActorId = 운영사가 멘토 대행 중 현장 수집(P31) — logAudit 이 실행자를 운영사 실명으로 바꾸고 on_behalf_of/via 를 붙인다. */
-export async function signRound(
-  caseId: string,
-  logId: string,
-  mentee: { id: string; name: string },
-  dataUrl: string,
-  opts?: { collectedBy?: { id: string; operatorActorId?: string | null } },
-): Promise<WorkflowResult> {
-  const parsed = dataUrlToBuffer(dataUrl);
-  if (!parsed || !parsed.mimeType.startsWith('image/')) return { ok: false, error: '서명 이미지가 올바르지 않습니다.' };
-  if (parsed.buffer.byteLength > 2 * 1024 * 1024) return { ok: false, error: '서명 이미지가 너무 큽니다(2MB 이하).' };
-  const admin = createAdminClient();
-  const { data: log } = await admin.from('mentoring_logs').select('id, case_id, mentor_id, mentee_signed_at, report_registered_at, round_no').eq('id', logId).eq('case_id', caseId).maybeSingle();
-  if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
-  if (log.mentee_signed_at) return { ok: false, error: '이미 서명한 회차입니다.' };
-  if (!log.report_registered_at) return { ok: false, error: '멘토가 보고서를 등록한 뒤에 확인 서명을 할 수 있습니다.' };
-  const { data: c } = await admin.from('cases').select('id, program_id, support_type_id, mentee_id, status').eq('id', caseId).maybeSingle();
-  if (!c || c.mentee_id !== mentee.id) return { ok: false, error: '본인 케이스의 회차만 서명할 수 있습니다.' };
-  const policy = await resolveRoundReportPolicy(c.program_id, c.support_type_id);
-  if (!policy.menteeConfirmSignature) return { ok: false, error: '이 그룹은 멘티 확인 서명을 사용하지 않습니다(보고서 양식·정책 설정).' };
-
-  const ext = parsed.mimeType === 'image/jpeg' ? 'jpg' : 'png';
-  const storagePath = `${caseId}/rounds/${logId}.${ext}`;
-  const { error: upErr } = await admin.storage.from('signatures').upload(storagePath, parsed.buffer, { contentType: parsed.mimeType, upsert: true });
-  if (upErr) return { ok: false, error: `서명 저장 실패: ${upErr.message}` };
-  const { error } = await admin.from('signatures').insert({
-    case_id: caseId,
-    log_id: logId,
-    signer_type: 'mentee',
-    signer_name: mentee.name,
-    document_type: 'mentoring_log',
-    storage_path: storagePath,
-    sha256: sha256Hex(parsed.buffer),
-  });
-  if (error) return { ok: false, error: error.code === '23505' ? '이미 서명한 회차입니다.' : error.message };
-  const now = new Date().toISOString();
-  await admin.from('mentoring_logs').update({ mentee_signed_at: now }).eq('id', logId).is('mentee_signed_at', null);
-  await renderRoundReport(logId); // 멘티 서명을 보고서 PDF 에 반영 (웹 작성 회차)
-  if (!opts?.collectedBy) {
-    await queueNotification(admin, { caseId, programId: c.program_id, recipientId: log.mentor_id, triggerEvent: 'round_signed', payload: { round_no: log.round_no } });
-  }
-  const collected = opts?.collectedBy ?? null;
-  await logAudit(admin, {
-    actorId: collected?.id ?? mentee.id,
-    programId: c.program_id,
-    action: 'round.mentee_signed',
-    entityType: 'mentoring_logs',
-    entityId: logId,
-    metadata: {
-      case_id: caseId,
-      round_no: log.round_no,
-      signer_id: mentee.id,
-      ...(collected ? { collected_on_device: true } : {}),
-      // 운영사 대행 현장 수집: 실행자는 logAudit 이 실명으로 치환(on_behalf_of = 멘토), 여기서는 수집 주체만 표시 (P31)
-      ...(collected?.operatorActorId ? { collected_by_operator: true } : collected ? { on_behalf_of: mentee.id } : {}),
-    },
-  });
-  return { ok: true, caseId };
-}
 
 /** 만족도 조사 노출 조건: 종결 요청 이후 (docs §7). T9 게이트 아님.
  *  P20: 목표 회차 보고서 완료·운영사 [만족도 생성] = cases.survey_opened_at 도 개시 조건. */

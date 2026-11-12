@@ -21,13 +21,13 @@ const MENTOR_INPUT_HREF = '/nextlab/review?tab=mentor-input';
 /** (P32) 멘토 입력 대기 큐에서 "지금 대신 할 일이 있는" 행만 — 보고서 미등록 회차 많은 순 → 멘티 이름순 */
 function actionableMentorInput(rows: MentorInputQueueRow[]): MentorInputQueueRow[] {
   return rows
-    .filter((r) => r.plannedWithoutReport > 0 || !r.hasObservation || r.pendingSignatures > 0 || r.closureReady)
+    .filter((r) => r.plannedWithoutReport > 0 || !r.hasObservation || r.closureReady)
     .sort((a, b) => b.plannedWithoutReport - a.plannedWithoutReport || a.menteeName.localeCompare(b.menteeName, 'ko'));
 }
 
 /**
  * (P31) 운영사 검수 대기열 — 검수 대기 / 보완 요청 중. 오래된 순. 행마다 상태 칩 + 케이스 상세 #review 링크.
- * (P32) 세 번째 탭 [멘토 입력 대기] = listMentorInputQueue — 멘토가 아직 입력하지 않은 회차 보고서·관찰의견서·서명·종결 요청을 대행으로 처리할 케이스.
+ * (P32) 세 번째 탭 [멘토 입력 대기] = listMentorInputQueue — 멘토가 아직 입력하지 않은 회차 보고서·관찰의견서·종결 요청을 대행으로 처리할 케이스.
  */
 export default async function Page({ searchParams }: { searchParams: { tab?: string } }) {
   const profile = await requireNextlab();
@@ -59,7 +59,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
       />
       {tab === 'mentor-input' ? (
         mentorInput.length === 0 ? (
-          <EmptyState icon={Inbox} title="멘토 입력을 기다리는 케이스가 없습니다" hint="진행일이 지났는데 보고서가 없는 회차, 관찰의견서 미작성, 멘티 서명 대기, 종결 요청 가능 케이스가 생기면 여기에 나타납니다." />
+          <EmptyState icon={Inbox} title="멘토 입력을 기다리는 케이스가 없습니다" hint="진행일이 지났는데 보고서가 없는 회차, 관찰의견서 미작성, 종결 요청 가능 케이스가 생기면 여기에 나타납니다." />
         ) : (
           <div className="overflow-x-auto rounded-xl border bg-background">
             <table className="w-full text-sm">
@@ -132,7 +132,6 @@ function Row({ r, canReview }: { r: ReviewQueueItem; canReview: boolean }) {
         <div className="flex flex-wrap gap-1">
           <Chip ok={roundsOk} warn={!roundsOk} label={`회차 ${r.reportedRounds}/${r.requiredRounds}${r.extraRounds ? ` (+추가 ${r.extraRounds})` : ''}`} />
           {r.observationRequired ? <Chip ok={r.hasObservation} warn={!r.hasObservation} label={r.hasObservation ? '관찰의견서 있음' : '관찰의견서 없음'} /> : <Chip ok warn={false} label="관찰의견서 불필요 그룹" />}
-          {r.signatures && <Chip ok={r.signatures.signed >= r.signatures.total} warn={r.signatures.signed < r.signatures.total} label={`서명 ${r.signatures.signed}/${r.signatures.total}`} />}
           <Chip ok={r.surveyAnswered} label={r.surveyAnswered ? '만족도 응답' : '만족도 미응답'} />
           {r.status === 'ready' && <Chip ok warn={false} label="서류 완비 · 종결 요청 전" />}
         </div>
@@ -147,7 +146,7 @@ function Row({ r, canReview }: { r: ReviewQueueItem; canReview: boolean }) {
   );
 }
 
-/** (P32) 멘토 입력 대기 행 — 보고서 대기·관찰의견서·서명·종결 가능 칩 + 케이스 상세 #rounds 링크 + (권한 시) 멘토 대행 진입 */
+/** (P32) 멘토 입력 대기 행 — 보고서 대기·관찰의견서·종결 가능 칩 + 케이스 상세 #rounds 링크 + (권한 시) 멘토 대행 진입 */
 function MentorInputRow({ r, canViewAs }: { r: MentorInputQueueRow; canViewAs: boolean }) {
   const roundsOk = r.requiredRounds > 0 && r.reportedRounds >= r.requiredRounds;
   return (
@@ -165,7 +164,6 @@ function MentorInputRow({ r, canViewAs }: { r: MentorInputQueueRow; canViewAs: b
         <div className="flex flex-wrap gap-1">
           {r.plannedWithoutReport > 0 && <Chip ok={false} warn label={`보고서 대기 ${r.plannedWithoutReport}회차`} />}
           {!r.hasObservation && <Chip ok={false} warn={roundsOk} label="관찰의견서 없음" />}
-          {r.pendingSignatures > 0 && <Chip ok={false} warn label={`서명 대기 ${r.pendingSignatures}`} />}
           {r.closureReady && <Chip ok label="종결 요청 가능" />}
         </div>
       </td>

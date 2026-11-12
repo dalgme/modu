@@ -109,7 +109,6 @@ export function MentorDashboardV2({
   // 진행 중 담당 멘티 — 운영사 처리 중(inactive)·정산 확정 이후(settled) 제외. 보고서 등록 현황도 같은 집합(role-dashboard reportSummary)
   const active = data.cases.filter((t) => t.action.key !== 'inactive' && t.action.key !== 'settled');
   const urgent = data.cases.filter((t) => t.action.urgent);
-  const unsigned = data.cases.reduce((a, t) => a + t.unsignedRounds, 0);
   const caseHref = (caseId: string) => `${basePath}/${caseId}`;
   // (A) 담당 멘티 카드: 1명이면 그 멘티 화면으로 바로, 여러 명이면 아래 '담당 멘티 · 지금 할 일' 목록으로
   const menteeHref = active.length === 1 ? caseHref(active[0]!.caseId) : data.cases.length > 0 ? '#todo' : undefined;
@@ -153,11 +152,6 @@ export function MentorDashboardV2({
         <Chip icon={CalendarDays} label="이번 주 일정" value={`${data.upcoming.length}건`} href={scheduleHref} />
         <Chip icon={Coins} label="예상 지급(세전·미확정)" value={formatKRW(data.estimatedGross)} tone={data.confirmedNet ? 'good' : 'default'} href={settlementsHref} />
       </div>
-      {unsigned > 0 && (
-        <p className="rounded-lg border border-amber-300 bg-amber-50/70 px-3 py-2 text-xs text-amber-900">
-          멘티 확인 서명이 없는 회차 <b>{unsigned}건</b> — 멘티에게 [회차 확인·서명]을 안내하거나, 케이스의 회차 목록에서 <b>현장 서명 받기</b>로 바로 받을 수 있습니다.
-        </p>
-      )}
 
       {/* ② 담당 멘티 · 지금 할 일 — 옛 '지금 할 일' + '담당 멘티 전체' 병합. 담당 멘티 전원을 긴급 순으로 (정렬은 role-dashboard ORDER) */}
       <section id="todo" className="flex scroll-mt-24 flex-col gap-2">

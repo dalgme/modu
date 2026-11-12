@@ -9,8 +9,9 @@ import { reportDocKey } from '@/lib/data/rounds';
 /**
  * 컨설팅(회차) 보고서 양식 — 행사/그룹 단위 등록 (2026-09-07 추가 요건).
  *  - 해석 순서: 그룹 양식(support_type_id) → 행사 양식(program_id, 그룹 null) → 내장 기본 양식.
- *  - 서명 정책(멘티 확인 서명 · 멘토 자동 서명)은 **양식에 멘토 서명 컬럼 `{{{sign_mentor}}}` 이 있을 때만** 유효하다.
- *  - 웹 작성 회차는 저장/수정/멘티 서명 시 이 양식으로 PDF 를 재생성해 `mentoring_report:{logId}` 단일본으로 둔다.
+ *  - 서명 정책(멘토 자동 서명)은 **양식에 멘토 서명 컬럼 `{{{sign_mentor}}}` 이 있을 때만** 유효하다.
+ *  - 웹 작성 회차는 저장/수정 시 이 양식으로 PDF 를 재생성해 `mentoring_report:{logId}` 단일본으로 둔다.
+ *  - 멘티 확인 서명 기능은 2026-11-12 폐지 — 예전 양식의 `sign_mentee`·`mentee_signed_date` 자리는 빈칸으로 채운다.
  */
 export const ROUND_REPORT_TEMPLATE_KEY = 'mentoring_report';
 
@@ -34,8 +35,6 @@ export const ROUND_REPORT_PLACEHOLDERS: { key: string; label: string; raw?: bool
   { key: 'result', label: '결과·다음 과제(줄바꿈 유지)', raw: true },
   { key: 'created_date', label: '작성일' },
   { key: 'sign_mentor', label: '멘토 서명 이미지 (서명 컬럼 — 정책 사용 조건)', raw: true },
-  { key: 'sign_mentee', label: '멘티 서명 이미지 (확인 서명)', raw: true },
-  { key: 'mentee_signed_date', label: '멘티 서명 일자' },
 ];
 
 export const DEFAULT_ROUND_REPORT_TEMPLATE = `
@@ -47,7 +46,7 @@ export const DEFAULT_ROUND_REPORT_TEMPLATE = `
   th { background: #f2f2f2; width: 18%; text-align: left; }
   .section { min-height: 120px; line-height: 1.6; }
   .sign td { text-align: center; height: 64px; }
-  .sign th { text-align: center; width: 25%; }
+  .sign th { text-align: center; width: 50%; }
   .note { color: #555; font-size: 11px; }
 </style>
 <h1>{{program}} 컨설팅 보고서 ({{round_no}}회차)</h1>
@@ -63,8 +62,8 @@ export const DEFAULT_ROUND_REPORT_TEMPLATE = `
   <tr><th>결과 · 다음 과제</th><td class="section">{{{result}}}</td></tr>
 </table>
 <table class="sign">
-  <tr><th>작성일</th><th>멘토 서명</th><th>멘티 확인 서명</th><th>멘티 서명일</th></tr>
-  <tr><td>{{created_date}}</td><td>{{{sign_mentor}}}</td><td>{{{sign_mentee}}}</td><td>{{mentee_signed_date}}</td></tr>
+  <tr><th>작성일</th><th>멘토 서명</th></tr>
+  <tr><td>{{created_date}}</td><td>{{{sign_mentor}}}</td></tr>
 </table>
 <p class="note">{{operator}} · {{client}}</p>
 `;
@@ -105,20 +104,18 @@ export async function resolveRoundReportTemplate(programId: string, supportTypeI
 
 export interface RoundReportPolicy {
   /** 설정값(원본) */
-  menteeConfirmSignatureSetting: boolean;
   mentorAutoSignSetting: boolean;
   /** 양식에 멘토 서명 컬럼이 있어야 정책이 유효하다 — 실제 적용값 */
-  menteeConfirmSignature: boolean;
   mentorAutoSign: boolean;
   template: ResolvedReportTemplate;
   source: 'group' | 'program';
 }
 
-function parsePolicy(v: unknown): { mentee_confirm_signature?: boolean; mentor_auto_sign?: boolean } | null {
-  return v && typeof v === 'object' && !Array.isArray(v) ? (v as { mentee_confirm_signature?: boolean; mentor_auto_sign?: boolean }) : null;
+function parsePolicy(v: unknown): { mentor_auto_sign?: boolean } | null {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as { mentor_auto_sign?: boolean }) : null;
 }
 
-/** 서명 정책 해석: 그룹 override → 행사 기본. 양식에 `sign_mentor` 컬럼이 없으면 두 기능 모두 꺼진 것으로 본다. */
+/** 서명 정책 해석: 그룹 override → 행사 기본. 양식에 `sign_mentor` 컬럼이 없으면 멘토 자동 서명은 꺼진 것으로 본다. */
 export async function resolveRoundReportPolicy(programId: string, supportTypeId: string | null): Promise<RoundReportPolicy> {
   const admin = createAdminClient();
   const [{ data: program }, { data: group }, template] = await Promise.all([
@@ -129,12 +126,9 @@ export async function resolveRoundReportPolicy(programId: string, supportTypeId:
   const g = parsePolicy(group?.round_report_policy);
   const p = parsePolicy(program?.round_report_policy) ?? {};
   const eff = g ?? p;
-  const menteeSetting = eff.mentee_confirm_signature ?? p.mentee_confirm_signature ?? true;
   const mentorSetting = eff.mentor_auto_sign ?? p.mentor_auto_sign ?? false;
   return {
-    menteeConfirmSignatureSetting: menteeSetting,
     mentorAutoSignSetting: mentorSetting,
-    menteeConfirmSignature: template.hasMentorSign && menteeSetting,
     mentorAutoSign: template.hasMentorSign && mentorSetting,
     template,
     source: g ? 'group' : 'program',
@@ -166,7 +160,7 @@ export async function saveMentorSignature(userId: string, dataUrl: string): Prom
 
 /**
  * 웹 작성 회차의 보고서 PDF 를 양식으로 (재)생성해 단일본으로 교체한다.
- * 정책상 멘토 자동 서명이 켜져 있고 멘토 서명 등록본이 있으면 멘토 서명을, 멘티가 서명했으면 멘티 서명을 붙인다.
+ * 정책상 멘토 자동 서명이 켜져 있고 멘토 서명 등록본이 있으면 멘토 서명을 붙인다.
  * 파일 업로드 회차(report_kind=file)는 건드리지 않는다.
  */
 export async function renderRoundReport(logId: string): Promise<{ ok: true; skipped?: boolean } | { ok: false; error: string }> {
@@ -177,15 +171,13 @@ export async function renderRoundReport(logId: string): Promise<{ ok: true; skip
   const { data: c } = await admin.from('cases').select('id, program_id, support_type_id, business_name, owner_name').eq('id', log.case_id).maybeSingle();
   if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
 
-  const [policy, branding, { data: group }, { data: mentor }, { data: menteeSig }] = await Promise.all([
+  const [policy, branding, { data: group }, { data: mentor }] = await Promise.all([
     resolveRoundReportPolicy(c.program_id, c.support_type_id),
     getBranding(c.program_id),
     admin.from('support_types').select('name, required_rounds').eq('id', c.support_type_id).maybeSingle(),
     admin.from('users').select('name').eq('id', log.mentor_id).maybeSingle(),
-    log.mentee_signed_at ? admin.from('signatures').select('storage_path').eq('log_id', logId).eq('signer_type', 'mentee').maybeSingle() : Promise.resolve({ data: null }),
   ]);
   const mentorSig = policy.mentorAutoSign ? await getMentorSignatureDataUrl(log.mentor_id) : null;
-  const menteeSigUrl = menteeSig?.storage_path ? await downloadDataUrl('signatures', menteeSig.storage_path) : null;
 
   try {
     const html = renderTemplate(policy.template.html, {
@@ -208,8 +200,9 @@ export async function renderRoundReport(logId: string): Promise<{ ok: true; skip
       result: nl(log.result ?? ''),
       created_date: kstDate(log.created_at),
       sign_mentor: sigHtml(mentorSig),
-      sign_mentee: sigHtml(menteeSigUrl),
-      mentee_signed_date: log.mentee_signed_at ? kstDate(log.mentee_signed_at) : '',
+      // 멘티 확인 서명 폐지(2026-11-12) — 예전 양식에 남은 자리는 빈칸
+      sign_mentee: '',
+      mentee_signed_date: '',
     });
     const pdf = await htmlToPdf(html);
     const meta = await uploadFile('documents', c.id, pdf, 'application/pdf', 'pdf');
@@ -256,8 +249,8 @@ export function previewRoundReportHtml(html: string, branding: { programName: st
     result: nl('다음 과제 예시'),
     created_date: '2026-10-01',
     sign_mentor: '<span style="color:#888">(멘토 서명)</span>',
-    sign_mentee: '<span style="color:#888">(멘티 서명)</span>',
-    mentee_signed_date: '2026-10-02',
+    sign_mentee: '',
+    mentee_signed_date: '',
   });
 }
 

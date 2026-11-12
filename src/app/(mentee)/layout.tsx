@@ -27,7 +27,7 @@ export default async function MenteeLayout({ children }: { children: React.React
           tabs={[
             { href: '/mentee/dashboard', label: '홈', icon: 'dashboard' },
             { href: '/mentee/schedule', label: '일정', icon: 'calendar' },
-            { href: '/mentee/rounds', label: '서명', icon: 'pen' },
+            { href: '/mentee/rounds', label: '회차', icon: 'rounds' },
             { href: '/mentee/survey', label: '만족도', icon: 'clipboard' },
             { href: '/mentee/documents', label: '서류', icon: 'file' },
           ]}

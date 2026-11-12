@@ -8,11 +8,10 @@ import { formatDate } from '@/lib/utils/format';
 import { MentorChangeRequest } from '@/components/mentee/mentor-change-request';
 import { MentorContactCard } from '@/components/mentee/mentor-contact-card';
 import type { MenteeDashboardExtra } from '@/lib/data/role-dashboard';
-import { PenLine, ClipboardList, FileWarning, CheckCircle2 } from 'lucide-react';
+import { FileText, ClipboardList, FileWarning, CheckCircle2 } from 'lucide-react';
 
 /** 멘티 대시보드 본문 — 현재 그룹 케이스의 여정 + 다른 그룹(승계) 케이스 목록 */
 export interface MenteeTodo {
-  unsignedRounds: number;
   surveyOpen: boolean;
   surveyDone: boolean;
   missingDocs: string[];
@@ -68,12 +67,12 @@ export function MenteeDashboardBody({
           {extra && <MentorContactCard extra={extra} />}
           {todo && (
             <div className="grid gap-2 sm:grid-cols-3">
-              <Link href="/mentee/rounds" className={`flex items-center gap-2 rounded-xl border p-3 text-sm shadow-sm ${todo.unsignedRounds > 0 ? 'border-amber-300 bg-amber-50/50' : 'bg-background'}`}>
-                <PenLine className="h-5 w-5 shrink-0 text-primary" />
+              <Link href="/mentee/rounds" className="flex items-center gap-2 rounded-xl border bg-background p-3 text-sm shadow-sm">
+                <FileText className="h-5 w-5 shrink-0 text-primary" />
                 <span>
-                  <b>회차 확인·서명</b>
+                  <b>컨설팅 회차 확인</b>
                   <br />
-                  <span className="text-xs text-muted-foreground">{todo.unsignedRounds > 0 ? `서명 대기 ${todo.unsignedRounds}회차` : `${primary.roundsDone}회차 모두 확인`}</span>
+                  <span className="text-xs text-muted-foreground">보고서 등록 {primary.roundsDone}/{primary.requiredRounds}회차</span>
                 </span>
               </Link>
               <Link href="/mentee/survey" className={`flex items-center gap-2 rounded-xl border p-3 text-sm shadow-sm ${todo.surveyOpen ? 'border-amber-300 bg-amber-50/50' : 'bg-background'}`}>

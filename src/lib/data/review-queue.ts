@@ -3,12 +3,11 @@ import 'server-only';
 import { observationRequiredMap } from '@/lib/workflow/observation-required';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllIn } from '@/lib/supabase/paginate';
-import { resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import { estimateSettlements } from '@/lib/settlement/settle';
 
 /**
  * (P31) 운영사 검수 대기열 — closure_requested(검수 대기) / revision_requested(보완 요청 중) 케이스를
- * 오래된 순으로. 각 행에 대기일·회차·관찰의견서·서명(그룹 서명 정책이 켜진 경우만)·만족도·예상 실지급을 붙인다.
+ * 오래된 순으로. 각 행에 대기일·회차·관찰의견서·만족도·예상 실지급을 붙인다.
  * 예상 실지급은 settle.ts estimateSettlements(확정과 같은 computeSettlement) 합계.
  */
 export interface ReviewQueueItem {
@@ -31,8 +30,6 @@ export interface ReviewQueueItem {
   hasObservation: boolean;
   /** 그룹이 관찰의견서를 요구하는가 (2026-10-15) */
   observationRequired: boolean;
-  /** 그룹 서명 정책이 켜진 경우만 {signed, total}, 아니면 null */
-  signatures: { signed: number; total: number } | null;
   surveyAnswered: boolean;
   expectedNet: number;
   /** 보완 요청 사유 (revision_requested 일 때 최근 reviews.comment) */
@@ -60,7 +57,7 @@ export async function listReviewQueue(programId: string, groupId: string | null)
   const caseIds = list.map((c) => c.id);
 
   const [logs, history, { data: obsFiles }, { data: responses }, { data: assigns }, { data: extra }, { data: reviews }] = await Promise.all([
-    fetchAllIn<{ case_id: string; report_registered_at: string | null; mentee_signed_at: string | null }>(caseIds, (chunk, from, to) => admin.from('mentoring_logs').select('case_id, report_registered_at, mentee_signed_at').in('case_id', chunk).range(from, to)),
+    fetchAllIn<{ case_id: string; report_registered_at: string | null }>(caseIds, (chunk, from, to) => admin.from('mentoring_logs').select('case_id, report_registered_at').in('case_id', chunk).range(from, to)),
     fetchAllIn<{ case_id: string; to_status: string; created_at: string }>(caseIds, (chunk, from, to) => admin.from('case_status_history').select('case_id, to_status, created_at').in('case_id', chunk).in('to_status', ['closure_requested', 'revision_requested']).order('created_at', { ascending: false }).range(from, to)),
     admin.from('documents').select('case_id').in('case_id', caseIds).eq('doc_key', 'observation_report'),
     admin.from('survey_responses').select('case_id').in('case_id', caseIds),
@@ -86,11 +83,9 @@ export async function listReviewQueue(programId: string, groupId: string | null)
   const logsByCase = new Map<string, typeof logs>();
   for (const l of logs) logsByCase.set(l.case_id, [...(logsByCase.get(l.case_id) ?? []), l]);
 
-  // 그룹별 서명 정책 (양식에 멘토 서명 컬럼이 있고 멘티 확인 서명이 켜진 그룹만 n/m 표시)
+  // 그룹별 관찰의견서 제출 여부
   const groupIds = Array.from(new Set(list.map((c) => c.support_type_id)));
-  const signOn = new Map<string, boolean>();
   const obsRequired = await observationRequiredMap(groupIds);
-  await Promise.all(groupIds.map(async (g) => signOn.set(g, (await resolveRoundReportPolicy(programId, g)).menteeConfirmSignature)));
 
   const items: ReviewQueueItem[] = [];
   for (const c of list) {
@@ -119,7 +114,6 @@ export async function listReviewQueue(programId: string, groupId: string | null)
       extraRounds: extraOf.get(c.id) ?? 0,
       hasObservation: obsFile.has(c.id),
       observationRequired: obsRequired.get(c.support_type_id) ?? true,
-      signatures: signOn.get(c.support_type_id) ? { signed: reported.filter((r) => r.mentee_signed_at).length, total: reported.length } : null,
       surveyAnswered: surveyed.has(c.id),
       expectedNet: est.reduce((s, e) => s + e.result.net, 0),
       revisionComment: status === 'revision_requested' ? (revisionComment.get(c.id) ?? null) : null,

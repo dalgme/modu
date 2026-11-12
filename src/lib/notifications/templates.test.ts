@@ -41,8 +41,8 @@ describe('자동발송 카탈로그 정합성', () => {
 
 describe('normalizeAutoSendSettings', () => {
   it('false 만 저장, true 는 키를 남기지 않는다 (직발송 키 포함)', () => {
-    const r = normalizeAutoSendSettings({ mentor_assigned: true, round_signed: false, survey_reminder_auto: false, retention_notice: true });
-    expect(r).toEqual({ ok: true, next: { round_signed: false, survey_reminder_auto: false } });
+    const r = normalizeAutoSendSettings({ mentor_assigned: true, extension_decided: false, survey_reminder_auto: false, retention_notice: true });
+    expect(r).toEqual({ ok: true, next: { extension_decided: false, survey_reminder_auto: false } });
   });
   it('알 수 없는 키·불리언 아닌 값은 거부', () => {
     expect(normalizeAutoSendSettings({ nope: false }).ok).toBe(false);
@@ -54,8 +54,8 @@ describe('normalizeAutoSendSettings', () => {
 
 describe('diffAutoSendSettings', () => {
   it('켬↔끔으로 바뀐 키만', () => {
-    const d = diffAutoSendSettings({ round_signed: false, survey_reminder_auto: false }, { survey_reminder_auto: false, retention_notice: false });
-    expect(d).toEqual(expect.arrayContaining([{ key: 'round_signed', on: true }, { key: 'retention_notice', on: false }]));
+    const d = diffAutoSendSettings({ extension_decided: false, survey_reminder_auto: false }, { survey_reminder_auto: false, retention_notice: false });
+    expect(d).toEqual(expect.arrayContaining([{ key: 'extension_decided', on: true }, { key: 'retention_notice', on: false }]));
     expect(d).toHaveLength(2);
   });
   it('변경 없으면 빈 배열', () => {

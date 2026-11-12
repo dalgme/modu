@@ -31,9 +31,9 @@ export function ConsentForm({ programName, clientName, operatorName, retentionYe
       <CardContent className="flex flex-col gap-4">
         <div className="max-h-64 overflow-y-auto rounded-md border bg-muted/30 p-4 text-sm leading-relaxed text-muted-foreground">
           <p className="font-medium text-foreground">1. 수집 항목</p>
-          <p>이름·연락처(휴대폰·이메일)·소속·권역, 팀명·아이템(창업 아이디어) 설명·팀원 명단, 컨설팅 회차 기록(일시·참가자·보고서·사진)·확인 서명, 만족도 조사 응답, 제출 서류.</p>
+          <p>이름·연락처(휴대폰·이메일)·소속·권역, 팀명·아이템(창업 아이디어) 설명·팀원 명단, 컨설팅 회차 기록(일시·참가자·보고서·사진), 만족도 조사 응답, 제출 서류.</p>
           <p className="mt-3 font-medium text-foreground">2. 수집·이용 목적</p>
-          <p>{programName} 멘토링 운영 — 멘토 매칭·배정, 회차 일정 안내와 진행 기록, 확인 서명·만족도 조사, 멘토 정산 증빙, 운영 통계·결과 보고({clientName} 제출), 문자·이메일 안내.</p>
+          <p>{programName} 멘토링 운영 — 멘토 매칭·배정, 회차 일정 안내와 진행 기록, 만족도 조사, 멘토 정산 증빙, 운영 통계·결과 보고({clientName} 제출), 문자·이메일 안내.</p>
           <p className="mt-3 font-medium text-foreground">3. 보유·이용 기간</p>
           <p>사업 종료 후 {retentionYears}년(관련 법령이 더 길게 정한 경우 그에 따름)간 보유하며, 기간 경과 시 지체 없이 파기합니다. 개인정보처리방침과 같은 기준입니다.</p>
           <p className="mt-3 font-medium text-foreground">4. 제3자 제공</p>

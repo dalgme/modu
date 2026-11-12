@@ -12,7 +12,7 @@ const MENTEE_GUIDE_SMS_TEMPLATE_KEY = 'mentee_guide_sms_template';
 export const DEFAULT_MENTEE_GUIDE_SMS_TEMPLATE = `[{program}] {name}님, {company} 멘토링 프로그램 안내드립니다.
 
 ▶ 플랫폼에서 할 일
-- 담당 멘토 확인 및 컨설팅 회차 확인·서명
+- 담당 멘토 확인 및 컨설팅 회차 확인
 - 그룹 필수서류 업로드
 - 종결 후 만족도 조사 참여
 

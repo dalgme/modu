@@ -71,7 +71,7 @@ export function buildReportWorkbook(tab: string, m: ProgramMetrics, cases: CaseL
     const s = m.settlement;
     add('개요', ['구분', '항목', '값'], [
       ['수행 성과', '케이스', p.cases], ['수행 성과', '기간 내 신규', p.newCases], ['수행 성과', '기간 내 종결', p.closedCases], ['수행 성과', '이행 회차', p.roundsDone], ['수행 성과', '계획 회차', p.roundsPlanned], ['수행 성과', '완료 회차(정산 확정)', p.roundsCompleted], ['수행 성과', '종결', p.closed], ['수행 성과', '종결률', p.closureRate], ['수행 성과', '온라인 회차', p.onlineRounds], ['수행 성과', '오프라인 회차', p.offlineRounds],
-      ['잔여 과업', '미배정', b.unassigned], ['잔여 과업', '잔여 회차', b.remainingRounds], ['잔여 과업', `정체(${b.stalledDays}일)`, b.stalled], ['잔여 과업', '검수 대기', b.reviewPending], ['잔여 과업', '보완 요청 중', b.revisionRequested], ['잔여 과업', '재배정 대기', b.reassignmentPending], ['잔여 과업', '미서명 회차', b.unsignedRounds], ['잔여 과업', '미응답 설문', b.unansweredSurveys], ['잔여 과업', '지급서류 미비 멘토', b.mentorsMissingDocs], ['잔여 과업', '미처리 요청', b.pendingRequests],
+      ['잔여 과업', '미배정', b.unassigned], ['잔여 과업', '잔여 회차', b.remainingRounds], ['잔여 과업', `정체(${b.stalledDays}일)`, b.stalled], ['잔여 과업', '검수 대기', b.reviewPending], ['잔여 과업', '보완 요청 중', b.revisionRequested], ['잔여 과업', '재배정 대기', b.reassignmentPending], ['잔여 과업', '미응답 설문', b.unansweredSurveys], ['잔여 과업', '지급서류 미비 멘토', b.mentorsMissingDocs], ['잔여 과업', '미처리 요청', b.pendingRequests],
       ['정산', '예상(세전)', s.estimatedGross], ['정산', '지급 대기', s.pendingNet], ['정산', '품의 편성', s.batchedNet], ['정산', '정산 확인', s.confirmedNet], ['정산', '지급 완료', s.paidNet], ['정산', '원천징수 합계', s.withholdingTotal],
     ], ['지급 대기', '품의 편성', '정산 확인', '지급 완료']);
   }

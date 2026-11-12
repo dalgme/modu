@@ -18,15 +18,15 @@ export function MenteeCaseSwitcher({
   href: string;
   cases: CaseListItem[];
   currentId: string;
-  pending: Record<string, { unsigned: number; surveyOpen: boolean }>;
-  hint: 'unsigned' | 'survey';
+  pending: Record<string, { surveyOpen: boolean }>;
+  hint: 'rounds' | 'survey';
 }) {
   return (
     <nav className="flex flex-wrap items-center gap-2 rounded-xl border bg-background p-2 text-sm" aria-label="케이스 선택">
       <span className="px-1 text-xs text-muted-foreground">참여 그룹</span>
       {cases.map((c) => {
         const p = pending[c.id];
-        const badge = hint === 'unsigned' ? (p && p.unsigned > 0 ? `서명 ${p.unsigned}` : null) : p?.surveyOpen ? '응답 대기' : null;
+        const badge = hint === 'survey' && p?.surveyOpen ? '응답 대기' : null;
         const active = c.id === currentId;
         return (
           <Link key={c.id} href={`${href}?case=${c.id}`} className={`inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold ${active ? 'bg-primary text-primary-foreground' : 'bg-muted hover:bg-accent'}`} aria-current={active ? 'page' : undefined}>

@@ -25,7 +25,7 @@ export function OverviewVisual({ m, base, trend, scopeLabel }: { m: ProgramMetri
     { label: '잔여 회차', value: b.remainingRounds, on: false, href: `${reportsHref}?tab=cases`, sub: `정체 ${b.stalled}건 (${b.stalledDays}일 무회차)` },
     { label: '검수 대기 / 보완 중', value: `${b.reviewPending} / ${b.revisionRequested}`, on: b.reviewPending + b.revisionRequested > 0, href: `${reportsHref}?tab=cases&status=closure_requested` },
     { label: '재배정 대기', value: b.reassignmentPending, on: b.reassignmentPending + b.pendingRequests > 0, href: base === '/nextlab' ? '/nextlab/board?tab=requests' : `${reportsHref}?tab=cases`, sub: `미처리 요청 ${b.pendingRequests}건` },
-    { label: '미서명 회차 / 미응답 설문', value: `${b.unsignedRounds} / ${b.unansweredSurveys}`, on: b.unsignedRounds + b.unansweredSurveys > 0, href: `${reportsHref}?tab=cases` },
+    { label: '미응답 설문', value: `${b.unansweredSurveys}`, on: b.unansweredSurveys > 0, href: `${reportsHref}?tab=cases` },
     { label: '지급서류 미비 멘토', value: b.mentorsMissingDocs, on: b.mentorsMissingDocs > 0, href: base === '/nextlab' ? '/nextlab/roster?tab=mentor-match' : `${reportsHref}?tab=cases&view=mentor` },
   ];
 

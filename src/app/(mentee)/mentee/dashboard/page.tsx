@@ -1,13 +1,11 @@
 import { requireMentee } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { listMenteeCases } from '@/lib/data/cases';
-import { listRounds } from '@/lib/data/rounds';
 import { getCaseSurvey } from '@/lib/data/survey';
 import { listMentorChangeRequests } from '@/lib/data/mentee';
 import { listRequiredDocSlots } from '@/lib/workflow/case-documents';
 import { surveyOpenFor } from '@/lib/workflow/mentee';
 import { canTransition } from '@/lib/workflow/transitions';
-import { resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import { MenteeDashboardBody } from '@/components/mentee/mentee-dashboard-body';
 import { listMyOpenSurveys } from '@/lib/surveys/campaigns';
 import { OpenSurveysCard } from '@/components/surveys/open-surveys-card';
@@ -26,9 +24,9 @@ export default async function Page() {
     ? [...all.filter((c) => c.support_type_id === ctx.supportTypeId), ...all.filter((c) => c.support_type_id !== ctx.supportTypeId)]
     : all;
   const primary = cases[0] ?? null;
-  const [rounds, survey, changeRequests, slots, policy] = primary
-    ? await Promise.all([listRounds(primary.id), getCaseSurvey(primary.id), listMentorChangeRequests(primary.id), listRequiredDocSlots(primary.id, 'mentee'), resolveRoundReportPolicy(primary.program_id, primary.support_type_id)])
-    : [[], null, [], [], null];
+  const [survey, changeRequests, slots] = primary
+    ? await Promise.all([getCaseSurvey(primary.id), listMentorChangeRequests(primary.id), listRequiredDocSlots(primary.id, 'mentee')])
+    : [null, [], []];
   const openSurveys = await listMyOpenSurveys(profile.id, ctx.programId);
   const pendingChange = changeRequests.find((r) => r.status === 'pending') ?? null;
   const lastDecision = changeRequests.find((r) => r.status !== 'pending') ?? null;
@@ -52,7 +50,6 @@ export default async function Page() {
         todo={
           primary
             ? {
-                unsignedRounds: policy?.menteeConfirmSignature ? rounds.filter((r) => r.report_registered_at && !r.mentee_signed_at).length : 0,
                 surveyOpen: !!survey && !survey.response && surveyOpenFor(primary),
                 surveyDone: !!survey?.response,
                 missingDocs: slots.filter((s) => s.required && s.forRole === 'mentee' && s.files.length === 0).map((s) => s.name),

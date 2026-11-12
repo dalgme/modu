@@ -30,7 +30,6 @@ interface LogRow {
   unit_price_snapshot: number;
   amount_snapshot: number;
   settlement_id: string | null;
-  mentee_signed_at: string | null;
   corrected_at: string | null;
 }
 
@@ -58,7 +57,7 @@ export async function GET(request: Request): Promise<Response> {
   });
   const caseById = new Map(cases.map((c) => [c.id, c]));
   let logs = await fetchAllIn<LogRow>(cases.map((c) => c.id), (chunk, f, t) => {
-    let q = admin.from('mentoring_logs').select('id, case_id, mentor_id, round_no, is_extra, started_at, ended_at, mode, place, participants, report_registered_at, report_kind, unit_price_snapshot, amount_snapshot, settlement_id, mentee_signed_at, corrected_at').in('case_id', chunk);
+    let q = admin.from('mentoring_logs').select('id, case_id, mentor_id, round_no, is_extra, started_at, ended_at, mode, place, participants, report_registered_at, report_kind, unit_price_snapshot, amount_snapshot, settlement_id, corrected_at').in('case_id', chunk);
     if (mentorId) q = q.eq('mentor_id', mentorId);
     return q.order('started_at', { ascending: true }).range(f, t);
   });
@@ -81,7 +80,7 @@ export async function GET(request: Request): Promise<Response> {
 
   // 멘토명 → 시작일시 정렬
   const sorted = [...logs].sort((a, b) => (mentorById.get(a.mentor_id)?.name ?? '').localeCompare(mentorById.get(b.mentor_id)?.name ?? '', 'ko') || a.started_at.localeCompare(b.started_at));
-  const header = ['멘토', '멘토 휴대폰', '멘티', '그룹', '케이스 상태', '회차', '추가 회차', '일자', '시작', '종료', '운영시간(분)', '방법', '장소', '참가자', '보고서 등록일', '보고서 형식', '멘티 서명', '시간당 단가', '금액', '정산 상태', '정산 확정일', '정정'];
+  const header = ['멘토', '멘토 휴대폰', '멘티', '그룹', '케이스 상태', '회차', '추가 회차', '일자', '시작', '종료', '운영시간(분)', '방법', '장소', '참가자', '보고서 등록일', '보고서 형식', '시간당 단가', '금액', '정산 상태', '정산 확정일', '정정'];
   const rows = sorted.map((l) => {
     const c = caseById.get(l.case_id);
     const u = mentorById.get(l.mentor_id);
@@ -103,7 +102,6 @@ export async function GET(request: Request): Promise<Response> {
       participantsText(l.participants),
       kstDateTime(l.report_registered_at),
       l.report_registered_at ? (l.report_kind === 'file' ? '파일' : '웹 작성') : '(계획)',
-      l.mentee_signed_at ? 'O' : '',
       Number(l.unit_price_snapshot),
       Number(l.amount_snapshot),
       s ? (SETTLEMENT_STATUS_LABELS[s.status] ?? s.status) : l.report_registered_at ? '미정산(이행)' : '',

@@ -59,7 +59,6 @@ export interface ProgramMetrics {
     reviewPending: number;
     revisionRequested: number;
     reassignmentPending: number;
-    unsignedRounds: number;
     unansweredSurveys: number;
     mentorsMissingDocs: number;
     pendingRequests: number;
@@ -149,13 +148,12 @@ export async function computeProgramMetrics(
   const excluded = opts.excludeMenteeIds;
   const cases = (casesRaw ?? []).filter((c) => !excluded || !c.mentee_id || !excluded.has(c.mentee_id));
   const caseIds = cases.map((c) => c.id);
-  const inScope = new Set(caseIds);
 
   // 회차·정산·응답·배정은 1,000행 캡을 넘을 수 있어 페이지로 읽는다 (P30)
   const [logsAll, settlementsAll, responsesAll, assignsAll, extR, chgR, wdR, docsR, reviewsR, extraR, succR, membersR] = caseIds.length
     ? await Promise.all([
-        fetchAllIn<{ id: string; case_id: string; mentor_id: string; mode: string; amount_snapshot: number; settlement_id: string | null; started_at: string; mentee_signed_at: string | null; report_registered_at: string | null }>(caseIds, (chunk, from, to) =>
-          admin.from('mentoring_logs').select('id, case_id, mentor_id, mode, amount_snapshot, settlement_id, started_at, mentee_signed_at, report_registered_at').in('case_id', chunk).range(from, to),
+        fetchAllIn<{ id: string; case_id: string; mentor_id: string; mode: string; amount_snapshot: number; settlement_id: string | null; started_at: string; report_registered_at: string | null }>(caseIds, (chunk, from, to) =>
+          admin.from('mentoring_logs').select('id, case_id, mentor_id, mode, amount_snapshot, settlement_id, started_at, report_registered_at').in('case_id', chunk).range(from, to),
         ),
         fetchAllIn<SettlementRow>(caseIds, (chunk, from, to) =>
           admin.from('settlements').select('case_id, mentor_id, status, net, withholding, withholding_method, confirmed_at, created_at, paid_at, batch_id').in('case_id', chunk).neq('status', 'canceled').range(from, to),
@@ -176,7 +174,7 @@ export async function computeProgramMetrics(
       ])
     : [[], [], [], [], { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }, { data: [] }];
   // 이행 회차 = 보고서(2단계) 등록 회차만 (CLAUDE.md §3-1). 계획만 있는 회차는 roundsScheduled 로만 센다.
-  const allLogs = logsAll as { id: string; case_id: string; mentor_id: string; mode: string; amount_snapshot: number; settlement_id: string | null; started_at: string; mentee_signed_at: string | null; report_registered_at: string | null }[];
+  const allLogs = logsAll as { id: string; case_id: string; mentor_id: string; mode: string; amount_snapshot: number; settlement_id: string | null; started_at: string; report_registered_at: string | null }[];
   // 기간 필터 (P30): 회차 = 보고서 등록일, 정산 = 확정일(없으면 생성일)
   const logs = allLogs.filter((l) => l.report_registered_at && inPeriod(l.report_registered_at, period));
   const settlementRows = settlementsAll as SettlementRow[];
@@ -347,7 +345,6 @@ export async function computeProgramMetrics(
       reviewPending: byStatus.closure_requested,
       revisionRequested: byStatus.revision_requested,
       reassignmentPending: byStatus.reassignment_pending,
-      unsignedRounds: logs.filter((l) => !l.mentee_signed_at && inScope.has(l.case_id)).length,
       unansweredSurveys,
       mentorsMissingDocs,
       pendingRequests: (extR.data ?? []).length + (chgR.data ?? []).length + (wdR.data ?? []).length,

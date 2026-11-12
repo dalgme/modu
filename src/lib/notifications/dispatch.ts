@@ -38,9 +38,9 @@ export async function dispatchPending(limit = 100): Promise<DispatchSummary> {
   for (const n of pending ?? []) {
     summary.processed += 1;
 
-    // 멘티 서명 요청(round_registered): 발송 직전에 이미 서명됐으면 건너뛴다 — 현장 서명·대행 후 뒤늦게 문자가 가는 것을 막는다 (P31)
-    if (n.trigger_event === 'round_registered' && (await roundAlreadySigned(n.case_id, n.payload))) {
-      await admin.from('notifications').update({ status: 'failed', error_message: 'skipped:already_signed', sent_at: null }).eq('id', n.id);
+    // 멘티 확인 서명 폐지(2026-11-12) — 큐에 남아 있던 서명 안내·서명 완료 알림은 보내지 않는다
+    if (n.trigger_event === 'round_registered' || n.trigger_event === 'round_signed') {
+      await admin.from('notifications').update({ status: 'failed', error_message: 'skipped:signature_discontinued', sent_at: null }).eq('id', n.id);
       summary.skipped += 1;
       continue;
     }
@@ -163,25 +163,6 @@ export async function queueOverdueReminders(): Promise<{ queued: number }> {
 async function countNotifications(admin: ReturnType<typeof createAdminClient>, caseId: string, event: string): Promise<number> {
   const { count } = await admin.from('notifications').select('id', { count: 'exact', head: true }).eq('case_id', caseId).eq('trigger_event', event);
   return count ?? 0;
-}
-
-/** round_registered 알림의 대상 회차가 이미 멘티 서명됐는지 (payload.log_id 우선, 없으면 케이스에 미서명 보고서 회차가 하나도 없을 때) */
-async function roundAlreadySigned(caseId: string | null, payload: unknown): Promise<boolean> {
-  const admin = createAdminClient();
-  const p = payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>) : {};
-  const logId = typeof p.log_id === 'string' ? p.log_id : null;
-  if (logId) {
-    const { data: log } = await admin.from('mentoring_logs').select('mentee_signed_at').eq('id', logId).maybeSingle();
-    return !log || !!log.mentee_signed_at;
-  }
-  if (!caseId) return false;
-  const { count } = await admin
-    .from('mentoring_logs')
-    .select('id', { count: 'exact', head: true })
-    .eq('case_id', caseId)
-    .not('report_registered_at', 'is', null)
-    .is('mentee_signed_at', null);
-  return (count ?? 0) === 0;
 }
 
 /** payload.message — 정산 금액 등 건별 문구를 템플릿 뒤에 덧붙인다 (기관명 리터럴 없음) */

@@ -2,37 +2,28 @@ import { requireMentee } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
 import { pickMenteeCase } from '@/lib/data/mentee';
 import { listRounds } from '@/lib/data/rounds';
-import { RoundSignList } from '@/components/mentee/round-sign-list';
+import { MenteeRoundList } from '@/components/mentee/mentee-round-list';
 import { MenteeCaseSwitcher } from '@/components/mentee/mentee-case-switcher';
-import { resolveRoundReportPolicy } from '@/lib/documents/round-report';
 
 export const dynamic = 'force-dynamic';
-/** PDF(보고서·정산서) 생성 서버 액션 — 서버리스 Chromium 콜드스타트 대비 (CLAUDE.md §6-4) */
-export const maxDuration = 60;
 
-/** 멘티 회차 확인·서명 — 승계로 케이스가 여러 건이면 `?case=` 로 고른다 (기본: 서명 대기가 있는 케이스, P30) */
+/** 멘티 컨설팅 회차 확인(열람 전용) — 승계로 케이스가 여러 건이면 `?case=` 로 고른다 (P30). 멘티 확인 서명은 2026-11-12 폐지 */
 export default async function Page({ searchParams }: { searchParams: { case?: string } }) {
   const profile = await requireMentee();
   const ctx = await requireContext(profile);
   const pick = await pickMenteeCase(profile.id, { programId: ctx.programId, supportTypeId: ctx.supportTypeId }, searchParams.case);
   const c = pick.current;
   const rounds = c ? await listRounds(c.id) : [];
-  const policy = c ? await resolveRoundReportPolicy(c.program_id, c.support_type_id) : null;
-  const signEnabled = !!policy?.menteeConfirmSignature;
-  // 서명 대상 = 보고서(2단계)가 등록된 회차만 — 계획만 있는 회차는 아직 서명할 내용이 없다 (P28)
-  const unsigned = signEnabled ? rounds.filter((r) => r.report_registered_at && !r.mentee_signed_at).length : 0;
   return (
     <main className="flex flex-col gap-5">
       <div>
-        <h1 className="text-2xl font-semibold">컨설팅 회차 확인 · 서명</h1>
+        <h1 className="text-2xl font-semibold">컨설팅 회차 확인</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {c ? `${c.supportTypeName ?? ''} · 보고서 등록 ${rounds.filter((r) => r.report_registered_at).length}/${c.requiredRounds}회차` : '아직 등록된 컨설팅이 없습니다. 운영사에 문의해 주세요.'}
-          {unsigned > 0 && <span className="ml-2 font-semibold text-amber-700">서명 대기 {unsigned}회차</span>}
         </p>
       </div>
-      {pick.cases.length > 1 && c && <MenteeCaseSwitcher href="/mentee/rounds" cases={pick.cases} currentId={c.id} pending={pick.pending} hint="unsigned" />}
-      {c && !signEnabled && <p className="text-xs text-muted-foreground">이 그룹은 확인 서명을 받지 않습니다. 회차 내용만 열람합니다.</p>}
-      {c && <RoundSignList caseId={c.id} rounds={rounds} signEnabled={signEnabled} />}
+      {pick.cases.length > 1 && c && <MenteeCaseSwitcher href="/mentee/rounds" cases={pick.cases} currentId={c.id} pending={pick.pending} hint="rounds" />}
+      {c && <MenteeRoundList rounds={rounds} />}
     </main>
   );
 }

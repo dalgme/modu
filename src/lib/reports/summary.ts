@@ -161,7 +161,7 @@ export function sections(s: SummarySnapshot): SummarySection[] {
         [`정체(${b.stalledDays}일 무회차)`, `${b.stalled}건`],
         ['검수 대기 / 보완 중', `${b.reviewPending} / ${b.revisionRequested}건`],
         ['재배정 대기', `${b.reassignmentPending}건`],
-        ['미서명 회차 / 미응답 설문', `${b.unsignedRounds} / ${b.unansweredSurveys}`],
+        ['미응답 설문', `${b.unansweredSurveys}`],
         ['지급서류 미비 멘토', `${b.mentorsMissingDocs}명`],
         ['미처리 요청', `${b.pendingRequests}건`],
         ...(x.delays ? ([['지연 케이스(지연 관리 기준)', `${x.delays.total}건`]] as [string, string][]) : []),

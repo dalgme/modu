@@ -2,17 +2,16 @@
 
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Lock, Trash2, FileText, PenLine } from 'lucide-react';
+import { Lock, Trash2, FileText } from 'lucide-react';
 
 import type { RoundItem } from '@/lib/data/rounds';
-import { deleteRoundAction, collectRoundSignatureAction, updatePlannedRoundAction, deletePlannedRoundAction } from '@/lib/workflow/mentor-actions';
+import { deleteRoundAction, updatePlannedRoundAction, deletePlannedRoundAction } from '@/lib/workflow/mentor-actions';
 import { correctRoundAction } from '@/lib/workflow/round-correction-actions';
 import { RoundReportForm } from '@/components/mentor/round-report-form';
 import { GroupBadge } from '@/components/mentor/group-badge';
 import { HourlyOnlyNotice, PastScheduleNotice, TimeSelect, endAfterStartChange } from '@/components/mentor/round-form';
 import { OVERNIGHT_MAX_MINUTES, roundSpan, roundTimeRangeLabel } from '@/lib/workflow/round-time';
 import { FileActions } from '@/components/files/file-preview';
-import { SignaturePad } from '@/components/common/signature-pad';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { formatDateTime } from '@/lib/utils/format';
@@ -132,7 +131,7 @@ function OperatorCorrectEditor({ caseId, round, onClose }: { caseId: string; rou
       toast({ title: '정정 사유를 입력하세요.', variant: 'destructive' });
       return;
     }
-    if (!confirm(`${round.round_no}회차를 정정할까요?${round.mentee_signed_at ? ' 멘티 서명은 유지되며 정정 사실이 감사 로그에 남습니다.' : ''} 일자·방법이 바뀌면 그 날짜 기준 단가로 다시 확정됩니다.`)) return;
+    if (!confirm(`${round.round_no}회차를 정정할까요? 일자·방법이 바뀌면 그 날짜 기준 단가로 다시 확정됩니다.`)) return;
     start(async () => {
       const r = await correctRoundAction(
         caseId,
@@ -190,48 +189,6 @@ function OperatorCorrectEditor({ caseId, round, onClose }: { caseId: string; rou
   );
 }
 
-/** 현장 서명 수집 (P20) — 멘토 스마트폰 화면을 멘티에게 건네 터치 서명을 받는다 */
-export function CollectSignature({ caseId, logId, roundNo }: { caseId: string; logId: string; roundNo: number }) {
-  const router = useRouter();
-  const { toast } = useToast();
-  const [pending, start] = useTransition();
-  const [open, setOpen] = useState(false);
-  const [dataUrl, setDataUrl] = useState<string | null>(null);
-  if (!open) {
-    return (
-      <Button size="sm" variant="outline" className="gap-1" onClick={() => setOpen(true)}>
-        <PenLine className="h-4 w-4" /> 현장 서명 받기
-      </Button>
-    );
-  }
-  return (
-    <div className="mt-2 flex w-full flex-col gap-2 rounded-lg border border-primary/30 bg-primary/5 p-3">
-      <p className="text-sm font-semibold">{roundNo}회차 — 멘티 확인 서명 (현장 수집)</p>
-      <p className="text-xs text-muted-foreground">휴대폰 화면을 멘티에게 건네 화면 터치로 직접 서명을 받으세요. 저장하면 멘티 서명으로 등록됩니다.</p>
-      <SignaturePad label="멘티 서명" onChange={setDataUrl} />
-      <div className="flex justify-end gap-2">
-        <Button size="sm" variant="outline" disabled={pending} onClick={() => setOpen(false)}>취소</Button>
-        <Button
-          size="sm"
-          disabled={pending || !dataUrl}
-          onClick={() =>
-            start(async () => {
-              const r = await collectRoundSignatureAction(caseId, logId, dataUrl!);
-              toast(r.ok ? { title: '멘티 서명을 등록했습니다.' } : { title: r.error, variant: 'destructive' });
-              if (r.ok) {
-                setOpen(false);
-                router.refresh();
-              }
-            })
-          }
-        >
-          {pending ? '등록 중…' : '서명 등록'}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 function durationLabel(startedAt: string, endedAt: string): string {
   const minutes = Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 60000);
   if (minutes <= 0) return '';
@@ -245,7 +202,6 @@ export function RoundsList({
   caseId,
   rounds,
   editable,
-  signEnabled = true,
   operatorCorrect = false,
   viewerMentorId = null,
 }: {
@@ -254,8 +210,6 @@ export function RoundsList({
   editable: boolean;
   /** 보는 멘토 id — 다른 멘토(교체 전)가 진행한 회차의 수정·삭제 버튼을 숨긴다 (P32 리뷰 #8) */
   viewerMentorId?: string | null;
-  /** 그룹 서명 정책이 꺼져 있으면 서명 배지·현장 서명 버튼을 숨긴다 (P28) */
-  signEnabled?: boolean;
   /** 운영사 케이스 상세에서 true — 정산 전 회차에 [정정] 버튼 (P30, case.manage 권한은 서버가 검사) */
   operatorCorrect?: boolean;
 }) {
@@ -289,11 +243,6 @@ export function RoundsList({
               ) : (
                 <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">보고서 대기 (2단계)</span>
               )}
-              {signEnabled && r.report_registered_at && (r.mentee_signed_at ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] text-emerald-800"><PenLine className="h-3 w-3" /> 멘티 서명</span>
-              ) : (
-                <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">서명 대기</span>
-              ))}
               {r.locked && <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><Lock className="h-3 w-3" /> 정산 포함</span>}
               {(r as RoundItem & { corrected_at?: string | null }).corrected_at && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] text-amber-800">운영사 정정</span>}
             </div>
@@ -363,8 +312,8 @@ export function RoundsList({
               <RoundReportForm caseId={caseId} logId={r.id} roundNo={r.round_no} />
             </div>
           )}
-          {/* 등록본 내용·사진 추가 (P31) — 멘티 서명 전·정산 전 회차만 (updateRoundAction) */}
-          {editable && r.report_registered_at && !r.mentee_signed_at && !r.locked && (!viewerMentorId || r.mentor_id === viewerMentorId) && (
+          {/* 등록본 내용·사진 추가 (P31) — 정산 전 회차만 (updateRoundAction) */}
+          {editable && r.report_registered_at && !r.locked && (!viewerMentorId || r.mentor_id === viewerMentorId) && (
             <div className="mt-2">
               <RoundReportForm
                 caseId={caseId}
@@ -372,11 +321,6 @@ export function RoundsList({
                 roundNo={r.round_no}
                 edit={{ kind: r.report_kind === 'file' ? 'file' : 'web', topic: r.topic ?? '', content: r.content ?? '', result: r.result ?? '', place: r.place ?? '' }}
               />
-            </div>
-          )}
-          {signEnabled && editable && r.report_registered_at && !r.mentee_signed_at && !r.locked && (
-            <div className="mt-2">
-              <CollectSignature caseId={caseId} logId={r.id} roundNo={r.round_no} />
             </div>
           )}
           {editable && !r.report_registered_at && planned && (

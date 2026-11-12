@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 
-type Policy = { mentee_confirm_signature?: boolean; mentor_auto_sign?: boolean } | null;
+type Policy = { mentor_auto_sign?: boolean } | null;
 
 /** 사업그룹 관리 — 그룹 추가·수정 + 그룹별 필수서류 슬롯 + 그룹 원천징수/서명 정책 override */
 export function GroupsManager({
@@ -131,9 +131,6 @@ export function GroupsManager({
             </label>
             <label className="flex items-center gap-1">
               <input type="radio" name="report_policy_mode" value="custom" defaultChecked={!!policy} /> 그룹 지정:
-            </label>
-            <label className="flex items-center gap-1">
-              <input type="checkbox" name="mentee_confirm_signature" value="true" defaultChecked={policy?.mentee_confirm_signature ?? true} disabled={!canSign} /> 알림 발송 후 멘티 확인 서명
             </label>
             <label className="flex items-center gap-1">
               <input type="checkbox" name="mentor_auto_sign" value="true" defaultChecked={policy?.mentor_auto_sign ?? false} disabled={!canSign} /> 보고서 저장 시 멘토 서명 자동

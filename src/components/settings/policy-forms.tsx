@@ -105,8 +105,7 @@ export function GatesForm({ program, programTemplateHasMentorSign }: { program: 
   return (
     <div className="flex flex-col gap-4">
       <form className="flex flex-col gap-3 rounded-xl border bg-background p-4" action={(fd) => run(() => updateClosurePolicyAction(Object.fromEntries(fd.entries())), '종결 게이트를 저장했습니다.')}>
-        <h3 className="font-semibold">종결 게이트 (기본 전부 꺼짐)</h3>
-        <Check name="require_mentee_signature" label="종결 요청 시 모든 회차에 멘티 서명 필수" v={!!cp.require_mentee_signature} />
+        <h3 className="font-semibold">종결 게이트 (기본 꺼짐)</h3>
         <Check name="require_group_docs" label="종결 요청 시 멘티 필수서류 모두 제출 필수" v={!!cp.require_group_docs} />
         <p className="text-xs text-muted-foreground">검수 승인(정산 확정) 즉시 멘토별 지급 품의가 자동으로 편성·제출되어 발주처 정산 확인 단계로 넘어갑니다. 멘토 지급서류(통장사본·이력서·신분증)는 이메일로 따로 받으며 이 흐름에 영향을 주지 않습니다.</p>
         <div className="flex justify-end"><Button type="submit" size="sm" disabled={pending}>저장</Button></div>
@@ -118,7 +117,6 @@ export function GatesForm({ program, programTemplateHasMentorSign }: { program: 
           보고서 양식에 멘토 서명 컬럼(<code>{'{{{sign_mentor}}}'}</code>)이 포함된 경우에만 사용할 수 있습니다. 그룹별 override 는 사업그룹 탭에서 지정합니다.
           {!programTemplateHasMentorSign && <span className="ml-1 font-semibold text-destructive">현재 행사 양식에 멘토 서명 컬럼이 없습니다.</span>}
         </p>
-        <Check name="mentee_confirm_signature" label="회차 등록 알림 발송 후 멘티가 확인 서명 (서명 후 멘토 수정 잠금)" v={rp.mentee_confirm_signature ?? true} disabled={!programTemplateHasMentorSign} />
         <Check name="mentor_auto_sign" label="보고서 작성·저장 시 멘토 등록 서명을 자동으로 붙임 (멘토가 '내 서명'을 등록해야 함)" v={!!rp.mentor_auto_sign} disabled={!programTemplateHasMentorSign} />
         <div className="flex justify-end"><Button type="submit" size="sm" disabled={pending}>저장</Button></div>
       </form>

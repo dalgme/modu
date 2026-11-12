@@ -218,7 +218,7 @@ export function DashboardV2(p: DashboardV2Props) {
   const unassigned = perf.byStatus.registered + perf.byStatus.reassignment_pending;
   const assigned = Math.max(0, active - unassigned);
   const boardTotal = p.board.inquiries + p.board.posts + p.board.messages;
-  const missed = m.backlog.unansweredSurveys + m.backlog.unsignedRounds + p.unconfirmedAssignments + m.backlog.mentorsMissingDocs;
+  const missed = m.backlog.unansweredSurveys + p.unconfirmedAssignments + m.backlog.mentorsMissingDocs;
 
   return (
     <div className="flex flex-col gap-6">
@@ -242,7 +242,6 @@ export function DashboardV2(p: DashboardV2Props) {
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-xl border border-dashed border-amber-400 bg-amber-50/50 px-4 py-2 text-xs dark:bg-amber-950/20">
             <span className="font-semibold text-amber-800 dark:text-amber-300">놓치기 쉬운 업무</span>
             {p.unconfirmedAssignments > 0 && <Link href="/nextlab/roster?tab=mentor-match" className="hover:underline">멘토 미확인 배정 <b>{p.unconfirmedAssignments}</b>건</Link>}
-            {m.backlog.unsignedRounds > 0 && <Link href="/nextlab/reports?tab=cases&status=in_progress" className="hover:underline">멘티 미서명 회차 <b>{m.backlog.unsignedRounds}</b>건</Link>}
             {m.backlog.unansweredSurveys > 0 && <Link href="/nextlab/surveys" className="hover:underline">미응답 만족도 <b>{m.backlog.unansweredSurveys}</b>건</Link>}
             {m.backlog.mentorsMissingDocs > 0 && <Link href="/nextlab/roster?tab=mentor-match" className="hover:underline">지급서류 미수령 멘토 <b>{m.backlog.mentorsMissingDocs}</b>명</Link>}
           </div>

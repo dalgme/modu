@@ -43,7 +43,7 @@ export default async function Page() {
   ]);
   const onboarding: MentorOnboardingItem[] = [
     { done: (mp?.expertise?.length ?? 0) > 0, label: '내 프로필 · 전문 분야', desc: '분야·권역이 있어야 멘티 매칭 추천에 반영됩니다.', href: '/mentor/profile' },
-    { done: !!sig, label: '내 서명 등록', desc: '보고서 자동 서명·현장 서명에 사용합니다.', href: '/mentor/signature' },
+    { done: !!sig, label: '내 서명 등록', desc: '웹 작성 보고서의 멘토 자동 서명에 사용합니다.', href: '/mentor/signature' },
     ...(featureEnabled(ctx.program.features, 'mentor_doc_upload')
       ? [{ done: !!(pdoc?.resume_path && pdoc?.bankbook_path && pdoc?.id_card_path), label: '지급서류 업로드', desc: '이력서·통장사본·신분증사본 — 정산 지급에 필요합니다.', href: '/mentor/profile#payment-docs' }]
       : []),

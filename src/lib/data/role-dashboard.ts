@@ -2,7 +2,6 @@ import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { listMentorCases, listMenteeCases, type CaseListItem } from '@/lib/data/cases';
-import { resolveRoundReportPolicy } from '@/lib/documents/round-report';
 import { CASE_STATUS_META, type CaseStatus } from '@/types/case-status';
 import { menteeLabel } from '@/lib/utils/labels';
 import { mentoringOutcomeLabel, normalizeMentoringOutcome } from '@/lib/workflow/mentoring-outcome';
@@ -11,7 +10,7 @@ import { observationRequiredMap } from '@/lib/workflow/observation-required';
 /**
  * 멘토·멘티 대시보드 "다음 할 일" 데이터 (P28) — 케이스별 회차 상태를 한 번에 읽어
  * 멘토에게는 "지금 무엇을 해야 하는지", 멘티에게는 "담당 멘토·다음 일정·내가 할 일"을 만든다.
- * 회차 규칙은 CLAUDE.md §3-1: 이행 = 보고서(2단계) 등록. 서명은 그룹 정책(menteeConfirmSignature)이 켜진 경우만.
+ * 회차 규칙은 CLAUDE.md §3-1: 이행 = 보고서(2단계) 등록. (멘티 확인 서명은 2026-11-12 폐지)
  */
 
 export type MentorActionKey = 'plan_first' | 'report' | 'upcoming' | 'plan_next' | 'observation' | 'closure' | 'wait_review' | 'revision' | 'settled' | 'inactive';
@@ -24,7 +23,6 @@ export interface RoundLite {
   mode: 'online' | 'offline';
   place: string | null;
   reported: boolean;
-  signed: boolean;
 }
 
 export interface MentorCaseTodo {
@@ -44,8 +42,6 @@ export interface MentorCaseTodo {
   nextPlanned: RoundLite | null;
   /** 지난 일정인데 보고서가 없는 회차 */
   reportPending: RoundLite[];
-  /** 서명 정책이 켜진 그룹에서 멘티 서명이 없는 이행 회차 수 */
-  unsignedRounds: number;
   hasObservation: boolean;
   /** (2026-11-03) 운영사 표시 '중도 포기'·'중도 종료'(진행 1회 이상) / '멘토링 포기'·'멘토링 종료' — 없으면 null */
   outcomeLabel: string | null;
@@ -78,39 +74,23 @@ interface LogRow {
   mode: string;
   place: string | null;
   report_registered_at: string | null;
-  mentee_signed_at: string | null;
   amount_snapshot: number;
   settlement_id: string | null;
   mentor_id: string;
 }
 
 function toLite(l: LogRow): RoundLite {
-  return { id: l.id, roundNo: l.round_no, startedAt: l.started_at, endedAt: l.ended_at, mode: l.mode === 'offline' ? 'offline' : 'online', place: l.place, reported: !!l.report_registered_at, signed: !!l.mentee_signed_at };
+  return { id: l.id, roundNo: l.round_no, startedAt: l.started_at, endedAt: l.ended_at, mode: l.mode === 'offline' ? 'offline' : 'online', place: l.place, reported: !!l.report_registered_at };
 }
 
 async function loadLogs(caseIds: string[]): Promise<LogRow[]> {
   if (caseIds.length === 0) return [];
   const { data } = await createAdminClient()
     .from('mentoring_logs')
-    .select('id, case_id, round_no, started_at, ended_at, mode, place, report_registered_at, mentee_signed_at, amount_snapshot, settlement_id, mentor_id')
+    .select('id, case_id, round_no, started_at, ended_at, mode, place, report_registered_at, amount_snapshot, settlement_id, mentor_id')
     .in('case_id', caseIds)
     .order('started_at');
   return (data ?? []) as LogRow[];
-}
-
-async function signaturePolicyByGroup(programId: string, groupIds: string[]): Promise<Map<string, boolean>> {
-  const out = new Map<string, boolean>();
-  await Promise.all(
-    Array.from(new Set(groupIds)).map(async (gid) => {
-      try {
-        const p = await resolveRoundReportPolicy(programId, gid);
-        out.set(gid, !!p.menteeConfirmSignature);
-      } catch {
-        out.set(gid, false);
-      }
-    }),
-  );
-  return out;
 }
 
 function decideAction(c: CaseListItem, rounds: RoundLite[], nextPlanned: RoundLite | null, reportPending: RoundLite[], hasObservation: boolean, href: string, observationRequired = true): MentorCaseTodo['action'] {
@@ -160,11 +140,10 @@ export async function loadMentorDashboard(mentorId: string, programId: string, s
   const cases = await listMentorCases(mentorId, { programId, supportTypeId: supportTypeId ?? undefined });
   const ids = cases.map((c) => c.id);
   const admin = createAdminClient();
-  const [logs, { data: obs }, policy, { data: settled }, { data: extRows }, obsRequired] = await Promise.all([
+  const [logs, { data: obs }, { data: settled }, { data: extRows }, obsRequired] = await Promise.all([
     loadLogs(ids),
     // 관찰의견서 = 업로드 파일(documents.observation_report)만 인정 (2026-09-30 웹 작성 폐지)
     ids.length ? admin.from('documents').select('case_id').eq('doc_key', 'observation_report').in('case_id', ids) : Promise.resolve({ data: [] as { case_id: string }[] }),
-    signaturePolicyByGroup(programId, cases.map((c) => c.support_type_id)),
     ids.length ? admin.from('settlements').select('case_id, net').eq('mentor_id', mentorId).in('case_id', ids).neq('status', 'canceled') : Promise.resolve({ data: [] as { case_id: string; net: number }[] }),
     // 승인된 추가 회차 — 보고서 등록 현황의 총회차에 포함 (getRoundAllowance 와 같은 규칙)
     ids.length ? admin.from('round_extension_requests').select('case_id, extra_rounds').eq('status', 'approved').in('case_id', ids) : Promise.resolve({ data: [] as { case_id: string; extra_rounds: number }[] }),
@@ -182,7 +161,6 @@ export async function loadMentorDashboard(mentorId: string, programId: string, s
     const rows = (logsByCase.get(c.id) ?? []).map(toLite);
     const nextPlanned = rows.filter((r) => !r.reported && new Date(r.startedAt).getTime() > now).sort((a, b) => a.startedAt.localeCompare(b.startedAt))[0] ?? null;
     const reportPending = rows.filter((r) => !r.reported && new Date(r.startedAt).getTime() <= now);
-    const signOn = policy.get(c.support_type_id) ?? false;
     const href = `${caseHrefBase}/${c.id}`;
     return {
       caseId: c.id,
@@ -198,7 +176,6 @@ export async function loadMentorDashboard(mentorId: string, programId: string, s
       item: c.item,
       nextPlanned,
       reportPending,
-      unsignedRounds: signOn ? rows.filter((r) => r.reported && !r.signed).length : 0,
       hasObservation: hasObs.has(c.id),
       outcome: normalizeMentoringOutcome(c.mentoring_outcome),
       outcomeLabel: mentoringOutcomeLabel(normalizeMentoringOutcome(c.mentoring_outcome), c.roundsProgressed),

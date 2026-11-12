@@ -70,8 +70,7 @@ export function ReportTemplatesManager({
         <Label>양식 HTML</Label>
         <Textarea name="html_content" rows={18} defaultValue={t?.html_content ?? defaultHtml} className="font-mono text-xs" onChange={(e) => setHtml(e.target.value)} required />
         <p className="text-[11px] text-muted-foreground">
-          {hasSign(html || t?.html_content || defaultHtml, 'mentor') ? '✔ 멘토 서명 컬럼 포함 — 서명 정책 사용 가능' : '✖ 멘토 서명 컬럼({{{sign_mentor}}}) 없음 — 서명 정책을 켤 수 없습니다'} ·{' '}
-          {hasSign(html || t?.html_content || defaultHtml, 'mentee') ? '✔ 멘티 서명 컬럼 포함' : '멘티 서명 컬럼({{{sign_mentee}}}) 없음'}
+          {hasSign(html || t?.html_content || defaultHtml, 'mentor') ? '✔ 멘토 서명 컬럼 포함 — 서명 정책 사용 가능' : '✖ 멘토 서명 컬럼({{{sign_mentor}}}) 없음 — 서명 정책을 켤 수 없습니다'}
         </p>
       </div>
       <details className="text-xs">
@@ -98,7 +97,7 @@ export function ReportTemplatesManager({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">해석 순서: 그룹 양식 → 행사 공통 양식 → 내장 기본 양식. 웹으로 작성한 회차는 저장·수정·멘티 서명 때 이 양식으로 PDF 가 다시 만들어집니다.</p>
+        <p className="text-xs text-muted-foreground">해석 순서: 그룹 양식 → 행사 공통 양식 → 내장 기본 양식. 웹으로 작성한 회차는 저장·수정 때 이 양식으로 PDF 가 다시 만들어집니다.</p>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" className="gap-1" onClick={() => setPreview(preview === '__default__' ? null : '__default__')}>
             <Eye className="h-4 w-4" /> 기본 양식 미리보기
@@ -110,7 +109,7 @@ export function ReportTemplatesManager({
       </div>
       {preview === '__default__' && previews.__default__ && <iframe title="기본 양식" srcDoc={previews.__default__} className="h-[520px] w-full rounded-lg border bg-white" />}
       {editing === 'new' && form()}
-      {templates.length === 0 && <p className="text-sm text-muted-foreground">등록된 양식이 없어 내장 기본 양식(멘토·멘티 서명 컬럼 포함)을 사용합니다.</p>}
+      {templates.length === 0 && <p className="text-sm text-muted-foreground">등록된 양식이 없어 내장 기본 양식(멘토 서명 컬럼 포함)을 사용합니다.</p>}
       {templates.map((t) => (
         <section key={t.id} className="rounded-xl border bg-background p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">

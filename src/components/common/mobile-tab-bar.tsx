@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { CalendarDays, ClipboardList, Coins, FileText, Inbox, LayoutDashboard, MessageSquare, MessageSquareText, PenLine, UserCircle, Users, type LucideIcon } from 'lucide-react';
+import { CalendarDays, ClipboardList, Coins, FileText, Inbox, LayoutDashboard, ListChecks, MessageSquare, MessageSquareText, PenLine, UserCircle, Users, type LucideIcon } from 'lucide-react';
 
 import { MoreMenuSheet, type MoreMenuItem } from '@/components/common/more-menu-sheet';
 import { cn } from '@/lib/utils';
@@ -20,6 +20,7 @@ const TAB_ICONS = {
   user: UserCircle,
   users: Users,
   pen: PenLine,
+  rounds: ListChecks,
   clipboard: ClipboardList,
   file: FileText,
   inbox: Inbox,

@@ -14,11 +14,10 @@ describe('firstEmptyRoundNo', () => {
 });
 
 describe('canMentorDeleteRound', () => {
-  const base = { editable: true, own: true, locked: false, menteeSigned: false };
-  it('본인·정산 전·서명 전이면 어느 회차든 삭제 가능', () => expect(canMentorDeleteRound(base)).toBe(true));
-  it('정산 포함·멘티 서명·다른 멘토·잠긴 단계는 불가', () => {
+  const base = { editable: true, own: true, locked: false };
+  it('본인·정산 전이면 어느 회차든 삭제 가능', () => expect(canMentorDeleteRound(base)).toBe(true));
+  it('정산 포함·다른 멘토·잠긴 단계는 불가', () => {
     expect(canMentorDeleteRound({ ...base, locked: true })).toBe(false);
-    expect(canMentorDeleteRound({ ...base, menteeSigned: true })).toBe(false);
     expect(canMentorDeleteRound({ ...base, own: false })).toBe(false);
     expect(canMentorDeleteRound({ ...base, editable: false })).toBe(false);
   });

@@ -145,7 +145,7 @@ export function RoundReportForm({
       {fileOnly ? (
         <p className="text-xs text-muted-foreground">{replace ? '고친 보고서 파일을 올리면 기존 파일과 바뀝니다. 최초 등록일은 그대로 두고 수정 등록일이 기록됩니다.' : '이 회차의 보고서 파일 하나만 올리면 됩니다. 올린 뒤 이 회차는 이행으로 인정되어 정산에 포함됩니다.'}</p>
       ) : edit ? (
-        <p className="text-[11px] text-muted-foreground">주제·{edit.kind === 'web' ? '내용·' : ''}결과를 고치고 사진을 더 올릴 수 있습니다. 일시·방법·보고서 파일은 바꿀 수 없습니다(멘티 서명·정산 전까지).</p>
+        <p className="text-[11px] text-muted-foreground">주제·{edit.kind === 'web' ? '내용·' : ''}결과를 고치고 사진을 더 올릴 수 있습니다. 일시·방법·보고서 파일은 바꿀 수 없습니다(정산 전까지 수정 가능).</p>
       ) : (
       <div className="flex gap-2 text-sm">
         <button type="button" onClick={() => setKind('file')} className={`rounded-lg border px-3 py-1.5 ${kind === 'file' ? 'border-primary bg-background font-semibold' : ''}`}>

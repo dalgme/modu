@@ -9,11 +9,6 @@ export const NOTIFICATION_TEMPLATES: Record<string, { code: string; text: string
     code: 'MENTOR_ASSIGNED',
     text: '[{program}] 멘토가 배정되었습니다. 담당 멘토의 연락을 기다려 주세요.',
   },
-  round_registered: {
-    code: 'ROUND_REGISTERED',
-    text: '[{program}] 컨설팅 회차가 등록되었습니다. 내용을 확인하고 서명해 주세요.',
-  },
-  round_signed: { code: 'ROUND_SIGNED', text: '[{program}] 멘티가 회차에 서명했습니다.' },
   extension_requested: {
     code: 'EXTENSION_REQUESTED',
     text: '[{program}] 추가 회차 요청이 접수되었습니다. 요청함을 확인해 주세요.',
@@ -130,9 +125,7 @@ export const NOTIFICATION_EVENT_DEFS: NotificationEventDef[] = [
   { key: 'mentor_change_decided', label: '멘토 변경 요청 처리 결과', audience: '멘티', recipients: '멘티', stage: 'matching', desc: '멘티의 멘토 변경 요청을 수락·반려했을 때', sampleExtra: '요청이 수락되어 새 멘토가 배정되었습니다.' },
   { key: 'mentor_withdrawal_requested', label: '멘토 중도 종료 요청 접수', audience: '운영사', recipients: '운영사(검수 권한)', stage: 'matching', desc: '멘토가 자진 중도 종료를 요청했을 때' },
   { key: 'mentor_ended', label: '담당 멘토 종료(재배정 대기)', audience: '멘티', recipients: '멘토·멘티', stage: 'matching', desc: '멘토 중도 종료 승인·운영사 강제 종료·중도 종료 복귀 시' },
-  // ---- 회차·보고서·서명
-  { key: 'round_registered', label: '회차 보고서 확인·서명 안내', audience: '멘티', recipients: '멘티', stage: 'rounds', desc: '보고서(2단계) 등록 시 — 멘티 확인 서명 정책이 켜진 그룹만, 발송 직전 이미 서명했으면 생략' },
-  { key: 'round_signed', label: '멘티 회차 서명 완료', audience: '멘토', recipients: '멘토', stage: 'rounds', desc: '멘티가 회차 보고서에 서명했을 때 (현장 서명 제외)' },
+  // ---- 회차·보고서 (멘티 확인 서명 안내·서명 완료 알림은 2026-11-12 폐지)
   { key: 'extension_requested', label: '추가 회차 요청 접수', audience: '운영사', recipients: '운영사(검수 권한)', stage: 'rounds', desc: '멘토가 추가 회차를 요청했을 때' },
   { key: 'extension_decided', label: '추가 회차 요청 처리 결과', audience: '멘토', recipients: '멘토', stage: 'rounds', desc: '추가 회차 요청을 승인·반려했을 때', sampleExtra: '추가 1회가 승인되었습니다.' },
   // ---- 종결·검수

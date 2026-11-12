@@ -5,11 +5,10 @@ import { HOURLY_ONLY_ERROR, isWholeHours, roundAmount } from '@/lib/settlement/r
 import { moveFile, sha256Hex } from '@/lib/storage/files';
 import { actingNote } from '@/lib/auth/impersonation';
 import { logAudit } from '@/lib/workflow/audit';
-import { queueNotification } from '@/lib/workflow/notifications';
 import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
 import { resolveRate, kstDate, type ConsultingMode } from '@/lib/settlement/rates';
 import { getRoundAllowance, photoDocKey, reportDocKey } from '@/lib/data/rounds';
-import { renderRoundReport, resolveRoundReportPolicy } from '@/lib/documents/round-report';
+import { renderRoundReport } from '@/lib/documents/round-report';
 import type { WorkflowResult } from '@/lib/workflow/cases';
 import { roundReportFileName } from '@/lib/workflow/round-report-name';
 import { observationRequiredFor } from '@/lib/workflow/observation-required';
@@ -379,11 +378,6 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
   // 웹 작성 보고서 → 행사/그룹 양식 PDF (멘토 자동 서명 정책 반영). 실패해도 등록은 유지(감사로그).
   if (reportKind === 'web') await renderRoundReport(log.id);
 
-  // 멘티 확인 서명 정책이 켜져 있을 때만 "확인·서명" 안내 발송 — 서명 대상(보고서)이 생긴 지금 보낸다
-  const reportPolicy = await resolveRoundReportPolicy(c.program_id, c.support_type_id);
-  if (c.mentee_id && reportPolicy.menteeConfirmSignature) {
-    await queueNotification(admin, { caseId: log.case_id, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'round_registered', payload: { log_id: log.id, round_no: log.round_no } });
-  }
   await logAudit(admin, {
     actorId: input.mentorId,
     programId: c.program_id,
@@ -479,12 +473,11 @@ export async function updateRound(input: {
   photoPaths: string[];
 }): Promise<WorkflowResult> {
   const admin = createAdminClient();
-  const { data: log } = await admin.from('mentoring_logs').select('id, case_id, mentor_id, settlement_id, report_kind, report_registered_at, mentee_signed_at, cases!inner(status, program_id)').eq('id', input.logId).maybeSingle();
+  const { data: log } = await admin.from('mentoring_logs').select('id, case_id, mentor_id, settlement_id, report_kind, report_registered_at, cases!inner(status, program_id)').eq('id', input.logId).maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
   if (input.caseId && log.case_id !== input.caseId) return { ok: false, error: '이 케이스의 회차가 아닙니다.' };
   if (log.mentor_id !== input.mentorId) return { ok: false, error: '다른 멘토가 진행한 회차는 수정할 수 없습니다.' };
   if (log.settlement_id) return { ok: false, error: '정산에 포함된 회차는 수정할 수 없습니다.' };
-  if (log.mentee_signed_at) return { ok: false, error: '멘티가 서명한 회차는 내용을 수정할 수 없습니다.' };
   if (!log.report_registered_at) return { ok: false, error: '아직 보고서가 등록되지 않은 회차입니다. [보고서 업로드]를 이용하세요.' };
   const c = log.cases as unknown as { status: string; program_id: string };
   const denied = assertTransition('submit_round', c.status as never);
@@ -659,16 +652,15 @@ export async function deletePlannedRound(logId: string, mentorId: string, caseId
 }
 
 /**
- * 보고서 등록 회차 삭제 (2026-09-30 개정) — 어느 회차든 개별 삭제(정산 미포함·멘티 서명 전·종결 요청 전·본인 등록).
+ * 보고서 등록 회차 삭제 (2026-09-30 개정) — 어느 회차든 개별 삭제(정산 미포함·종결 요청 전·본인 등록).
  * 뒤 회차 번호는 당기지 않는다(이미 저장된 보고서 파일명 "…-N회차-…"이 어긋나지 않게). 비워진 번호는 다음 [예정 등록]이 채운다.
  */
 export async function deleteRound(logId: string, mentorId: string, caseId?: string): Promise<WorkflowResult> {
   const admin = createAdminClient();
-  const { data: log } = await admin.from('mentoring_logs').select('id, case_id, round_no, mentor_id, settlement_id, mentee_signed_at, report_registered_at, group_session_id, cases!inner(status, program_id)').eq('id', logId).maybeSingle();
+  const { data: log } = await admin.from('mentoring_logs').select('id, case_id, round_no, mentor_id, settlement_id, report_registered_at, group_session_id, cases!inner(status, program_id)').eq('id', logId).maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
   if (caseId && log.case_id !== caseId) return { ok: false, error: '이 케이스의 회차가 아닙니다.' };
   if (log.report_registered_at && log.mentor_id !== mentorId) return { ok: false, error: '다른 멘토가 보고서를 등록한 회차는 삭제할 수 없습니다.' };
-  if (log.mentee_signed_at) return { ok: false, error: '멘티가 서명한 회차는 삭제할 수 없습니다. 운영사에 정정을 요청하세요.' };
   if (log.settlement_id) return { ok: false, error: '정산에 포함된 회차는 삭제할 수 없습니다.' };
   const c = log.cases as unknown as { status: string; program_id: string };
   const denied = assertTransition('submit_round', c.status as never);
@@ -740,7 +732,7 @@ export async function validateRoundSchedule(input: {
 
 /**
  * 운영사 회차 정정 (P30) — 일시·방법·장소를 사후 정정한다. 정산에 포함된 회차는 불가.
- * 보고서·멘티 서명이 있어도 허용하되 서명은 유지되며 감사에 그 사실을 남긴다(서명 대상 문서는 web 양식이면 재생성).
+ * 보고서가 있어도 허용하며 감사에 그 사실을 남긴다(web 양식 보고서는 재생성).
  * 등록과 같은 검증(일일 금액 상한·시간 겹침·단가 스냅샷)을 다시 통과해야 한다. 호출부가 case.manage 권한을 검사한다.
  */
 export async function correctRound(input: {
@@ -757,7 +749,7 @@ export async function correctRound(input: {
   const admin = createAdminClient();
   const { data: log } = await admin
     .from('mentoring_logs')
-    .select('id, case_id, mentor_id, round_no, mode, started_at, ended_at, place, unit_price_snapshot, amount_snapshot, rate_id, settlement_id, report_kind, report_registered_at, mentee_signed_at, group_session_id, cases!inner(status, program_id, support_type_id)')
+    .select('id, case_id, mentor_id, round_no, mode, started_at, ended_at, place, unit_price_snapshot, amount_snapshot, rate_id, settlement_id, report_kind, report_registered_at, group_session_id, cases!inner(status, program_id, support_type_id)')
     .eq('id', input.logId)
     .maybeSingle();
   if (!log) return { ok: false, error: '회차를 찾을 수 없습니다.' };
@@ -787,7 +779,7 @@ export async function correctRound(input: {
     action: 'round.corrected',
     entityType: 'mentoring_logs',
     entityId: log.id,
-    metadata: { case_id: log.case_id, round_no: log.round_no, mentor_id: log.mentor_id, reason: input.reason.trim(), before, after, signature_kept: !!log.mentee_signed_at, report_registered: !!log.report_registered_at },
+    metadata: { case_id: log.case_id, round_no: log.round_no, mentor_id: log.mentor_id, reason: input.reason.trim(), before, after, report_registered: !!log.report_registered_at },
   });
   return { ok: true, caseId: log.case_id };
 }

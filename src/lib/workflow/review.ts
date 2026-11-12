@@ -31,7 +31,7 @@ export interface ApprovalReadiness {
 /**
  * (P31) 종결 검수 승인 가능 여부 — 멘토의 종결 요청 게이트(closure.ts checkClosureReadiness)와 **같은 규칙**을
  * closure_requested 상태에서 다시 검증한다(종결 요청 뒤 회차 삭제·관찰의견서 교체·정책 변경이 있었을 수 있다).
- *  회차 ≥ 필수(+승인 추가) 이고 전부 보고서 등록 · 관찰의견서(웹 총평 또는 업로드본) · (정책) 멘티 확인 서명 · (정책) 그룹 필수서류.
+ *  회차 ≥ 필수(+승인 추가) 이고 전부 보고서 등록 · 관찰의견서(웹 총평 또는 업로드본) · (정책) 그룹 필수서류.
  * 버튼 활성(closure-review-panel canApprove)과 서버 게이트(reviewClosure)가 함께 이 함수를 읽는다.
  */
 export async function canApproveClosure(caseId: string): Promise<ApprovalReadiness> {
@@ -41,7 +41,7 @@ export async function canApproveClosure(caseId: string): Promise<ApprovalReadine
   const [{ data: group }, { data: program }, { data: logs }, { data: obsFile }, { count: settledCount }] = await Promise.all([
     admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle(),
     admin.from('programs').select('closure_policy').eq('id', c.program_id).maybeSingle(),
-    admin.from('mentoring_logs').select('round_no, mentee_signed_at, report_registered_at').eq('case_id', caseId).order('round_no'),
+    admin.from('mentoring_logs').select('round_no, report_registered_at').eq('case_id', caseId).order('round_no'),
     admin.from('documents').select('id').eq('case_id', caseId).eq('doc_key', 'observation_report').maybeSingle(),
     admin.from('settlements').select('id', { count: 'exact', head: true }).eq('case_id', caseId).neq('status', 'canceled'),
   ]);
@@ -58,10 +58,7 @@ export async function canApproveClosure(caseId: string): Promise<ApprovalReadine
   const unreported = rounds.filter((r) => !r.report_registered_at).map((r) => r.round_no);
   if (unreported.length > 0) return { ok: false, reason: `보고서가 없는 회차(${unreported.join('·')}회차)가 있습니다. 멘토에게 보완을 요청하세요.`, ...base };
   if (observationRequired && !hasObservation) return { ok: false, reason: '관찰의견서 파일이 아직 등록되지 않았습니다.', ...base };
-  const policy = (program?.closure_policy ?? {}) as { require_mentee_signature?: boolean; require_group_docs?: boolean };
-  if (policy.require_mentee_signature && rounds.some((r) => !r.mentee_signed_at)) {
-    return { ok: false, reason: '이 행사는 모든 회차에 멘티 확인 서명이 있어야 승인할 수 있습니다. 서명이 없는 회차가 있습니다.', ...base };
-  }
+  const policy = (program?.closure_policy ?? {}) as { require_group_docs?: boolean };
   if (policy.require_group_docs) {
     const missing = await missingRequiredMenteeDocs(caseId);
     if (missing.length > 0) return { ok: false, reason: `멘티 필수서류가 누락되어 승인할 수 없습니다: ${missing.join(', ')}`, ...base };

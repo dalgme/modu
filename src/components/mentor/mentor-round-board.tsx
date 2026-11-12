@@ -117,7 +117,7 @@ export function MentorRoundBoard({
           // 등록된 보고서 수정 업로드 — 정산 전·본인 회차 (replaceRoundReport 서버 게이트와 같은 조건)
           const canReplace = editable && reported && !r.locked && own;
           // 보고서 등록 회차도 각각 삭제 가능 (2026-09-30) — 서버 deleteRound 게이트와 같은 조건
-          const canDelete = canMentorDeleteRound({ editable, own, locked: r.locked, menteeSigned: !!r.mentee_signed_at });
+          const canDelete = canMentorDeleteRound({ editable, own, locked: r.locked });
           const weekday = WEEKDAYS[toKstParts(r.started_at)?.weekday ?? 0];
           const modified = r.report?.updatedAt && Math.abs(new Date(r.report.updatedAt).getTime() - new Date(r.report.createdAt).getTime()) > 60_000 ? r.report.updatedAt : null;
           return (
