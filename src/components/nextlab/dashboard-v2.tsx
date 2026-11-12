@@ -215,7 +215,8 @@ export function DashboardV2(p: DashboardV2Props) {
   const m = p.metrics;
   const perf = m.performance;
   const active = perf.cases - perf.byStatus.withdrawn;
-  const unassigned = perf.byStatus.registered + perf.byStatus.reassignment_pending;
+  // 배정 대기 = 포기·종료 표시가 없는 등록·재배정 대기 케이스 (backlog — needsMentorAssignment)
+  const unassigned = m.backlog.unassigned + m.backlog.reassignmentPending;
   const assigned = Math.max(0, active - unassigned);
   const boardTotal = p.board.inquiries + p.board.posts + p.board.messages;
   const missed = m.backlog.unansweredSurveys + p.unconfirmedAssignments + m.backlog.mentorsMissingDocs;

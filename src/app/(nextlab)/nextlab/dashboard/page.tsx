@@ -23,6 +23,7 @@ import { menteeLabel } from '@/lib/utils/labels';
 import { DashboardV2, type DashboardQueueCase } from '@/components/nextlab/dashboard-v2';
 import { SetupChecklist } from '@/components/nextlab/setup-checklist';
 import { OperatorRequestsPanel, OperatorRequestsHeading } from '@/components/nextlab/operator-requests-panel';
+import { needsMentorAssignment } from '@/lib/workflow/mentoring-outcome';
 
 export const dynamic = 'force-dynamic';
 
@@ -110,7 +111,8 @@ export default async function Page() {
         trend={trend}
         delays={delays}
         inbox={inbox}
-        assignQueue={cases.filter((c) => c.status === 'registered' || c.status === 'reassignment_pending').map(toQueue)}
+        // 배정 대기 = 등록·재배정 대기 중 포기·종료(중도 포기·중도 종료) 표시가 없는 케이스만 (2026-11-12)
+        assignQueue={cases.filter(needsMentorAssignment).map(toQueue)}
         closureQueue={cases.filter((c) => c.status === 'closure_requested' || readyIds.has(c.id)).map(toQueue)}
         board={{ inquiries: openInquiries, posts: boardPosts.filter((p) => p.replies.length === 0).length, messages: programMessages.filter((m) => !m.read).length }}
         unconfirmedAssignments={unconfirmed ?? 0}

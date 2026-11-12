@@ -37,3 +37,16 @@ export interface MentoringCaseItem {
   requiredRounds: number;
   outcome: MentoringOutcome | null;
 }
+
+/** 운영사가 '포기'·'종료'(진행 회차가 있으면 중도 포기·중도 종료)로 표시해 멘토링이 끝난 케이스인가 (2026-11-12) */
+export function isMentoringOver(outcome: unknown): boolean {
+  return normalizeMentoringOutcome(outcome) !== null;
+}
+
+/**
+ * 멘토 배정 대기 (2026-11-12) — 멘티 등록·재배정 대기 상태이면서 포기·종료 표시가 없는 케이스만.
+ * 운영사 대시보드 [멘토 배정 대기]·매칭 리스트 [미배정만]·지연 감지(배정·재배정 지연)가 같은 규칙을 읽는다.
+ */
+export function needsMentorAssignment(c: { status: string; mentoring_outcome?: unknown }): boolean {
+  return (c.status === 'registered' || c.status === 'reassignment_pending') && !isMentoringOver(c.mentoring_outcome);
+}

@@ -13,6 +13,7 @@ import { fetchAllIn } from '@/lib/supabase/paginate';
  *  - revision    보완 요청 후 재제출 지연 → 멘토 독려
  */
 import { DELAY_DAYS, type DelayedCase } from '@/lib/reports/delays-shared';
+import { isMentoringOver } from '@/lib/workflow/mentoring-outcome';
 
 export { DELAY_DAYS, DELAY_LABELS, type DelayKind, type DelayedCase } from '@/lib/reports/delays-shared';
 
@@ -23,12 +24,13 @@ export async function listDelayedCases(programId: string, supportTypeId?: string
   const admin = createAdminClient();
   let q = admin
     .from('cases')
-    .select('id, owner_name, business_name, status, created_at, updated_at, support_type_id, support_types(name, required_rounds)')
+    .select('id, owner_name, business_name, status, created_at, updated_at, support_type_id, mentoring_outcome, support_types(name, required_rounds)')
     .eq('program_id', programId)
     .in('status', ['registered', 'mentor_assigned', 'in_progress', 'revision_requested', 'reassignment_pending']);
   if (supportTypeId) q = q.eq('support_type_id', supportTypeId);
   const { data: cases } = await q;
-  const list = cases ?? [];
+  // 운영사가 포기·종료(중도 포기·중도 종료)로 표시한 케이스는 지연 관리 대상이 아니다 (2026-11-12)
+  const list = (cases ?? []).filter((c) => !isMentoringOver(c.mentoring_outcome));
   if (list.length === 0) return [];
   const caseIds = list.map((c) => c.id);
 

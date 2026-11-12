@@ -591,7 +591,7 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
   const FILTERS = useMemo(
     () => [
       { key: 'all', label: '전체', count: rows.length },
-      { key: 'unassigned', label: '미배정만', count: rows.filter((r) => !r.mentorId && !r.withdrawn).length },
+      { key: 'unassigned', label: '미배정만', count: rows.filter((r) => !r.mentorId && !r.withdrawn && !r.mentoringOver).length },
       { key: 'recommended', label: '추천 있음', count: rows.filter((r) => !r.mentorId && r.recommendations.length > 0).length },
       { key: 'unconfirmed', label: '멘토 미확인', count: rows.filter((r) => !!r.mentorId && !r.confirmedAt && !r.withdrawn).length },
     ],
@@ -600,7 +600,7 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
   const filtered = useMemo(() => {
     const q = query.trim();
     return rows.filter((r) => {
-      if (filter === 'unassigned' && (r.mentorId || r.withdrawn)) return false;
+      if (filter === 'unassigned' && (r.mentorId || r.withdrawn || r.mentoringOver)) return false;
       if (filter === 'recommended' && (r.mentorId || r.recommendations.length === 0)) return false;
       if (filter === 'unconfirmed' && (!r.mentorId || r.confirmedAt || r.withdrawn)) return false;
       if (!q) return true;

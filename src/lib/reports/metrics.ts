@@ -5,6 +5,7 @@ import { fetchAllIn } from '@/lib/supabase/paginate';
 import { CASE_STATUSES, type CaseStatus } from '@/types/case-status';
 import { SURVEY_OPEN_STATUSES } from '@/lib/workflow/mentee';
 import { DELAY_DAYS } from '@/lib/reports/delays-shared';
+import { needsMentorAssignment } from '@/lib/workflow/mentoring-outcome';
 
 /**
  * 리포트·대시보드 수치 — **한 곳**에서 계산 (docs/MODU-DESIGN.md §19).
@@ -142,7 +143,7 @@ export async function computeProgramMetrics(
   const { data: groupsRaw } = await admin.from('support_types').select('id, code, name, status, required_rounds').eq('program_id', programId).order('sort_order');
   const groups = (groupsRaw ?? []).filter((g) => !supportTypeId || g.id === supportTypeId);
   const groupIds = groups.map((g) => g.id);
-  let casesQ = admin.from('cases').select('id, support_type_id, status, predecessor_case_id, created_at, closed_at, mentee_id').eq('program_id', programId);
+  let casesQ = admin.from('cases').select('id, support_type_id, status, predecessor_case_id, created_at, closed_at, mentee_id, mentoring_outcome').eq('program_id', programId);
   if (supportTypeId) casesQ = casesQ.eq('support_type_id', supportTypeId);
   const { data: casesRaw } = await casesQ;
   const excluded = opts.excludeMenteeIds;
@@ -338,13 +339,14 @@ export async function computeProgramMetrics(
       offlineRounds: logs.filter((l) => l.mode === 'offline').length,
     },
     backlog: {
-      unassigned: byStatus.registered,
+      // 배정 대기 = 포기·종료(중도 포기·중도 종료) 표시가 없는 케이스만 (2026-11-12, needsMentorAssignment)
+      unassigned: cases.filter((c) => c.status === 'registered' && needsMentorAssignment(c)).length,
       remainingRounds,
       stalled,
       stalledDays: STALLED_DAYS,
       reviewPending: byStatus.closure_requested,
       revisionRequested: byStatus.revision_requested,
-      reassignmentPending: byStatus.reassignment_pending,
+      reassignmentPending: cases.filter((c) => c.status === 'reassignment_pending' && needsMentorAssignment(c)).length,
       unansweredSurveys,
       mentorsMissingDocs,
       pendingRequests: (extR.data ?? []).length + (chgR.data ?? []).length + (wdR.data ?? []).length,

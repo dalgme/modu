@@ -9,6 +9,7 @@ import { AUTO_MATCH_VERSION } from '@/lib/matching/auto-match';
 import { canTransition } from '@/lib/workflow/transitions';
 import { menteeLabel } from '@/lib/utils/labels';
 import type { MatchMethod, PaymentDocSetState } from '@/lib/matching/labels';
+import { isMentoringOver } from '@/lib/workflow/mentoring-outcome';
 
 export { MATCH_METHOD_LABELS, type MatchMethod, type PaymentDocSetState } from '@/lib/matching/labels';
 
@@ -100,6 +101,8 @@ export interface MenteeMatchRow {
   statusLabel: string;
   statusIndex: number;
   withdrawn: boolean;
+  /** 운영사가 포기·종료(중도 포기·중도 종료)로 표시한 케이스 — 배정 대기·미배정 필터에서 제외 (2026-11-12) */
+  mentoringOver: boolean;
   roundsDone: number;
   requiredRounds: number;
   mentorId: string | null;
@@ -273,6 +276,7 @@ export async function loadMatchingLists(
         statusLabel,
         statusIndex: CASE_STATUSES.indexOf(c.status),
         withdrawn: c.status === 'withdrawn',
+        mentoringOver: isMentoringOver(c.mentoring_outcome),
         roundsDone: c.roundsDone,
         requiredRounds: c.requiredRounds,
         mentorId: c.mentorId,

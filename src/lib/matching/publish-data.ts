@@ -3,6 +3,7 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAll, fetchAllIn } from '@/lib/supabase/paginate';
 import { isMatchingPublished } from '@/lib/matching/visibility-shared';
+import { needsMentorAssignment } from '@/lib/workflow/mentoring-outcome';
 
 /** 운영 설정 › 매칭 공개 — 라운드(그룹)별 현황 (P54) */
 export interface MatchingPublishGroup {
@@ -30,8 +31,8 @@ export interface MatchingPublishGroup {
 export async function loadMatchingPublishOverview(programId: string): Promise<MatchingPublishGroup[]> {
   const admin = createAdminClient();
   const { data: groups } = await admin.from('support_types').select('*').eq('program_id', programId).order('code');
-  const cases = await fetchAll<{ id: string; support_type_id: string; status: string }>((from, to) =>
-    admin.from('cases').select('id, support_type_id, status').eq('program_id', programId).neq('status', 'withdrawn').range(from, to),
+  const cases = await fetchAll<{ id: string; support_type_id: string; status: string; mentoring_outcome: string | null }>((from, to) =>
+    admin.from('cases').select('id, support_type_id, status, mentoring_outcome').eq('program_id', programId).neq('status', 'withdrawn').range(from, to),
   );
   const caseIds = cases.map((c) => c.id);
   const [assigns, logs] = await Promise.all([
@@ -58,7 +59,7 @@ export async function loadMatchingPublishOverview(programId: string): Promise<Ma
       publishedAt: (g as { matching_published_at?: string | null }).matching_published_at ?? null,
       mentees: mine.length,
       matched: new Set(myAssigns.map((a) => a.case_id)).size,
-      unmatched: mine.filter((c) => c.status === 'registered' || c.status === 'reassignment_pending').length,
+      unmatched: mine.filter(needsMentorAssignment).length,
       mentors: mentors.size,
       mentorsWithoutNotice: noNotice.size,
       casesWithRounds: mine.filter((c) => roundCases.has(c.id)).length,
