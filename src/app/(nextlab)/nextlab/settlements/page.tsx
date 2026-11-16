@@ -216,6 +216,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
           exportHref="/api/nextlab/settlements-export"
           items={settlements}
           selectable={tab === 'pending'}
+          canReopen={hasCapability(ctx, 'settlement') && hasCapability(ctx, 'settlement.submit')}
           draftBatches={drafts.map((b) => ({ id: b.id, title: b.title }))}
           caseHrefBase="/nextlab/cases"
           batchHrefBase="/nextlab/settlements/batches"

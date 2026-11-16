@@ -10,7 +10,7 @@ import { useConfirm, type ConfirmOptions } from '@/components/common/confirm-dia
 import { canBatchTransition } from '@/lib/workflow/transitions';
 import { canConfirmAs, type BatchConfirmer } from '@/lib/settlement/batch-confirmer-rule';
 
-import { confirmBatchAction, confirmBatchesAction, deleteBatchAction, markBatchPaidAction, previewBatchSubmitAction, removeFromBatchAction, reopenSettlementAction, returnBatchAction, submitBatchAction, unsubmitBatchAction } from '@/lib/settlement/actions';
+import { cancelSettlementAction, confirmBatchAction, confirmBatchesAction, deleteBatchAction, markBatchPaidAction, previewBatchSubmitAction, removeFromBatchAction, reopenSettlementAction, returnBatchAction, submitBatchAction, unsubmitBatchAction } from '@/lib/settlement/actions';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
@@ -217,7 +217,7 @@ export function RemoveFromBatchButton({ batchId, settlementId, label }: { batchI
  * (2026-11-16) 정산 품의 → 검수로 되돌리기 — 품의에서 빼고 정산 확정을 취소한다(정산 확인 전 품의만).
  * 종결 정산 = 케이스가 종결 요청(검수 대기)으로 돌아간다. 부분 정산(중도 종료) = 회차 정정 후 케이스 화면에서 [부분 정산 다시 확정].
  */
-export function ReopenSettlementButton({ settlementId, kind, label, compact = false }: { settlementId: string; kind: string; label?: string; compact?: boolean }) {
+export function ReopenSettlementButton({ settlementId, kind, label, compact = false, unbatched = false }: { settlementId: string; kind: string; label?: string; compact?: boolean; /** (2026-11-16) 품의 편성 전(지급 대기) 정산 — 품의에서 뺄 것 없이 확정만 취소 */ unbatched?: boolean }) {
   const { toast } = useToast();
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -227,10 +227,10 @@ export function ReopenSettlementButton({ settlementId, kind, label, compact = fa
     reasonRef.current = '';
     const ok = await confirm({
       title: '검수로 되돌리기',
-      description: `${label ?? '이 정산 건'}을(를) 품의에서 빼고 정산 확정을 취소합니다. 회차 일시·방법을 정정한 뒤 다시 정산하세요.`,
+      description: unbatched ? `${label ?? '이 정산 건'}의 정산 확정(지급 대기)을 취소합니다. 회차 일시·방법을 정정한 뒤 다시 정산하세요.` : `${label ?? '이 정산 건'}을(를) 품의에서 빼고 정산 확정을 취소합니다. 회차 일시·방법을 정정한 뒤 다시 정산하세요.`,
       impact: [
         kind === 'closure' ? '케이스가 [종결 요청(검수 대기)] 단계로 돌아갑니다 → 회차 정정 후 [검수 승인]을 다시 누르면 새 품의가 자동 작성·제출됩니다.' : '부분 정산(중도 종료)은 케이스 단계가 그대로입니다 → 회차 정정 후 케이스 화면 정산 카드의 [부분 정산 다시 확정]을 누르면 새 품의가 자동 작성·제출됩니다.',
-        '품의에 다른 정산이 남아 있으면 그 건들은 그대로 두고, 빈 품의는 삭제됩니다.',
+        ...(unbatched ? [] : ['품의에 다른 정산이 남아 있으면 그 건들은 그대로 두고, 빈 품의는 삭제됩니다.']),
         '멘토에게 정산 취소 알림이 발송되고, 이 정산의 정산서 PDF는 삭제됩니다.',
       ],
       confirmLabel: '검수로 되돌리기',
@@ -243,7 +243,12 @@ export function ReopenSettlementButton({ settlementId, kind, label, compact = fa
       return;
     }
     start(async () => {
-      const r = await reopenSettlementAction(settlementId, reasonRef.current);
+      const r = unbatched
+        ? await (async () => {
+            const c = await cancelSettlementAction(settlementId, `검수로 되돌리기: ${reasonRef.current.trim()}`);
+            return c.ok ? { ok: true as const, kind: c.kind, batchDeleted: false } : c;
+          })()
+        : await reopenSettlementAction(settlementId, reasonRef.current);
       if (!r.ok) {
         toast({ title: r.error, variant: 'destructive' });
         return;

@@ -9,6 +9,8 @@ import type { SettlementItem } from '@/lib/data/settlements';
 import { WITHHOLDING_LABELS } from '@/lib/settlement/compute';
 import { addToBatchAction, createBatchAction } from '@/lib/settlement/actions';
 import { StatusBadge } from '@/components/cases/status-badge';
+import { ReopenSettlementButton } from '@/components/settlement/batch-actions';
+import { canCancelSettlement, canReopenSettlement } from '@/lib/workflow/transitions';
 import { ConfirmDialog } from '@/components/common/confirm-dialog';
 import { EmptyState } from '@/components/common/empty-state';
 import { ListToolbar } from '@/components/common/list-toolbar';
@@ -30,6 +32,7 @@ export function SettlementsTable({
   batchHrefBase,
   batchQuery = '',
   showToolbar = true,
+  canReopen = false,
   emptyHint, exportHref = null }: { /** 정산 엑셀 라우트 — 운영사·발주처 페이지만 넘긴다 (멘토 화면은 403, P32 리뷰 #4) */ exportHref?: string | null;
   items: SettlementItem[];
   selectable?: boolean;
@@ -39,6 +42,8 @@ export function SettlementsTable({
   /** 품의 링크에 붙일 쿼리 (예: `?tab=all`) — 상세에서 돌아올 때 탭 유지 */
   batchQuery?: string;
   showToolbar?: boolean;
+  /** (2026-11-16) 운영사 'settlement'+'settlement.submit' — 행마다 [검수로 되돌리기](지급 대기 = 확정 취소 / 품의 편성·제출 = 품의에서 빼고 취소) */
+  canReopen?: boolean;
   emptyHint?: string;
 }) {
   const { toast } = useToast();
@@ -159,12 +164,13 @@ export function SettlementsTable({
                 <th className="px-3 py-2 text-right">실지급</th>
                 <th className="px-3 py-2">상태</th>
                 <th className="hidden px-3 py-2 md:table-cell">확정일</th>
+                {canReopen && <th className="px-3 py-2" />}
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={selectable ? 11 : 10} className="px-3 py-4">
+                  <td colSpan={(selectable ? 11 : 10) + (canReopen ? 1 : 0)} className="px-3 py-4">
                     <EmptyState compact icon={Search} title="조건에 맞는 정산 건이 없습니다" hint="검색어를 지우거나 그룹 필터를 [전체 그룹]으로 바꿔 보세요." action={<button type="button" className="text-xs font-semibold text-primary underline" onClick={() => { setQuery(''); setGroup('all'); }}>초기화</button>} />
                   </td>
                 </tr>
@@ -202,6 +208,15 @@ export function SettlementsTable({
                     )}
                   </td>
                   <td className="hidden px-3 py-2 text-xs tabular-nums md:table-cell">{formatDate(s.confirmed_at)}</td>
+                  {canReopen && (
+                    <td className="px-3 py-2 text-right">
+                      {canCancelSettlement(s) ? (
+                        <ReopenSettlementButton settlementId={s.id} kind={s.kind} label={`${s.mentorName} · ${s.businessName}`} compact unbatched />
+                      ) : canReopenSettlement(s, s.batchStatus) ? (
+                        <ReopenSettlementButton settlementId={s.id} kind={s.kind} label={`${s.mentorName} · ${s.businessName}`} compact />
+                      ) : null}
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
