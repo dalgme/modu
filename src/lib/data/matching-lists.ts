@@ -1,3 +1,4 @@
+import { pastMentorNote } from '@/lib/workflow/past-mentor';
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -38,6 +39,8 @@ export interface MentorMatchMentee {
   /** 배정 관리 버튼 조건 — UI·서버 게이트가 같은 전이 상수를 읽는다 */
   canRecall: boolean;
   canReassign: boolean;
+  /** (2026-11-16) 이 멘토가 중도 종료 등으로 빠진 뒤의 케이스 — "멘토 중도 종료" 표기, 배정 관리 버튼 없음 */
+  endedNote?: string | null;
 }
 
 export interface MentorReviewItem {
@@ -107,6 +110,10 @@ export interface MenteeMatchRow {
   requiredRounds: number;
   mentorId: string | null;
   mentorName: string | null;
+  /** (2026-11-16) 현재 담당이 없을 때 진행했던 멘토 — "이름 (멘토 중도 종료)" 표시용 (past-mentor.ts) */
+  pastMentorId: string | null;
+  pastMentorName: string | null;
+  pastMentorNote: string | null;
   mentorActive: number;
   mentorExpertise: string[];
   assignedAt: string | null;
@@ -149,7 +156,7 @@ export async function loadMatchingLists(
   const [{ data: assigns }, { data: profiles }, { data: responses }, { data: recs }, { data: mentorMembers }, { data: roster }, { data: settlements }, { data: docs }, { data: reviews }] = await Promise.all([
     // 활성 배정 + 종결·중도 종료로 끝난 마지막 배정 — 종결 멘티도 멘토 행에 남는다 (P30). 1,000행 캡 대비 페이지 조회.
     fetchAllIn<{ case_id: string; mentor_id: string; assigned_at: string; confirmed_at: string | null; match_method: string | null; is_active: boolean; end_kind: string | null }>(caseIds, (chunk, from, to) =>
-      admin.from('mentor_assignments').select('case_id, mentor_id, assigned_at, confirmed_at, match_method, is_active, end_kind').in('case_id', chunk).or('is_active.eq.true,end_kind.in.(case_closed,case_withdrawn)').order('assigned_at', { ascending: false }).range(from, to),
+      admin.from('mentor_assignments').select('case_id, mentor_id, assigned_at, confirmed_at, match_method, is_active, end_kind').in('case_id', chunk).order('assigned_at', { ascending: false }).range(from, to),
     ).then((rows) => ({ data: rows })),
     fetchAllIn<{ case_id: string; preferred_mentor: string | null; needs: string[]; rank: number | null }>(caseIds, (chunk, from, to) => admin.from('mentee_profiles').select('case_id, preferred_mentor, needs, rank').in('case_id', chunk).range(from, to)).then((rows) => ({ data: rows })),
     fetchAllIn<{ case_id: string; score: number | null }>(caseIds, (chunk, from, to) => admin.from('survey_responses').select('case_id, score').in('case_id', chunk).range(from, to)).then((rows) => ({ data: rows })),
@@ -178,7 +185,14 @@ export async function loadMatchingLists(
   // 케이스별 대표 배정 = 활성 우선, 없으면 최신 종료 배정 (assigned_at 내림차순이라 첫 행이 최신)
   const assignByCase = new Map<string, NonNullable<typeof assigns>[number]>();
   for (const a of assigns ?? []) if (a.is_active) assignByCase.set(a.case_id, a);
-  for (const a of assigns ?? []) if (!assignByCase.has(a.case_id)) assignByCase.set(a.case_id, a);
+  for (const a of assigns ?? []) if (!assignByCase.has(a.case_id) && (a.end_kind === 'case_closed' || a.end_kind === 'case_withdrawn')) assignByCase.set(a.case_id, a);
+  // (2026-11-16) 멘토 중도 종료 등 활성 배정이 없는 케이스 = 진행했던 멘토(listCases 의 pastMentorId)의 최신 배정 — 멘토 행에 '멘토 중도 종료'로 남는다
+  const pastAssignByCase = new Map<string, NonNullable<typeof assigns>[number]>();
+  for (const c of cases) {
+    if (assignByCase.has(c.id) || !c.pastMentorId) continue;
+    const row = (assigns ?? []).find((a) => a.case_id === c.id && a.mentor_id === c.pastMentorId);
+    if (row) pastAssignByCase.set(c.id, row);
+  }
   const profileByCase = new Map((profiles ?? []).map((p) => [p.case_id, p]));
   const scoreByCase = new Map((responses ?? []).map((r) => [r.case_id, r.score]));
   const surveyed = new Set((responses ?? []).map((r) => r.case_id));
@@ -264,6 +278,28 @@ export async function loadMatchingLists(
           canReassign: canTransition('reassign_mentor', c.status),
         });
       }
+      const past = pastAssignByCase.get(c.id);
+      if (past) {
+        (menteesByMentor.get(past.mentor_id) ?? menteesByMentor.set(past.mentor_id, []).get(past.mentor_id)!).push({
+          caseId: c.id,
+          label,
+          groupId: c.support_type_id,
+          groupName: c.supportTypeName,
+          rank,
+          assignedAt: past.assigned_at,
+          confirmedAt: past.confirmed_at,
+          matchMethod: asMethod(past.match_method),
+          status: c.status,
+          statusLabel,
+          withdrawn: c.status === 'withdrawn',
+          roundsDone: c.roundsDone,
+          requiredRounds: c.requiredRounds,
+          surveyScore: typeof scoreByCase.get(c.id) === 'number' ? (scoreByCase.get(c.id) as number) : null,
+          canRecall: false,
+          canReassign: false,
+          endedNote: pastMentorNote(past.end_kind),
+        });
+      }
       return {
         caseId: c.id,
         label,
@@ -281,6 +317,9 @@ export async function loadMatchingLists(
         requiredRounds: c.requiredRounds,
         mentorId: c.mentorId,
         mentorName: c.mentorName,
+        pastMentorId: c.pastMentorId ?? null,
+        pastMentorName: c.pastMentorName ?? null,
+        pastMentorNote: c.pastMentorName ? pastMentorNote(c.pastMentorEndKind) : null,
         mentorActive: c.mentorId ? (activeByMentor.get(c.mentorId) ?? 0) : 0,
         mentorExpertise: c.mentorId ? (expertiseByMentor.get(c.mentorId) ?? []) : [],
         assignedAt: a?.assigned_at ?? null,

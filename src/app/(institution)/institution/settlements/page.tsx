@@ -27,7 +27,8 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
 
   if (tab === 'batches') {
     const [all, scoped] = await Promise.all([
-      listBatches(ctx.programId),
+      // (2026-11-16) 발주처 [정산 품의] 기능을 켠 라운드의 품의만 — 기본(꺼짐)은 운영사가 정산 확인
+      listBatches(ctx.programId, undefined, { confirmer: 'institution' }),
       groupId ? listSettlements({ programId: ctx.programId, supportTypeId: groupId, status: ['batched', 'confirmed', 'paid'] }) : Promise.resolve(null),
     ]);
     const inScope = scoped ? new Set(scoped.map((s) => s.batch_id).filter((x): x is string => !!x)) : null;
@@ -58,7 +59,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
               {batches.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-3 py-6 text-center text-muted-foreground">
-                    제출된 품의가 없습니다.
+                    제출된 품의가 없습니다. (정산 품의는 운영사가 확인하며, 운영사가 라운드별로 [발주처 정산 품의 기능]을 켜면 이곳에 도착합니다.)
                   </td>
                 </tr>
               )}

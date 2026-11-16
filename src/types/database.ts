@@ -3504,6 +3504,7 @@ export type Database = {
         Row: {
           group_mentoring_enabled: boolean;
           group_mentoring_max_per_mentor: number;
+          institution_settlement_enabled: boolean;
           survey_enabled: boolean;
           mentoring_budget: number | null;
           observation_required?: boolean;
@@ -3531,6 +3532,7 @@ export type Database = {
         Insert: {
           group_mentoring_enabled?: boolean;
           group_mentoring_max_per_mentor?: number;
+          institution_settlement_enabled?: boolean;
           survey_enabled?: boolean;
           mentoring_budget?: number | null;
           observation_required?: boolean;
@@ -3558,6 +3560,7 @@ export type Database = {
         Update: {
           group_mentoring_enabled?: boolean;
           group_mentoring_max_per_mentor?: number;
+          institution_settlement_enabled?: boolean;
           survey_enabled?: boolean;
           mentoring_budget?: number | null;
           observation_required?: boolean;

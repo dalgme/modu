@@ -10,7 +10,7 @@ import { fmt } from '@/lib/programs/branding';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { reviewClosure, type ApprovalExpectation } from '@/lib/workflow/review';
 import { cancelSettlement, resettlePartial, type CancelResult } from '@/lib/settlement/settle';
-import { addToBatch, confirmBatch, createBatch, deleteDraftBatch, markBatchPaid, previewBatchSubmit, removeFromBatch, returnBatch, submitBatch, unsubmitBatch, updateBatchMeta, type BatchResult, type BatchSubmitPreview } from '@/lib/workflow/batches';
+import { addToBatch, autoBatchSettlements, confirmBatch, createBatch, deleteDraftBatch, markBatchPaid, previewBatchSubmit, removeFromBatch, reopenSettlementForReview, returnBatch, submitBatch, unsubmitBatch, updateBatchMeta, type BatchResult, type BatchSubmitPreview } from '@/lib/workflow/batches';
 import { canWithdrawAs, INSTITUTION_WITHDRAW_DENIED } from '@/lib/workflow/transitions';
 import { decideMentorWithdrawal, forceEndMentor, withdrawCase } from '@/lib/workflow/withdrawal';
 import { decideRoundExtension, notifyProgramStaff } from '@/lib/workflow/closure';
@@ -88,6 +88,14 @@ export async function resettlePartialAction(caseId: string, mentorId: string): P
   if (!(await caseInProgram(caseId, ctx.programId))) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
   const r = await resettlePartial(caseId, mentorId, profile.id);
   if (!r.ok) return r;
+  // (2026-11-16) 다시 확정한 부분 정산은 자동으로 멘토별 품의 편성·제출 (검수 승인·선행 멘토 정산과 같은 흐름)
+  if (r.settlementId) {
+    try {
+      await autoBatchSettlements(caseId, [r.settlementId], profile.id, { note: '부분 정산 다시 확정 — 자동 편성·제출' });
+    } catch (e) {
+      console.error('[settlement] resettle auto batch failed:', e);
+    }
+  }
   revalidateCase(caseId);
   revalidateBatches();
   return { ok: true, caseId };
@@ -201,18 +209,68 @@ export async function returnBatchAction(batchId: string, reason: string): Promis
   return r;
 }
 
-/** 발주처: T9 정산 확인 (품의 단위) */
+/**
+ * T9 정산 확인 (품의 단위). (2026-11-16) 확인 주체 = 라운드 설정 — 기본(발주처 [정산 품의] 기능 꺼짐)은 운영사(`settlement.submit`),
+ * 켜진 라운드의 품의는 발주처. 서버 confirmBatch 가 batch-confirmer 로 다시 판정한다.
+ */
 export async function confirmBatchAction(batchId: string): Promise<BatchResult> {
-  const profile = await realRoleOrNull(['institution']);
-  if (!profile) return { ok: false, error: CLIENT_ONLY };
+  const profile = await realRoleOrNull(['institution', 'nextlab']);
+  if (!profile) return { ok: false, error: '발주처·운영사 담당자만 실행할 수 있습니다.' };
   const ctx = await contextOrNull(profile);
   if (!ctx) return { ok: false, error: NO_CONTEXT };
+  const role = profile.role === 'institution' ? 'institution' : 'nextlab';
+  if (role === 'nextlab') { const denied = denyUnless(ctx, 'settlement.submit'); if (denied) return { ok: false, error: denied }; }
   if (!(await batchInProgram(batchId, ctx.programId))) return { ok: false, error: '이 행사의 품의가 아닙니다.' };
-  const r = await confirmBatch(batchId, profile.id);
+  const r = await confirmBatch(batchId, profile.id, role);
   if (r.ok) {
     revalidateBatches(batchId);
     const { data: items } = await createAdminClient().from('settlements').select('case_id').eq('batch_id', batchId);
     for (const s of items ?? []) revalidateCase(s.case_id);
+  }
+  return r;
+}
+
+/** (2026-11-16) 운영사: 제출된 품의 여러 건 한 번에 정산 확인 — 운영사 확인 품의만(발주처 확인 라운드는 건너뜀) */
+export async function confirmBatchesAction(batchIds: string[]): Promise<{ ok: true; confirmed: number; skipped: string[] } | { ok: false; error: string }> {
+  const profile = await realRoleOrNull(['nextlab']);
+  if (!profile) return { ok: false, error: OPERATOR_ONLY };
+  const ctx = await contextOrNull(profile);
+  if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'settlement.submit'); if (denied) return { ok: false, error: denied }; }
+  const ids = Array.from(new Set(batchIds)).slice(0, 300);
+  if (ids.length === 0) return { ok: false, error: '정산 확인할 품의를 선택하세요.' };
+  let confirmed = 0;
+  const skipped: string[] = [];
+  for (const id of ids) {
+    if (!(await batchInProgram(id, ctx.programId))) { skipped.push('이 행사의 품의가 아닌 건'); continue; }
+    const r = await confirmBatch(id, profile.id, 'nextlab');
+    if (r.ok) confirmed++;
+    else skipped.push(r.error);
+  }
+  revalidateBatches();
+  for (const id of ids) revalidatePath(`/nextlab/settlements/batches/${id}`);
+  revalidatePath('/nextlab/cases');
+  return { ok: true, confirmed, skipped };
+}
+
+/**
+ * (2026-11-16) 운영사: 정산 품의 → 검수로 되돌리기 — 품의에서 빼고 정산 확정을 취소한다(확인·지급 전 품의만).
+ * 종결 정산 = 케이스가 종결 요청(검수 대기)으로 돌아가 회차 정정 후 다시 검수 승인. 부분 정산 = 회차 정정 후 [부분 정산 다시 확정].
+ */
+export async function reopenSettlementAction(settlementId: string, reason: string): Promise<{ ok: true; caseId: string; kind: 'closure' | 'partial'; caseReverted: boolean; batchDeleted: boolean } | { ok: false; error: string }> {
+  const profile = await realRoleOrNull(['nextlab']);
+  if (!profile) return { ok: false, error: OPERATOR_ONLY };
+  const ctx = await contextOrNull(profile);
+  if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'settlement'); if (denied) return { ok: false, error: denied }; }
+  { const denied = denyUnless(ctx, 'settlement.submit'); if (denied) return { ok: false, error: denied }; }
+  const { data: s } = await createAdminClient().from('settlements').select('program_id, batch_id').eq('id', settlementId).maybeSingle();
+  if (!s || s.program_id !== ctx.programId) return { ok: false, error: '이 행사의 정산 건이 아닙니다.' };
+  const r = await reopenSettlementForReview(settlementId, profile.id, reason ?? '');
+  if (r.ok) {
+    revalidateCase(r.caseId);
+    revalidateBatches(s.batch_id ?? undefined);
+    revalidatePath('/nextlab/review');
   }
   return r;
 }

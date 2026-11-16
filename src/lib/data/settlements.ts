@@ -6,6 +6,8 @@ import type { Tables } from '@/types/database';
 import type { SettlementLine } from '@/lib/settlement/compute';
 import { mentorsMissingPaymentDocs } from '@/lib/data/mentors';
 import { fetchAll, fetchAllIn } from '@/lib/supabase/paginate';
+import { loadBatchConfirmers } from '@/lib/settlement/batch-confirmer';
+import type { BatchConfirmer } from '@/lib/settlement/batch-confirmer-rule';
 
 export type SettlementRow = Tables<'settlements'>;
 export type BatchRow = Tables<'settlement_batches'>;
@@ -25,6 +27,8 @@ export interface SettlementItem extends SettlementRow {
 
 export interface BatchItem extends BatchRow {
   itemCount: number;
+  /** (2026-11-16) 정산 확인 주체 — 라운드 설정(발주처 [정산 품의] 기능). 기본 operator */
+  confirmer: BatchConfirmer;
   confirmedByName: string | null;
   createdByName: string | null;
 }
@@ -103,7 +107,8 @@ async function enrich(rows: SettlementRow[], supportTypeId?: string): Promise<Se
   return out;
 }
 
-export async function listBatches(programId: string, status?: string[]): Promise<BatchItem[]> {
+/** opts.confirmer = 그 확인 주체의 품의만 (발주처 화면 = 'institution') */
+export async function listBatches(programId: string, status?: string[], opts: { confirmer?: BatchConfirmer } = {}): Promise<BatchItem[]> {
   const supabase = createClient();
   let q = supabase.from('settlement_batches').select('*').eq('program_id', programId).order('created_at', { ascending: false });
   if (status && status.length) q = q.in('status', status);
@@ -113,19 +118,22 @@ export async function listBatches(programId: string, status?: string[]): Promise
   const admin = createAdminClient();
   const ids = rows.map((b) => b.id);
   const userIds = Array.from(new Set(rows.flatMap((b) => [b.created_by, b.confirmed_by]).filter((x): x is string => !!x)));
-  const [items, users] = await Promise.all([
+  const [items, users, confirmers] = await Promise.all([
     fetchAllIn<{ batch_id: string | null }>(ids, (chunk, from, to) => admin.from('settlements').select('batch_id').in('batch_id', chunk).neq('status', 'canceled').range(from, to)),
     fetchAllIn<{ id: string; name: string }>(userIds, (chunk, from, to) => admin.from('users').select('id, name').in('id', chunk).range(from, to)),
+    loadBatchConfirmers(programId, ids),
   ]);
   const counts = new Map<string, number>();
   for (const s of items) if (s.batch_id) counts.set(s.batch_id, (counts.get(s.batch_id) ?? 0) + 1);
   const names = new Map(users.map((u) => [u.id, u.name]));
-  return rows.map((b) => ({
+  const out: BatchItem[] = rows.map((b) => ({
     ...b,
     itemCount: counts.get(b.id) ?? 0,
+    confirmer: confirmers.get(b.id) ?? 'operator',
     createdByName: b.created_by ? (names.get(b.created_by) ?? null) : null,
     confirmedByName: b.confirmed_by ? (names.get(b.confirmed_by) ?? null) : null,
   }));
+  return opts.confirmer ? out.filter((b) => b.confirmer === opts.confirmer) : out;
 }
 
 export async function getBatch(batchId: string, programId: string): Promise<{ batch: BatchItem; items: SettlementItem[] } | null> {
@@ -162,7 +170,9 @@ export { SETTLEMENT_STATUS_LABELS, BATCH_STATUS_LABELS } from '@/lib/settlement/
 export async function loadSettlementNeeded(programId: string, supportTypeId?: string | null): Promise<{ mentors: number; settlements: number; batches: number; net: number }> {
   const admin = createAdminClient();
   const { data: batches } = await admin.from('settlement_batches').select('id').eq('program_id', programId).eq('status', 'submitted');
-  const batchIds = (batches ?? []).map((b) => b.id);
+  // (2026-11-16) 발주처가 확인하는 품의만(라운드 설정 발주처 [정산 품의] 기능) — 기본은 운영사가 확인하므로 0
+  const confirmers = await loadBatchConfirmers(programId, (batches ?? []).map((b) => b.id));
+  const batchIds = (batches ?? []).map((b) => b.id).filter((id) => confirmers.get(id) === 'institution');
   if (batchIds.length === 0) return { mentors: 0, settlements: 0, batches: 0, net: 0 };
   let q = admin.from('settlements').select('id, mentor_id, net, batch_id, cases!inner(support_type_id)').in('batch_id', batchIds).eq('status', 'batched');
   if (supportTypeId) q = q.eq('cases.support_type_id', supportTypeId);

@@ -202,8 +202,9 @@ export const BATCH_TRANSITIONS: Record<BatchTransitionKey, BatchTransition> = {
   submit: { from: ['draft'], to: 'submitted', who: ['nextlab'], denied: '작성 중 품의만 제출할 수 있습니다.' },
   unsubmit: { from: ['submitted'], to: 'draft', who: ['nextlab'], denied: '제출 상태의 품의만 철회할 수 있습니다.' },
   return: { from: ['submitted'], to: 'draft', who: ['institution'], denied: '제출된 품의만 반려할 수 있습니다.' },
-  confirm: { from: ['submitted'], to: 'confirmed', who: ['institution'], denied: '제출된 품의만 정산 확인할 수 있습니다.' },
-  mark_paid: { from: ['confirmed'], to: 'paid', who: ['nextlab'], denied: '발주처가 확인한 품의만 지급 완료로 표시할 수 있습니다.' },
+  // (2026-11-16) 정산 확인 주체 = 라운드 설정(발주처 [정산 품의] 기능) — 기본 운영사. 역할별 판정은 batch-confirmer-rule canConfirmAs
+  confirm: { from: ['submitted'], to: 'confirmed', who: ['institution', 'nextlab'], denied: '제출된 품의만 정산 확인할 수 있습니다.' },
+  mark_paid: { from: ['confirmed'], to: 'paid', who: ['nextlab'], denied: '정산 확인된 품의만 지급 완료로 표시할 수 있습니다.' },
 };
 
 export function canBatchTransition(key: BatchTransitionKey, status: string): boolean {
@@ -220,4 +221,13 @@ export function batchRoleCan(key: BatchTransitionKey, role: UserRole): boolean {
 export const SETTLEMENT_CANCEL_DENIED = '지급 대기 상태이고 품의에 편성되지 않은 정산만 취소할 수 있습니다.';
 export function canCancelSettlement(s: { status: string; batch_id: string | null }): boolean {
   return s.status === 'pending' && !s.batch_id;
+}
+
+/**
+ * (2026-11-16) 정산 품의 → 검수로 되돌리기 가능 조건 — 품의 화면·케이스 정산 카드 버튼과 서버 reopenSettlementForReview 가 같이 읽는다.
+ * 품의에 편성됐고(batched) 그 품의가 아직 정산 확인 전(작성 중·제출)일 때. 확인·지급된 정산은 되돌릴 수 없다.
+ */
+export const SETTLEMENT_REOPEN_DENIED = '정산 확인 전(작성 중·제출) 품의에 든 정산만 검수 단계로 되돌릴 수 있습니다.';
+export function canReopenSettlement(s: { status: string; batch_id: string | null }, batchStatus: string | null): boolean {
+  return s.status === 'batched' && !!s.batch_id && (batchStatus === 'draft' || batchStatus === 'submitted');
 }

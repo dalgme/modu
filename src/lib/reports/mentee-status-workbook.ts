@@ -1,3 +1,4 @@
+import { pastMentorLabel, pickPastMentor } from '@/lib/workflow/past-mentor';
 import 'server-only';
 
 import ExcelJS from 'exceljs';
@@ -92,9 +93,12 @@ export async function buildMenteeStatusWorkbook(programId: string, groupId: stri
       const p = profileOf.get(c.id);
       const as = (assignsOf.get(c.id) ?? []).slice().sort((a, b) => a.assigned_at.localeCompare(b.assigned_at));
       const active = as.find((a) => a.is_active);
-      const final = active ?? as.filter((a) => a.end_kind === 'case_closed' || a.end_kind === 'case_withdrawn').pop();
-      const mentor = final ? userById.get(final.mentor_id) : undefined;
       const ls = (logsOf.get(c.id) ?? []).slice().sort((a, b) => a.round_no - b.round_no);
+      const closedEnd = as.filter((a) => a.end_kind === 'case_closed' || a.end_kind === 'case_withdrawn').pop();
+      // (2026-11-16) 멘토 중도 종료·운영사 강제 종료로 활성 배정이 없어도 진행했던 멘토를 표시 (past-mentor.ts, 회차 없이 회수된 배정 제외)
+      const pastPick = active || closedEnd ? null : pickPastMentor(as, new Set(ls.map((l) => l.mentor_id)));
+      const final = active ?? closedEnd ?? (pastPick ? as.filter((a) => a.mentor_id === pastPick.mentorId).pop() : undefined);
+      const mentor = final ? userById.get(final.mentor_id) : undefined;
       // 이전 멘토 = 지금(마지막) 담당이 아닌 멘토 중 회차를 진행했거나 교체·중도 종료로 빠진 멘토 (회차 없이 회수된 배정은 제외)
       const prevNames = Array.from(
         new Set(
@@ -131,7 +135,7 @@ export async function buildMenteeStatusWorkbook(programId: string, groupId: stri
         itemDesc: p?.item_description ?? '',
         needs: (p?.needs ?? []).join(', '),
         status: inactive.has(c.mentee_id ?? '') ? `${status} (비활성 회원)` : status,
-        mentor: mentor ? `${mentor.name}${final?.end_kind === 'case_withdrawn' ? ' (중도 종료)' : ''}` : '미배정',
+        mentor: mentor ? (active ? mentor.name : final?.end_kind === 'case_closed' ? mentor.name : pastMentorLabel(mentor.name, final?.end_kind)) : '미배정',
         mentorInst: (final && instOf.get(final.mentor_id)) || mentor?.organization || '',
         mentorPos: mentor?.position ?? '',
         mentorPhone: mentor?.phone ?? '',

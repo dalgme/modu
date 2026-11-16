@@ -757,7 +757,7 @@ export async function correctRound(input: {
   if (log.case_id !== input.caseId) return { ok: false, error: '이 케이스의 회차가 아닙니다.' };
   if (log.settlement_id) return { ok: false, error: '정산에 포함된 회차는 정정할 수 없습니다. 정산 확정을 먼저 취소하세요.' };
   const c = log.cases as unknown as { status: string; program_id: string; support_type_id: string };
-  if (c.status === 'closed' || c.status === 'withdrawn') return { ok: false, error: '종결·중도 종료된 케이스의 회차는 정정할 수 없습니다.' };
+  if (c.status === 'closed') return { ok: false, error: '종결된 케이스의 회차는 정정할 수 없습니다.' };
   const started = new Date(input.startedAt);
   const ended = new Date(input.endedAt);
   if (!isWholeHours(started, ended)) return { ok: false, error: HOURLY_ONLY_ERROR };

@@ -136,7 +136,7 @@ export const NOTIFICATION_EVENT_DEFS: NotificationEventDef[] = [
   // ---- 정산·품의
   { key: 'settlement_confirmed', label: '정산 확정', audience: '멘토', recipients: '멘토', stage: 'settlement', desc: '검수 승인·부분 정산으로 정산이 확정됐을 때', sampleExtra: '(멘티) — (유형별 회차·실지급 요약)' },
   { key: 'settlement_canceled', label: '정산 취소', audience: '멘토', recipients: '멘토', stage: 'settlement', desc: '확정됐던 정산을 취소했을 때', sampleExtra: '(취소 사유 앞 80자)' },
-  { key: 'batch_submitted', label: '지급 품의 제출', audience: '발주처', recipients: '발주처', stage: 'settlement', desc: '운영사가 지급 품의를 제출했을 때' },
+  { key: 'batch_submitted', label: '지급 품의 제출', audience: '발주처', recipients: '발주처', stage: 'settlement', desc: '운영사가 지급 품의를 제출했을 때 — 발주처 [정산 품의] 기능을 켠 라운드의 품의만' },
   { key: 'batch_unsubmitted', label: '지급 품의 철회', audience: '발주처', recipients: '발주처', stage: 'settlement', desc: '운영사가 제출했던 품의를 철회했을 때' },
   { key: 'batch_returned', label: '품의 반려 통보', audience: '운영사', recipients: '운영사(품의 권한)', stage: 'settlement', desc: '발주처가 지급 품의를 반려했을 때' },
   { key: 'batch_confirmed', label: '품의 정산 확인 통보', audience: '운영사', recipients: '운영사(품의 권한)', stage: 'settlement', desc: '발주처가 지급 품의의 정산을 확인했을 때' },

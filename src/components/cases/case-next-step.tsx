@@ -28,7 +28,7 @@ function describe(i: CaseNextStepInput): { title: string; desc: string; anchor?:
   const obsReq = i.observationRequired ?? true;
   // (2026-10-01) 회차 보고서·관찰의견서가 모두 등록되면 종결 요청 전이라도 바로 검수 승인 가능 (= 서버 canApproveClosure)
   if (i.approvable && (i.status === 'in_progress' || i.status === 'revision_requested')) {
-    return { title: '검수 승인할 수 있습니다', desc: `모든 회차 보고서${obsReq ? '와 관찰의견서가' : '가'} 등록됐습니다. [검수 승인 · 정산 확정]을 누르면 지급 품의가 자동으로 작성·제출되어 발주처 정산 확인 단계로 넘어갑니다.`, anchor: '#review', tone: 'action' };
+    return { title: '검수 승인할 수 있습니다', desc: `모든 회차 보고서${obsReq ? '와 관찰의견서가' : '가'} 등록됐습니다. [검수 승인 · 정산 확정]을 누르면 지급 품의가 자동으로 작성·제출되어 정산 확인 단계로 넘어갑니다.`, anchor: '#review', tone: 'action' };
   }
   switch (i.status) {
     case 'registered':
@@ -48,7 +48,7 @@ function describe(i: CaseNextStepInput): { title: string; desc: string; anchor?:
     case 'settlement_pending':
       return { title: '정산 확정 — 지급 품의 자동 제출이 되지 않은 건', desc: '보통은 검수 승인과 함께 품의가 자동 제출됩니다. 이 건은 지급 대기로 남아 있으니 정산·품의 화면의 [지급 대기]에서 골라 품의를 만들고 제출하세요.', href: '/nextlab/settlements?tab=pending', hrefLabel: '정산·품의로 이동', anchor: '#settlement', tone: 'action' };
     case 'settlement_batched':
-      return { title: '발주처의 정산 확인을 기다리는 중', desc: '품의가 제출되었습니다. 발주처가 정산 확인을 하면 종결로 확정됩니다.', href: '/nextlab/settlements?tab=all', hrefLabel: '품의 보기', anchor: '#settlement', tone: 'wait' };
+      return { title: '정산 확인 대기', desc: '품의가 제출되었습니다. 정산·품의 화면에서 품의를 확인하고 [정산 확인]을 누르면 종결로 확정됩니다(발주처 정산 품의 기능을 켠 라운드는 발주처가 확인). 회차 시간 정정이 필요하면 아래 확정 정산 카드의 [검수로 되돌리기].', href: '/nextlab/settlements?tab=all', hrefLabel: '품의 보기', anchor: '#settlement', tone: 'wait' };
     case 'closed':
       return { title: '종결 확정', desc: '정산 확인까지 끝났습니다. 서류 일괄 다운로드(ZIP)로 증빙을 보관하세요.', anchor: '#docs', tone: 'done' };
     case 'withdrawn':

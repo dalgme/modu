@@ -3,7 +3,8 @@ import { FileText } from 'lucide-react';
 
 import type { SettlementItem } from '@/lib/data/settlements';
 import { SETTLEMENT_STATUS_LABELS } from '@/lib/data/settlements';
-import { canCancelSettlement } from '@/lib/workflow/transitions';
+import { canCancelSettlement, canReopenSettlement } from '@/lib/workflow/transitions';
+import { ReopenSettlementButton } from '@/components/settlement/batch-actions';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { SettlementSummary } from '@/components/settlement/settlement-summary';
 import { FilePreviewButton } from '@/components/files/file-preview';
@@ -20,6 +21,7 @@ export function SettlementCard({
   statements,
   canCancel = false,
   canResettle,
+  canReopen = false,
   batchHrefBase,
   title = '확정 정산',
 }: {
@@ -27,6 +29,8 @@ export function SettlementCard({
   statements: { id: string; name: string; url: string | null; createdAt: string }[];
   canCancel?: boolean;
   canResettle?: boolean;
+  /** (2026-11-16) 운영사 'settlement'+'settlement.submit' — 정산 확인 전 품의의 정산을 검수로 되돌리기 */
+  canReopen?: boolean;
   batchHrefBase?: string;
   title?: string;
 }) {
@@ -66,6 +70,7 @@ export function SettlementCard({
                       <span className="text-xs text-muted-foreground">품의: {s.batchTitle}</span>
                     )
                   )}
+                  {canReopen && canReopenSettlement(s, s.batchStatus) && <ReopenSettlementButton settlementId={s.id} kind={s.kind} label={`${s.mentorName} 멘토 ${s.kind === 'closure' ? '종결' : '부분'} 정산`} compact />}
                   {canCancel && canCancelSettlement(s) && <CancelSettlementButton settlementId={s.id} kind={s.kind === 'closure' ? 'closure' : 'partial'} mentorName={s.mentorName} net={Number(s.net)} />}
                 </span>
               </div>

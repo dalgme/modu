@@ -216,7 +216,7 @@ export function SettlementsTable({
         description={target === 'new' ? `"${targetTitle}" 품의를 만들고 선택한 정산 건을 편성합니다.` : `"${targetTitle}" 품의에 선택한 정산 건을 추가합니다.`}
         impact={[
           `${selected.size}건 · 지급총액 ${formatKRW(total.gross)} · 원천징수 ${formatKRW(total.withholding)} · 실지급 ${formatKRW(total.net)}`,
-          '편성된 케이스는 "지급 품의 편성" 단계로 바뀌고, 발주처 제출 전까지는 품의에서 제외할 수 있습니다.',
+          '편성된 케이스는 "지급 품의 편성" 단계로 바뀌고, 제출 전까지는 품의에서 제외할 수 있습니다(제출 후에는 품의 상세 [검수로 되돌리기]).',
         ]}
         confirmLabel="품의 편성"
         severity="normal"

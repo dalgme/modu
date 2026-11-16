@@ -52,7 +52,7 @@ export function BatchMetaForm({ batchId, title, note, status, canEdit = true }: 
         <Input value={t} onChange={(e) => setT(e.target.value)} maxLength={120} disabled={pending} className="text-sm" />
       </label>
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        메모 (발주처에도 보입니다)
+        메모 (발주처 정산 품의 기능을 켠 라운드면 발주처에도 보입니다)
         <Textarea value={n} onChange={(e) => setN(e.target.value)} rows={2} disabled={pending} className="text-sm" />
       </label>
       <div className="flex justify-end gap-2">

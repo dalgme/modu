@@ -35,6 +35,7 @@ import { loadMatchingPublishOverview } from '@/lib/matching/publish-data';
 import { listDeletionArchives } from '@/lib/archive/test-account';
 import { DeletionArchivePanel } from '@/components/settings/deletion-archive-panel';
 import { GroupSurveyPanel } from '@/components/settings/group-survey-panel';
+import { GroupInstitutionSettlementPanel } from '@/components/settings/group-institution-settlement-panel';
 import { GroupMentoringPanel } from '@/components/settings/group-mentoring-panel';
 import { groupMentoringSetting } from '@/lib/workflow/group-mentoring-rule';
 
@@ -44,7 +45,7 @@ const TABS = [
   { key: 'program', label: '행사 기본' },
   { key: 'groups', label: '사업그룹·필수서류' },
   { key: 'rates', label: '단가·한도' },
-  { key: 'withholding', label: '정산(원천징수)' },
+  { key: 'withholding', label: '정산(원천징수·품의)' },
   { key: 'budget', label: '예산' },
   { key: 'matching', label: '매칭 규칙' },
   { key: 'publish', label: '매칭 공개' },
@@ -103,7 +104,16 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     const [rates, limits, groups] = await Promise.all([listRates(ctx.programId), listLimits(ctx.programId), listGroupsWithDocs(ctx.programId)]);
     body = <RatesLimits defaultGroupId={ctx.supportTypeId ?? null} rates={rates} limits={limits} groups={groups.map((g) => ({ id: g.id, name: g.name }))} today={today} />;
   }
-  if (tab === 'withholding') body = <WithholdingForm program={program} />;
+  if (tab === 'withholding') {
+    const groups = await listGroupsWithDocs(ctx.programId);
+    // (2026-11-16) 라운드별 발주처 [정산 품의] 기능 — 기본 꺼짐(운영사가 정산 확인)
+    body = (
+      <div className="flex flex-col gap-4">
+        <GroupInstitutionSettlementPanel groups={groups.map((g) => ({ id: g.id, name: g.name, status: g.status, enabled: (g as { institution_settlement_enabled?: boolean | null }).institution_settlement_enabled === true }))} canEdit={hasCapability(ctx, 'settings.money')} />
+        <WithholdingForm program={program} />
+      </div>
+    );
+  }
   if (tab === 'budget') {
     const groups = await listSupportTypes(ctx.programId);
     body = (

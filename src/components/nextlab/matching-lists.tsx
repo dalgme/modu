@@ -107,7 +107,7 @@ function MentorPickList({ mentors, groupId, excludeMentorId, pick, onPick, query
       .filter((m) => m.mentorId !== excludeMentorId)
       .map((m) => ({
         m,
-        inGroup: m.mentees.filter((c) => c.groupId === groupId && !c.withdrawn).length,
+        inGroup: m.mentees.filter((c) => c.groupId === groupId && !c.withdrawn && !c.endedNote).length,
         desired: typeof m.desiredByGroup?.[groupId] === 'number' ? m.desiredByGroup[groupId]! : null,
         eligible: m.designatedGroupIds.length === 0 || m.designatedGroupIds.includes(groupId),
       }))
@@ -433,6 +433,7 @@ export function MentorMatchList({ rows, groups, currentGroupId = null, caseHrefB
                       <td className="px-2 py-1.5"><RankBadge rank={c.rank} /></td>
                       <td className="px-2 py-1.5">
                         <Link href={caseHref(c.caseId)} className="font-medium text-primary hover:underline">{c.label}</Link>
+                        {c.endedNote && <span className="ml-1.5 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 dark:bg-violet-950 dark:text-violet-200">{c.endedNote}</span>}
                         {/* (P31) 폰: 배정 관리 버튼을 멘티 셀 아래로 (표 가로폭 절약) */}
                         <div className="mt-1.5 flex gap-1 md:hidden">
                           <Button size="sm" variant="outline" className="h-9 gap-1 px-2 text-[11px]" disabled={!c.canRecall || pending} onClick={() => void recall(c.caseId, c.label, m.mentorName)}>
@@ -533,7 +534,7 @@ export function MentorProgressTable({ rows, caseHrefBase = '/nextlab/cases', sho
               for (const c of m.mentees) if (!c.withdrawn) byGroup.set(c.groupName ?? '-', (byGroup.get(c.groupName ?? '-') ?? 0) + 1);
               return (
                 <tr key={m.mentorId} className="border-b align-top last:border-0">
-                  <td className="px-3 py-2 whitespace-nowrap"><MentorName id={m.mentorId} name={m.mentorName} count={m.mentees.filter((c) => !c.withdrawn).length} caseHrefBase={caseHrefBase} /></td>
+                  <td className="px-3 py-2 whitespace-nowrap"><MentorName id={m.mentorId} name={m.mentorName} count={m.mentees.filter((c) => !c.withdrawn && !c.endedNote).length} caseHrefBase={caseHrefBase} /></td>
                   <td className="px-3 py-2">
                     {byGroup.size === 0 ? <span className="text-muted-foreground">미배정 (배정 대기)</span> : (
                       <div className="flex flex-wrap gap-1">
@@ -545,8 +546,9 @@ export function MentorProgressTable({ rows, caseHrefBase = '/nextlab/cases', sho
                     <div className="flex flex-col gap-0.5">
                       {m.mentees.map((c) => (
                         <span key={c.caseId} className="inline-flex flex-wrap items-center gap-1.5">
-                          <Link href={`${caseHrefBase}/${c.caseId}`} className={cn('text-primary hover:underline', c.withdrawn && 'line-through opacity-60')}>{c.label}</Link>
+                          <Link href={`${caseHrefBase}/${c.caseId}`} className={cn('text-primary hover:underline', (c.withdrawn || c.endedNote) && 'opacity-70', c.withdrawn && 'line-through')}>{c.label}</Link>
                           <RoundDots done={c.roundsDone} required={c.requiredRounds} />
+                          {c.endedNote && <span className="rounded bg-violet-100 px-1 text-[10px] font-semibold text-violet-800 dark:bg-violet-950 dark:text-violet-200">{c.endedNote}</span>}
                         </span>
                       ))}
                       {m.mentees.length === 0 && <span className="text-muted-foreground">-</span>}
@@ -748,6 +750,7 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
                   </div>
                   <div className="mt-1"><Chips items={r.needs} tone="amber" max={6} /></div>
                   {r.preferredMentor && <p className="mt-0.5 text-[11px] text-muted-foreground">희망 멘토: {r.preferredMentor}</p>}
+{!r.mentorId && r.pastMentorName && <p className="mt-0.5 text-[11px] font-semibold text-violet-700 dark:text-violet-300" title="이 멘티를 진행했던 멘토 — 현재 담당 멘토는 없습니다">진행 멘토: {r.pastMentorName} ({r.pastMentorNote})</p>}
                 </div>
               </div>
               {unassigned ? (
@@ -865,6 +868,7 @@ export function MenteeMatchList({ rows, mentors, caseHrefBase = '/nextlab/cases'
                     <ContactLinks phone={(r as { menteePhone?: string | null }).menteePhone} name={r.menteeName} size="xs" className="ml-1" />
                     <div className="mt-1"><Chips items={r.needs} tone="amber" max={6} /></div>
                     {r.preferredMentor && <p className="mt-0.5 text-[11px] text-muted-foreground">희망 멘토: {r.preferredMentor}</p>}
+{!r.mentorId && r.pastMentorName && <p className="mt-0.5 text-[11px] font-semibold text-violet-700 dark:text-violet-300" title="이 멘티를 진행했던 멘토 — 현재 담당 멘토는 없습니다">진행 멘토: {r.pastMentorName} ({r.pastMentorNote})</p>}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">{r.groupName ?? '-'}</td>
                   {unassigned ? (

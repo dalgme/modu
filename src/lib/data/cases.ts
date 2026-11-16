@@ -1,3 +1,4 @@
+import { pickPastMentor } from '@/lib/workflow/past-mentor';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -34,6 +35,10 @@ export interface CaseListItem extends CaseRow {
   mentorAssignedAt: string | null;
   /** true 면 mentorId 는 종료된(마지막) 배정 — 정원·활성 계산에 넣지 말 것 (P30) */
   mentorEnded: boolean;
+  /** (2026-11-16) 활성 배정이 없는 케이스(멘토 중도 종료 등)에서 진행했던 멘토 — 표시 전용(배정·정원 계산 금지). past-mentor.ts */
+  pastMentorId?: string | null;
+  pastMentorName?: string | null;
+  pastMentorEndKind?: string | null;
   /** 멘티 로그인 아이디 = 이름+휴대폰 뒷4자리. 계정 미발급이면 null */
   menteeLoginId: string | null;
   /** 담당 멘토의 현재 확정 배정 멘티 수 — 조회 범위(행사/그룹) 기준 (P25-10 "이름(n)") */
@@ -120,14 +125,16 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
     fetchAllIn<{ case_id: string; mentor_id: string; assigned_at: string; is_active: boolean; end_kind: string | null }>(caseIds, (chunk, from, to) =>
       supabase.from('mentor_assignments').select('case_id, mentor_id, assigned_at, is_active, end_kind').in('case_id', chunk).order('assigned_at', { ascending: false }).range(from, to),
     ),
-    fetchAllIn<{ case_id: string; report_registered_at: string | null; ended_at: string | null }>(caseIds, (chunk, from, to) => supabase.from('mentoring_logs').select('case_id, report_registered_at, ended_at').in('case_id', chunk).range(from, to)),
+    fetchAllIn<{ case_id: string; mentor_id: string; report_registered_at: string | null; ended_at: string | null }>(caseIds, (chunk, from, to) => supabase.from('mentoring_logs').select('case_id, mentor_id, report_registered_at, ended_at').in('case_id', chunk).range(from, to)),
   ]);
   const typeMap = new Map((types ?? []).map((t) => [t.id, t]));
   const roundsByCase = new Map<string, number>();
   const plannedByCase = new Map<string, number>();
   const progressedByCase = new Map<string, number>();
   const nowMs = Date.now();
+  const roundMentorsByCase = new Map<string, Set<string>>();
   for (const l of logs ?? []) {
+    (roundMentorsByCase.get(l.case_id) ?? roundMentorsByCase.set(l.case_id, new Set()).get(l.case_id)!).add(l.mentor_id);
     plannedByCase.set(l.case_id, (plannedByCase.get(l.case_id) ?? 0) + 1);
     if (l.report_registered_at) roundsByCase.set(l.case_id, (roundsByCase.get(l.case_id) ?? 0) + 1);
     if (isProgressedRound(l, nowMs)) progressedByCase.set(l.case_id, (progressedByCase.get(l.case_id) ?? 0) + 1);
@@ -143,7 +150,16 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
       assignByCase.set(a.case_id, { case_id: a.case_id, mentor_id: a.mentor_id, assigned_at: a.assigned_at, ended: true });
     }
   }
-  const mentorIds = Array.from(new Set(Array.from(assignByCase.values()).map((a) => a.mentor_id)));
+  // (2026-11-16) 그 밖(멘토 중도 종료·운영사 강제 종료로 재배정 대기 등)은 '진행했던 멘토' 를 따로 — 현재 담당(mentorId)은 비워 둔다
+  const assignsByCase = new Map<string, typeof assigns>();
+  for (const a of assigns) (assignsByCase.get(a.case_id) ?? assignsByCase.set(a.case_id, []).get(a.case_id)!).push(a);
+  const pastByCase = new Map<string, { mentorId: string; endKind: string | null }>();
+  for (const c of cases) {
+    if (assignByCase.has(c.id)) continue;
+    const p = pickPastMentor(assignsByCase.get(c.id) ?? [], roundMentorsByCase.get(c.id) ?? new Set());
+    if (p) pastByCase.set(c.id, p);
+  }
+  const mentorIds = Array.from(new Set([...Array.from(assignByCase.values()).map((a) => a.mentor_id), ...Array.from(pastByCase.values()).map((p) => p.mentorId)]));
   const menteeIds = Array.from(new Set(cases.map((c) => c.mentee_id).filter(Boolean))) as string[];
   // 회원 id 는 수백 개가 될 수 있어 `in()` 을 200개 단위로 쪼개 읽는다 (P31, paginate.ts)
   const [mentors, mentees] = await Promise.all([
@@ -184,6 +200,9 @@ export async function listCases(filters: CaseFilters = {}): Promise<CaseListItem
       mentorPhone: a ? (mentorPhoneById.get(a.mentor_id) ?? null) : null,
       mentorAssignedAt: a?.assigned_at ?? null,
       mentorEnded: !!a?.ended,
+      pastMentorId: masked ? null : (pastByCase.get(c.id)?.mentorId ?? null),
+      pastMentorName: masked ? null : (mentorNameById.get(pastByCase.get(c.id)?.mentorId ?? '') ?? null),
+      pastMentorEndKind: masked ? null : (pastByCase.get(c.id)?.endKind ?? null),
       menteeLoginId: deriveMenteeLoginId(c.mentee_id ? menteeAccById.get(c.mentee_id) : undefined),
       mentorActiveCount: a ? (mentorActive.get(a.mentor_id) ?? 0) : 0,
       ...(masked ? { matchingHidden: true, status: c.status === 'mentor_assigned' ? ('registered' as CaseStatus) : c.status } : {}),

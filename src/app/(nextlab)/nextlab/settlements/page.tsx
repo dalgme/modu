@@ -15,6 +15,8 @@ import { EmptyState } from '@/components/common/empty-state';
 import { ExcelButton } from '@/components/common/excel-button';
 import { MentoringExportBar } from '@/components/reports/mentoring-export-bar';
 import { PriorMentorBacklog } from '@/components/settlement/prior-mentor-backlog';
+import { BulkConfirmBatchesButton } from '@/components/settlement/batch-actions';
+import { BATCH_CONFIRMER_LABELS } from '@/lib/settlement/batch-confirmer-rule';
 import { listPriorMentorBacklog } from '@/lib/settlement/prior-mentors';
 import { hasCapability } from '@/lib/auth/capabilities';
 import { formatDate, formatKRW } from '@/lib/utils/format';
@@ -40,7 +42,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
           <p className="text-[11px] text-muted-foreground">품의 {kpi.scheduledBatches}건 · 실지급 기준</p>
         </div>
         <div className={`rounded-xl border-2 bg-background p-3 ${kpi.waitingBatches.some((b) => b.days >= 7) ? 'border-amber-400' : ''}`}>
-          <p className="text-xs text-muted-foreground">{fmt('{client} 확인 대기 품의', ctx.branding)}</p>
+          <p className="text-xs text-muted-foreground">정산 확인 대기 품의 (제출됨)</p>
           <p className="text-lg font-bold tabular-nums">{kpi.waitingBatches.length}건{kpi.waitingBatches[0] ? ` · 최장 ${kpi.waitingBatches[0].days}일` : ''}</p>
           <p className="truncate text-[11px] text-muted-foreground">{kpi.waitingBatches.slice(0, 2).map((b) => `${b.title} (${b.days}일)`).join(' · ') || '대기 중인 품의 없음'}</p>
         </div>
@@ -173,21 +175,35 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   const batchIdsInScope = scopedBatched ? new Set(scopedBatched.map((s) => s.batch_id).filter((x): x is string => !!x)) : null;
   const visibleBatches = batchIdsInScope ? batches.filter((b) => batchIdsInScope.has(b.id)) : batches;
   const drafts = batches.filter((b) => b.status === 'draft');
-  const submitted = batches.filter((b) => b.status === 'submitted');
+  const submitted = visibleBatches.filter((b) => b.status === 'submitted');
+  // (2026-11-16) 기본 = 운영사가 정산 확인. 발주처 [정산 품의] 기능을 켠 라운드의 품의만 발주처 확인
+  const operatorWaiting = submitted.filter((b) => b.confirmer === 'operator');
+  const institutionWaiting = submitted.filter((b) => b.confirmer === 'institution');
+  const canConfirm = hasCapability(ctx, 'settlement.submit');
+  const anyInstitution = batches.some((b) => b.confirmer === 'institution');
   const tabQuery = `?tab=${tab}`;
 
   return (
     <main className="flex flex-col gap-6">
       <Header ctx={{ groupName: ctx.group?.name ?? null }} />
 
-      <SettlementFlowStrip current={drafts.length > 0 ? 3 : 2} />
+      <SettlementFlowStrip current={operatorWaiting.length > 0 ? 4 : drafts.length > 0 ? 3 : 2} institution={anyInstitution} />
       {kpiRow}
       {priorBacklog.caseIds.length > 0 && (
         <PriorMentorBacklog cases={priorBacklog.caseIds.length} unsettledRounds={priorBacklog.unsettledRounds} pendingPartials={priorBacklog.pendingPartials} canRun={hasCapability(ctx, 'settlement') && hasCapability(ctx, 'settlement.submit')} />
       )}
-      {submitted.length > 0 && (
-        <p className="rounded-lg border border-sky-300 bg-sky-50/60 px-3 py-2 text-sm text-sky-900 dark:bg-sky-950/20 dark:text-sky-100">
-          {fmt('{client} 정산 확인을 기다리는 품의', ctx.branding)} {submitted.length}건이 있습니다. 확인이 끝나면 품의 상세에서 [지급 완료]를 눌러 지급을 기록하세요.
+      {operatorWaiting.length > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-sky-300 bg-sky-50/60 px-3 py-2 text-sm text-sky-900 dark:bg-sky-950/20 dark:text-sky-100">
+          <p>
+            정산 확인을 기다리는 품의 {operatorWaiting.length}건이 있습니다. 품의 상세에서 회차·금액을 확인하고 <b>[정산 확인]</b>을 누르세요.
+            일정 시간과 보고서 시간이 다른 건은 품의 상세 행의 <b>[검수로 되돌리기]</b>로 빼서 회차를 정정합니다.
+          </p>
+          {canConfirm && <BulkConfirmBatchesButton batchIds={operatorWaiting.map((b) => b.id)} totalNet={operatorWaiting.reduce((a, b) => a + Number(b.total_net), 0)} />}
+        </div>
+      )}
+      {institutionWaiting.length > 0 && (
+        <p className="rounded-lg border border-amber-300 bg-amber-50/60 px-3 py-2 text-sm text-amber-900 dark:bg-amber-950/20 dark:text-amber-100">
+          {fmt('{client} 정산 확인을 기다리는 품의', ctx.branding)} {institutionWaiting.length}건이 있습니다(발주처 정산 품의 기능을 켠 라운드). 확인이 끝나면 품의 상세에서 [지급 완료]를 눌러 지급을 기록하세요.
         </p>
       )}
 
@@ -226,6 +242,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
                 <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
                   <th className="px-3 py-2">제목</th>
                   <th className="px-3 py-2">상태</th>
+                  <th className="hidden px-3 py-2 md:table-cell">확인 주체</th>
                   <th className="px-3 py-2 text-right">건수</th>
                   <th className="hidden px-3 py-2 text-right md:table-cell">지급총액</th>
                   <th className="px-3 py-2 text-right">실지급</th>
@@ -243,6 +260,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
                       </Link>
                     </td>
                     <td className="px-3 py-2 text-xs"><StatusBadge kind="batch" status={b.status} /></td>
+                    <td className="hidden px-3 py-2 text-xs md:table-cell">{BATCH_CONFIRMER_LABELS[b.confirmer]}</td>
                     <td className="px-3 py-2 text-right tabular-nums">{b.itemCount}</td>
                     <td className="hidden px-3 py-2 text-right tabular-nums md:table-cell">{formatKRW(Number(b.total_gross))}</td>
                     <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatKRW(Number(b.total_net))}</td>
@@ -265,7 +283,7 @@ function Header({ ctx }: { ctx: { groupName: string | null } }) {
     <div>
       <h1 className="text-2xl font-semibold">정산 · 지급 품의</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        검수 승인(종결)·중도 종료 시 확정된 정산 건을 골라 지급 품의를 편성하고 발주처에 제출합니다. {ctx.groupName ? `(${ctx.groupName})` : ''}
+        검수 승인(종결)·중도 종료 시 확정된 정산 건이 멘토별 지급 품의로 자동 편성·제출됩니다. 품의를 확인해 [정산 확인] → [지급 완료]를 기록하고, 수당 산출내역 엑셀을 내려받으세요. {ctx.groupName ? `(${ctx.groupName})` : ''}
       </p>
     </div>
   );

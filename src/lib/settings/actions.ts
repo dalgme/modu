@@ -434,6 +434,28 @@ export async function setGroupSurveyEnabledAction(input: { groupId: string; enab
 }
 
 /**
+ * 라운드(그룹)별 발주처 [정산 품의] 기능 (2026-11-16) — 운영 설정 [정산(원천징수·품의)] 탭 상단.
+ * 기본(꺼짐) = 운영사가 검수 → 품의 정산 확인 → 지급 완료·수당 산출내역까지 모두 진행, 발주처에는 품의 알림·확인 대기가 생기지 않는다.
+ * 켜면 그 라운드 정산이 든 품의는 발주처가 정산 확인·반려한다. 확인 주체는 품의마다 즉시 다시 판정된다(이미 제출된 품의 포함).
+ */
+export async function setGroupInstitutionSettlementAction(input: { groupId: string; enabled: boolean }): Promise<Result> {
+  const op = await operator('settings.money');
+  if ('error' in op) return { ok: false, error: op.error };
+  const admin = createAdminClient();
+  const { data: g } = await admin.from('support_types').select('*').eq('id', input.groupId).eq('program_id', op.programId).maybeSingle();
+  if (!g) return { ok: false, error: '이 행사의 라운드(그룹)가 아닙니다.' };
+  const before = (g as { institution_settlement_enabled?: boolean | null }).institution_settlement_enabled === true;
+  const enabled = !!input.enabled;
+  if (before === enabled) return { ok: true, message: `${g.name}: 이미 ${enabled ? '켜져' : '꺼져'} 있습니다.` };
+  const { error } = await admin.from('support_types').update({ institution_settlement_enabled: enabled }).eq('id', g.id);
+  if (error) return { ok: false, error: error.message.includes('institution_settlement') ? '발주처 정산 품의 설정 칸이 아직 DB 에 없습니다. 마이그레이션 0100 적용 후 다시 시도하세요.' : error.message };
+  await audit(op.id, op.programId, 'support_type.institution_settlement', { institution_settlement_enabled: before }, { institution_settlement_enabled: enabled }, g.id, 'support_type.institution_settlement');
+  revalidateAll();
+  for (const p of ['/nextlab/settlements', '/institution/settlements', '/institution/dashboard', '/nextlab/dashboard']) revalidatePath(p);
+  return { ok: true, message: enabled ? `${g.name}: 발주처가 정산 품의를 확인합니다.` : `${g.name}: 운영사가 정산 품의를 확인합니다(발주처 정산 품의 기능 꺼짐).` };
+}
+
+/**
  * 라운드(그룹)별 그룹멘토링 설정 (2026-11-04) — 운영 설정 [그룹멘토링] 탭.
  * 사용 여부 + 멘토 1인당 최대 횟수. 끄더라도 이미 등록된 그룹멘토링 회차·보고서·수당은 그대로 둔다(새 등록만 막힘).
  */

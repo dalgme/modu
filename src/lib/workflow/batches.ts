@@ -3,9 +3,12 @@ import 'server-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { queueNotification } from '@/lib/workflow/notifications';
 import { notifyProgramStaff } from '@/lib/workflow/closure';
-import { assertBatchTransition, BATCH_TRANSITIONS, TRANSITIONS } from '@/lib/workflow/transitions';
+import { assertBatchTransition, BATCH_TRANSITIONS, canReopenSettlement, SETTLEMENT_REOPEN_DENIED, TRANSITIONS } from '@/lib/workflow/transitions';
 import { recomputeFromLines, sumSettlements, type SettlementLine, type WithholdingPolicy } from '@/lib/settlement/compute';
 import type { Json } from '@/types/database';
+import { loadBatchConfirmer } from '@/lib/settlement/batch-confirmer';
+import { canConfirmAs, CONFIRMER_DENIED } from '@/lib/settlement/batch-confirmer-rule';
+import { cancelSettlement } from '@/lib/settlement/settle';
 
 export type BatchResult = { ok: true; batchId: string } | { ok: false; error: string };
 
@@ -287,7 +290,8 @@ export async function submitBatch(batchId: string, actorId: string): Promise<Bat
   const totals = await refreshBatchTotals(batchId);
   const { data: upd } = await admin.from('settlement_batches').update({ status: 'submitted', submitted_at: new Date().toISOString() }).eq('id', batchId).eq('status', 'draft').select('id');
   if (!upd || upd.length === 0) return { ok: false, error: '이미 제출된 품의입니다.' };
-  await notifyProgramStaff(batch.program_id, null, 'batch_submitted', ['institution']);
+  // (2026-11-16) 발주처 [정산 품의] 기능이 켜진 라운드의 품의만 발주처에 알린다 — 기본(꺼짐)은 운영사가 정산 확인
+  if ((await loadBatchConfirmer(batch.program_id, batchId)) === 'institution') await notifyProgramStaff(batch.program_id, null, 'batch_submitted', ['institution']);
   await audit(actorId, batch.program_id, 'batch.submitted', batchId, { title: batch.title, count, gross: totals.gross, withholding: totals.withholding, net: totals.net, settlement_ids: totals.settlementIds, minimum_recomputed: recomputed.map((r) => ({ mentor_id: r.mentorId, settlement_ids: r.settlementIds, extra_withholding: r.extraWithholding })) });
   return { ok: true, batchId };
 }
@@ -302,7 +306,7 @@ export async function unsubmitBatch(batchId: string, actorId: string): Promise<B
   if (!upd || upd.length === 0) return { ok: false, error: BATCH_TRANSITIONS.unsubmit.denied };
   await revertMinimumRecompute(batchId, actorId, batch.program_id);
   const totals = await refreshBatchTotals(batchId);
-  await notifyProgramStaff(batch.program_id, null, 'batch_unsubmitted', ['institution']);
+  if ((await loadBatchConfirmer(batch.program_id, batchId)) === 'institution') await notifyProgramStaff(batch.program_id, null, 'batch_unsubmitted', ['institution']);
   await audit(actorId, batch.program_id, 'batch.unsubmitted', batchId, { title: batch.title, gross: totals.gross, withholding: totals.withholding, net: totals.net });
   return { ok: true, batchId };
 }
@@ -315,6 +319,7 @@ export async function returnBatch(batchId: string, actorId: string, reason: stri
   const { data: batch } = await admin.from('settlement_batches').select('id, status, program_id, title, note').eq('id', batchId).maybeSingle();
   if (!batch) return { ok: false, error: '품의를 찾을 수 없습니다.' };
   { const denied = assertBatchTransition('return', batch.status); if (denied) return { ok: false, error: denied }; }
+  if ((await loadBatchConfirmer(batch.program_id, batchId)) !== 'institution') return { ok: false, error: CONFIRMER_DENIED.institution };
   const stamp = `[발주처 반려 ${new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)}] ${why}`;
   const note = batch.note ? `${batch.note}\n${stamp}` : stamp;
   const { data: upd } = await admin.from('settlement_batches').update({ status: 'draft', submitted_at: null, note }).eq('id', batchId).eq('status', 'submitted').select('id');
@@ -331,11 +336,13 @@ export async function returnBatch(batchId: string, actorId: string, reason: stri
  * (P31) 포함된 정산의 케이스는 **열린 정산(pending·batched)이 더 없을 때** 종류와 무관하게 closed — 케이스 상태는 settlement_pending·settlement_batched 모두 허용.
  * 멘토·멘티 알림 + 운영사 담당자에게 확인 알림.
  */
-export async function confirmBatch(batchId: string, actorId: string): Promise<BatchResult> {
+export async function confirmBatch(batchId: string, actorId: string, role: 'nextlab' | 'institution'): Promise<BatchResult> {
   const admin = createAdminClient();
   const { data: batch } = await admin.from('settlement_batches').select('id, status, program_id, title').eq('id', batchId).maybeSingle();
   if (!batch) return { ok: false, error: '품의를 찾을 수 없습니다.' };
   { const denied = assertBatchTransition('confirm', batch.status); if (denied) return { ok: false, error: denied }; }
+  const confirmer = await loadBatchConfirmer(batch.program_id, batchId);
+  if (!canConfirmAs(role, confirmer)) return { ok: false, error: CONFIRMER_DENIED[role] };
   const now = new Date().toISOString();
   const { data: upd } = await admin.from('settlement_batches').update({ status: 'confirmed', confirmed_by: actorId, confirmed_at: now }).eq('id', batchId).eq('status', 'submitted').select('id');
   if (!upd || upd.length === 0) return { ok: false, error: '이미 처리된 품의입니다.' };
@@ -366,7 +373,8 @@ export async function confirmBatch(batchId: string, actorId: string): Promise<Ba
     }
   }
   const totals = sumSettlements(list.map((s) => ({ gross: Number(s.gross), withholding: Number(s.withholding), net: Number(s.net) })));
-  await notifyProgramStaff(batch.program_id, null, 'batch_confirmed', ['nextlab']);
+  // 발주처가 확인한 품의만 운영사에 확인 알림 (운영사가 직접 확인했으면 알릴 필요 없음)
+  if (confirmer === 'institution') await notifyProgramStaff(batch.program_id, null, 'batch_confirmed', ['nextlab']);
   await audit(actorId, batch.program_id, 'batch.confirmed', batchId, { title: batch.title, count: list.length, gross: totals.gross, withholding: totals.withholding, net: totals.net, settlement_ids: list.map((s) => s.id) });
   return { ok: true, batchId };
 }
@@ -405,6 +413,63 @@ export async function markBatchPaid(batchId: string, actorId: string, paidOn?: s
   const totals = sumSettlements(list.map((s) => ({ gross: Number(s.gross), withholding: Number(s.withholding), net: Number(s.net) })));
   await audit(actorId, batch.program_id, 'batch.paid', batchId, { title: batch.title, paid_at: at, paid_on: day, count: list.length, gross: totals.gross, withholding: totals.withholding, net: totals.net, settlement_ids: list.map((s) => s.id) });
   return { ok: true, batchId };
+}
+
+// ───────────────────────────────────────────── 정산 품의 → 검수로 되돌리기 (2026-11-16)
+
+export type ReopenResult = { ok: true; caseId: string; kind: 'closure' | 'partial'; caseReverted: boolean; batchDeleted: boolean } | { ok: false; error: string };
+
+/**
+ * 품의에 든 정산 1건을 품의에서 빼고 확정을 취소해 검수 단계로 되돌린다 — 회차 일시·방법을 정정한 뒤 다시 정산하기 위해.
+ *  - 정산 확인(confirmed)·지급 완료(paid)된 품의는 되돌릴 수 없다(canReopenSettlement).
+ *  - 제출된 품의면 제출을 철회하고 → 이 정산을 빼고 → 남은 정산이 있으면 다시 제출한다(나머지 건은 그대로). 빈 품의는 삭제한다.
+ *  - 정산 확정 취소는 기존 cancelSettlement 그대로: 회차 잠금 해제·정산서 삭제. 종결 정산이면 케이스가 종결 요청(검수 대기) 단계로 돌아간다.
+ *    부분 정산(중도 종료)은 케이스 상태를 유지하고, 회차 정정 뒤 [부분 정산 다시 확정]으로 다시 품의에 들어간다.
+ */
+export async function reopenSettlementForReview(settlementId: string, actorId: string, reason: string): Promise<ReopenResult> {
+  const why = reason.trim();
+  if (!why) return { ok: false, error: '되돌리는 사유를 입력하세요. (예: 회차 일시를 보고서와 맞게 정정)' };
+  const admin = createAdminClient();
+  const { data: s } = await admin.from('settlements').select('id, status, batch_id, case_id, kind, program_id').eq('id', settlementId).maybeSingle();
+  if (!s) return { ok: false, error: '정산 건을 찾을 수 없습니다.' };
+  const { data: batch } = s.batch_id ? await admin.from('settlement_batches').select('id, status, title').eq('id', s.batch_id).maybeSingle() : { data: null };
+  if (!canReopenSettlement(s, batch?.status ?? null)) return { ok: false, error: SETTLEMENT_REOPEN_DENIED };
+  const wasSubmitted = batch?.status === 'submitted';
+  const { data: caseBefore } = await admin.from('cases').select('status').eq('id', s.case_id).maybeSingle();
+  if (batch) {
+    if (wasSubmitted) {
+      const un = await unsubmitBatch(batch.id, actorId);
+      if (!un.ok) return un;
+    }
+    const removed = await removeFromBatch(batch.id, s.id, actorId);
+    if (!removed.ok) {
+      if (wasSubmitted) await submitBatch(batch.id, actorId);
+      return removed;
+    }
+  }
+  const canceled = await cancelSettlement(s.id, actorId, `검수로 되돌리기: ${why}`);
+  if (!canceled.ok) return canceled;
+  // 부분 정산만 되돌렸는데 같은 케이스의 다른 정산(예: 종결 정산)이 아직 품의에 있으면 케이스 단계를 품의 편성으로 유지
+  if (s.kind === 'partial' && caseBefore?.status === 'settlement_batched') {
+    const { count: stillBatched } = await admin.from('settlements').select('id', { count: 'exact', head: true }).eq('case_id', s.case_id).eq('status', 'batched');
+    if ((stillBatched ?? 0) > 0) {
+      const { data: back } = await admin.from('cases').update({ status: 'settlement_batched' }).eq('id', s.case_id).eq('status', 'settlement_pending').select('id');
+      if (back && back.length > 0) await admin.from('case_status_history').insert({ case_id: s.case_id, from_status: 'settlement_pending', to_status: 'settlement_batched', changed_by: actorId, note: '부분 정산만 검수로 되돌림 — 다른 정산은 품의 유지' });
+    }
+  }
+  let batchDeleted = false;
+  if (batch) {
+    const { count } = await admin.from('settlements').select('id', { count: 'exact', head: true }).eq('batch_id', batch.id).neq('status', 'canceled');
+    if ((count ?? 0) === 0) {
+      const del = await deleteDraftBatch(batch.id, actorId);
+      batchDeleted = del.ok;
+    } else if (wasSubmitted) {
+      const re = await submitBatch(batch.id, actorId);
+      if (!re.ok) console.error('[batches] reopen resubmit failed:', re.error);
+    }
+  }
+  await audit(actorId, s.program_id, 'settlement.reopened', s.id, { case_id: s.case_id, kind: s.kind, reason: why, batch_id: batch?.id ?? null, batch_title: batch?.title ?? null, batch_deleted: batchDeleted, case_reverted: canceled.caseReverted }, 'settlements');
+  return { ok: true, caseId: s.case_id, kind: s.kind as 'closure' | 'partial', caseReverted: canceled.caseReverted, batchDeleted };
 }
 
 // ───────────────────────────────────────────── 자동 편성·제출 (2026-10-01)

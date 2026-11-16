@@ -2,7 +2,9 @@ import Link from 'next/link';
 
 import type { BatchItem, SettlementItem } from '@/lib/data/settlements';
 import { WITHHOLDING_LABELS } from '@/lib/settlement/compute';
-import { BatchActions, BatchBackLink, RemoveFromBatchButton } from '@/components/settlement/batch-actions';
+import { BatchActions, BatchBackLink, RemoveFromBatchButton, ReopenSettlementButton } from '@/components/settlement/batch-actions';
+import { BATCH_CONFIRMER_LABELS } from '@/lib/settlement/batch-confirmer-rule';
+import { canReopenSettlement } from '@/lib/workflow/transitions';
 import { BatchMetaForm } from '@/components/settlement/batch-meta-form';
 import { StatusBadge } from '@/components/cases/status-badge';
 import { formatDateTime, formatKRW } from '@/lib/utils/format';
@@ -10,6 +12,9 @@ import { formatDateTime, formatKRW } from '@/lib/utils/format';
 /** 품의 상세 (운영사·발주처 공용) */
 export function BatchDetail({ batch, items, role, caseHrefBase, backHref, canSettle = true, canSubmit = true }: { batch: BatchItem; items: SettlementItem[]; role: 'nextlab' | 'institution'; caseHrefBase: string; backHref: string; /** 운영사 'settlement' 권한 — 편성·제외·삭제·제목 수정 (P31) */ canSettle?: boolean; /** 운영사 'settlement.submit' 권한 — 제출·철회·지급 완료 (P31) */ canSubmit?: boolean }) {
   const removable = role === 'nextlab' && batch.status === 'draft' && canSettle;
+  // (2026-11-16) 정산 확인 전(작성 중·제출) 품의의 정산은 검수로 되돌릴 수 있다 — 회차 일시 정정용
+  const reopenable = role === 'nextlab' && canSettle && canSubmit && items.some((s) => canReopenSettlement(s, batch.status));
+  const hasAction = removable || reopenable;
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -18,6 +23,7 @@ export function BatchDetail({ batch, items, role, caseHrefBase, backHref, canSet
           <h1 className="mt-1 text-2xl font-semibold">{batch.title}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             <StatusBadge kind="batch" status={batch.status} />
+            <span className={`ml-2 rounded-full px-2 py-0.5 text-xs ${batch.confirmer === 'institution' ? 'bg-amber-100 text-amber-800' : 'bg-sky-100 text-sky-800'}`}>{BATCH_CONFIRMER_LABELS[batch.confirmer]}</span>
             <span className="ml-2">작성 {batch.createdByName ?? '-'} · {formatDateTime(batch.created_at)}</span>
             {batch.submitted_at && <span className="ml-2">· 제출 {formatDateTime(batch.submitted_at)}</span>}
             {batch.confirmed_at && <span className="ml-2">· 정산 확인 {batch.confirmedByName ?? ''} {formatDateTime(batch.confirmed_at)}</span>}
@@ -26,7 +32,7 @@ export function BatchDetail({ batch, items, role, caseHrefBase, backHref, canSet
           {batch.note && <p className="mt-1 whitespace-pre-wrap text-sm">{batch.note}</p>}
           {role === 'nextlab' && <BatchMetaForm batchId={batch.id} title={batch.title} note={batch.note} status={batch.status} canEdit={canSettle} />}
         </div>
-        <BatchActions batchId={batch.id} status={batch.status} role={role} exportHref={`/api/nextlab/batches/${batch.id}/export`} pdfHref={`/api/nextlab/batches/${batch.id}/pdf`} itemCount={items.length} totalNet={formatKRW(Number(batch.total_net))} afterDeleteHref={backHref} canSubmit={canSubmit} canMarkPaid={canSubmit} canDelete={canSettle} />
+        <BatchActions batchId={batch.id} status={batch.status} role={role} exportHref={`/api/nextlab/batches/${batch.id}/export`} pdfHref={`/api/nextlab/batches/${batch.id}/pdf`} itemCount={items.length} totalNet={formatKRW(Number(batch.total_net))} afterDeleteHref={backHref} canSubmit={canSubmit} canMarkPaid={canSubmit} canDelete={canSettle} confirmer={batch.confirmer} />
       </div>
 
       {/* (P31) 폰은 세로 1열 */}
@@ -45,6 +51,12 @@ export function BatchDetail({ batch, items, role, caseHrefBase, backHref, canSet
         </div>
       </dl>
 
+      {reopenable && (
+        <p className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-900">
+          멘토링 일정 시간과 보고서 시간이 다른 건은 행의 <b>[검수로 되돌리기]</b>로 품의에서 빼고 케이스 화면에서 회차를 정정한 뒤 다시 정산하세요. 정산 확인 후에는 되돌릴 수 없습니다.
+        </p>
+      )}
+
       <div className="overflow-x-auto rounded-xl border bg-background">
         <table className="w-full text-sm">
           <thead>
@@ -58,7 +70,7 @@ export function BatchDetail({ batch, items, role, caseHrefBase, backHref, canSet
               <th className="px-3 py-2 text-right">지급총액</th>
               <th className="hidden px-3 py-2 text-right md:table-cell">원천징수</th>
               <th className="px-3 py-2 text-right">실지급</th>
-              {removable && <th className="px-3 py-2" />}
+              {hasAction && <th className="px-3 py-2" />}
             </tr>
           </thead>
           <tbody>
@@ -79,9 +91,12 @@ export function BatchDetail({ batch, items, role, caseHrefBase, backHref, canSet
                 <td className="px-3 py-2 text-right tabular-nums">{formatKRW(Number(s.gross))}</td>
                 <td className="hidden px-3 py-2 text-right tabular-nums md:table-cell">{formatKRW(Number(s.withholding))}</td>
                 <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatKRW(Number(s.net))}</td>
-                {removable && (
+                {hasAction && (
                   <td className="px-3 py-2 text-right">
-                    <RemoveFromBatchButton batchId={batch.id} settlementId={s.id} label={`${s.mentorName} · ${s.businessName}`} />
+                    <div className="flex items-center justify-end gap-1">
+                      {reopenable && canReopenSettlement(s, batch.status) && <ReopenSettlementButton settlementId={s.id} kind={s.kind} label={`${s.mentorName} · ${s.businessName}`} compact />}
+                      {removable && <RemoveFromBatchButton batchId={batch.id} settlementId={s.id} label={`${s.mentorName} · ${s.businessName}`} />}
+                    </div>
                   </td>
                 )}
               </tr>

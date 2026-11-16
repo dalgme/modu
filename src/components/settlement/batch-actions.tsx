@@ -8,8 +8,9 @@ import { CheckCircle2, FileText, Send, Trash2, Undo2, Wallet, X } from 'lucide-r
 import { ExcelButton } from '@/components/common/excel-button';
 import { useConfirm, type ConfirmOptions } from '@/components/common/confirm-dialog';
 import { canBatchTransition } from '@/lib/workflow/transitions';
+import { canConfirmAs, type BatchConfirmer } from '@/lib/settlement/batch-confirmer-rule';
 
-import { confirmBatchAction, deleteBatchAction, markBatchPaidAction, previewBatchSubmitAction, removeFromBatchAction, returnBatchAction, submitBatchAction, unsubmitBatchAction } from '@/lib/settlement/actions';
+import { confirmBatchAction, confirmBatchesAction, deleteBatchAction, markBatchPaidAction, previewBatchSubmitAction, removeFromBatchAction, reopenSettlementAction, returnBatchAction, submitBatchAction, unsubmitBatchAction } from '@/lib/settlement/actions';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
@@ -21,7 +22,8 @@ const kstToday = () => new Date(Date.now() + 9 * 3600 * 1000).toISOString().slic
 
 /**
  * 품의 상세의 상태 전이 버튼 — role 과 BATCH_TRANSITIONS(canBatchTransition) 로 노출.
- *  운영사: 제출·철회·삭제·지급 완료(지급일 입력) / 발주처: 정산 확인·반려(사유).
+ *  운영사: 제출·철회·삭제·지급 완료(지급일 입력) + (확인 주체가 운영사인 품의) 정산 확인 / 발주처: (발주처 확인 품의) 정산 확인·반려(사유).
+ * (2026-11-16) confirmer = 라운드 설정(발주처 [정산 품의] 기능) — 기본 운영사가 정산 확인한다.
  * (P31) can* 는 페이지가 권한표(hasCapability: 'settlement' / 'settlement.submit')로 계산해 내려준다 (기본 true).
  */
 export function BatchActions({
@@ -38,6 +40,7 @@ export function BatchActions({
   canMarkPaid = true,
   canConfirm = true,
   canReturn = true,
+  confirmer = 'operator',
 }: {
   batchId: string;
   status: string;
@@ -53,6 +56,7 @@ export function BatchActions({
   canMarkPaid?: boolean;
   canConfirm?: boolean;
   canReturn?: boolean;
+  confirmer?: BatchConfirmer;
 }) {
   const { toast } = useToast();
   const router = useRouter();
@@ -86,14 +90,14 @@ export function BatchActions({
     }
     const warn = preview.recompute.map((r) => `과세최저한 재계산: ${r.mentorName} — 이 품의 안 기타소득금액 합계 ${formatKRW(r.combinedTaxable)} > ${formatKRW(r.threshold)} → 면제됐던 ${r.settlementIds.length}건에 원천징수 ${formatKRW(r.extraWithholding)} 추가`);
     const impact = warn.length > 0 ? [...warn, `제출 시 합계: 원천징수 ${formatKRW(preview.totalsAfter.withholding)} · 실지급 ${formatKRW(preview.totalsAfter.net)} (재계산 전 실지급 ${formatKRW(preview.totalsBefore.net)})`] : [];
-    await run({ title: '발주처에 제출', description: '이 품의를 발주처에 제출합니다. 제출 후에는 편성 건을 바꿀 수 없으며, 발주처 정산 확인 전까지는 철회할 수 있습니다.', impact, confirmLabel: '제출' }, '제출', () => submitBatchAction(batchId));
+    await run({ title: '품의 제출', description: confirmer === 'institution' ? '이 품의를 발주처에 제출합니다. 제출 후에는 편성 건을 바꿀 수 없으며, 발주처 정산 확인 전까지는 철회할 수 있습니다.' : '이 품의를 제출합니다. 제출 후 [정산 확인]을 누르면 확정됩니다. 정산 확인 전까지는 철회할 수 있습니다.', impact, confirmLabel: '제출' }, '제출', () => submitBatchAction(batchId));
   };
 
   const markPaid = async () => {
     paidOnRef.current = kstToday();
     const ok = await confirm({
       title: '지급 완료 기록',
-      description: '정산 건 상태를 지급 완료로 기록합니다. 케이스 종결은 발주처 확인 시 처리됩니다.',
+      description: '정산 건 상태를 지급 완료로 기록합니다. 케이스 종결은 정산 확인 시 처리됩니다.',
       impact: [...(summary ? [summary] : []), '지급 완료 후에는 되돌릴 수 없습니다.', '멘토에게 실지급액과 지급일이 통보됩니다.'],
       confirmLabel: '지급 완료',
       severity: 'danger',
@@ -156,7 +160,7 @@ export function BatchActions({
         </Button>
       )}
       {role === 'nextlab' && canBatchTransition('unsubmit', status) && canSubmit && (
-        <Button size="sm" variant="outline" className="gap-1" disabled={pending} onClick={() => void run({ title: '제출 철회', description: '발주처에 제출한 품의를 철회하고 작성 중 상태로 되돌립니다. 발주처에 철회 알림이 발송됩니다.', confirmLabel: '철회' }, '제출 철회', () => unsubmitBatchAction(batchId))}>
+        <Button size="sm" variant="outline" className="gap-1" disabled={pending} onClick={() => void run({ title: '제출 철회', description: confirmer === 'institution' ? '발주처에 제출한 품의를 철회하고 작성 중 상태로 되돌립니다. 발주처에 철회 알림이 발송됩니다.' : '제출한 품의를 철회하고 작성 중 상태로 되돌립니다.', confirmLabel: '철회' }, '제출 철회', () => unsubmitBatchAction(batchId))}>
           <Undo2 className="h-4 w-4" /> 제출 철회
         </Button>
       )}
@@ -165,13 +169,13 @@ export function BatchActions({
           <Wallet className="h-4 w-4" /> 지급 완료
         </Button>
       )}
-      {role === 'institution' && canBatchTransition('return', status) && canReturn && (
+      {role === 'institution' && confirmer === 'institution' && canBatchTransition('return', status) && canReturn && (
         <Button size="sm" variant="outline" className="gap-1 text-destructive" disabled={pending} onClick={() => void returnBatch()}>
           <Undo2 className="h-4 w-4" /> 반려
         </Button>
       )}
-      {role === 'institution' && canBatchTransition('confirm', status) && canConfirm && (
-        <Button size="sm" className="gap-1" disabled={pending} onClick={() => void run({ title: '정산 확인', description: '운영사가 제출한 이 품의의 정산 내역을 확인합니다.', impact: ['열린 정산이 더 없는 케이스는 종결로 확정됩니다(종결·부분 정산 모두).', '확인 후 운영사가 [지급 완료]를 표시합니다.'], confirmLabel: '정산 확인' }, '정산 확인', () => confirmBatchAction(batchId))}>
+      {canConfirmAs(role, confirmer) && canBatchTransition('confirm', status) && canConfirm && (role === 'institution' || canSubmit) && (
+        <Button size="sm" className="gap-1" disabled={pending} onClick={() => void run({ title: '정산 확인', description: role === 'institution' ? '운영사가 제출한 이 품의의 정산 내역을 확인합니다.' : '이 품의의 정산 내역을 최종 확인합니다. 확인 후에는 검수로 되돌릴 수 없습니다.', impact: ['열린 정산이 더 없는 케이스는 종결로 확정됩니다(종결·부분 정산 모두).', '확인 후 운영사가 [지급 완료]를 표시합니다.'], confirmLabel: '정산 확인' }, '정산 확인', () => confirmBatchAction(batchId))}>
           <CheckCircle2 className="h-4 w-4" /> 정산 확인
         </Button>
       )}
@@ -204,6 +208,89 @@ export function RemoveFromBatchButton({ batchId, settlementId, label }: { batchI
         }
       >
         <X className="h-4 w-4" />
+      </Button>
+    </>
+  );
+}
+
+/**
+ * (2026-11-16) 정산 품의 → 검수로 되돌리기 — 품의에서 빼고 정산 확정을 취소한다(정산 확인 전 품의만).
+ * 종결 정산 = 케이스가 종결 요청(검수 대기)으로 돌아간다. 부분 정산(중도 종료) = 회차 정정 후 케이스 화면에서 [부분 정산 다시 확정].
+ */
+export function ReopenSettlementButton({ settlementId, kind, label, compact = false }: { settlementId: string; kind: string; label?: string; compact?: boolean }) {
+  const { toast } = useToast();
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const { confirm, dialog } = useConfirm();
+  const reasonRef = useRef('');
+  const go = async () => {
+    reasonRef.current = '';
+    const ok = await confirm({
+      title: '검수로 되돌리기',
+      description: `${label ?? '이 정산 건'}을(를) 품의에서 빼고 정산 확정을 취소합니다. 회차 일시·방법을 정정한 뒤 다시 정산하세요.`,
+      impact: [
+        kind === 'closure' ? '케이스가 [종결 요청(검수 대기)] 단계로 돌아갑니다 → 회차 정정 후 [검수 승인]을 다시 누르면 새 품의가 자동 작성·제출됩니다.' : '부분 정산(중도 종료)은 케이스 단계가 그대로입니다 → 회차 정정 후 케이스 화면 정산 카드의 [부분 정산 다시 확정]을 누르면 새 품의가 자동 작성·제출됩니다.',
+        '품의에 다른 정산이 남아 있으면 그 건들은 그대로 두고, 빈 품의는 삭제됩니다.',
+        '멘토에게 정산 취소 알림이 발송되고, 이 정산의 정산서 PDF는 삭제됩니다.',
+      ],
+      confirmLabel: '검수로 되돌리기',
+      severity: 'danger',
+      children: <Textarea autoFocus rows={2} placeholder="되돌리는 사유 (필수) — 예: 2회차 시간을 보고서와 맞게 정정" onChange={(e) => { reasonRef.current = e.target.value; }} />,
+    });
+    if (!ok) return;
+    if (!reasonRef.current.trim()) {
+      toast({ title: '되돌리는 사유를 입력하세요.', variant: 'destructive' });
+      return;
+    }
+    start(async () => {
+      const r = await reopenSettlementAction(settlementId, reasonRef.current);
+      if (!r.ok) {
+        toast({ title: r.error, variant: 'destructive' });
+        return;
+      }
+      toast({ title: r.kind === 'closure' ? '검수 대기로 되돌렸습니다. 케이스 화면에서 회차를 정정한 뒤 다시 검수 승인하세요.' : '부분 정산을 취소했습니다. 회차를 정정한 뒤 [부분 정산 다시 확정]을 누르세요.' });
+      if (r.batchDeleted) router.push('/nextlab/settlements');
+      else router.refresh();
+    });
+  };
+  return (
+    <>
+      {dialog}
+      <Button size="sm" variant="outline" className={compact ? 'h-7 gap-1 px-2 text-xs' : 'gap-1'} disabled={pending} onClick={() => void go()} title="품의에서 빼고 검수 단계로 되돌립니다(회차 정정용)">
+        <Undo2 className="h-3.5 w-3.5" /> 검수로 되돌리기
+      </Button>
+    </>
+  );
+}
+
+/** (2026-11-16) 운영사: 제출된 운영사 확인 품의 여러 건 한 번에 정산 확인 */
+export function BulkConfirmBatchesButton({ batchIds, totalNet }: { batchIds: string[]; totalNet: number }) {
+  const { toast } = useToast();
+  const [pending, start] = useTransition();
+  const { confirm, dialog } = useConfirm();
+  if (batchIds.length === 0) return null;
+  const go = async () => {
+    const ok = await confirm({
+      title: `제출된 품의 ${batchIds.length}건 정산 확인`,
+      description: '제출 상태인 품의를 모두 최종 확인합니다. 확인 후에는 검수로 되돌릴 수 없으니, 회차 일시가 맞지 않는 건은 먼저 품의 상세에서 [검수로 되돌리기] 하세요.',
+      impact: [`실지급 합계 ${formatKRW(totalNet)}`, '열린 정산이 더 없는 케이스는 종결로 확정됩니다.', '확인 후 [지급 완료]를 표시합니다.'],
+      confirmLabel: '모두 정산 확인',
+    });
+    if (!ok) return;
+    start(async () => {
+      const r = await confirmBatchesAction(batchIds);
+      if (!r.ok) {
+        toast({ title: r.error, variant: 'destructive' });
+        return;
+      }
+      toast({ title: `정산 확인 ${r.confirmed}건 완료${r.skipped.length ? ` · 건너뜀 ${r.skipped.length}건 (${r.skipped[0]})` : ''}` });
+    });
+  };
+  return (
+    <>
+      {dialog}
+      <Button size="sm" className="gap-1" disabled={pending} onClick={() => void go()}>
+        <CheckCircle2 className="h-4 w-4" /> 제출된 품의 {batchIds.length}건 모두 정산 확인
       </Button>
     </>
   );

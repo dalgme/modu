@@ -69,7 +69,7 @@ export function ClosureReviewPanel({
             impact: [
               `확정 실지급 합계 ${formatKRW(totalNet)}${hasRoundIds ? ` (회차 ${roundIds.length}건)` : ''}`,
               ...estimates.map((e) => `${e.mentorName}: 실지급 ${formatKRW(e.figures.net)} (원천징수 ${formatKRW(e.figures.withholding)})`),
-              '승인 즉시 멘토별 지급 품의가 자동으로 작성·제출되어 발주처 정산 확인 단계로 넘어갑니다. 발주처 확인 전에는 품의 [제출 철회]로 되돌릴 수 있습니다.',
+              '승인 즉시 멘토별 지급 품의가 자동으로 작성·제출되어 정산 확인 단계로 넘어갑니다. 정산 확인 전에는 품의 상세의 [검수로 되돌리기]로 이 단계로 되돌릴 수 있습니다.',
             ],
             confirmLabel: '승인 · 확정',
           }

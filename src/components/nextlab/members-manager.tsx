@@ -782,6 +782,8 @@ export interface MenteeProgressItem {
   mentorId: string | null;
   mentorName: string | null;
   mentorActiveCount: number;
+  /** (2026-11-16) 현재 담당 없이 진행했던 멘토 — "이름 (멘토 중도 종료)" */
+  pastMentorLabel?: string | null;
   /** 만족도 조사 — none: 미개시 / open: 개시(응답 대기) / done: 응답 완료 */
   surveyStatus: 'none' | 'open' | 'done';
   /** 진행 단계 순서값 (CASE_STATUSES 인덱스) — 진행현황 정렬용 (P27-02) */
@@ -1097,6 +1099,7 @@ export function MembersManager({
                                     · <MentorName id={p.mentorId} name={p.mentorName} count={p.mentorActiveCount} className="text-[11px]" />
                                   </span>
                                 )}
+                                {!p.mentorName && p.pastMentorLabel && <span className="font-semibold text-violet-700 dark:text-violet-300" title="진행했던 멘토 — 현재 담당 멘토는 없습니다">· {p.pastMentorLabel}</span>}
                                 <SurveyControl item={p} />
                               </div>
                             ))}

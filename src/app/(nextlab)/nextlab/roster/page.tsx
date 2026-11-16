@@ -1,3 +1,4 @@
+import { pastMentorLabel } from '@/lib/workflow/past-mentor';
 import Link from 'next/link';
 import { Briefcase, Building2, Download, GraduationCap, Link2, Network, UserPlus, UserX, Users } from 'lucide-react';
 
@@ -145,6 +146,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         mentorId: c.mentorId,
         mentorName: c.mentorName,
         mentorActiveCount: c.mentorActiveCount,
+        pastMentorLabel: !c.mentorName && c.pastMentorName ? pastMentorLabel(c.pastMentorName, c.pastMentorEndKind) : null,
         surveyStatus: responded.has(c.id) ? 'done' : c.survey_opened_at ? 'open' : 'none',
         statusIndex: CASE_STATUSES.indexOf(c.status),
         outcome: normalizeMentoringOutcome(c.mentoring_outcome),

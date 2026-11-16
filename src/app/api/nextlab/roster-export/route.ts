@@ -1,3 +1,4 @@
+import { pastMentorLabel } from '@/lib/workflow/past-mentor';
 import { NextResponse } from 'next/server';
 import { roundTimeRangeLabel } from '@/lib/workflow/round-time';
 import * as XLSX from 'xlsx';
@@ -73,7 +74,7 @@ export async function GET(request: Request): Promise<Response> {
     if (kind === 'mentee-match') {
       title = '멘티 매칭 리스트';
       // 배정 멘토의 소속·직함·연락처·이메일 — 종료된 멘토도 포함해 users 에서 직접 읽는다
-      const mentorIds = Array.from(new Set(lists.menteeRows.map((r) => r.mentorId).filter((x): x is string => !!x)));
+      const mentorIds = Array.from(new Set(lists.menteeRows.map((r) => r.mentorId ?? r.pastMentorId).filter((x): x is string => !!x)));
       const mentorInfo = new Map(
         (await fetchAllIn<{ id: string; organization: string | null; position: string | null; phone: string | null; email: string | null }>(mentorIds, (chunk, from, to) =>
           createAdminClient().from('users').select('id, organization, position, phone, email').in('id', chunk).range(from, to),
@@ -82,7 +83,8 @@ export async function GET(request: Request): Promise<Response> {
       header = ['순위', '멘티', '휴대폰', '이메일', '라운드', '희망분야', '재배치 희망', '배정 멘토', '멘토 소속', '멘토 직함', '멘토 연락처', '멘토 이메일', '추천', '멘토 확인', '진행', ...roundHeader(maxRound)];
       rows = lists.menteeRows.map((r) => {
         const ct = contactByCase.get(r.caseId);
-        const mi = r.mentorId ? mentorInfo.get(r.mentorId) : undefined;
+        // (2026-11-16) 멘토 중도 종료 등 현재 담당이 없으면 진행했던 멘토를 "이름 (멘토 중도 종료)" 로
+        const mi = r.mentorId ? mentorInfo.get(r.mentorId) : r.pastMentorId ? mentorInfo.get(r.pastMentorId) : undefined;
         return [
           r.rank ?? '',
           r.label,
@@ -91,12 +93,12 @@ export async function GET(request: Request): Promise<Response> {
           r.groupName ?? '',
           r.needs.join(', '),
           r.preferredMentor ?? '',
-          r.mentorName ? mentorLabel(r.mentorName, r.mentorActive) : '',
+          r.mentorName ? mentorLabel(r.mentorName, r.mentorActive) : r.pastMentorName ? `${r.pastMentorName} (${r.pastMentorNote})` : '',
           mi?.organization ?? '',
           mi?.position ?? '',
           mi?.phone ?? '',
           mi?.email ?? '',
-          r.mentorName ? '' : r.recommendations.map((x) => `${x.rank}. ${mentorLabel(x.mentorName, x.mentorActive)} ${Math.round(x.score)}점`).join(' / '),
+          r.mentorName || r.pastMentorName ? '' : r.recommendations.map((x) => `${x.rank}. ${mentorLabel(x.mentorName, x.mentorActive)} ${Math.round(x.score)}점`).join(' / '),
           kstDate(r.confirmedAt),
           r.statusLabel,
           ...roundValues(breakdown.byCase.get(r.caseId), maxRound, when),
@@ -109,7 +111,7 @@ export async function GET(request: Request): Promise<Response> {
         const base = [mentorLabel(m.mentorName, m.mentees.length), m.organization ?? '', m.position ?? '', m.phone ?? '', m.email ?? '', m.expertise.join(', '), m.paymentDocState, m.settledNet, m.surveyAvg ?? '', m.reviewAvg ?? ''];
         if (m.mentees.length === 0) return [[...base, '', '', '', '미배정(Pool)', ...roundValues(undefined, maxRound, when)]];
         // 멘토 행의 회차 = 그 멘토가 진행한 회차만 (교체 전·후 멘토 몫을 섞지 않는다)
-        return m.mentees.map((c) => [...base, c.rank ?? '', c.label, kstDate(c.confirmedAt), c.statusLabel, ...roundValues(breakdown.byCase.get(c.caseId), maxRound, when, m.mentorId)]);
+        return m.mentees.map((c) => [...base, c.rank ?? '', c.label, kstDate(c.confirmedAt), c.endedNote ? `${c.statusLabel} (${c.endedNote})` : c.statusLabel, ...roundValues(breakdown.byCase.get(c.caseId), maxRound, when, m.mentorId)]);
       });
     }
   } else if (kind === 'mentee') {
@@ -156,7 +158,7 @@ export async function GET(request: Request): Promise<Response> {
             c.supportTypeName ?? '',
             c.status === 'withdrawn' ? '중도 종료(비활성화)' : CASE_STATUS_META[c.status].short,
             `${c.roundsDone}/${c.requiredRounds}`,
-            c.mentorName ?? '',
+            c.mentorName ?? (c.pastMentorName ? pastMentorLabel(c.pastMentorName, c.pastMentorEndKind) : ''),
             memberStatus(m),
             c.menteeLoginId ?? '',
             ...custom,

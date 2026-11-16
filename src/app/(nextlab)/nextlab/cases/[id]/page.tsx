@@ -190,7 +190,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         />
 
         <div id="settlement" className="scroll-mt-40" />
-        <SettlementCard items={settlements} statements={statements} canCancel={hasCapability(ctx, 'settlement')} batchHrefBase="/nextlab/settlements/batches" />
+        <SettlementCard items={settlements} statements={statements} canCancel={hasCapability(ctx, 'settlement')} canReopen={hasCapability(ctx, 'settlement') && hasCapability(ctx, 'settlement.submit')} batchHrefBase="/nextlab/settlements/batches" />
 
         {pendingExt.length > 0 && (
           <Card className="border-amber-300">

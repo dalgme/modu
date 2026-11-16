@@ -1,3 +1,4 @@
+import { pastMentorLabel } from '@/lib/workflow/past-mentor';
 import Link from 'next/link';
 
 import type { CaseListItem } from '@/lib/data/cases';
@@ -89,7 +90,7 @@ export function CaseTable({
                 {showGroup && <TableCell className="hidden text-sm md:table-cell">{c.supportTypeName ?? '-'}</TableCell>}
                 {showMentor && (
                   <TableCell className="text-sm">
-                    {c.mentorId && c.mentorName ? <MentorName id={c.mentorId} name={c.mentorName} count={c.mentorActiveCount} caseHrefBase={basePath} /> : <span className="text-muted-foreground">미배정</span>}
+                    {c.mentorId && c.mentorName ? <MentorName id={c.mentorId} name={c.mentorName} count={c.mentorActiveCount} caseHrefBase={basePath} /> : c.pastMentorName ? <span className="text-violet-700 dark:text-violet-300" title="진행했던 멘토 — 현재 담당 멘토는 없습니다">{pastMentorLabel(c.pastMentorName, c.pastMentorEndKind)}</span> : <span className="text-muted-foreground">미배정</span>}
                   </TableCell>
                 )}
                 <TableCell>
