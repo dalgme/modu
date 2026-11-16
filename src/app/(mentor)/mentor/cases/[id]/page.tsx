@@ -20,6 +20,7 @@ import { canTransition } from '@/lib/workflow/transitions';
 import { CaseDetailShell } from '@/components/cases/case-detail-shell';
 import { CaseDetailBackNav } from '@/components/cases/case-detail-back-nav';
 import { CaseDocumentsPanel } from '@/components/cases/case-documents-panel';
+import { PdfOnlyNotice } from '@/components/files/pdf-only-notice';
 import { MentorRoundBoard } from '@/components/mentor/mentor-round-board';
 import { BundleDownloadButton } from '@/components/files/bundle-download-button';
 import { MergedReportSection, mergedProps } from '@/components/files/merged-report-section';
@@ -233,7 +234,8 @@ export default async function Page({ params }: { params: { id: string } }) {
                 : `회차마다 [N차 예정 등록]으로 일정을 먼저 등록하고, 멘토링을 마친 뒤 그 회차의 [보고서 업로드]를 하면 이행으로 인정되어 정산에 포함됩니다. 보고서를 고쳐야 하면 [보고서 수정 업로드]로 다시 올리세요. 파일 이름은 ‘${obsRequired ? '책임멘토 멘토링 보고서 및 관찰 의견서' : '책임멘토 멘토링 보고서'}(멘토명멘토-멘티명멘티)_N회차’로 자동 저장됩니다.`}
             </p>
           </CardHeader>
-          <CardContent className="pt-6">
+          <CardContent className="flex flex-col gap-3 pt-6">
+            {!finished && <PdfOnlyNotice />}
             <MentorRoundBoard
               caseId={item.id}
               menteeName={item.owner_name}

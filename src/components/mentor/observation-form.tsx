@@ -12,6 +12,8 @@ import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { useConfirm } from '@/components/common/confirm-dialog';
 import { FileActions } from '@/components/files/file-preview';
+import { PdfOnlyNotice } from '@/components/files/pdf-only-notice';
+import { PDF_ACCEPT, PDF_ONLY_DETAIL, PDF_ONLY_NOTICE, pdfOnlyNameError } from '@/lib/files/pdf-only';
 import { ObservationFileLog } from '@/components/files/observation-file-log';
 
 /**
@@ -45,6 +47,8 @@ export function ObservationForm({
   const upload = () => {
     const f = fileRef.current?.files?.[0];
     if (!f) return toast({ title: '파일을 선택하세요.', variant: 'destructive' });
+    const notPdf = pdfOnlyNameError(f.name, f.type);
+    if (notPdf) return toast({ title: PDF_ONLY_NOTICE, description: `${f.name} — ${PDF_ONLY_DETAIL}`, variant: 'destructive' });
     start(async () => {
       try {
         const staged = await stageUpload(f, 'documents');
@@ -125,7 +129,7 @@ export function ObservationForm({
             <Input
               ref={fileRef}
               type="file"
-              accept=".pdf,.hwp,.hwpx,.doc,.docx"
+              accept={PDF_ACCEPT}
               className="max-w-xs"
               disabled={pending || !uploadOk}
               onChange={(e) => setPicked(e.target.files?.[0]?.name ?? null)}
@@ -134,7 +138,7 @@ export function ObservationForm({
               <Upload className="h-4 w-4" /> {pending ? '올리는 중…' : file ? '교체 업로드' : '파일 업로드'}
             </Button>
           </div>
-          <p className="text-[11px] text-muted-foreground">PDF · HWP · HWPX · Word 파일</p>
+          <PdfOnlyNotice />
         </div>
       )}
     </div>

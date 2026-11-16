@@ -5,12 +5,17 @@ import { SafeSlot } from '@/components/common/safe-slot';
 import { MentorNav } from '@/components/mentor/mentor-nav';
 import { MobileTabBar } from '@/components/common/mobile-tab-bar';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getImpersonation } from '@/lib/auth/impersonation';
+import { MENTOR_PDF_ONLY_NOTICE_KEY, noticeUnread } from '@/lib/notices/one-time';
+import { PdfOnlyUploadNotice } from '@/components/notices/pdf-only-upload-notice';
 
 export default async function MentorLayout({ children }: { children: React.ReactNode }) {
   const profile = await requireMentor();
   const ctx = await requireContext(profile);
   // 그룹멘토링을 쓰는 라운드가 있으면 내비에 탭을 띄운다 (select('*') — 컬럼이 없는 DB 에서도 오류 없이 숨김)
   const { data: groups } = await createAdminClient().from('support_types').select('*').eq('program_id', ctx.programId);
+  // (2026-11-16) PDF 전용 업로드 안내 팝업 — 본인 로그인(대행 아님)이고 아직 안 읽은 멘토에게 한 번만
+  const showPdfNotice = !(await getImpersonation()) && (await noticeUnread(profile.id, MENTOR_PDF_ONLY_NOTICE_KEY));
   const showGroupMentoring = (groups ?? []).some((g) => !!(g as { group_mentoring_enabled?: boolean }).group_mentoring_enabled && (!ctx.supportTypeId || g.id === ctx.supportTypeId));
   return (
     <div className="min-h-screen bg-muted/20">
@@ -24,6 +29,11 @@ export default async function MentorLayout({ children }: { children: React.React
       </SafeSlot>
       <MentorNav showGroupMentoring={showGroupMentoring} />
       <div className="mx-auto max-w-5xl px-4 py-6 pb-24 md:pb-6">{children}</div>
+      {showPdfNotice && (
+        <SafeSlot name="pdf-notice">
+          <PdfOnlyUploadNotice noticeKey={MENTOR_PDF_ONLY_NOTICE_KEY} />
+        </SafeSlot>
+      )}
       <SafeSlot name="mobile-tabs">
         <MobileTabBar
           tabs={[

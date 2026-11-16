@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { isPdfBytes, PDF_ONLY_ERROR, pdfOnlyNameError } from '@/lib/files/pdf-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { HOURLY_ONLY_ERROR, isWholeHours, roundAmount } from '@/lib/settlement/round-amount';
 import { moveFile, sha256Hex } from '@/lib/storage/files';
@@ -276,7 +277,7 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
   const photoPaths = Array.isArray(input.photoPaths) ? input.photoPaths : [];
   if (photoPaths.length > MAX_PHOTOS) return { ok: false, error: `사진은 최대 ${MAX_PHOTOS}장까지 첨부할 수 있습니다.` };
   if (input.reportFile) {
-    const bad = validateReportFile(input.reportFile.fileName, input.reportFile.mimeType);
+    const bad = validateReportFile(input.reportFile.fileName, input.reportFile.mimeType) ?? pdfOnlyNameError(input.reportFile.fileName, input.reportFile.mimeType);
     if (bad) return { ok: false, error: bad };
   }
 
@@ -318,7 +319,7 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
     // 저장 파일명 = roundReportFileName (2026-11-10 "책임멘토 멘토링 보고서 및 관찰 의견서(…)_N회차", 관찰의견서 없는 라운드는 "책임멘토 멘토링 보고서(…)_N회차") + 원래 확장자
     const [{ data: mentorRow }, obsRequired] = await Promise.all([admin.from('users').select('name').eq('id', log.mentor_id).maybeSingle(), observationRequiredFor(c.support_type_id)]);
     const reportName = roundReportFileName({ mentorName: mentorRow?.name, menteeName: c.owner_name, roundNo: log.round_no, mode: log.mode, originalName: input.reportFile.fileName, observationRequired: obsRequired });
-    const moved = await moveStaging('documents', log.case_id, input.reportFile.stagingPath, REPORT_MAX_BYTES);
+    const moved = await moveStaging('documents', log.case_id, input.reportFile.stagingPath, REPORT_MAX_BYTES, { requirePdf: true });
     if (!moved.ok) return { ok: false, error: moved.error };
     movedFiles.push({ bucket: 'documents', path: moved.dest });
     const { data: doc, error: docErr } = await admin
@@ -417,12 +418,12 @@ export async function replaceRoundReport(input: { logId: string; mentorId: strin
   const denied = assertTransition('submit_round', c.status as never);
   if (denied) return { ok: false, error: denied };
   if (!isStaging(input.reportFile.stagingPath)) return { ok: false, error: '잘못된 업로드 경로입니다.' };
-  const bad = validateReportFile(input.reportFile.fileName, input.reportFile.mimeType);
+  const bad = validateReportFile(input.reportFile.fileName, input.reportFile.mimeType) ?? pdfOnlyNameError(input.reportFile.fileName, input.reportFile.mimeType);
   if (bad) return { ok: false, error: bad };
 
   const [{ data: mentorRow }, obsRequired] = await Promise.all([admin.from('users').select('name').eq('id', log.mentor_id).maybeSingle(), observationRequiredFor(c.support_type_id)]);
   const reportName = roundReportFileName({ mentorName: mentorRow?.name, menteeName: c.owner_name, roundNo: log.round_no, mode: log.mode, originalName: input.reportFile.fileName, observationRequired: obsRequired });
-  const moved = await moveStaging('documents', log.case_id, input.reportFile.stagingPath, REPORT_MAX_BYTES);
+  const moved = await moveStaging('documents', log.case_id, input.reportFile.stagingPath, REPORT_MAX_BYTES, { requirePdf: true });
   if (!moved.ok) return { ok: false, error: moved.error };
   const { data: old } = await admin.from('documents').select('id, storage_path').eq('case_id', log.case_id).eq('doc_key', reportDocKey(log.id)).order('created_at');
   const keep = (old ?? [])[0] ?? null;
@@ -787,7 +788,7 @@ export async function correctRound(input: {
 type MovedFile = { ok: true; dest: string; sha256: string; size: number; mime: string } | { ok: false; error: string };
 
 /** 스테이징 파일을 케이스 폴더로 옮긴다. 크기 상한을 넘으면 옮기지 않고 거부한다 (P31). */
-async function moveStaging(bucket: 'documents' | 'photos', caseId: string, stagingPath: string, maxBytes: number): Promise<MovedFile> {
+async function moveStaging(bucket: 'documents' | 'photos', caseId: string, stagingPath: string, maxBytes: number, opts: { requirePdf?: boolean } = {}): Promise<MovedFile> {
   if (!isStaging(stagingPath)) return { ok: false, error: '잘못된 업로드 경로입니다.' };
   const admin = createAdminClient();
   const basename = stagingPath.split('/').pop();
@@ -799,6 +800,11 @@ async function moveStaging(bucket: 'documents' | 'photos', caseId: string, stagi
     await admin.storage.from(bucket).remove([stagingPath]);
     const mb = Math.round(maxBytes / 1024 / 1024);
     return { ok: false, error: bucket === 'photos' ? `사진 한 장은 ${mb}MB 이하여야 합니다.` : `보고서 파일은 ${mb}MB 이하만 올릴 수 있습니다.` };
+  }
+  // (2026-11-16) 보고서는 PDF 만 — 이름만 .pdf 로 바꾼 한글·Word 파일을 파일 앞 바이트로 거른다
+  if (opts.requirePdf && !isPdfBytes(new Uint8Array(buffer))) {
+    await admin.storage.from(bucket).remove([stagingPath]);
+    return { ok: false, error: PDF_ONLY_ERROR };
   }
   const dest = `${caseId}/${basename}`;
   try {

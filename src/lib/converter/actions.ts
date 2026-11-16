@@ -8,6 +8,7 @@ import { getImpersonation } from '@/lib/auth/impersonation';
 import { contextOrNull } from '@/lib/programs/context';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { converterAudit, hashConverterToken, newConverterToken } from '@/lib/converter/data';
+import { featureEnabled } from '@/lib/platform/features';
 import { validateConverterTimes } from '@/lib/converter/schedule-rule';
 
 type Result = { ok: true; message?: string } | { ok: false; error: string };
@@ -22,6 +23,7 @@ async function operator(): Promise<{ id: string; programId: string } | { error: 
   if (!ctx) return { error: '행사를 먼저 선택하세요.' };
   const denied = denyUnless(ctx, 'settings');
   if (denied) return { error: denied };
+  if (!featureEnabled(ctx.program.features, 'hwp_converter')) return { error: '이 행사는 한글 PDF 자동 변환 기능이 꺼져 있습니다(플랫폼 관리자가 켤 수 있습니다).' };
   return { id: profile.id, programId: ctx.programId };
 }
 

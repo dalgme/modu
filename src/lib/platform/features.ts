@@ -4,7 +4,7 @@
  * 비활성 기능은 운영사 설정·해당 역할 화면에 노출되지 않고 서버 액션도 차단된다.
  */
 
-export const FEATURE_KEYS = ['mentor_doc_upload'] as const;
+export const FEATURE_KEYS = ['mentor_doc_upload', 'hwp_converter'] as const;
 export type FeatureKey = (typeof FEATURE_KEYS)[number];
 
 export const FEATURE_DEFS: Record<FeatureKey, { label: string; description: string }> = {
@@ -12,6 +12,11 @@ export const FEATURE_DEFS: Record<FeatureKey, { label: string; description: stri
     label: '멘토 지급서류 플랫폼 업로드',
     description:
       '멘토가 내 프로필에서 이력서·통장사본·신분증사본 파일을 직접 올리는 기능. 기본 비활성 — 지급서류는 이메일 등으로 따로 받고 멘토 명단의 -/X/O 상태버튼으로만 관리한다. 켜면 멘토 화면에 업로드 패널과 명단에 제출파일 링크가 나타난다.',
+  },
+  hwp_converter: {
+    label: '한글 보고서 PDF 자동 변환 (운영사 PC 상주 프로그램)',
+    description:
+      '정품 한글이 설치된 운영사 Windows PC 의 상주 프로그램이 정해진 시각에 한글(HWP·HWPX) 보고서를 PDF 로 변환해 올리는 기능. 기본 비활성(2026-11-16 — 멘토 보고서는 PDF 만 업로드하도록 바뀜). 켜면 운영 설정 [한글 PDF 변환] 탭이 나타나고 변환 PC 연결이 동작한다.',
   },
 };
 

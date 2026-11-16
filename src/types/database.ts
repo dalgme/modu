@@ -2684,6 +2684,42 @@ export type Database = {
         Update: { id?: string; program_id?: string; name?: string; token_hash?: string; created_by?: string | null; created_at?: string; revoked_at?: string | null; last_seen_at?: string | null; last_run_at?: string | null; last_result?: Json | null; agent_version?: string | null };
         Relationships: [];
       };
+      user_notice_reads: {
+        Row: {
+          notice_key: string
+          program_id: string | null
+          read_at: string
+          user_id: string
+        }
+        Insert: {
+          notice_key: string
+          program_id?: string | null
+          read_at?: string
+          user_id: string
+        }
+        Update: {
+          notice_key?: string
+          program_id?: string | null
+          read_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_notice_reads_program_id_fkey"
+            columns: ["program_id"]
+            isOneToOne: false
+            referencedRelation: "programs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_notice_reads_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       report_conversions: {
         Row: { source_doc_id: string; program_id: string; case_id: string; source_path: string; status: string; attempts: number; last_error: string | null; pdf_path: string | null; pdf_size: number | null; converter_id: string | null; converted_at: string | null; updated_at: string };
         Insert: { source_doc_id: string; program_id: string; case_id: string; source_path: string; status: string; attempts?: number; last_error?: string | null; pdf_path?: string | null; pdf_size?: number | null; converter_id?: string | null; converted_at?: string | null; updated_at?: string };

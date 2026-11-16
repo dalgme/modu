@@ -11,6 +11,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { PdfOnlyNotice } from '@/components/files/pdf-only-notice';
+import { PDF_ACCEPT, PDF_ONLY_DETAIL, PDF_ONLY_NOTICE, pdfOnlyNameError } from '@/lib/files/pdf-only';
 import { fileExtension } from '@/lib/workflow/round-report-name';
 import { useToast } from '@/hooks/use-toast';
 
@@ -71,6 +73,11 @@ export function RoundReportForm({
           const f = reportRef.current?.files?.[0];
           if (!f) {
             toast({ title: '보고서 파일을 선택하세요.', variant: 'destructive' });
+            return;
+          }
+          const notPdf = pdfOnlyNameError(f.name, f.type);
+          if (notPdf) {
+            toast({ title: PDF_ONLY_NOTICE, description: `${f.name} — ${PDF_ONLY_DETAIL}`, variant: 'destructive' });
             return;
           }
           if (f.size > 20 * MB) {
@@ -170,6 +177,7 @@ export function RoundReportForm({
       ) : edit ? null : (
         <div className="flex flex-col gap-1">
           <Label>보고서 파일 *</Label>
+          <PdfOnlyNotice />
           {/* 첨부 버튼 + 파일 드래그 공용 드롭존 (P20 — 파일 등록 우선) */}
           <div
             onDragOver={(e) => {
@@ -196,13 +204,13 @@ export function RoundReportForm({
             ) : (
               <>
                 <span className="font-medium">여기를 눌러 파일을 선택하거나, 파일을 끌어다 놓으세요</span>
-                <span className="text-xs text-muted-foreground">PDF · HWP · Word · 이미지</span>
+                <span className="text-xs font-semibold text-red-600">{PDF_ONLY_NOTICE}</span>
               </>
             )}
             <Input
               ref={reportRef}
               type="file"
-              accept=".pdf,.hwp,.hwpx,.doc,.docx,.png,.jpg,.jpeg"
+              accept={PDF_ACCEPT}
               className="hidden"
               onClick={(e) => e.stopPropagation()}
               onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
@@ -216,7 +224,7 @@ export function RoundReportForm({
         </div>
       )}
       {fileOnly ? (
-        <p className="text-[11px] text-muted-foreground">보고서 파일 20MB 이하 · PDF · HWP · Word · 이미지</p>
+        <p className="text-[11px] text-muted-foreground">보고서 파일 20MB 이하 · PDF 파일만</p>
       ) : (
       <>
       <div className="flex flex-col gap-1">

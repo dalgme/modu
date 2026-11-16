@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { featureEnabled } from '@/lib/platform/features';
 import { createHash, randomBytes } from 'node:crypto';
 
 import { createAdminClient } from '@/lib/supabase/admin';
@@ -44,6 +45,12 @@ export async function authenticateConverter(request: Request): Promise<Converter
   const version = request.headers.get('x-agent-version')?.slice(0, 20) ?? null;
   await admin.from('report_converters').update({ last_seen_at: new Date().toISOString(), ...(version ? { agent_version: version } : {}) }).eq('id', data.id);
   return { converterId: data.id, programId: data.program_id, name: data.name };
+}
+
+/** 행사 기능 플래그 hwp_converter (기본 꺼짐) — 꺼져 있으면 변환 PC 는 대기만 한다 */
+export async function converterFeatureOn(programId: string): Promise<boolean> {
+  const { data } = await createAdminClient().from('programs').select('features').eq('id', programId).maybeSingle();
+  return featureEnabled(data?.features, 'hwp_converter');
 }
 
 export async function loadConverterSchedule(programId: string): Promise<{ schedule: ConverterSchedule; lastRunAt: string | null; requestedAt: string | null }> {

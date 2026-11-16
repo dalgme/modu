@@ -5,6 +5,7 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { decideConverterRun } from '@/lib/converter/schedule-rule';
 import {
   authenticateConverter,
+  converterFeatureOn,
   CONVERTED_PREFIX,
   CONVERTER_STAGING_PREFIX,
   converterAudit,
@@ -46,11 +47,15 @@ const str = (v: unknown, max = 500) => (typeof v === 'string' ? v.slice(0, max) 
 export async function GET(request: Request, { params }: { params: { action: string } }) {
   const auth = await authenticateConverter(request);
   if (!auth) return fail('unauthorized', 401);
+  const on = await converterFeatureOn(auth.programId);
   if (params.action === 'schedule') {
+    // 기능이 꺼진 행사 = 변환하지 않고 1시간 뒤 다시 묻기만 한다
+    if (!on) return json({ ok: true, runNow: false, nextRunAt: null, sleepSeconds: 3600, disabled: true });
     const s = await loadConverterSchedule(auth.programId);
     const d = decideConverterRun(s.schedule, s.lastRunAt, s.requestedAt, Date.now());
     return json({ ok: true, ...d });
   }
+  if (!on) return fail('disabled', 403);
   if (params.action === 'jobs') return jobs(auth);
   return fail('not_found', 404);
 }
@@ -58,6 +63,7 @@ export async function GET(request: Request, { params }: { params: { action: stri
 export async function POST(request: Request, { params }: { params: { action: string } }) {
   const auth = await authenticateConverter(request);
   if (!auth) return fail('unauthorized', 401);
+  if (!(await converterFeatureOn(auth.programId))) return fail('disabled', 403);
   const b = await body(request);
   switch (params.action) {
     case 'run':

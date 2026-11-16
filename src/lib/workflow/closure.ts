@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { isGroupSurveyEnabled } from '@/lib/surveys/group-survey';
+import { isPdfBytes, PDF_ONLY_ERROR, pdfOnlyNameError } from '@/lib/files/pdf-only';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { isPL, isStaffGrade, resolveGrants, type CapabilityKey } from '@/lib/auth/capabilities';
 import { getRealSessionProfile } from '@/lib/auth/guards';
@@ -73,6 +74,9 @@ export async function uploadObservationFile(
   staging: { stagingPath: string; fileName: string; mimeType: string },
 ): Promise<WorkflowResult> {
   if (!staging.stagingPath.startsWith('_staging/') || staging.stagingPath.includes('..')) return { ok: false, error: '잘못된 업로드 경로입니다.' };
+  // (2026-11-16) 관찰의견서는 PDF 만 — 이름·MIME 먼저, 파일 앞 바이트는 내려받은 뒤
+  const badName = pdfOnlyNameError(staging.fileName, staging.mimeType);
+  if (badName) return { ok: false, error: badName };
   const admin = createAdminClient();
   // 상태 게이트 (P31) — 웹 작성본(saveObservationDraft)과 같은 조건: 종결 요청 가능 단계(진행 중·보완 요청) + 멘토 배정 단계
   const { data: c } = await admin.from('cases').select('id, status, support_type_id, program_id').eq('id', caseId).maybeSingle();
@@ -92,6 +96,10 @@ export async function uploadObservationFile(
   const { data: blob } = await admin.storage.from('documents').download(staging.stagingPath);
   if (!blob) return { ok: false, error: '업로드된 파일을 확인할 수 없습니다.' };
   const buffer = Buffer.from(await blob.arrayBuffer());
+  if (!isPdfBytes(new Uint8Array(buffer))) {
+    await admin.storage.from('documents').remove([staging.stagingPath]);
+    return { ok: false, error: PDF_ONLY_ERROR };
+  }
   const dest = `${caseId}/${basename}`;
   try {
     await moveFile('documents', staging.stagingPath, dest);

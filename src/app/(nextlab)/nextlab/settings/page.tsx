@@ -35,6 +35,7 @@ import { loadMatchingPublishOverview } from '@/lib/matching/publish-data';
 import { listDeletionArchives } from '@/lib/archive/test-account';
 import { DeletionArchivePanel } from '@/components/settings/deletion-archive-panel';
 import { GroupSurveyPanel } from '@/components/settings/group-survey-panel';
+import { featureEnabled } from '@/lib/platform/features';
 import { HwpConverterPanel } from '@/components/settings/hwp-converter-panel';
 import { loadConverterOverview } from '@/lib/converter/data';
 import { decideConverterRun } from '@/lib/converter/schedule-rule';
@@ -81,7 +82,9 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   if (searchParams.tab === 'notifications') redirect('/admin/settings/sms?tab=auto');
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
-  const visibleTabs = TABS;
+  // (2026-11-16) 한글 PDF 변환(운영사 PC 상주)은 기능 플래그 hwp_converter 가 켜진 행사만
+  const converterOn = featureEnabled(ctx.program.features, 'hwp_converter');
+  const visibleTabs = TABS.filter((t) => t.key !== 'hwp-converter' || converterOn);
   const tab = (visibleTabs.find((t) => t.key === searchParams.tab)?.key ?? 'program') as TabKey;
   const program = await getProgramSettings(ctx.programId);
   if (!program) notFound();
@@ -228,7 +231,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   // (2026-11-03) 테스트 계정 완전 삭제 보관함 — 복원은 case.delete 권한(기본 PL) + 비밀번호
   if (tab === 'archive') body = <DeletionArchivePanel rows={await listDeletionArchives(ctx.programId)} canRestore={hasCapability(ctx, 'case.delete')} />;
   if (tab === 'sms-api') body = <SmsApiSection programId={ctx.programId} programName={ctx.program.name} />;
-  if (tab === 'hwp-converter') {
+  if (tab === 'hwp-converter' && converterOn) {
     // (2026-11-16) 정품 한글이 설치된 운영사 PC 가 정해진 시각에 한글 보고서를 PDF 로 변환해 올린다
     const ov = await loadConverterOverview(ctx.programId);
     const nextRunAt = decideConverterRun(ov.schedule, ov.lastRunAt, ov.requestedAt, Date.now()).nextRunAt;
