@@ -1,6 +1,7 @@
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
 import type { Database } from '@/types/database';
+import { noStoreFetch } from '@/lib/supabase/no-store-fetch';
 
 /**
  * service_role 키를 사용하는 관리자 전용 클라이언트 (RLS 우회).
@@ -20,5 +21,7 @@ export function createAdminClient() {
       autoRefreshToken: false,
       persistSession: false,
     },
+    // 조회 결과를 Next.js 데이터 캐시에 담지 않는다 — 방금 바뀐 행을 예전 값으로 읽는 장애 방지 (no-store-fetch.ts)
+    global: { fetch: noStoreFetch },
   });
 }
