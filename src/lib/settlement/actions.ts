@@ -396,3 +396,37 @@ export async function settlePriorMentorsBacklogAction(): Promise<{ ok: true; mes
   revalidateBatches();
   return { ok: true, message: `멘티 ${backlog.caseIds.length}명 — 새 부분 정산 ${created}건, 품의 편성·제출 ${batched}건.`, errors };
 }
+
+/**
+ * (2026-11-16) 정산 건 탭 폐지 — 품의에 아직 오르지 않은 지급 대기 정산을 멘토별 품의로 편성·제출한다(검수 승인 자동 편성과 같은 함수).
+ * 범위 그룹이 있으면 그 그룹 정산만.
+ */
+export async function batchPendingSettlementsAction(): Promise<{ ok: true; message: string; errors: string[] } | { ok: false; error: string }> {
+  const profile = await realRoleOrNull(['nextlab']);
+  if (!profile) return { ok: false, error: OPERATOR_ONLY };
+  const ctx = await contextOrNull(profile);
+  if (!ctx) return { ok: false, error: NO_CONTEXT };
+  { const denied = denyUnless(ctx, 'settlement'); if (denied) return { ok: false, error: denied }; }
+  { const denied = denyUnless(ctx, 'settlement.submit'); if (denied) return { ok: false, error: denied }; }
+  const { listUnbatchedPending } = await import('@/lib/settlement/settlement-board');
+  const pending = await listUnbatchedPending(ctx.programId, ctx.supportTypeId ?? null);
+  if (pending.length === 0) return { ok: true, message: '품의에 올릴 지급 대기 정산이 없습니다.', errors: [] };
+  const byCase = new Map<string, string[]>();
+  for (const s of pending) byCase.set(s.case_id, [...(byCase.get(s.case_id) ?? []), s.id]);
+  let batched = 0;
+  const errors: string[] = [];
+  for (const [caseId, ids] of Array.from(byCase.entries())) {
+    try {
+      const outcomes = await autoBatchSettlements(caseId, ids, profile.id, { note: '지급 대기 정산 품의 편성·제출' });
+      for (const o of outcomes) {
+        if (o.error) errors.push(o.error);
+        else batched++;
+      }
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : '품의 편성 중 오류');
+    }
+    revalidateCase(caseId);
+  }
+  revalidateBatches();
+  return { ok: true, message: `지급 대기 정산 ${pending.length}건 → 품의 ${batched}건 편성·제출`, errors };
+}

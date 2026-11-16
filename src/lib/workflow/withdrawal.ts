@@ -15,7 +15,7 @@ import type { WorkflowResult } from '@/lib/workflow/cases';
  *  3) 종료된 멘토의 계획(미보고) 회차는 정리한다 — 새 멘토의 상한·보고서 등록을 막지 않게.
  *  4) 끝나면 미배정 케이스 추천을 다시 계산한다(이탈 멘토가 슬롯을 비웠으므로).
  *  5) (2026-11-10) 멘토만 바뀌는 두 경로(자진 종료 승인·강제 종료)는 종료된 멘토의 부분 정산을 바로 지급 품의로 편성·제출한다
- *     (settlePriorMentorsSafely). 멘티 중도 종료는 [복귀] 가능성이 있어 기존대로 운영사가 편성한다.
+ *     (settlePriorMentorsSafely). (2026-11-16) 멘티 중도 종료의 부분 정산도 바로 편성·제출한다(정산 건 탭 폐지).
  */
 
 async function rebalanceSafely(programId: string, actorId: string | null): Promise<void> {
@@ -74,6 +74,15 @@ export async function withdrawCase(caseId: string, actorId: string, reason: stri
   }
   if (c.mentee_id) await queueNotification(admin, { caseId, programId: c.program_id, recipientId: c.mentee_id, triggerEvent: 'case_withdrawn' });
   await admin.from('audit_logs').insert({ actor_id: actorId, program_id: c.program_id, action: 'case.withdrawn', entity_type: 'cases', entity_id: caseId, metadata: { reason: reason.trim(), settlement_ids: created } });
+  // (2026-11-16) 정산 건 탭 폐지 — 멘티 중도 종료 부분 정산도 바로 멘토별 지급 품의로 편성·제출한다(복귀가 필요하면 [검수로 되돌리기] 후 복귀)
+  if (created.length) {
+    try {
+      const { autoBatchSettlements } = await import('@/lib/workflow/batches');
+      await autoBatchSettlements(caseId, created, actorId, { note: `멘티 중도 종료 — ${reason.trim()}`, titleSuffix: '(멘티 중도 종료)' });
+    } catch (e) {
+      console.error('auto batch after withdrawal failed:', e instanceof Error ? e.message : e);
+    }
+  }
   await rebalanceSafely(c.program_id, actorId);
   return { ok: true, caseId };
 }
@@ -178,7 +187,7 @@ export async function reinstateCase(caseId: string, actorId: string, reason: str
   const { data: group } = await admin.from('support_types').select('status, name').eq('id', c.support_type_id).maybeSingle();
   if (group && group.status !== 'active') return { ok: false, error: `종료된 그룹(${group.name})의 케이스는 복귀시킬 수 없습니다. 승계 개설 › 재배치를 이용하세요.` };
   const { data: locked } = await admin.from('settlements').select('id, status').eq('case_id', caseId).in('status', ['batched', 'confirmed', 'paid']).limit(1);
-  if (locked && locked.length > 0) return { ok: false, error: '이미 품의 편성·정산 확인·지급된 정산이 있는 케이스는 복귀시킬 수 없습니다. 승계 개설 › 재배치로 새 케이스를 만드세요.' };
+  if (locked && locked.length > 0) return { ok: false, error: '이미 품의에 오른 정산이 있어 복귀시킬 수 없습니다. 정산 확인 전이면 [정산·품의]에서 그 품의의 정산을 [검수로 되돌리기] 한 뒤 복귀하고, 확인·지급된 뒤면 승계 개설 › 재배치로 새 케이스를 만드세요.' };
   if (c.mentee_id) {
     const { count } = await admin.from('cases').select('id', { count: 'exact', head: true }).eq('mentee_id', c.mentee_id).eq('support_type_id', c.support_type_id).neq('status', 'withdrawn').neq('id', caseId);
     if ((count ?? 0) > 0) return { ok: false, error: '이 멘티는 같은 그룹에 진행 중 케이스(재배치 등록)가 있어 복귀할 수 없습니다.' };

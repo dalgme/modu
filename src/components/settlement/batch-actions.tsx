@@ -312,3 +312,71 @@ export function BatchBackLink({ backHref, label = '← 정산 목록' }: { backH
     </Link>
   );
 }
+
+/** (2026-11-16) 지급 품의 목록 행의 [정산 확인] — 코랄 버튼. 누르면 정산 확인(케이스 종결)되고 그 날짜가 표시된다 */
+export function BatchRowConfirmButton({ batchId, title, net, count }: { batchId: string; title: string; net: number; count: number }) {
+  const { toast } = useToast();
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const { confirm, dialog } = useConfirm();
+  const go = async () => {
+    const ok = await confirm({
+      title: '이 품의를 정산 확인할까요?',
+      description: title,
+      impact: [`정산 ${count}건 · 실지급 ${formatKRW(net)}`, '열린 정산이 더 없는 멘티는 종결로 확정됩니다.', '확인 후에는 검수로 되돌릴 수 없습니다.'],
+      confirmLabel: '정산 확인',
+    });
+    if (!ok) return;
+    start(async () => {
+      const r = await confirmBatchAction(batchId);
+      if (!r.ok) {
+        toast({ title: r.error, variant: 'destructive' });
+        return;
+      }
+      toast({ title: '정산 확인했습니다.' });
+      router.refresh();
+    });
+  };
+  return (
+    <>
+      {dialog}
+      <Button size="sm" className="h-7 gap-1 bg-brand-coral px-2.5 text-xs text-white hover:bg-brand-coral/90" disabled={pending} onClick={() => void go()}>
+        <CheckCircle2 className="h-3.5 w-3.5" /> {pending ? '확인 중…' : '정산 확인'}
+      </Button>
+    </>
+  );
+}
+
+/** (2026-11-16) 지급 품의 목록 행의 [지급 완료] — 오늘 날짜로 기록(다른 날짜는 품의 상세에서) */
+export function BatchRowPaidButton({ batchId, title, net }: { batchId: string; title: string; net: number }) {
+  const { toast } = useToast();
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const { confirm, dialog } = useConfirm();
+  const go = async () => {
+    const ok = await confirm({
+      title: '오늘 날짜로 지급 완료를 기록할까요?',
+      description: title,
+      impact: [`실지급 ${formatKRW(net)}`, '지급일이 오늘이 아니면 품의 상세에서 날짜를 골라 기록하세요.', '멘토에게 지급 완료 알림이 갑니다.'],
+      confirmLabel: '지급 완료',
+    });
+    if (!ok) return;
+    start(async () => {
+      const r = await markBatchPaidAction(batchId);
+      if (!r.ok) {
+        toast({ title: r.error, variant: 'destructive' });
+        return;
+      }
+      toast({ title: '지급 완료를 기록했습니다.' });
+      router.refresh();
+    });
+  };
+  return (
+    <>
+      {dialog}
+      <Button size="sm" variant="outline" className="h-7 gap-1 px-2 text-xs" disabled={pending} onClick={() => void go()}>
+        <Wallet className="h-3.5 w-3.5" /> 지급 완료
+      </Button>
+    </>
+  );
+}
