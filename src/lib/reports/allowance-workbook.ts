@@ -22,22 +22,16 @@ import {
   type TaxRule,
 } from '@/lib/reports/allowance-model';
 import { BOX, C, CNT, HOURS, MONEY, col, font, fx, head, medium, solid, thin } from '@/lib/excel/styled';
+import { buildMentorPaySheet, paidAmount, taxHeader, type MentorBlock } from '@/lib/reports/mentor-pay-sheet';
 
 /**
  * 멘토링 수당 산출내역 엑셀 (2026-10-27) — 창경이 1기 1R 에 손으로 만든 "멘토별 수당산출내역" 을
- * 라운드(사업그룹) 단위로 플랫폼 데이터에서 만든다. 시트 4개: 총괄 · 멘토별 요약 · 회차별 상세 · 단가표.
+ * 라운드(사업그룹) 단위로 플랫폼 데이터에서 만든다. 시트 5개: 멘토별 수당(창경 수당표 서식, 2026-11-16) · 총괄 · 멘토별 요약 · 회차별 상세 · 단가표.
  *  - 회차 칸 = 방식(온라인/오프라인/예정/미시행/타멘토) · 시간 · 수당(수식). 수당은 보고서까지 등록된(이행) 회차만.
  *  - 단가·세율은 [단가표] 시트 노란 칸 — 고치면 전 시트가 다시 계산된다.
  *  - 세금은 멘토별 수당 합계 기준(창경 방식). 플랫폼 정산(멘티×멘토 단위 확정)과의 차이는 총괄 [검증]에 참고로 보인다.
  */
 
-interface MentorBlock {
-  no: number;
-  mentorId: string;
-  name: string;
-  rule: TaxRule;
-  rows: { mentee: string; slots: AllowanceSlot[]; notes: string[] }[];
-}
 
 function toRule(p: WithholdingPolicy): TaxRule {
   if (p.method === 'other_income') return { method: 'other_income', expenseRate: p.expense_rate, taxRate: p.tax_rate, localRate: p.local_rate, rounding: p.rounding, minTaxable: p.min_taxable_exempt };
@@ -135,7 +129,7 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
             if (l.group_session_id) notes.push(`${n}회차 그룹멘토링 수당 1회분`);
             slots.push({ mode: l.mode === 'online' ? '온라인' : '오프라인', hours });
           }
-          return { mentee: caseById.get(caseId)?.owner_name ?? '-', slots, notes };
+          return { caseId, mentee: caseById.get(caseId)?.owner_name ?? '-', slots, notes };
         })
         .sort((a, b) => a.mentee.localeCompare(b.mentee, 'ko')),
     }));
@@ -347,6 +341,22 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
   d.getColumn(K.key).hidden = true;
   d.autoFilter = { from: { row: 5, column: 1 }, to: { row: LAST, column: K.note } };
 
+  /* ───────── 멘토별 수당 (창경 1기 1R 수당표 서식) ───────── */
+  buildMentorPaySheet(wb, {
+    title: `${program.name} ${group.name} 멘토링 수당`,
+    roundCount,
+    blocks,
+    logByCaseRound,
+    sessionMembers: (() => {
+      const m = new Map<string, string[]>();
+      for (const l of logs) if (l.group_session_id) m.set(l.group_session_id, [...(m.get(l.group_session_id) ?? []), caseById.get(l.case_id)?.owner_name ?? '-']);
+      return m;
+    })(),
+    taxOf: (b) => mentorTax(b.rows.reduce((a, row) => a + row.slots.reduce((a2, _x, n) => a2 + paidAmount(logByCaseRound.get(`${row.caseId}:${n + 1}`), b.mentorId), 0), 0), effectiveRule(b.rule)),
+    taxLabel: taxHeader(effectiveRule(ruleFor('__default__'))),
+    rates,
+  });
+
   /* ───────── 멘토별 요약 ───────── */
   const s = wb.addWorksheet('멘토별 요약', { views: [{ state: 'frozen', xSplit: 2, ySplit: 4 }], pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '4:4' } });
   s.getCell('A1').value = `${group.name} — 멘토별 수당 요약`; s.getCell('A1').font = font({ bold: true, size: 14 });
@@ -527,8 +537,8 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
     { type: 'expression', priority: 3, formulae: [`E${okRow + 1}<>0`], style: { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFFEB9C' } }, font: { color: { argb: 'FF9C5700' } } } },
   ] });
 
-  // 시트 순서: 총괄 · 멘토별 요약 · 회차별 상세 · 단가표
-  const order = ['총괄', '멘토별 요약', '회차별 상세', '단가표'];
+  // 시트 순서: 멘토별 수당 · 총괄 · 멘토별 요약 · 회차별 상세 · 단가표
+  const order = ['멘토별 수당', '총괄', '멘토별 요약', '회차별 상세', '단가표'];
   wb.worksheets.forEach((ws) => { (ws as unknown as { orderNo: number }).orderNo = order.indexOf(ws.name); });
   wb.views = [{ x: 0, y: 0, width: 20000, height: 12000, firstSheet: 0, activeTab: 0, visibility: 'visible' }];
 
