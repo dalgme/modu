@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ClipboardCheck, Inbox, PenLine, Undo2 } from 'lucide-react';
+import { ClipboardCheck, Inbox, PenLine, RotateCcw, Undo2 } from 'lucide-react';
 
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
@@ -12,10 +12,14 @@ import { formatDate, formatKRW } from '@/lib/utils/format';
 import { menteeLabel } from '@/lib/utils/labels';
 import { MentorName } from '@/components/common/mentor-name';
 import { ViewAsStartButton } from '@/components/nextlab/view-as-start-button';
+import { listReopenedPartials, type ReopenedPartialRow } from '@/lib/data/reopened-partials';
+import { ResettlePartialButton } from '@/components/settlement/cancel-settlement-button';
+import { CASE_STATUS_META } from '@/types/case-status';
+import type { CaseStatus } from '@/types/case-status';
 
 export const dynamic = 'force-dynamic';
 
-type Tab = 'pending' | 'revision' | 'mentor-input';
+type Tab = 'pending' | 'revision' | 'mentor-input' | 'reopened';
 const MENTOR_INPUT_HREF = '/nextlab/review?tab=mentor-input';
 
 /** (P32) 멘토 입력 대기 큐에서 "지금 대신 할 일이 있는" 행만 — 보고서 미등록 회차 많은 순 → 멘티 이름순 */
@@ -32,8 +36,9 @@ function actionableMentorInput(rows: MentorInputQueueRow[]): MentorInputQueueRow
 export default async function Page({ searchParams }: { searchParams: { tab?: string } }) {
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
-  const tab: Tab = searchParams.tab === 'revision' ? 'revision' : searchParams.tab === 'mentor-input' ? 'mentor-input' : 'pending';
-  const [queue, mentorInputAll] = await Promise.all([listReviewQueue(ctx.programId, ctx.supportTypeId ?? null), listMentorInputQueue(ctx.programId, ctx.supportTypeId ?? null)]);
+  const tab: Tab = searchParams.tab === 'revision' ? 'revision' : searchParams.tab === 'mentor-input' ? 'mentor-input' : searchParams.tab === 'reopened' ? 'reopened' : 'pending';
+  const [queue, mentorInputAll, reopened] = await Promise.all([listReviewQueue(ctx.programId, ctx.supportTypeId ?? null), listMentorInputQueue(ctx.programId, ctx.supportTypeId ?? null), listReopenedPartials(ctx.programId, ctx.supportTypeId ?? null)]);
+  const canResettle = hasCapability(ctx, 'settlement');
   const mentorInput = actionableMentorInput(mentorInputAll);
   const canReview = hasCapability(ctx, 'review');
   const canViewAs = hasCapability(ctx, 'members.view_as');
@@ -55,9 +60,12 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
           { key: 'pending', label: '검수 대기', href: '/nextlab/review?tab=pending', icon: ClipboardCheck, count: queue.pending.length },
           { key: 'revision', label: '보완 요청 중', href: '/nextlab/review?tab=revision', icon: Undo2, count: queue.revision.length },
           { key: 'mentor-input', label: '멘토 입력 대기', href: MENTOR_INPUT_HREF, icon: PenLine, count: mentorInput.length },
+          { key: 'reopened', label: '되돌린 부분 정산', href: '/nextlab/review?tab=reopened', icon: RotateCcw, count: reopened.length },
         ]}
       />
-      {tab === 'mentor-input' ? (
+      {tab === 'reopened' ? (
+        <ReopenedPartials rows={reopened} canResettle={canResettle} />
+      ) : tab === 'mentor-input' ? (
         mentorInput.length === 0 ? (
           <EmptyState icon={Inbox} title="멘토 입력을 기다리는 케이스가 없습니다" hint="진행일이 지났는데 보고서가 없는 회차, 관찰의견서 미작성, 종결 요청 가능 케이스가 생기면 여기에 나타납니다." />
         ) : (
@@ -178,5 +186,62 @@ function MentorInputRow({ r, canViewAs }: { r: MentorInputQueueRow; canViewAs: b
         </div>
       </td>
     </tr>
+  );
+}
+
+/**
+ * (2026-11-16) [검수로 되돌리기]한 부분 정산(멘토·멘티 중도 종료) — 케이스는 재배정 대기·중도 종료 그대로라 검수 대기에 나오지 않는다.
+ * 회차를 정정한 뒤 [부분 정산 다시 확정]을 누르면 새 품의가 자동 작성·제출되고 이 목록에서 빠진다.
+ */
+function ReopenedPartials({ rows, canResettle }: { rows: ReopenedPartialRow[]; canResettle: boolean }) {
+  if (rows.length === 0) {
+    return <EmptyState icon={Inbox} title="되돌린 부분 정산이 없습니다" hint="정산·품의 화면에서 중도 종료(부분) 정산을 [검수로 되돌리기] 하면 회차 정정 후 다시 확정할 때까지 여기에 남습니다." />;
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-900 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-100">
+        중도 종료(부분) 정산은 케이스가 검수 단계로 가지 않고 여기 모입니다. ① [회차 정정]에서 일정 시간을 보고서와 맞게 고치고(케이스 화면 회차 목록의 [정정]) ② [부분 정산 다시 확정]을 누르면 새 지급 품의가 자동으로 작성·제출됩니다.
+      </p>
+      <div className="overflow-x-auto rounded-xl border bg-background">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/40 text-left text-xs text-muted-foreground">
+              <th className="px-3 py-2">멘티</th>
+              <th className="px-3 py-2">멘토</th>
+              <th className="hidden px-3 py-2 md:table-cell">되돌린 사유</th>
+              <th className="px-3 py-2">회차</th>
+              <th className="px-3 py-2 text-right" />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr key={`${r.caseId}|${r.mentorId}`} className="border-b align-top last:border-0">
+                <td className="px-3 py-2">
+                  <Link href={`/nextlab/cases/${r.caseId}#rounds`} className="font-medium hover:underline">{r.menteeName}</Link>
+                  <p className="text-xs text-muted-foreground">{r.groupName ?? '-'} · {CASE_STATUS_META[r.caseStatus as CaseStatus]?.short ?? r.caseStatus}</p>
+                </td>
+                <td className="px-3 py-2 text-xs"><MentorName id={r.mentorId} name={r.mentorName} /></td>
+                <td className="hidden px-3 py-2 text-xs md:table-cell">
+                  {r.reason || '-'}
+                  <br /><span className="text-muted-foreground">{formatDate(r.canceledAt)}</span>
+                </td>
+                <td className="whitespace-nowrap px-3 py-2 text-xs">
+                  미정산 {r.unsettledRounds}회차
+                  {r.corrected > 0 && <><br /><span className="text-emerald-700">정정 {r.corrected}건</span></>}
+                </td>
+                <td className="px-3 py-2 text-right">
+                  <div className="flex flex-col items-end gap-1 sm:flex-row sm:justify-end">
+                    <Link href={`/nextlab/cases/${r.caseId}#rounds`} className="inline-flex h-8 items-center rounded-md border bg-background px-2.5 text-xs font-semibold hover:bg-accent">
+                      회차 정정
+                    </Link>
+                    {canResettle && <ResettlePartialButton caseId={r.caseId} mentorId={r.mentorId} mentorName={r.mentorName} />}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
   );
 }

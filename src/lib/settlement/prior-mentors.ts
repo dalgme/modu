@@ -95,7 +95,10 @@ export async function listPriorMentorBacklog(programId: string): Promise<{ caseI
     ),
   ]);
   const activeOf = new Map(assigns.filter((a) => a.is_active).map((a) => [a.case_id, a.mentor_id]));
-  const prior = (r: { case_id: string; mentor_id: string }) => activeOf.get(r.case_id) !== r.mentor_id;
+  // (2026-11-16) [검수로 되돌리기]한 부분 정산은 회차 정정 후 운영사가 직접 [부분 정산 다시 확정] — 일괄 정산이 정정 전에 다시 확정하지 않게 뺀다
+  const { listReopenedPartials } = await import('@/lib/data/reopened-partials');
+  const reopened = new Set((await listReopenedPartials(programId, null)).map((r) => `${r.caseId}|${r.mentorId}`));
+  const prior = (r: { case_id: string; mentor_id: string }) => activeOf.get(r.case_id) !== r.mentor_id && !reopened.has(`${r.case_id}|${r.mentor_id}`);
   const roundRows = logs.filter(prior);
   const partialRows = partials.filter(prior);
   return {

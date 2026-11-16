@@ -229,7 +229,7 @@ export function ReopenSettlementButton({ settlementId, kind, label, compact = fa
       title: '검수로 되돌리기',
       description: unbatched ? `${label ?? '이 정산 건'}의 정산 확정(지급 대기)을 취소합니다. 회차 일시·방법을 정정한 뒤 다시 정산하세요.` : `${label ?? '이 정산 건'}을(를) 품의에서 빼고 정산 확정을 취소합니다. 회차 일시·방법을 정정한 뒤 다시 정산하세요.`,
       impact: [
-        kind === 'closure' ? '케이스가 [종결 요청(검수 대기)] 단계로 돌아갑니다 → 회차 정정 후 [검수 승인]을 다시 누르면 새 품의가 자동 작성·제출됩니다.' : '부분 정산(중도 종료)은 케이스 단계가 그대로입니다 → 회차 정정 후 케이스 화면 정산 카드의 [부분 정산 다시 확정]을 누르면 새 품의가 자동 작성·제출됩니다.',
+        kind === 'closure' ? '케이스가 [종결 요청(검수 대기)] 단계로 돌아갑니다 → 회차 정정 후 [검수 승인]을 다시 누르면 새 품의가 자동 작성·제출됩니다.' : '부분 정산(중도 종료)은 케이스 단계가 그대로이고 [검수] 화면 › [되돌린 부분 정산] 탭에 모입니다 → 회차 정정 후 [부분 정산 다시 확정]을 누르면 새 품의가 자동 작성·제출됩니다.',
         ...(unbatched ? [] : ['품의에 다른 정산이 남아 있으면 그 건들은 그대로 두고, 빈 품의는 삭제됩니다.']),
         '멘토에게 정산 취소 알림이 발송되고, 이 정산의 정산서 PDF는 삭제됩니다.',
       ],
@@ -253,7 +253,7 @@ export function ReopenSettlementButton({ settlementId, kind, label, compact = fa
         toast({ title: r.error, variant: 'destructive' });
         return;
       }
-      toast({ title: r.kind === 'closure' ? '검수 대기로 되돌렸습니다. 케이스 화면에서 회차를 정정한 뒤 다시 검수 승인하세요.' : '부분 정산을 취소했습니다. 회차를 정정한 뒤 [부분 정산 다시 확정]을 누르세요.' });
+      toast({ title: r.kind === 'closure' ? '검수 대기로 되돌렸습니다. [검수] 화면 검수 대기 탭에서 회차를 정정한 뒤 다시 검수 승인하세요.' : '부분 정산을 되돌렸습니다. [검수] 화면 › [되돌린 부분 정산] 탭에서 회차를 정정한 뒤 [부분 정산 다시 확정]을 누르세요.' });
       if (r.batchDeleted) router.push('/nextlab/settlements');
       else router.refresh();
     });

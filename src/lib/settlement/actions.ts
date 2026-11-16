@@ -74,6 +74,7 @@ export async function cancelSettlementAction(settlementId: string, reason: strin
   if (r.ok) {
     revalidateCase(r.caseId);
     revalidateBatches();
+    revalidatePath('/nextlab/review');
   }
   return r;
 }
@@ -98,6 +99,7 @@ export async function resettlePartialAction(caseId: string, mentorId: string): P
   }
   revalidateCase(caseId);
   revalidateBatches();
+  revalidatePath('/nextlab/review');
   return { ok: true, caseId };
 }
 
