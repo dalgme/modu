@@ -2556,6 +2556,9 @@ export type Database = {
           client_seal_name: string | null;
           client_short: string | null;
           contract_title: string | null;
+          converter_settings: Json;
+          converter_last_run_at: string | null;
+          converter_run_requested_at: string | null;
           closure_policy: Json;
           created_at: string;
           created_by: string | null;
@@ -2593,6 +2596,9 @@ export type Database = {
           client_seal_name?: string | null;
           client_short?: string | null;
           contract_title?: string | null;
+          converter_settings?: Json;
+          converter_last_run_at?: string | null;
+          converter_run_requested_at?: string | null;
           closure_policy?: Json;
           created_at?: string;
           created_by?: string | null;
@@ -2630,6 +2636,9 @@ export type Database = {
           client_seal_name?: string | null;
           client_short?: string | null;
           contract_title?: string | null;
+          converter_settings?: Json;
+          converter_last_run_at?: string | null;
+          converter_run_requested_at?: string | null;
           closure_policy?: Json;
           created_at?: string;
           created_by?: string | null;
@@ -2668,6 +2677,18 @@ export type Database = {
             referencedColumns: ['id'];
           },
         ];
+      };
+      report_converters: {
+        Row: { id: string; program_id: string; name: string; token_hash: string; created_by: string | null; created_at: string; revoked_at: string | null; last_seen_at: string | null; last_run_at: string | null; last_result: Json | null; agent_version: string | null };
+        Insert: { id?: string; program_id: string; name: string; token_hash: string; created_by?: string | null; created_at?: string; revoked_at?: string | null; last_seen_at?: string | null; last_run_at?: string | null; last_result?: Json | null; agent_version?: string | null };
+        Update: { id?: string; program_id?: string; name?: string; token_hash?: string; created_by?: string | null; created_at?: string; revoked_at?: string | null; last_seen_at?: string | null; last_run_at?: string | null; last_result?: Json | null; agent_version?: string | null };
+        Relationships: [];
+      };
+      report_conversions: {
+        Row: { source_doc_id: string; program_id: string; case_id: string; source_path: string; status: string; attempts: number; last_error: string | null; pdf_path: string | null; pdf_size: number | null; converter_id: string | null; converted_at: string | null; updated_at: string };
+        Insert: { source_doc_id: string; program_id: string; case_id: string; source_path: string; status: string; attempts?: number; last_error?: string | null; pdf_path?: string | null; pdf_size?: number | null; converter_id?: string | null; converted_at?: string | null; updated_at?: string };
+        Update: { source_doc_id?: string; program_id?: string; case_id?: string; source_path?: string; status?: string; attempts?: number; last_error?: string | null; pdf_path?: string | null; pdf_size?: number | null; converter_id?: string | null; converted_at?: string | null; updated_at?: string };
+        Relationships: [];
       };
       report_snapshots: {
         Row: {

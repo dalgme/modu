@@ -38,11 +38,13 @@ export async function deleteCaseAction(caseId: string, confirmText: string): Pro
     .maybeSingle();
   if (!c || c.program_id !== ctx.programId) return { ok: false, error: '이 행사의 케이스가 아닙니다.' };
 
-  const [{ data: settlements }, { count: roundCount }, { data: docRows }, { data: sigRows }] = await Promise.all([
+  const [{ data: settlements }, { count: roundCount }, { data: docRows }, { data: sigRows }, { data: convRows }] = await Promise.all([
     admin.from('settlements').select('id, batch_id, status').eq('case_id', caseId),
     admin.from('mentoring_logs').select('id', { count: 'exact', head: true }).eq('case_id', caseId),
     admin.from('documents').select('storage_path, doc_key').eq('case_id', caseId),
     admin.from('signatures').select('storage_path').eq('case_id', caseId),
+    // (2026-11-16) 한글 보고서의 정품 한글 PDF 변환본 — 문서 행과 함께 사라지므로 파일도 지운다
+    admin.from('report_conversions').select('pdf_path').eq('case_id', caseId),
   ]);
   if ((settlements ?? []).some((s) => s.batch_id)) {
     return { ok: false, error: '지급 품의에 편성된 정산이 있는 케이스는 삭제할 수 없습니다. 품의를 먼저 확인하세요.' };
@@ -53,6 +55,7 @@ export async function deleteCaseAction(caseId: string, confirmText: string): Pro
   for (const d of docRows ?? []) {
     (d.doc_key.startsWith('mentoring_photo:') ? docPaths.photos : docPaths.documents).push(d.storage_path);
   }
+  for (const r of convRows ?? []) if (r.pdf_path) docPaths.documents.push(r.pdf_path);
   try {
     if (docPaths.documents.length) await admin.storage.from('documents').remove(docPaths.documents);
     if (docPaths.photos.length) await admin.storage.from('photos').remove(docPaths.photos);
@@ -133,7 +136,10 @@ export async function resetCaseProgressAction(caseId: string, confirmText: strin
 
   // 스토리지 파일 먼저 정리 — 실패해도 진행(고아 파일만 남음)
   try {
-    const docs = progressDocs.filter((d) => !d.doc_key.startsWith('mentoring_photo:')).map((d) => d.storage_path).filter(Boolean);
+    const { data: convRows } = await admin.from('report_conversions').select('source_doc_id, pdf_path').eq('case_id', caseId);
+    const progressIds = new Set(progressDocs.map((d) => d.id));
+    const convPaths = (convRows ?? []).filter((r) => progressIds.has(r.source_doc_id) && r.pdf_path).map((r) => r.pdf_path as string);
+    const docs = [...progressDocs.filter((d) => !d.doc_key.startsWith('mentoring_photo:')).map((d) => d.storage_path).filter(Boolean), ...convPaths];
     const photos = progressDocs.filter((d) => d.doc_key.startsWith('mentoring_photo:')).map((d) => d.storage_path).filter(Boolean);
     const sigs = (sigRows ?? []).map((s) => s.storage_path).filter(Boolean);
     if (docs.length) await admin.storage.from('documents').remove(docs);

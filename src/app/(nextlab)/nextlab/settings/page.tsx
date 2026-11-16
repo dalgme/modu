@@ -35,6 +35,9 @@ import { loadMatchingPublishOverview } from '@/lib/matching/publish-data';
 import { listDeletionArchives } from '@/lib/archive/test-account';
 import { DeletionArchivePanel } from '@/components/settings/deletion-archive-panel';
 import { GroupSurveyPanel } from '@/components/settings/group-survey-panel';
+import { HwpConverterPanel } from '@/components/settings/hwp-converter-panel';
+import { loadConverterOverview } from '@/lib/converter/data';
+import { decideConverterRun } from '@/lib/converter/schedule-rule';
 import { GroupInstitutionSettlementPanel } from '@/components/settings/group-institution-settlement-panel';
 import { GroupMentoringPanel } from '@/components/settings/group-mentoring-panel';
 import { groupMentoringSetting } from '@/lib/workflow/group-mentoring-rule';
@@ -61,6 +64,7 @@ const TABS = [
   { key: 'audit', label: '감사 로그' },
   { key: 'archive', label: '삭제 보관함' },
   { key: 'sms-api', label: '문자 API' },
+  { key: 'hwp-converter', label: '한글 PDF 변환' },
 ] as const;
 type TabKey = (typeof TABS)[number]['key'];
 
@@ -68,7 +72,7 @@ type TabKey = (typeof TABS)[number]['key'];
 const SETTING_GROUPS: { label: string; keys: string[]; extra?: { href: string; label: string } }[] = [
   { label: '필수 준비', keys: ['program', 'groups', 'rates', 'matching', 'publish'] },
   { label: '운영 정책', keys: ['group-mentoring', 'withholding', 'budget', 'gates', 'reports', 'survey', 'mentor-docs', 'files', 'tags'], extra: { href: '/admin/settings/sms?tab=auto', label: '문자 자동발송' } },
-  { label: '관리', keys: ['permissions', 'succession', 'audit', 'archive', 'sms-api'] },
+  { label: '관리', keys: ['permissions', 'succession', 'audit', 'archive', 'sms-api', 'hwp-converter'] },
 ];
 
 /** 운영 설정 (docs/MODU-DESIGN.md §16) — 탭별 서버 렌더. 승계 개설·감사 로그도 미니탭 (P20) */
@@ -224,6 +228,12 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   // (2026-11-03) 테스트 계정 완전 삭제 보관함 — 복원은 case.delete 권한(기본 PL) + 비밀번호
   if (tab === 'archive') body = <DeletionArchivePanel rows={await listDeletionArchives(ctx.programId)} canRestore={hasCapability(ctx, 'case.delete')} />;
   if (tab === 'sms-api') body = <SmsApiSection programId={ctx.programId} programName={ctx.program.name} />;
+  if (tab === 'hwp-converter') {
+    // (2026-11-16) 정품 한글이 설치된 운영사 PC 가 정해진 시각에 한글 보고서를 PDF 로 변환해 올린다
+    const ov = await loadConverterOverview(ctx.programId);
+    const nextRunAt = decideConverterRun(ov.schedule, ov.lastRunAt, ov.requestedAt, Date.now()).nextRunAt;
+    body = <HwpConverterPanel {...ov} nextRunAt={nextRunAt} canEdit={hasCapability(ctx, 'settings')} />;
+  }
   if (tab === 'audit') {
     // 기간·수행자·구분·대상 id 서버 필터 + 페이지 (P31)
     const aq = parseAuditQuery(searchParams);

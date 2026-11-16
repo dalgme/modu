@@ -1,5 +1,7 @@
 import 'server-only';
 
+import { convertedPdfMap } from '@/lib/converter/data';
+import { withConvertedPdf } from '@/lib/converter/substitute';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAll, fetchAllIn } from '@/lib/supabase/paginate';
 import { reportDocKey } from '@/lib/data/rounds';
@@ -47,8 +49,8 @@ export async function buildRoundPackage(programId: string, groupId: string, kind
     fetchAllIn<{ id: string; case_id: string; round_no: number; mentor_id: string; report_registered_at: string | null }>(caseIds, (chunk, f, t) =>
       admin.from('mentoring_logs').select('id, case_id, round_no, mentor_id, report_registered_at').in('case_id', chunk).range(f, t),
     ),
-    fetchAllIn<{ case_id: string; doc_key: string; doc_name: string; storage_path: string; mime_type: string | null; uploaded_by: string | null }>(caseIds, (chunk, f, t) =>
-      admin.from('documents').select('case_id, doc_key, doc_name, storage_path, mime_type, uploaded_by').in('case_id', chunk).or('doc_key.like.mentoring_report:%,doc_key.eq.observation_report').range(f, t),
+    fetchAllIn<{ id: string; case_id: string; doc_key: string; doc_name: string; storage_path: string; mime_type: string | null; uploaded_by: string | null }>(caseIds, (chunk, f, t) =>
+      admin.from('documents').select('id, case_id, doc_key, doc_name, storage_path, mime_type, uploaded_by').in('case_id', chunk).or('doc_key.like.mentoring_report:%,doc_key.eq.observation_report').range(f, t),
     ),
     fetchAllIn<{ case_id: string; external_no: string | null }>(caseIds, (chunk, f, t) => admin.from('mentee_profiles').select('case_id, external_no').in('case_id', chunk).range(f, t)),
   ]);
@@ -70,8 +72,11 @@ export async function buildRoundPackage(programId: string, groupId: string, kind
   ]);
   const nameOf = new Map(users.map((u) => [u.id, u.name]));
   const caseById = new Map(cases.map((c) => [c.id, c]));
-  const docByKey = new Map(docs.filter((d) => d.doc_key.startsWith('mentoring_report:')).map((d) => [d.doc_key, d]));
-  const obsByCase = new Map(docs.filter((d) => d.doc_key === 'observation_report').map((d) => [d.case_id, d]));
+  // (2026-11-16) 한글 보고서·관찰의견서에 정품 한글 PDF 변환본이 있으면 그 PDF 를 쓴다
+  const converted = await convertedPdfMap(docs);
+  const docsUsed = docs.map((d) => withConvertedPdf(d, converted.get(d.id)));
+  const docByKey = new Map(docsUsed.filter((d) => d.doc_key.startsWith('mentoring_report:')).map((d) => [d.doc_key, d]));
+  const obsByCase = new Map(docsUsed.filter((d) => d.doc_key === 'observation_report').map((d) => [d.case_id, d]));
   const lastMentor = new Map<string, string>();
   for (const a of [...assigns].sort((x, y) => Number(x.is_active) - Number(y.is_active) || (x.assigned_at ?? '').localeCompare(y.assigned_at ?? ''))) lastMentor.set(a.case_id, a.mentor_id);
 

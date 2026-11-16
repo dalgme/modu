@@ -9,6 +9,8 @@ import { moveFile, sha256Hex } from '@/lib/storage/files';
 import { reportDocKey } from '@/lib/data/rounds';
 import { mergedReportFileName } from '@/lib/files/download-name-rule';
 import { partKindOf } from '@/lib/files/round-package-shared';
+import { convertedPdfMap } from '@/lib/converter/data';
+import { withConvertedPdf } from '@/lib/converter/substitute';
 import {
   MERGED_REPORT_DOC_KEY,
   MERGED_REPORT_MAX_BYTES,
@@ -68,7 +70,10 @@ async function loadSources(caseIds: string[]): Promise<Map<string, { sources: (M
         .range(from, to),
     ),
   ]);
-  const byKey = new Map(docs.filter((d) => d.doc_key.startsWith('mentoring_report:')).map((d) => [d.doc_key, d]));
+  // (2026-11-16) 한글 보고서에 정품 한글 PDF 변환본이 있으면 그 PDF 로 합친다(원본은 그대로) — 경로가 바뀌므로 예전 합본은 '다시 만들기'
+  const reportDocs = docs.filter((d) => d.doc_key.startsWith('mentoring_report:'));
+  const converted = await convertedPdfMap(reportDocs);
+  const byKey = new Map(reportDocs.map((d) => [d.doc_key, withConvertedPdf(d, converted.get(d.id))]));
   const out = new Map<string, { sources: (MergedSource & { doc: ReportDoc })[]; merged: ReportDoc | null }>();
   for (const id of caseIds) out.set(id, { sources: [], merged: null });
   for (const l of logs) {

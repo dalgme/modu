@@ -13,7 +13,7 @@ const BURST_LIMIT = 40;
 const BURST_WINDOW_MS = 60_000;
 const REPORT_COOLDOWN_MS = 10 * 60_000;
 const SCANNER_PATTERN = /\.php(?:$|[?/])|wp-admin|wp-login|xmlrpc|phpmyadmin|\/\.env(?:$|[.?/])|\/\.git(?:$|[?/])|\.\.%2f|%2e%2e|<script|\/etc\/passwd|cgi-bin|\.asp(?:x)?(?:$|[?/])/i;
-const SKIP_PREFIXES = ['/api/ops/security-event', '/api/cron/', '/api/health', '/api/client-error'];
+const SKIP_PREFIXES = ['/api/ops/security-event', '/api/cron/', '/api/health', '/api/client-error', '/api/converter/'];
 
 const hits = new Map<string, { start: number; count: number }>();
 const reported = new Map<string, number>();
