@@ -33,7 +33,7 @@ export interface ReportFileRow {
 
 export interface ReportFilesData {
   /** mergeTodo = 합본이 없거나 다시 만들어야 하는 멘티(보고서 있는 경우만) */
-  groups: { id: string; name: string; caseCount: number; fileCount: number; mergeTodo: string[] }[];
+  groups: { id: string; name: string; caseCount: number; fileCount: number; obsCount: number; mergeTodo: string[] }[];
   mentors: { id: string; name: string; caseCount: number; fileCount: number }[];
   rows: ReportFileRow[];
 }
@@ -73,7 +73,7 @@ export async function loadReportFiles(programId: string, groupId: string | null)
   for (const l of logs) (logsByCase.get(l.case_id) ?? logsByCase.set(l.case_id, []).get(l.case_id)!).push(l);
 
   const rows: ReportFileRow[] = [];
-  const groupStat = new Map<string, { caseCount: number; fileCount: number }>();
+  const groupStat = new Map<string, { caseCount: number; fileCount: number; obsCount: number }>();
   const mentorStat = new Map<string, { cases: Set<string>; fileCount: number }>();
   const bumpMentor = (id: string, caseId: string, files: number) => {
     const s = mentorStat.get(id) ?? mentorStat.set(id, { cases: new Set(), fileCount: 0 }).get(id)!;
@@ -95,9 +95,10 @@ export async function loadReportFiles(programId: string, groupId: string | null)
     const obsMentor = obs?.uploaded_by && nameOf.has(obs.uploaded_by) ? obs.uploaded_by : last;
     if (obs && obsMentor) bumpMentor(obsMentor, c.id, 1);
     const fileCount = rounds.filter((r) => r.docId).length + (obs ? 1 : 0);
-    const gs = groupStat.get(c.support_type_id) ?? groupStat.set(c.support_type_id, { caseCount: 0, fileCount: 0 }).get(c.support_type_id)!;
+    const gs = groupStat.get(c.support_type_id) ?? groupStat.set(c.support_type_id, { caseCount: 0, fileCount: 0, obsCount: 0 }).get(c.support_type_id)!;
     gs.caseCount += 1;
     gs.fileCount += fileCount;
+    if (obs) gs.obsCount += 1;
     rows.push({
       caseId: c.id,
       menteeName: c.owner_name,
@@ -117,6 +118,7 @@ export async function loadReportFiles(programId: string, groupId: string | null)
         name: g.name,
         caseCount: groupStat.get(g.id)?.caseCount ?? 0,
         fileCount: groupStat.get(g.id)?.fileCount ?? 0,
+        obsCount: groupStat.get(g.id)?.obsCount ?? 0,
         mergeTodo: cases
           .filter((c) => c.support_type_id === g.id)
           .map((c) => c.id)

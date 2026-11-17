@@ -17,7 +17,7 @@ const PX_TO_PT = 0.75;
 type RhwpModule = typeof import('@rhwp/core');
 let ready: Promise<RhwpModule> | null = null;
 
-function ensureRhwp(): Promise<RhwpModule> {
+export function ensureRhwp(): Promise<RhwpModule> {
   if (!ready) {
     ready = (async () => {
       const g = globalThis as unknown as { measureTextWidth?: (font: string, text: string) => number };

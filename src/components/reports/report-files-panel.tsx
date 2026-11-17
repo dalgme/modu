@@ -2,6 +2,7 @@ import type { ReportFilesData } from '@/lib/data/report-files';
 import { FileActions } from '@/components/files/file-preview';
 import { BundleDownloadButton } from '@/components/files/bundle-download-button';
 import { RoundPackageButton } from '@/components/files/round-package-button';
+import { ObservationBundleButton } from '@/components/files/observation-bundle-button';
 import { MergedReportBulkButton, MergedReportButton } from '@/components/files/merged-report-button';
 import { mergedProps } from '@/components/files/merged-report-section';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -81,6 +82,41 @@ export function ReportFilesPanel({ data }: { data: ReportFilesData }) {
                       <RoundPackageButton kind="mentor" groupId={g.id} label="멘토별 보고서·수당지급 서류" />
                       <RoundPackageButton kind="mentee" groupId={g.id} label="멘티별 보고서 (번호 폴더)" />
                     </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+
+      <Card className="border-2 border-slate-400 dark:border-slate-600">
+        <CardHeader>
+          <CardTitle className="text-base">관찰의견서만 받기 (라운드 통합 · 운영기관 칸 가림)</CardTitle>
+          <p className="text-xs text-muted-foreground">
+            라운드의 관찰의견서만 <b>한 폴더</b>에 번호를 붙여 PDF 로 받습니다 — <b>멘토별</b> “001. 멘토명멘토-멘티명멘티 관찰의견서.pdf”(멘토 이름순) / <b>멘티별</b> “001. 멘티명멘티-멘토명멘토 관찰의견서.pdf”(고유번호순).
+            <br />받는 사본마다 <b>“운영기관” 오른쪽 칸을 검게 가립니다</b>. 플랫폼에 저장된 원본은 바뀌지 않습니다. 가린 쪽은 그림으로 바뀌어 복사·검색으로도 내용이 보이지 않습니다(다른 쪽은 원본 그대로).
+            <br />한글(HWP·HWPX) 관찰의견서는 이 브라우저에서 PDF 로 바꾸면서 가립니다(줄바꿈·표 위치가 원본과 조금 다를 수 있음). 스캔 이미지 PDF·표가 아닌 형식 등 칸을 찾지 못한 파일은 이름 끝에 “(블라인드 미적용)”을 붙이고 끝난 뒤 목록으로 알려 드립니다.
+          </p>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="w-full min-w-[480px] text-sm">
+            <thead className="text-left text-xs text-muted-foreground"><tr><th className="py-1.5">라운드(사업그룹)</th><th>멘티</th><th>관찰의견서</th><th className="text-right">받기</th></tr></thead>
+            <tbody>
+              {data.groups.map((g) => (
+                <tr key={g.id} className="border-t">
+                  <td className="py-2 font-medium">{g.name}</td>
+                  <td className="tabular-nums">{g.caseCount}명</td>
+                  <td className="tabular-nums">{g.obsCount}개</td>
+                  <td className="py-2 text-right">
+                    {g.obsCount > 0 ? (
+                      <div className="flex flex-wrap justify-end gap-1.5">
+                        <ObservationBundleButton order="mentor" groupId={g.id} label="멘토별 관찰의견서" />
+                        <ObservationBundleButton order="mentee" groupId={g.id} label="멘티별 관찰의견서" />
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">관찰의견서 없음</span>
+                    )}
                   </td>
                 </tr>
               ))}
