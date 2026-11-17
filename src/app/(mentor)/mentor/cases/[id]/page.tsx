@@ -29,6 +29,7 @@ import { BusinessPlanPanel } from '@/components/files/business-plan-panel';
 import { observationEditable, observationUploadGate } from '@/lib/workflow/observation-rule';
 import { ObservationForm } from '@/components/mentor/observation-form';
 import { MentorRequests } from '@/components/mentor/mentor-requests';
+import { normalizeMentorRequestKind } from '@/lib/workflow/mentor-request-kind';
 import { MentorCaseClosureSummary, showsClosureSummary } from '@/components/mentor/mentor-case-closure-summary';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { listCaseSettlements, listStatementFiles } from '@/lib/data/settlements';
@@ -200,6 +201,7 @@ export default async function Page({ params }: { params: { id: string } }) {
           pendingExtension={requests.extensions.some((r) => r.status === 'pending')}
           canRequestWithdrawal={canTransition('request_mentor_withdrawal', item.status)}
           pendingWithdrawal={requests.withdrawals.some((r) => r.status === 'pending')}
+          pendingWithdrawalKind={(() => { const p = requests.withdrawals.find((r) => r.status === 'pending'); return p ? normalizeMentorRequestKind(p.kind) : null; })()}
         />
         )}
 

@@ -24,6 +24,8 @@ export interface ApprovalReadiness {
   hasObservation: boolean;
   /** 이 그룹이 관찰의견서를 요구하는가 (2026-10-15) — false 면 hasObservation 과 무관하게 승인 가능 */
   observationRequired?: boolean;
+  /** 멘토 중도 종결 요청이 승인된 케이스 (2026-11-17) — 등록된 회차까지로 승인 */
+  earlyClosure?: boolean;
   /** 이미 확정(취소 아님) 정산이 있어, 미정산 회차가 0건이어도 승인(종결)만 진행할 수 있는 케이스 (P32 리뷰 #7) */
   settledAlready?: boolean;
 }
@@ -36,7 +38,7 @@ export interface ApprovalReadiness {
  */
 export async function canApproveClosure(caseId: string): Promise<ApprovalReadiness> {
   const admin = createAdminClient();
-  const { data: c } = await admin.from('cases').select('id, status, program_id, support_type_id').eq('id', caseId).maybeSingle();
+  const { data: c } = await admin.from('cases').select('id, status, program_id, support_type_id, early_closure_at').eq('id', caseId).maybeSingle();
   if (!c) return { ok: false, reason: '케이스를 찾을 수 없습니다.', reported: 0, required: 0, hasObservation: false };
   const [{ data: group }, { data: program }, { data: logs }, { data: obsFile }, { count: settledCount }] = await Promise.all([
     admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle(),
@@ -46,12 +48,14 @@ export async function canApproveClosure(caseId: string): Promise<ApprovalReadine
     admin.from('settlements').select('id', { count: 'exact', head: true }).eq('case_id', caseId).neq('status', 'canceled'),
   ]);
   const rounds = logs ?? [];
-  const required = group?.required_rounds ?? 0;
+  // (2026-11-17) 중도 종결 승인된 케이스 = 등록된 회차까지로 승인(필수 회차 미달 허용·관찰의견서 면제). 등록 회차는 전부 보고서가 있어야 한다.
+  const earlyClosure = !!c.early_closure_at;
+  const required = earlyClosure ? Math.max(1, rounds.length) : (group?.required_rounds ?? 0);
   const reported = rounds.filter((r) => r.report_registered_at).length;
   // 관찰의견서 = 업로드 파일만 인정 (P39 — 웹 작성 폐지, 종결 요청 게이트와 같은 기준)
   const hasObservation = !!obsFile;
-  const observationRequired = await observationRequiredFor(c.support_type_id);
-  const base = { reported, required, hasObservation, observationRequired, settledAlready: (settledCount ?? 0) > 0 };
+  const observationRequired = !earlyClosure && (await observationRequiredFor(c.support_type_id));
+  const base = { reported, required, hasObservation, observationRequired, earlyClosure, settledAlready: (settledCount ?? 0) > 0 };
   const denied = assertTransition('review_approve', c.status);
   if (denied) return { ok: false, reason: denied, ...base };
   if (rounds.length < required) return { ok: false, reason: `필수 회차 ${required}회 중 ${rounds.length}회만 등록되어 있습니다.`, ...base };

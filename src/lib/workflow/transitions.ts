@@ -23,7 +23,8 @@ export type TransitionKey =
   | 'confirm_settlement' // T9  settlement_batched → closed (발주처)
   | 'withdraw_case' // T10 비종결 → withdrawn
   | 'request_mentor_withdrawal' // T11a 멘토 자진 중도 종료 요청 (상태 유지)
-  | 'approve_mentor_withdrawal' // T11a in_progress | mentor_assigned → reassignment_pending
+  | 'approve_mentor_withdrawal' // T11a in_progress | mentor_assigned → reassignment_pending (멘토 변경 요청 승인)
+  | 'approve_early_closure' // (2026-11-17) 멘토 중도 종결 요청 승인: in_progress | revision_requested → closure_requested(검수 대기)
   | 'force_end_mentor' // T11b in_progress | mentor_assigned → reassignment_pending (운영사 강제)
   | 'reinstate_case'; // T13 withdrawn → reassignment_pending (중도 종료 복귀, 운영사 PL — P30)
 
@@ -119,7 +120,13 @@ export const TRANSITIONS: Record<TransitionKey, Transition> = {
     from: ['mentor_assigned', 'in_progress', 'revision_requested'],
     to: null,
     who: ['mentor'],
-    denied: '진행 중인 케이스에서만 중도 종료를 요청할 수 있습니다.',
+    denied: '진행 중인 케이스에서만 멘토 변경·중도 종결을 요청할 수 있습니다.',
+  },
+  approve_early_closure: {
+    from: ['in_progress', 'revision_requested'],
+    to: 'closure_requested',
+    who: ['nextlab'],
+    denied: '컨설팅 진행 중(또는 보완 요청) 단계에서만 중도 종결을 승인할 수 있습니다.',
   },
   approve_mentor_withdrawal: {
     from: ['mentor_assigned', 'in_progress', 'revision_requested'],

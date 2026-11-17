@@ -25,6 +25,8 @@ export interface ReviewQueueItem {
   enteredAt: string;
   reportedRounds: number;
   requiredRounds: number;
+  /** 멘토 중도 종결 요청이 승인돼 들어온 케이스 (2026-11-17) */
+  earlyClosure: boolean;
   /** 승인된 추가 회차 (칩에 별도 표시, P32) */
   extraRounds: number;
   hasObservation: boolean;
@@ -47,7 +49,7 @@ export async function listReviewQueue(programId: string, groupId: string | null)
   const admin = createAdminClient();
   let q = admin
     .from('cases')
-    .select('id, owner_name, business_name, status, updated_at, support_type_id, support_types(name, required_rounds)')
+    .select('id, owner_name, business_name, status, updated_at, support_type_id, early_closure_at, support_types(name, required_rounds)')
     .eq('program_id', programId)
     .in('status', ['closure_requested', 'revision_requested', 'in_progress']);
   if (groupId) q = q.eq('support_type_id', groupId);
@@ -110,10 +112,12 @@ export async function listReviewQueue(programId: string, groupId: string | null)
       waitingDays: daysSince(enteredAt),
       enteredAt,
       reportedRounds: reported.length,
-      requiredRounds: st?.required_rounds ?? 0, // 승인 게이트(canApproveClosure)와 같은 기준 — 추가 회차는 별도 (P32 리뷰 #9)
+      // 승인 게이트(canApproveClosure)와 같은 기준 — 추가 회차는 별도 (P32 리뷰 #9). 중도 종결 승인 케이스는 등록된 회차까지(2026-11-17)
+      requiredRounds: c.early_closure_at ? Math.max(1, rounds.length) : (st?.required_rounds ?? 0),
+      earlyClosure: !!c.early_closure_at,
       extraRounds: extraOf.get(c.id) ?? 0,
       hasObservation: obsFile.has(c.id),
-      observationRequired: obsRequired.get(c.support_type_id) ?? true,
+      observationRequired: c.early_closure_at ? false : (obsRequired.get(c.support_type_id) ?? true),
       surveyAnswered: surveyed.has(c.id),
       expectedNet: est.reduce((s, e) => s + e.result.net, 0),
       revisionComment: status === 'revision_requested' ? (revisionComment.get(c.id) ?? null) : null,

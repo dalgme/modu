@@ -139,7 +139,8 @@ function Row({ r, canReview }: { r: ReviewQueueItem; canReview: boolean }) {
       <td className="px-3 py-2">
         <div className="flex flex-wrap gap-1">
           <Chip ok={roundsOk} warn={!roundsOk} label={`회차 ${r.reportedRounds}/${r.requiredRounds}${r.extraRounds ? ` (+추가 ${r.extraRounds})` : ''}`} />
-          {r.observationRequired ? <Chip ok={r.hasObservation} warn={!r.hasObservation} label={r.hasObservation ? '관찰의견서 있음' : '관찰의견서 없음'} /> : <Chip ok warn={false} label="관찰의견서 불필요 그룹" />}
+          {r.earlyClosure && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">중도 종결 · 진행 회차까지 정산</span>}
+          {r.observationRequired ? <Chip ok={r.hasObservation} warn={!r.hasObservation} label={r.hasObservation ? '관찰의견서 있음' : '관찰의견서 없음'} /> : <Chip ok warn={false} label={r.earlyClosure ? '관찰의견서 면제(중도 종결)' : '관찰의견서 불필요 그룹'} />}
           <Chip ok={r.surveyAnswered} label={r.surveyAnswered ? '만족도 응답' : '만족도 미응답'} />
           {r.status === 'ready' && <Chip ok warn={false} label="서류 완비 · 종결 요청 전" />}
         </div>

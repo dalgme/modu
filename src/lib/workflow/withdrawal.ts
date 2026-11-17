@@ -6,7 +6,9 @@ import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
 import { createSettlementSnapshot, rollbackSettlements, settleLeftoverMentors } from '@/lib/settlement/settle';
 import { dropPlannedRoundsOfMentor } from '@/lib/workflow/rounds';
 import { settlePriorMentorsSafely } from '@/lib/settlement/prior-mentors';
+import { normalizeMentorRequestKind } from '@/lib/workflow/mentor-request-kind';
 import type { WorkflowResult } from '@/lib/workflow/cases';
+import type { CaseStatus } from '@/types/case-status';
 
 /**
  * 중도 종료 3경로(멘티 중도 종료 · 멘토 자진 종료 승인 · 운영사 강제 종료) 공통 원칙 (P30):
@@ -87,10 +89,10 @@ export async function withdrawCase(caseId: string, actorId: string, reason: stri
   return { ok: true, caseId };
 }
 
-/** T11a 멘토 자진 중도 종료 요청 승인 → reassignment_pending + 부분 정산 */
+/** 멘토 요청 승인 — 멘토 변경(T11a: reassignment_pending + 부분 정산) / 중도 종결(검수 대기, approveEarlyClosure) */
 export async function decideMentorWithdrawal(requestId: string, actorId: string, decision: 'approved' | 'rejected', note: string): Promise<WorkflowResult> {
   const admin = createAdminClient();
-  const { data: req } = await admin.from('mentor_withdrawal_requests').select('id, case_id, assignment_id, mentor_id, status, reason').eq('id', requestId).maybeSingle();
+  const { data: req } = await admin.from('mentor_withdrawal_requests').select('id, case_id, assignment_id, mentor_id, status, reason, kind').eq('id', requestId).maybeSingle();
   if (!req) return { ok: false, error: '요청을 찾을 수 없습니다.' };
   if (req.status !== 'pending') return { ok: false, error: '이미 처리된 요청입니다.' };
   if (decision === 'rejected' && !note.trim()) return { ok: false, error: '반려 사유를 입력하세요.' };
@@ -103,6 +105,9 @@ export async function decideMentorWithdrawal(requestId: string, actorId: string,
     await admin.from('audit_logs').insert({ actor_id: actorId, program_id: c.program_id, action: 'mentor.withdrawal_rejected', entity_type: 'cases', entity_id: c.id, metadata: { request_id: requestId, note: note.trim() } });
     return { ok: true, caseId: c.id };
   }
+
+  // (2026-11-17) 중도 종결 요청 = 남은 회차 없이 검수 대기로 (정산은 검수 승인 때)
+  if (normalizeMentorRequestKind(req.kind) === 'early_closure') return approveEarlyClosure(req, c, actorId, note);
 
   const denied = assertTransition('approve_mentor_withdrawal', c.status);
   if (denied) return { ok: false, error: denied };
@@ -130,6 +135,49 @@ export async function decideMentorWithdrawal(requestId: string, actorId: string,
   // (2026-11-10) 종료된 멘토의 부분 정산 → 지급 품의 자동 편성·제출 (멘티의 종결까지 미루지 않음)
   await settlePriorMentorsSafely(c.id, actorId, '멘토 자진 중도 종료');
   await rebalanceSafely(c.program_id, actorId);
+  return { ok: true, caseId: c.id };
+}
+
+/**
+ * (2026-11-17) 중도 종결 요청 승인 — 멘토·멘티가 남은 회차를 더 진행하지 않기로 한 경우.
+ *  보고서까지 등록된 회차가 1회 이상 있어야 하고, 아직 보고서가 없는 계획 회차는 정리한다.
+ *  케이스 = 검수 대기(closure_requested) + early_closure_at(검수 승인 기준 회차 = 등록된 회차, 관찰의견서 면제) + 포기·종료 표시 '종료'.
+ *  정산은 운영사가 [검수] 화면에서 승인할 때 확정된다(기존 검수 승인 → 품의 자동 흐름 그대로).
+ */
+async function approveEarlyClosure(
+  req: { id: string; case_id: string; assignment_id: string; mentor_id: string; reason: string },
+  c: { id: string; status: CaseStatus; program_id: string; mentee_id: string | null },
+  actorId: string,
+  note: string,
+): Promise<WorkflowResult> {
+  const admin = createAdminClient();
+  const denied = assertTransition('approve_early_closure', c.status);
+  if (denied) return { ok: false, error: denied };
+  const { data: assign } = await admin.from('mentor_assignments').select('id, mentor_id, is_active').eq('id', req.assignment_id).maybeSingle();
+  if (!assign || !assign.is_active || assign.mentor_id !== req.mentor_id) return { ok: false, error: '요청 당시의 배정이 더 이상 활성 상태가 아닙니다.' };
+  const { count: reported } = await admin.from('mentoring_logs').select('id', { count: 'exact', head: true }).eq('case_id', c.id).not('report_registered_at', 'is', null);
+  if (!reported) return { ok: false, error: '보고서까지 등록된 회차가 없어 중도 종결할 수 없습니다. 멘토 변경 또는 중도 종료(케이스 상세)를 이용하세요.' };
+
+  const now = new Date().toISOString();
+  const { data: upd } = await admin
+    .from('cases')
+    .update({ status: 'closure_requested', early_closure_at: now, mentoring_outcome: 'ended', mentoring_outcome_at: now, mentoring_outcome_by: actorId })
+    .eq('id', c.id)
+    .in('status', [...TRANSITIONS.approve_early_closure.from])
+    .select('id');
+  if (!upd || upd.length === 0) return { ok: false, error: '이미 처리된 케이스입니다.' };
+  await admin.from('mentor_withdrawal_requests').update({ status: 'approved', decided_by: actorId, decided_at: now, decision_note: note.trim() || null }).eq('id', req.id);
+  const dropped = await dropPlannedRoundsOfMentor(c.id, req.mentor_id, actorId);
+  await admin.from('case_status_history').insert({ case_id: c.id, from_status: c.status, to_status: 'closure_requested', changed_by: actorId, note: `중도 종결 승인(멘토 요청): ${req.reason}` });
+  const { error: auditError } = await admin.from('audit_logs').insert({
+    actor_id: actorId,
+    program_id: c.program_id,
+    action: 'mentor.early_closure_approved',
+    entity_type: 'cases',
+    entity_id: c.id,
+    metadata: { case_id: c.id, request_id: req.id, reported_rounds: reported, dropped_planned_rounds: dropped, note: note.trim() || null },
+  });
+  if (auditError) console.error('mentor.early_closure_approved audit insert failed:', auditError.message);
   return { ok: true, caseId: c.id };
 }
 

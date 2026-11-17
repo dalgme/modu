@@ -320,7 +320,7 @@ export async function withdrawCaseAction(caseId: string, reason: string): Promis
   return r;
 }
 
-/** 운영사: T11a 멘토 중도 종료 요청 승인/반려 */
+/** 운영사: 멘토 요청 승인/반려 — 멘토 변경(T11a, 재배정) · 중도 종결(검수 대기) */
 export async function decideMentorWithdrawalAction(requestId: string, decision: 'approved' | 'rejected', note: string): Promise<WorkflowResult> {
   const profile = await realRoleOrNull(['nextlab']);
   if (!profile) return { ok: false, error: OPERATOR_ONLY };

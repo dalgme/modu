@@ -213,7 +213,7 @@ export default async function Page({ params }: { params: { id: string } }) {
 
         <CaseEndPanel
           caseId={item.id}
-          pendingWithdrawals={pendingWd.map((r) => ({ id: r.id, reason: r.reason, created_at: r.created_at }))}
+          pendingWithdrawals={pendingWd.map((r) => ({ id: r.id, reason: r.reason, created_at: r.created_at, kind: (r as { kind?: string }).kind === 'early_closure' ? 'early_closure' : 'reassign' }))}
           canDecideWithdrawal={canTransition('approve_mentor_withdrawal', item.status)}
           canForceEnd={canTransition('force_end_mentor', item.status)}
           canWithdrawCase={canTransition('withdraw_case', item.status)}

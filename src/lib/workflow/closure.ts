@@ -14,6 +14,7 @@ import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
 import { getRoundAllowance } from '@/lib/data/rounds';
 import { observationEditable, observationUploadGate } from '@/lib/workflow/observation-rule';
 import { observationRequiredFor, observationTimingFor } from '@/lib/workflow/observation-required';
+import type { MentorRequestKind } from '@/lib/workflow/mentor-request-kind';
 import { missingRequiredMenteeDocs } from '@/lib/workflow/case-documents';
 import { getBranding } from '@/lib/programs/data';
 import { fmt } from '@/lib/programs/branding';
@@ -186,7 +187,7 @@ async function replaceObservationDocument(
  */
 export async function checkClosureReadiness(caseId: string): Promise<{ ok: boolean; hint: string; reported: number; required: number }> {
   const admin = createAdminClient();
-  const { data: c } = await admin.from('cases').select('id, status, program_id, support_type_id').eq('id', caseId).maybeSingle();
+  const { data: c } = await admin.from('cases').select('id, status, program_id, support_type_id, early_closure_at').eq('id', caseId).maybeSingle();
   if (!c) return { ok: false, hint: '케이스를 찾을 수 없습니다.', reported: 0, required: 0 };
   const [{ data: group }, { data: program }, { data: logs }, { data: obs }, { data: obsFile }] = await Promise.all([
     admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle(),
@@ -196,8 +197,10 @@ export async function checkClosureReadiness(caseId: string): Promise<{ ok: boole
     admin.from('documents').select('id').eq('case_id', caseId).eq('doc_key', 'observation_report').maybeSingle(),
   ]);
   const rounds = logs ?? [];
-  const required = group?.required_rounds ?? 0;
   const reported = rounds.filter((r) => r.report_registered_at).length;
+  // (2026-11-17) 중도 종결 승인된 케이스 = 등록된 회차까지로 종결(관찰의견서 면제)
+  const early = !!(c as { early_closure_at?: string | null }).early_closure_at;
+  const required = early ? Math.max(1, rounds.length) : (group?.required_rounds ?? 0);
   const base = { reported, required };
   if (assertTransition('request_closure', c.status)) return { ok: false, hint: '컨설팅 진행 중(또는 보완 요청) 단계에서만 종결을 요청할 수 있습니다.', ...base };
   if (rounds.length < required) return { ok: false, hint: `필수 회차 ${required}회 중 ${rounds.length}회 등록됨 — 회차를 모두 등록하세요.`, ...base };
@@ -206,7 +209,7 @@ export async function checkClosureReadiness(caseId: string): Promise<{ ok: boole
   const content = obs ? normalizeObservation(obs.content) : EMPTY;
   const webOk = !OBSERVATION_WEB_DISABLED && content.summary.trim().length > 0;
   // (2026-10-15) 관찰의견서가 필요 없는 그룹(예: 1기 2라운드)은 회차 보고서만으로 종결 요청
-  const obsRequired = await observationRequiredFor(c.support_type_id);
+  const obsRequired = !early && (await observationRequiredFor(c.support_type_id));
   if (obsRequired && !(webOk || !!obsFile)) return { ok: false, hint: '모든 회차 보고서가 등록되었습니다. 관찰의견서 파일을 올리면 종결을 요청할 수 있습니다.', ...base };
   const policy = (program?.closure_policy ?? {}) as { require_group_docs?: boolean };
   if (policy.require_group_docs) {
@@ -394,9 +397,13 @@ export async function decideRoundExtension(requestId: string, actorId: string, d
   return { ok: true, caseId: c.id };
 }
 
-/** T11a 멘토 자진 중도 종료 요청 (사유 작성 → 운영사 승인) */
-export async function requestMentorWithdrawal(caseId: string, mentorId: string, reason: string): Promise<WorkflowResult> {
-  if (!reason.trim()) return { ok: false, error: '중도 종료 사유를 입력하세요.' };
+/**
+ * 멘토 요청 (사유 작성 → 운영사 승인) — (2026-11-17) 두 종류:
+ *  - reassign(멘토 변경 요청): 승인 시 이행 회차 부분 정산 + 재배정 대기 (T11a)
+ *  - early_closure(중도 종결 요청): 승인 시 남은 회차 없이 검수 대기로 (등록된 회차까지로 검수·정산)
+ */
+export async function requestMentorWithdrawal(caseId: string, mentorId: string, reason: string, kind: MentorRequestKind = 'reassign'): Promise<WorkflowResult> {
+  if (!reason.trim()) return { ok: false, error: kind === 'early_closure' ? '중도 종결 사유를 입력하세요.' : '멘토 변경 사유를 입력하세요.' };
   const admin = createAdminClient();
   const { data: c } = await admin.from('cases').select('id, status, program_id').eq('id', caseId).maybeSingle();
   if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
@@ -405,11 +412,16 @@ export async function requestMentorWithdrawal(caseId: string, mentorId: string, 
   const { data: assign } = await admin.from('mentor_assignments').select('id').eq('case_id', caseId).eq('mentor_id', mentorId).eq('is_active', true).maybeSingle();
   if (!assign) return { ok: false, error: '담당 멘토가 아닙니다.' };
   const { count } = await admin.from('mentor_withdrawal_requests').select('id', { count: 'exact', head: true }).eq('case_id', caseId).eq('status', 'pending');
-  if ((count ?? 0) > 0) return { ok: false, error: '처리 대기 중인 중도 종료 요청이 있습니다.' };
-  const { error } = await admin.from('mentor_withdrawal_requests').insert({ case_id: caseId, assignment_id: assign.id, mentor_id: mentorId, reason: reason.trim() });
+  if ((count ?? 0) > 0) return { ok: false, error: '처리 대기 중인 멘토 변경·중도 종결 요청이 있습니다. 운영사 처리 후 다시 요청하세요.' };
+  if (kind === 'early_closure') {
+    // 중도 종결은 보고서까지 등록된 회차가 1회 이상 있어야 한다(그 회차까지로 검수·정산)
+    const { count: reportedCount } = await admin.from('mentoring_logs').select('id', { count: 'exact', head: true }).eq('case_id', caseId).not('report_registered_at', 'is', null);
+    if (!reportedCount) return { ok: false, error: '보고서까지 등록된 회차가 없어 중도 종결을 요청할 수 없습니다. 진행한 회차의 보고서를 먼저 올리거나, 멘토 변경 요청을 이용하세요.' };
+  }
+  const { error } = await admin.from('mentor_withdrawal_requests').insert({ case_id: caseId, assignment_id: assign.id, mentor_id: mentorId, reason: reason.trim(), kind });
   if (error) return { ok: false, error: error.message };
   await notifyProgramStaff(c.program_id, caseId, 'mentor_withdrawal_requested');
-  await logAudit(admin, { actorId: mentorId, programId: c.program_id, action: 'mentor.withdrawal_requested', entityType: 'cases', entityId: caseId, metadata: null });
+  await logAudit(admin, { actorId: mentorId, programId: c.program_id, action: 'mentor.withdrawal_requested', entityType: 'cases', entityId: caseId, metadata: { kind } });
   return { ok: true, caseId };
 }
 

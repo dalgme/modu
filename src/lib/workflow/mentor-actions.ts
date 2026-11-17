@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 
 import { mentorOrNull, mentorOfCaseOrNull, MENTOR_ONLY_ERROR, NOT_ASSIGNED_ERROR } from '@/lib/auth/guards';
 import { getImpersonation } from '@/lib/auth/impersonation';
+import { normalizeMentorRequestKind } from '@/lib/workflow/mentor-request-kind';
 import { submitRound, updateRound, deleteRound, updatePlannedRound, deletePlannedRound, registerRoundReport, replaceRoundReport, type RoundInput, type RoundReportInput, type RoundResult } from '@/lib/workflow/rounds';
 import type { ConsultingMode } from '@/lib/settlement/rates';
 import {
@@ -134,11 +135,11 @@ export async function requestExtensionAction(caseId: string, reason: string, ext
   return result;
 }
 
-/** 멘토: 중도 종료 요청 (T11a) */
-export async function requestWithdrawalAction(caseId: string, reason: string): Promise<WorkflowResult> {
+/** 멘토: 멘토 변경 요청(reassign) / 중도 종결 요청(early_closure) — 2026-11-17 */
+export async function requestWithdrawalAction(caseId: string, reason: string, kind: 'reassign' | 'early_closure' = 'reassign'): Promise<WorkflowResult> {
   const profile = await mentorOfCaseOrNull(caseId);
   if (!profile) return { ok: false, error: NOT_ASSIGNED_ERROR };
-  const result = await requestMentorWithdrawal(caseId, profile.id, reason);
+  const result = await requestMentorWithdrawal(caseId, profile.id, reason, normalizeMentorRequestKind(kind));
   if (result.ok) revalidate(caseId);
   return result;
 }

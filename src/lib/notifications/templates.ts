@@ -24,7 +24,7 @@ export const NOTIFICATION_TEMPLATES: Record<string, { code: string; text: string
   },
   mentor_withdrawal_requested: {
     code: 'MENTOR_WITHDRAWAL_REQUESTED',
-    text: '[{program}] 멘토의 중도 종료 요청이 접수되었습니다.',
+    text: '[{program}] 멘토의 멘토 변경·중도 종결 요청이 접수되었습니다.',
   },
   mentor_ended: {
     code: 'MENTOR_ENDED',
@@ -123,7 +123,7 @@ export const NOTIFICATION_EVENT_DEFS: NotificationEventDef[] = [
   { key: 'mentor_assigned', label: '멘토 배정', audience: '멘티', recipients: '멘토·멘티', stage: 'matching', desc: '멘토 배정·재배정 시' },
   { key: 'mentor_change_requested', label: '멘토 변경 요청 접수', audience: '운영사', recipients: '운영사(검수 권한)', stage: 'matching', desc: '멘티가 멘토 변경을 요청했을 때' },
   { key: 'mentor_change_decided', label: '멘토 변경 요청 처리 결과', audience: '멘티', recipients: '멘티', stage: 'matching', desc: '멘티의 멘토 변경 요청을 수락·반려했을 때', sampleExtra: '요청이 수락되어 새 멘토가 배정되었습니다.' },
-  { key: 'mentor_withdrawal_requested', label: '멘토 중도 종료 요청 접수', audience: '운영사', recipients: '운영사(검수 권한)', stage: 'matching', desc: '멘토가 자진 중도 종료를 요청했을 때' },
+  { key: 'mentor_withdrawal_requested', label: '멘토 변경·중도 종결 요청 접수', audience: '운영사', recipients: '운영사(검수 권한)', stage: 'matching', desc: '멘토가 멘토 변경 또는 중도 종결을 요청했을 때' },
   { key: 'mentor_ended', label: '담당 멘토 종료(재배정 대기)', audience: '멘티', recipients: '멘토·멘티', stage: 'matching', desc: '멘토 중도 종료 승인·운영사 강제 종료·중도 종료 복귀 시' },
   // ---- 회차·보고서 (멘티 확인 서명 안내·서명 완료 알림은 2026-11-12 폐지)
   { key: 'extension_requested', label: '추가 회차 요청 접수', audience: '운영사', recipients: '운영사(검수 권한)', stage: 'rounds', desc: '멘토가 추가 회차를 요청했을 때' },

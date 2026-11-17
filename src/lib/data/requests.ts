@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { createAdminClient } from '@/lib/supabase/admin';
+import { normalizeMentorRequestKind, type MentorRequestKind } from '@/lib/workflow/mentor-request-kind';
 
 export type RequestKind = 'extension' | 'mentor_change' | 'mentor_withdrawal';
 
@@ -16,13 +17,15 @@ export interface InboxItem {
   requesterName: string;
   reason: string;
   extraRounds: number | null;
+  /** 멘토 요청(mentor_withdrawal) 종류 — 멘토 변경(reassign) / 중도 종결(early_closure). 그 외 null (2026-11-17) */
+  withdrawalKind: MentorRequestKind | null;
   status: string;
   createdAt: string;
   decidedAt: string | null;
   decisionNote: string | null;
 }
 
-/** 요청함 — 행사 범위의 추가 회차·멘토 변경·중도 종료 요청 (service_role + 코드 필터) */
+/** 요청함 — 행사 범위의 추가 회차·멘토 변경(멘티·멘토)·중도 종결 요청 (service_role + 코드 필터) */
 export async function listInbox(programId: string, supportTypeId?: string, onlyPending = true): Promise<InboxItem[]> {
   const admin = createAdminClient();
   let casesQ = admin.from('cases').select('id, business_name, owner_name, support_type_id, status, support_types(name)').eq('program_id', programId);
@@ -44,9 +47,9 @@ export async function listInbox(programId: string, supportTypeId?: string, onlyP
     return { caseId, businessName: c.business_name, ownerName: c.owner_name, supportTypeId: c.support_type_id, supportTypeName: (c.support_types as unknown as { name: string } | null)?.name ?? null, caseStatus: c.status };
   };
   const items: InboxItem[] = [
-    ...(ext ?? []).map((r) => ({ id: r.id, kind: 'extension' as const, ...base(r.case_id), requesterName: names.get(r.requested_by) ?? '-', reason: r.reason, extraRounds: r.extra_rounds, status: r.status, createdAt: r.created_at, decidedAt: r.decided_at, decisionNote: r.decision_note })),
-    ...(chg ?? []).map((r) => ({ id: r.id, kind: 'mentor_change' as const, ...base(r.case_id), requesterName: names.get(r.requested_by) ?? '-', reason: r.reason, extraRounds: null, status: r.status, createdAt: r.created_at, decidedAt: r.handled_at, decisionNote: r.handling_note })),
-    ...(wd ?? []).map((r) => ({ id: r.id, kind: 'mentor_withdrawal' as const, ...base(r.case_id), requesterName: names.get(r.mentor_id) ?? '-', reason: r.reason, extraRounds: null, status: r.status, createdAt: r.created_at, decidedAt: r.decided_at, decisionNote: r.decision_note })),
+    ...(ext ?? []).map((r) => ({ id: r.id, kind: 'extension' as const, ...base(r.case_id), requesterName: names.get(r.requested_by) ?? '-', reason: r.reason, extraRounds: r.extra_rounds, withdrawalKind: null, status: r.status, createdAt: r.created_at, decidedAt: r.decided_at, decisionNote: r.decision_note })),
+    ...(chg ?? []).map((r) => ({ id: r.id, kind: 'mentor_change' as const, ...base(r.case_id), requesterName: names.get(r.requested_by) ?? '-', reason: r.reason, extraRounds: null, withdrawalKind: null, status: r.status, createdAt: r.created_at, decidedAt: r.handled_at, decisionNote: r.handling_note })),
+    ...(wd ?? []).map((r) => ({ id: r.id, kind: 'mentor_withdrawal' as const, ...base(r.case_id), requesterName: names.get(r.mentor_id) ?? '-', reason: r.reason, extraRounds: null, withdrawalKind: normalizeMentorRequestKind(r.kind), status: r.status, createdAt: r.created_at, decidedAt: r.decided_at, decisionNote: r.decision_note })),
   ];
   return items.filter((i) => !onlyPending || i.status === 'pending').sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }

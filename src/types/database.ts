@@ -295,6 +295,7 @@ export type Database = {
           closed_at: string | null;
           created_at: string;
           created_by: string;
+          early_closure_at: string | null;
           email: string | null;
           employee_count: number | null;
           id: string;
@@ -325,6 +326,7 @@ export type Database = {
           closed_at?: string | null;
           created_at?: string;
           created_by: string;
+          early_closure_at?: string | null;
           email?: string | null;
           employee_count?: number | null;
           id?: string;
@@ -355,6 +357,7 @@ export type Database = {
           closed_at?: string | null;
           created_at?: string;
           created_by?: string;
+          early_closure_at?: string | null;
           email?: string | null;
           employee_count?: number | null;
           id?: string;
@@ -1903,6 +1906,7 @@ export type Database = {
           decided_at: string | null;
           decided_by: string | null;
           decision_note: string | null;
+          kind: string;
           id: string;
           mentor_id: string;
           reason: string;
@@ -1916,6 +1920,7 @@ export type Database = {
           decided_at?: string | null;
           decided_by?: string | null;
           decision_note?: string | null;
+          kind?: string;
           id?: string;
           mentor_id: string;
           reason: string;
@@ -1929,6 +1934,7 @@ export type Database = {
           decided_at?: string | null;
           decided_by?: string | null;
           decision_note?: string | null;
+          kind?: string;
           id?: string;
           mentor_id?: string;
           reason?: string;

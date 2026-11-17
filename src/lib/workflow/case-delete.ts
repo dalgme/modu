@@ -159,7 +159,7 @@ export async function resetCaseProgressAction(caseId: string, confirmText: strin
     { label: '검수 기록', run: () => admin.from('reviews').delete().eq('case_id', caseId) },
     { label: '보완 요청', run: () => admin.from('supplement_requests').delete().eq('case_id', caseId) },
     { label: '추가 회차 요청', run: () => admin.from('round_extension_requests').delete().eq('case_id', caseId) },
-    { label: '중도 종료 요청', run: () => admin.from('mentor_withdrawal_requests').delete().eq('case_id', caseId) },
+    { label: '멘토 변경·중도 종결 요청', run: () => admin.from('mentor_withdrawal_requests').delete().eq('case_id', caseId) },
     { label: '멘토 변경 요청', run: () => admin.from('mentor_change_requests').delete().eq('case_id', caseId) },
     { label: '만족도 응답', run: () => admin.from('survey_responses').delete().eq('case_id', caseId) },
   ];

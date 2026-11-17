@@ -62,7 +62,7 @@ const cut20 = (s: string) => {
 const KIND_LABEL: Record<string, string> = {
   extension: '추가 회차 요청',
   mentor_change: '멘토 변경 요청',
-  mentor_withdrawal: '멘토 중도 종료 요청',
+  mentor_withdrawal: '멘토 변경·중도 종결 요청',
 };
 
 /** 게시판 통합 탭 (P20) — 멘티 문의 · 멘토·운영 게시판 · 요청함 · 멘토·멘티 메시지 · 멘토 FAQ */
@@ -284,7 +284,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     body = (
       <div className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm text-muted-foreground">멘토의 추가 회차·중도 종료 요청과 멘티의 멘토 변경 요청을 처리합니다. {ctx.group ? `(${ctx.group.name})` : ''}</p>
+          <p className="text-sm text-muted-foreground">멘토 변경(멘토·멘티 요청) · 중도 종결 · 추가 회차 요청을 탭별로 처리합니다. {ctx.group ? `(${ctx.group.name})` : ''}</p>
           <div className="flex gap-1">
             <Link href="/nextlab/board?tab=requests" className={`rounded-full px-3 py-1.5 text-xs font-semibold sm:py-1 ${!all ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>대기</Link>
             <Link href="/nextlab/board?tab=requests&sub=all" className={`rounded-full px-3 py-1.5 text-xs font-semibold sm:py-1 ${all ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}>전체</Link>

@@ -39,7 +39,7 @@ export const CAPABILITIES: { key: CapabilityKey; label: string; desc: string }[]
   { key: 'case.manage', label: '멘티 등록·승계·서류', desc: '케이스 등록, 승계 개설, 서류 첨부·공개 설정, 내부 메모' },
   { key: 'case.delete', label: '케이스 완전 삭제', desc: '테스트 데이터 청소용 케이스 삭제 (하위 데이터·파일 포함). 기본 PL 전용' },
   { key: 'case.assign', label: '멘토 배정·교체·매칭', desc: '배정·교체·회수, AI 매칭 추천 생성, 프로필 편집' },
-  { key: 'review', label: '검수·요청 처리', desc: '종결 검수 승인/보완, 추가 회차·멘토 변경·중도 종료 요청 처리' },
+  { key: 'review', label: '검수·요청 처리', desc: '종결 검수 승인/보완, 추가 회차·멘토 변경·중도 종결 요청 처리' },
   { key: 'settlement', label: '정산 확정·품의 편성', desc: '정산 확정 취소, 품의 묶음 생성·편성·삭제' },
   { key: 'settlement.submit', label: '품의 제출·지급 완료', desc: '발주처 제출·철회, 지급 완료 표시' },
   { key: 'members', label: '회원 발급·소속·정보', desc: '계정 발급, 엑셀 일괄 등록, 기존 계정 추가, 멘토·멘티·발주처 역할 변경·소속 해제, 정보 수정' },

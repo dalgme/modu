@@ -16,10 +16,12 @@ export interface PendingWithdrawalRequest {
   id: string;
   reason: string;
   created_at: string;
+  /** (2026-11-17) 멘토 변경(reassign) / 중도 종결(early_closure) */
+  kind?: 'reassign' | 'early_closure';
 }
 
 /**
- * 케이스 종료 계열 — T10 멘티 중도 종료 / T11a 멘토 중도 종료 요청 승인·반려 / T11b 운영사 강제 종료 / T13 복귀.
+ * 케이스 종료 계열 — T10 멘티 중도 종료 / 멘토 요청(멘토 변경 = T11a 재배정 · 중도 종결 = 검수) 승인·반려 / T11b 운영사 강제 종료 / T13 복귀.
  * 버튼 노출 조건은 서버 페이지가 canTransition(발주처는 canWithdrawAs) 으로 계산해 내려준다.
  * (P31) 확인은 공용 ConfirmDialog — 영향 목록 + 사유 입력(다이얼로그 안 textarea 가 최종 사유).
  */
@@ -71,12 +73,15 @@ export function CaseEndPanel({
     <Textarea autoFocus rows={3} defaultValue={note} placeholder={`${placeholder}${required ? ' (필수)' : ''}`} onChange={(e) => { reasonRef.current = e.target.value; }} />
   );
 
-  const decide = async (id: string, decision: 'approved' | 'rejected') => {
+  const decide = async (id: string, decision: 'approved' | 'rejected', kind: 'reassign' | 'early_closure' = 'reassign') => {
     reasonRef.current = note;
+    const early = kind === 'early_closure';
     const ok = await confirm(
       decision === 'approved'
-        ? { title: '멘토 중도 종료 승인', description: '멘토의 중도 종료 요청을 승인합니다.', impact: [settleLine, '케이스는 재배정 대기가 되고 새 멘토를 배정하면 잔여 회차를 이어갑니다.', '이 멘토의 계획(미보고) 회차는 정리됩니다.'], confirmLabel: '승인 · 부분 정산', severity: 'danger', children: reasonBox('승인 메모', false) }
-        : { title: '요청 반려', description: '멘토의 중도 종료 요청을 반려합니다. 멘토는 계속 담당합니다.', confirmLabel: '반려', children: reasonBox('반려 사유', true) },
+        ? early
+          ? { title: '중도 종결 승인', description: '멘토의 중도 종결 요청을 승인합니다.', impact: ['보고서까지 올린 회차까지로 멘토링을 끝내고 [검수] 대기로 옮깁니다.', '보고서가 없는 예정 회차는 정리됩니다.', '정산은 [검수]에서 승인할 때 확정됩니다(관찰의견서 없이 승인 가능).'], confirmLabel: '승인 · 검수로', severity: 'danger', children: reasonBox('승인 메모', false) }
+          : { title: '멘토 변경 승인', description: '멘토의 멘토 변경 요청을 승인합니다.', impact: [settleLine, '케이스는 재배정 대기가 되고 새 멘토를 배정하면 잔여 회차를 이어갑니다.', '이 멘토의 계획(미보고) 회차는 정리됩니다.'], confirmLabel: '승인 · 재배정', severity: 'danger', children: reasonBox('승인 메모', false) }
+        : { title: '요청 반려', description: `멘토의 ${early ? '중도 종결' : '멘토 변경'} 요청을 반려합니다. 멘토는 계속 담당합니다.`, confirmLabel: '반려', children: reasonBox('반려 사유', true) },
     );
     if (!ok) return;
     const reason = reasonRef.current.trim();
@@ -86,7 +91,7 @@ export function CaseEndPanel({
     }
     start(async () => {
       const r = await decideMentorWithdrawalAction(id, decision, reason);
-      toast(r.ok ? { title: decision === 'approved' ? '승인 · 부분 정산 확정 · 재배정 대기' : '반려했습니다.' } : { title: r.error, variant: 'destructive' });
+      toast(r.ok ? { title: decision === 'approved' ? (early ? '중도 종결 승인 — [검수]에서 승인하면 정산이 확정됩니다.' : '승인 · 부분 정산 확정 · 재배정 대기') : '반려했습니다.' } : { title: r.error, variant: 'destructive' });
       if (r.ok) setNote('');
     });
   };
@@ -137,15 +142,15 @@ export function CaseEndPanel({
           pendingWithdrawals.map((r) => (
             <div key={r.id} className="rounded-lg border border-amber-300 bg-amber-50/40 p-3">
               <p className="flex items-center gap-1 font-semibold">
-                <AlertTriangle className="h-4 w-4 text-amber-600" /> 멘토 중도 종료 요청 · {formatDateTime(r.created_at)}
+                <AlertTriangle className="h-4 w-4 text-amber-600" /> {r.kind === 'early_closure' ? '멘토 중도 종결 요청' : '멘토 변경 요청'} · {formatDateTime(r.created_at)}
               </p>
               <p className="mt-1 whitespace-pre-wrap">{r.reason}</p>
               <div className="mt-2 flex flex-wrap justify-end gap-2">
-                <Button size="sm" variant="outline" disabled={pending} onClick={() => void decide(r.id, 'rejected')}>
+                <Button size="sm" variant="outline" disabled={pending} onClick={() => void decide(r.id, 'rejected', r.kind)}>
                   반려
                 </Button>
-                <Button size="sm" disabled={pending} onClick={() => void decide(r.id, 'approved')}>
-                  승인 · 부분 정산
+                <Button size="sm" disabled={pending} onClick={() => void decide(r.id, 'approved', r.kind)}>
+                  {r.kind === 'early_closure' ? '승인 · 검수로' : '승인 · 재배정'}
                 </Button>
               </div>
             </div>
