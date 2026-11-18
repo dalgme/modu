@@ -25,11 +25,21 @@ export function originalProcessors(hwpToPdf: (bytes: Uint8Array) => Promise<Uint
   };
 }
 
+export interface ObservationProblem {
+  name: string;
+  reason: string;
+  /**
+   * 직접 가리기(블라인드 묶음의 PDF 만) — 지금 넣은 PDF 와, 다 가렸을 때 바꿀 이름.
+   * 결과 창에서 사람이 상자를 그려 가리면 ZIP 안의 name 을 fixedName 으로 바꿔 넣는다.
+   */
+  fix?: { pdf: Uint8Array; fixedName: string };
+}
+
 export interface ObservationBuildResult {
   zip: JSZipType;
   counts: Record<BlindStatus, number>;
   /** 확인이 필요한 파일: 이름 + 이유 */
-  problems: { name: string; reason: string }[];
+  problems: ObservationProblem[];
 }
 
 function extOf(name: string): string {
@@ -45,7 +55,7 @@ async function one(item: ObservationBundleItem, fetchBytes: (url: string) => Pro
     const reason = !blind
       ? undefined
       : r.status === 'none'
-        ? '“운영기관”·“책임멘토명” 칸을 찾지 못함(스캔 이미지·표가 아닌 형식·다른 항목명 등) — 가리지 않은 파일'
+        ? '“운영기관”·“책임멘토명” 칸을 찾지 못함(글자 인식으로도 못 읽은 스캔·표가 아닌 형식·다른 항목명 등) — 가리지 않은 파일'
         : r.status === 'partial'
           ? '두 항목 중 일부만 가림(한 항목을 찾지 못했거나 여러 곳에 있음) — 열어서 확인'
           : undefined;
@@ -85,7 +95,10 @@ export async function assembleObservationBundle(
     const name = observationFileName(i + 1, total, item.mentorName, item.menteeName, manifest.order, manifest.mode, r.status, r.ext);
     dir.file(name, r.bytes);
     counts[r.status] += 1;
-    if (r.reason) problems.push({ name, reason: r.reason });
+    if (r.reason) {
+      const fixable = manifest.mode === 'blind' && r.ext === 'pdf' && r.status !== 'full';
+      problems.push({ name, reason: r.reason, fix: fixable ? { pdf: r.bytes, fixedName: observationFileName(i + 1, total, item.mentorName, item.menteeName, manifest.order, manifest.mode, 'full', 'pdf') } : undefined });
+    }
     onProgress?.(i + 1, total);
   }
   return { zip, counts, problems };

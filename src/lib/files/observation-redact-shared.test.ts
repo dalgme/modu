@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { MENTOR_LABEL, blindStatusOf, detectRightCell, expandWithInk, findLabelBoxes, observationFileName, observationZipBase, rightCellsOf, type CellBox, type ImageLike } from './observation-redact-shared';
+import { MENTOR_LABEL, OPERATOR_LABEL, SCAN_DETECT, blindStatusOf, detectRightCell, expandWithInk, findLabelBoxes, fuzzyLabelBoxes, observationFileName, observationZipBase, rightCellsOf, type CellBox, type ImageLike } from './observation-redact-shared';
 
 /** 흰 바탕에 표 선을 그린 가짜 쪽 그림 */
 function page(w: number, h: number): ImageLike & { line: (x0: number, y0: number, x1: number, y1: number, t?: number) => void; fill: (x: number, y: number, w: number, h: number, v: number) => void } {
@@ -181,5 +181,53 @@ describe('expandWithInk — 칸에 걸친 도장', () => {
     ink(p, 0, 80, 99, 110, [200, 215, 250]); // 옆 라벨 칸의 연한 파란 배경
     ink(p, 120, 85, 150, 95, [20, 20, 20]); // 칸 안 검정 글자
     expect(expandWithInk(p, cell)).toEqual(cell);
+  });
+});
+
+describe('스캔 PDF — 글자 인식(OCR) 결과로 찾기 (2026-11-18)', () => {
+  const ch = (text: string, x: number, y = 100, w = 20, h = 20) => ({ text, x, y, w, h });
+
+  it('한 글자 잘못 읽은 띄어 쓴 항목 이름("문 영 기 관")을 고쳐 찾는다', () => {
+    const words = [ch('문', 10), ch('영', 32), ch('기', 54), ch('관', 76), ch('세종', 200, 100, 40)];
+    expect(findLabelBoxes(words, OPERATOR_LABEL)).toHaveLength(0);
+    const r = findLabelBoxes(fuzzyLabelBoxes(words, OPERATOR_LABEL), OPERATOR_LABEL);
+    expect(r).toHaveLength(1);
+    expect(r[0]!.x).toBe(10);
+    expect(Math.round(r[0]!.x + r[0]!.w)).toBe(96);
+  });
+
+  it('두 줄로 꺾인 앞부분("책임멘도" / "명")도 고쳐 잇는다', () => {
+    const words = [ch('책임멘도', 10, 100, 80), ch('명', 40, 124)];
+    const r = findLabelBoxes(fuzzyLabelBoxes(words, MENTOR_LABEL), MENTOR_LABEL);
+    expect(r).toHaveLength(1);
+  });
+
+  it('두 글자 이상 다르거나 문장 속 낱말이면 고치지 않는다', () => {
+    expect(findLabelBoxes(fuzzyLabelBoxes([ch('운', 10), ch('동', 32), ch('기', 54), ch('간', 76)], OPERATOR_LABEL), OPERATOR_LABEL)).toHaveLength(0);
+    const sentence = [ch('문영기관의', 10, 100, 100), ch('안내에', 116, 100, 60)];
+    expect(findLabelBoxes(fuzzyLabelBoxes(sentence, OPERATOR_LABEL), OPERATOR_LABEL)).toHaveLength(0);
+  });
+
+  it('흐리고 조금 기운 스캔 표 선도 찾는다(SCAN_DETECT)', () => {
+    // 회색(170) 선, 오른쪽으로 갈수록 1px 씩 내려가는 가로선(0.5° 기울기 흉내)
+    const w = 500;
+    const h = 200;
+    const data = new Uint8ClampedArray(w * h * 4).fill(255);
+    const set = (x: number, y: number) => {
+      const i = (y * w + x) * 4;
+      data[i] = data[i + 1] = data[i + 2] = 175;
+    };
+    for (const y0 of [20, 60, 100]) for (let x = 20; x <= 421; x++) set(x, y0 + Math.floor((x - 20) / 200));
+    for (const x of [20, 120, 320, 420]) for (let y = 20; y <= 103; y++) set(x, y);
+    const img = { width: w, height: h, data };
+    const label = { x: 40, y: 72, w: 56, h: 14 };
+    expect(detectRightCell(img, label)).toBeNull(); // 깨끗한 PDF 기준(진한 선)으로는 못 찾음
+    const r = detectRightCell(img, label, SCAN_DETECT);
+    expect(r).not.toBeNull();
+    // 라벨 오른쪽 칸(x 121~319, y 61~101 근처)을 덮는다
+    expect(r!.x).toBeLessThanOrEqual(122);
+    expect(r!.x + r!.w).toBeGreaterThanOrEqual(319);
+    expect(r!.y).toBeLessThanOrEqual(62);
+    expect(r!.y + r!.h).toBeGreaterThanOrEqual(100);
   });
 });

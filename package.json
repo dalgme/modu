@@ -14,7 +14,8 @@
     "lint:brand": "bash scripts/check-brand-strings.sh",
     "lint:rsc": "node scripts/check-rsc-props.mjs",
     "smoke": "playwright test",
-    "pdfjs:assets": "node scripts/copy-pdfjs-assets.mjs"
+    "pdfjs:assets": "node scripts/copy-pdfjs-assets.mjs",
+    "tesseract:assets": "node scripts/copy-tesseract-assets.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",
@@ -56,6 +57,7 @@
     "server-only": "^0.0.1",
     "tailwind-merge": "^3.6.0",
     "tailwindcss-animate": "^1.0.7",
+    "tesseract.js": "7.0.0",
     "unpdf": "^1.6.2",
     "word-extractor": "^1.0.4",
     "xlsx": "npm:@e965/xlsx@0.20.3",
@@ -63,6 +65,7 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
+    "@tesseract.js-data/kor": "1.0.0",
     "@types/node": "^20",
     "@types/nodemailer": "^8.0.1",
     "@types/react": "^18",

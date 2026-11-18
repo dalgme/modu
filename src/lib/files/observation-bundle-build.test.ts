@@ -51,6 +51,9 @@ describe('assembleObservationBundle', () => {
     expect(await zip.file(names[0]!)!.async('string')).toBe('R:u1');
     expect(r.counts).toEqual({ full: 1, partial: 1, none: 4 });
     expect(r.problems.map((p) => p.name.slice(0, 3))).toEqual(['002', '003', '004', '005', '006']);
+    // 직접 가리기 — PDF 로 나온 파일만(일부·미적용), 다 가리면 표시 없는 이름으로
+    expect(r.problems.map((p) => p.fix?.fixedName ?? null)).toEqual(['002. 둘멘티 관찰의견서.pdf', '003. 셋멘티 관찰의견서.pdf', null, null, null]);
+    expect(new TextDecoder().decode(r.problems[1]!.fix!.pdf)).toBe('R:u3');
     expect(progress.at(-1)).toBe(6);
   });
 

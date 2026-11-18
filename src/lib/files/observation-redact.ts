@@ -6,10 +6,26 @@
  *          그림으로 넣는다(그 쪽은 글자 층이 없어져 복사·검색으로 내용이 새지 않음). 다른 쪽은 원본 그대로 복사.
  *  - 한글: rhwp 로 문서를 열어(메모리 사본) 오른쪽 칸의 글자를 지운 뒤 쪽을 그리고, 같은 칸 위치를 검게 칠해
  *          쪽 그림으로 PDF 를 만든다. 중첩 표 등 칸 정보가 없으면 PDF 와 같은 표 선 방식으로 찾는다.
+ *  - 글자 층에서 항목을 못 찾으면(스캔·그림 PDF, 글꼴이 깨진 PDF) 앞쪽 쪽을 그림으로 그려 글자 인식(OCR)으로 다시 찾는다(2026-11-18).
+ *  - 그래도 못 찾은 파일은 결과 창에서 사람이 상자를 그려 가린다(applyManualBoxes).
  * 결과 상태: full = 찾은 라벨 모두 가림 · partial = 일부만 · none = 못 가림(라벨·표를 찾지 못함).
  */
 import { ensureRhwp, renderHwpPages } from '@/lib/files/hwp-render';
-import { REDACT_LABELS, blindStatusOf, detectRightCell, expandWithInk, findLabelBoxes, rightCellsOf, type BlindStatus, type CellBox, type Rect, type TextBox } from '@/lib/files/observation-redact-shared';
+import {
+  DEFAULT_DETECT,
+  REDACT_LABELS,
+  SCAN_DETECT,
+  blindStatusOf,
+  detectRightCell,
+  expandWithInk,
+  findLabelBoxes,
+  fuzzyLabelBoxes,
+  rightCellsOf,
+  type BlindStatus,
+  type CellBox,
+  type Rect,
+  type TextBox,
+} from '@/lib/files/observation-redact-shared';
 
 export interface RedactOutcome {
   pdf: Uint8Array;
@@ -17,6 +33,8 @@ export interface RedactOutcome {
   /** 가린 칸 수 / 찾은 라벨 수 */
   covered: number;
   found: number;
+  /** 글자 인식(OCR)을 썼는지 — 스캔·그림 PDF */
+  ocr?: boolean;
 }
 
 /** PDF 쪽을 그릴 배율 — 3 ≈ 216dpi(얇은 표 선도 진하게 잡힌다) */
@@ -46,14 +64,26 @@ function blackOut(ctx: CanvasRenderingContext2D, r: Rect) {
 
 /* ── PDF ─────────────────────────────────────────────────────────────── */
 
-export async function redactPdf(bytes: Uint8Array): Promise<RedactOutcome> {
+/** 글자 인식(OCR)으로 볼 앞쪽 쪽 수 — 관찰의견서는 1~2쪽, 시간이 오래 걸리므로 넉넉히 4쪽까지만 */
+const OCR_MAX_PAGES = 4;
+
+export interface RedactPdfOptions {
+  /** 글자 층에서 항목을 못 찾은 쪽을 글자 인식으로 다시 본다(스캔·그림 PDF, 글꼴이 깨진 PDF) — 기본 켬 */
+  ocr?: boolean;
+}
+
+export async function redactPdf(bytes: Uint8Array, opts: RedactPdfOptions = {}): Promise<RedactOutcome> {
+  const useOcr = opts.ocr !== false;
   const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
   pdfjs.GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js';
   const task = pdfjs.getDocument({ data: bytes.slice(), cMapUrl: '/pdfjs/cmaps/', cMapPacked: true, standardFontDataUrl: '/pdfjs/standard_fonts/', isEvalSupported: false, enableXfa: false });
   const doc = await task.promise;
   const tally = newTally();
   const imagePages = new Map<number, { jpg: Uint8Array; w: number; h: number }>();
+  let usedOcr = false;
   try {
+    // 1) 글자 층으로 쪽마다 항목 찾기(그리지 않음)
+    const textLabels: { name: string; rect: Rect; ocr: boolean }[][] = [];
     for (let n = 1; n <= doc.numPages; n++) {
       const page = await doc.getPage(n);
       const vp = page.getViewport({ scale: PDF_SCALE });
@@ -66,9 +96,18 @@ export async function redactPdf(bytes: Uint8Array): Promise<RedactOutcome> {
         if (!fh || Math.abs(tx[1]!) > fh * 0.05) continue; // 세로·기울어진 글자는 건너뜀
         boxes.push({ text: item.str, x: tx[4]!, y: tx[5]! - fh * 0.85, w: item.width * PDF_SCALE, h: fh * 1.05 });
       }
-      const labels = REDACT_LABELS.flatMap((name) => findLabelBoxes(boxes, name).map((rect) => ({ name, rect })));
-      if (labels.length === 0) continue;
-      for (const l of labels) tally.get(l.name)!.found += 1;
+      textLabels.push(REDACT_LABELS.flatMap((name) => findLabelBoxes(boxes, name).map((rect) => ({ name, rect, ocr: false }))));
+    }
+    // 글자 층에서 한 번도 못 찾은 항목 — 앞쪽 몇 쪽을 그림으로 그려 글자 인식으로 다시 찾는다
+    const missing = REDACT_LABELS.filter((name) => !textLabels.some((l) => l.some((x) => x.name === name)));
+
+    // 2) 항목이 있는(또는 글자 인식할) 쪽만 그려서 오른쪽 칸을 찾고 칠한다
+    for (let n = 1; n <= doc.numPages; n++) {
+      const labels = textLabels[n - 1]!.slice();
+      const needOcr = useOcr && missing.length > 0 && n <= OCR_MAX_PAGES;
+      if (labels.length === 0 && !needOcr) continue;
+      const page = await doc.getPage(n);
+      const vp = page.getViewport({ scale: PDF_SCALE });
       const canvas = document.createElement('canvas');
       canvas.width = Math.ceil(vp.width);
       canvas.height = Math.ceil(vp.height);
@@ -76,16 +115,40 @@ export async function redactPdf(bytes: Uint8Array): Promise<RedactOutcome> {
       ctx.fillStyle = '#fff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      if (needOcr) {
+        try {
+          const { ocrWords } = await import('@/lib/files/ocr');
+          const words = await ocrWords(canvas);
+          usedOcr = true;
+          for (const name of missing) {
+            let found = findLabelBoxes(words, name);
+            if (found.length === 0) found = findLabelBoxes(fuzzyLabelBoxes(words, name), name);
+            for (const rect of found) labels.push({ name, rect, ocr: true });
+          }
+        } catch (e) {
+          console.warn('[observation-redact] 글자 인식 실패', e);
+        }
+      }
+      if (labels.length === 0) {
+        canvas.width = 0;
+        canvas.height = 0;
+        continue;
+      }
+      for (const l of labels) tally.get(l.name)!.found += 1;
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
       // 모든 칸을 깨끗한 그림에서 먼저 찾고(앞서 칠한 검은 칸이 다음 칸 찾기를 방해하지 않게) 한꺼번에 칠한다
       const hits: Rect[] = [];
       for (const l of labels) {
-        const cell = detectRightCell(img, l.rect);
+        const cell = detectRightCell(img, l.rect, l.ocr ? SCAN_DETECT : DEFAULT_DETECT) ?? (l.ocr ? detectRightCell(img, l.rect) : null);
         if (!cell) continue;
         tally.get(l.name)!.covered += 1;
         hits.push(expandWithInk(img, cell));
       }
-      if (hits.length === 0) continue;
+      if (hits.length === 0) {
+        canvas.width = 0;
+        canvas.height = 0;
+        continue;
+      }
       for (const r of hits) blackOut(ctx, r);
       const vp1 = page.getViewport({ scale: 1 });
       imagePages.set(n - 1, { jpg: await toJpeg(canvas), w: vp1.width, h: vp1.height });
@@ -98,8 +161,12 @@ export async function redactPdf(bytes: Uint8Array): Promise<RedactOutcome> {
   const status = tallyStatus(tally);
   const covered = tallySum(tally, 'covered');
   const found = tallySum(tally, 'found');
-  if (imagePages.size === 0) return { pdf: bytes, status, covered, found };
+  if (imagePages.size === 0) return { pdf: bytes, status, covered, found, ocr: usedOcr };
+  return { pdf: await rebuildPdf(bytes, imagePages), status, covered, found, ocr: usedOcr };
+}
 
+/** 그림으로 바꾼 쪽만 갈아 끼우고 나머지 쪽은 원본 그대로 복사 */
+async function rebuildPdf(bytes: Uint8Array, imagePages: Map<number, { jpg: Uint8Array; w: number; h: number }>): Promise<Uint8Array> {
   const { PDFDocument } = await import('pdf-lib');
   const out = await PDFDocument.create();
   const src = await PDFDocument.load(bytes, { ignoreEncryption: true });
@@ -114,7 +181,79 @@ export async function redactPdf(bytes: Uint8Array): Promise<RedactOutcome> {
       out.addPage(p!);
     }
   }
-  return { pdf: await out.save(), status, covered, found };
+  return out.save();
+}
+
+/* ── 직접 가리기(사람이 그린 상자) ──────────────────────────────────────── */
+
+/** 쪽 크기 대비 비율(0~1) 상자 — 화면 크기와 무관하게 저장 */
+export interface FracRect {
+  page: number;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** 사람이 그린 상자 위치를 검게 칠한 PDF — 상자가 있는 쪽만 그림으로 바꾼다(글자 층 제거), 나머지 쪽은 그대로 */
+export async function applyManualBoxes(bytes: Uint8Array, rects: FracRect[]): Promise<Uint8Array> {
+  if (rects.length === 0) return bytes;
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  pdfjs.GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js';
+  const task = pdfjs.getDocument({ data: bytes.slice(), cMapUrl: '/pdfjs/cmaps/', cMapPacked: true, standardFontDataUrl: '/pdfjs/standard_fonts/', isEvalSupported: false, enableXfa: false });
+  const doc = await task.promise;
+  const imagePages = new Map<number, { jpg: Uint8Array; w: number; h: number }>();
+  try {
+    const pages = Array.from(new Set(rects.map((r) => r.page))).filter((p) => p >= 0 && p < doc.numPages);
+    for (const p of pages) {
+      const page = await doc.getPage(p + 1);
+      const vp = page.getViewport({ scale: PDF_SCALE });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.ceil(vp.width);
+      canvas.height = Math.ceil(vp.height);
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      for (const r of rects.filter((x) => x.page === p)) blackOut(ctx, { x: r.x * canvas.width, y: r.y * canvas.height, w: r.w * canvas.width, h: r.h * canvas.height });
+      const vp1 = page.getViewport({ scale: 1 });
+      imagePages.set(p, { jpg: await toJpeg(canvas), w: vp1.width, h: vp1.height });
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+  } finally {
+    void task.destroy();
+  }
+  return rebuildPdf(bytes, imagePages);
+}
+
+/** 직접 가리기 화면용 — 쪽마다 그림(data URL)과 가로세로 비 */
+export async function renderPdfPreview(bytes: Uint8Array, maxWidth = 900): Promise<{ url: string; ratio: number }[]> {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  pdfjs.GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js';
+  const task = pdfjs.getDocument({ data: bytes.slice(), cMapUrl: '/pdfjs/cmaps/', cMapPacked: true, standardFontDataUrl: '/pdfjs/standard_fonts/', isEvalSupported: false, enableXfa: false });
+  const doc = await task.promise;
+  const out: { url: string; ratio: number }[] = [];
+  try {
+    for (let n = 1; n <= doc.numPages; n++) {
+      const page = await doc.getPage(n);
+      const base = page.getViewport({ scale: 1 });
+      const vp = page.getViewport({ scale: Math.min(2, maxWidth / base.width) });
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.ceil(vp.width);
+      canvas.height = Math.ceil(vp.height);
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      out.push({ url: canvas.toDataURL('image/jpeg', 0.85), ratio: base.height / base.width });
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+  } finally {
+    void task.destroy();
+  }
+  return out;
 }
 
 /* ── 한글(HWP·HWPX) ──────────────────────────────────────────────────── */

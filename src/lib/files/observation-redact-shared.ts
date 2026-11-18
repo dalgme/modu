@@ -196,32 +196,57 @@ export const LINE_LUMA = 170;
 /** 한 줄(행·열)의 이 비율 이상이 어두우면 표 선 */
 export const LINE_COVERAGE = 0.85;
 
-function makeDark(img: ImageLike) {
+/**
+ * 표 선 찾기 기준 — 기본은 PDF 를 그린 깨끗한 그림용.
+ * 스캔(글자 인식으로 찾은 쪽)은 선이 흐리고 조금 기울어 있어 SCAN_DETECT(밝기 기준 완화·위아래 2px 허용·덮는 비율 70%)를 쓴다.
+ */
+export interface DetectOpts {
+  luma: number;
+  coverage: number;
+  /** 선이 기울어 있어도 같은 선으로 볼 위아래(좌우) 허용 픽셀 */
+  band: number;
+}
+export const DEFAULT_DETECT: DetectOpts = { luma: LINE_LUMA, coverage: LINE_COVERAGE, band: 0 };
+export const SCAN_DETECT: DetectOpts = { luma: 200, coverage: 0.7, band: 2 };
+
+function makeDark(img: ImageLike, luma = LINE_LUMA) {
   return (x: number, y: number): boolean => {
     if (x < 0 || y < 0 || x >= img.width || y >= img.height) return false;
     const i = (Math.round(y) * img.width + Math.round(x)) * 4;
     const a = img.data[i + 3]!;
     if (a < 128) return false;
-    return 0.299 * img.data[i]! + 0.587 * img.data[i + 1]! + 0.114 * img.data[i + 2]! < LINE_LUMA;
+    return 0.299 * img.data[i]! + 0.587 * img.data[i + 1]! + 0.114 * img.data[i + 2]! < luma;
   };
 }
 
-function rowIsLine(dark: (x: number, y: number) => boolean, y: number, x0: number, x1: number): boolean {
+function rowIsLine(dark: (x: number, y: number) => boolean, y: number, x0: number, x1: number, o: DetectOpts = DEFAULT_DETECT): boolean {
   const a = Math.ceil(x0);
   const b = Math.floor(x1);
   if (b - a < 3) return false;
   let n = 0;
-  for (let x = a; x <= b; x++) if (dark(x, y)) n++;
-  return n / (b - a + 1) >= LINE_COVERAGE;
+  for (let x = a; x <= b; x++) {
+    for (let d = -o.band; d <= o.band; d++)
+      if (dark(x, y + d)) {
+        n++;
+        break;
+      }
+  }
+  return n / (b - a + 1) >= o.coverage;
 }
 
-function colIsLine(dark: (x: number, y: number) => boolean, x: number, y0: number, y1: number): boolean {
+function colIsLine(dark: (x: number, y: number) => boolean, x: number, y0: number, y1: number, o: DetectOpts = DEFAULT_DETECT): boolean {
   const a = Math.ceil(y0);
   const b = Math.floor(y1);
   if (b - a < 3) return false;
   let n = 0;
-  for (let y = a; y <= b; y++) if (dark(x, y)) n++;
-  return n / (b - a + 1) >= LINE_COVERAGE;
+  for (let y = a; y <= b; y++) {
+    for (let d = -o.band; d <= o.band; d++)
+      if (dark(x + d, y)) {
+        n++;
+        break;
+      }
+  }
+  return n / (b - a + 1) >= o.coverage;
 }
 
 /** from 부터 step 방향으로 test 가 참인 첫 위치(선) → [선 시작, 선 끝(굵은 선)] */
@@ -239,13 +264,16 @@ function scanLine(from: number, to: number, step: 1 | -1, test: (v: number) => b
  * 라벨 글자 상자 → 라벨 칸의 위·아래 선 → 오른쪽 선 2개(라벨 칸 오른쪽 = 대상 칸 왼쪽, 대상 칸 오른쪽) →
  * 대상 칸 안에서 위·아래 선을 다시 찾아 칸 안쪽 영역을 돌려준다. 표 선을 못 찾으면 null.
  */
-export function detectRightCell(img: ImageLike, label: Rect): Rect | null {
-  const dark = makeDark(img);
+export function detectRightCell(img: ImageLike, label: Rect, o: DetectOpts = DEFAULT_DETECT): Rect | null {
+  const dark = makeDark(img, o.luma);
+  const row = (y: number, x0: number, x1: number) => rowIsLine(dark, y, x0, x1, o);
+  const col = (x: number, y0: number, y1: number) => colIsLine(dark, x, y0, y1, o);
+  const g = o.band; // 허용 폭만큼 글자에서 떨어져서 찾기 시작한다(글자 윗변·아랫변을 선으로 잡지 않게)
   const h = Math.max(4, label.h);
   const cy = label.y + label.h / 2;
   // 1) 라벨 칸 위·아래 선 (라벨 폭 전체를 가로지르는 선)
-  const up = scanLine(Math.floor(label.y) - 1, Math.max(0, Math.floor(label.y - h * 4)), -1, (y) => rowIsLine(dark, y, label.x, label.x + label.w));
-  const down = scanLine(Math.ceil(label.y + label.h) + 1, Math.min(img.height - 1, Math.ceil(label.y + label.h + h * 4)), 1, (y) => rowIsLine(dark, y, label.x, label.x + label.w));
+  const up = scanLine(Math.floor(label.y) - 1 - g, Math.max(0, Math.floor(label.y - h * 4)), -1, (y) => row(y, label.x, label.x + label.w));
+  const down = scanLine(Math.ceil(label.y + label.h) + 1 + g, Math.min(img.height - 1, Math.ceil(label.y + label.h + h * 4)), 1, (y) => row(y, label.x, label.x + label.w));
   if (!up || !down) return null;
   const top = Math.min(up[0], up[1]);
   const bottom = Math.max(down[0], down[1]);
@@ -253,8 +281,8 @@ export function detectRightCell(img: ImageLike, label: Rect): Rect | null {
   const inBottom = Math.min(down[0], down[1]) - 1;
   if (inBottom - inTop < 3) return null;
   // 2) 오른쪽으로: 라벨 칸 오른쪽 선 → 대상 칸 오른쪽 선
-  const isV = (x: number) => colIsLine(dark, x, inTop + 1, inBottom - 1);
-  const first = scanLine(Math.ceil(label.x + label.w) + 1, img.width - 1, 1, isV);
+  const isV = (x: number) => col(x, inTop + 1 + g, inBottom - 1 - g);
+  const first = scanLine(Math.ceil(label.x + label.w) + 1 + g, img.width - 1, 1, isV);
   if (!first) return null;
   const second = scanLine(first[1] + 1, img.width - 1, 1, isV);
   if (!second) return null;
@@ -262,12 +290,76 @@ export function detectRightCell(img: ImageLike, label: Rect): Rect | null {
   const right = second[0] - 1;
   if (right - left < 3) return null;
   // 3) 대상 칸 자신의 위·아래 선(오른쪽 칸이 라벨 칸보다 높거나 낮을 수 있다)
-  const rUp = scanLine(Math.floor(cy), Math.max(0, top - Math.ceil(h * 6)), -1, (y) => rowIsLine(dark, y, left + 1, right - 1));
-  const rDown = scanLine(Math.ceil(cy), Math.min(img.height - 1, bottom + Math.ceil(h * 6)), 1, (y) => rowIsLine(dark, y, left + 1, right - 1));
+  const rUp = scanLine(Math.floor(cy), Math.max(0, top - Math.ceil(h * 6)), -1, (y) => row(y, left + 1 + g, right - 1 - g));
+  const rDown = scanLine(Math.ceil(cy), Math.min(img.height - 1, bottom + Math.ceil(h * 6)), 1, (y) => row(y, left + 1 + g, right - 1 - g));
   const y0 = rUp ? Math.max(rUp[0], rUp[1]) + 1 : inTop;
   const y1 = rDown ? Math.min(rDown[0], rDown[1]) - 1 : inBottom;
   if (y1 - y0 < 3) return null;
-  return { x: left, y: y0, w: right - left + 1, h: y1 - y0 + 1 };
+  // 허용 폭으로 선이 두꺼워진 만큼 칸 안쪽이 줄어든다 — 가릴 때는 다시 그만큼 넓힌다
+  return { x: left - g, y: y0 - g, w: right - left + 1 + g * 2, h: y1 - y0 + 1 + g * 2 };
+}
+
+/* ── 글자 인식(OCR) 결과 다듬기 ──────────────────────────────────────────── */
+
+/**
+ * 글자 인식은 한 글자쯤 틀리게 읽기도 하고("문영기관", "책임멘도명") 띄어 쓴 글자를 낱말 하나씩으로 준다.
+ * 같은 줄의 글자를 이어 보며 항목 이름과 **한 글자만 다른**(바꿔 읽은) 자리를 항목 이름으로 고쳐 읽는다.
+ * 두 줄로 꺾인 항목 이름의 앞부분(3글자 이상, 줄·낱말 끝)도 같은 규칙. 글자마다 상자 하나로 돌려준다.
+ * 스캔 쪽에서 정확히 일치하는 항목을 못 찾았을 때만 쓴다(정상 글자를 바꾸지 않게).
+ */
+export function fuzzyLabelBoxes(boxes: TextBox[], label: string): TextBox[] {
+  const L = strip(label);
+  const chars: TextBox[] = [];
+  for (const b of boxes) {
+    const n = b.text.length;
+    if (!n || b.w <= 0 || b.h <= 0) continue;
+    for (let k = 0; k < n; k++) {
+      const ch = b.text[k]!;
+      if (/\s/.test(ch)) continue;
+      const x0 = b.charX && b.charX.length > k + 1 ? b.x + b.charX[k]! : b.x + (b.w * k) / n;
+      const x1 = b.charX && b.charX.length > k + 1 ? b.x + b.charX[k + 1]! : b.x + (b.w * (k + 1)) / n;
+      chars.push({ text: ch, x: x0, y: b.y, w: Math.max(0.5, x1 - x0), h: b.h, cellKey: b.cellKey });
+    }
+  }
+  const sorted = chars.slice().sort((a, b) => a.y + a.h / 2 - (b.y + b.h / 2) || a.x - b.x);
+  const lines: TextBox[][] = [];
+  for (const c of sorted) {
+    const cy = c.y + c.h / 2;
+    const line = lines.find((l) => Math.abs(l[0]!.y + l[0]!.h / 2 - cy) <= Math.min(l[0]!.h, c.h) * 0.5 && (l[0]!.cellKey ?? '') === (c.cellKey ?? ''));
+    if (line) line.push(c);
+    else lines.push([c]);
+  }
+  const differsByOne = (got: string, want: string) => {
+    if (got.length !== want.length || got === want) return false;
+    let d = 0;
+    for (let k = 0; k < got.length; k++) if (got[k] !== want[k]) d++;
+    return d === 1;
+  };
+  for (const line of lines) {
+    line.sort((a, b) => a.x - b.x);
+    const h = Math.max(...line.map((c) => c.h));
+    const gapOk = (a: number, len: number) => line.slice(a + 1, a + len).every((c, k) => c.x - (line[a + k]!.x + line[a + k]!.w) <= h * 3);
+    const endsCluster = (e: number) => e === line.length - 1 || line[e + 1]!.x - (line[e]!.x + line[e]!.w) > h * CLUSTER_GAP;
+    const text = line.map((c) => c.text).join('');
+    if (text.includes(L)) continue;
+    for (let a = 0; a < line.length; a++) {
+      // 항목 이름 전체(한 글자 다름)
+      if (a + L.length <= line.length && gapOk(a, L.length) && differsByOne(text.slice(a, a + L.length), L)) {
+        for (let k = 0; k < L.length; k++) line[a + k]!.text = L[k]!;
+        a += L.length - 1;
+        continue;
+      }
+      // 두 줄로 꺾인 앞부분(낱말 끝에서 끝남)
+      for (let len = L.length - 1; len >= 3; len--) {
+        if (a + len > line.length || !gapOk(a, len) || !endsCluster(a + len - 1)) continue;
+        if (!differsByOne(text.slice(a, a + len), L.slice(0, len))) continue;
+        for (let k = 0; k < len; k++) line[a + k]!.text = L[k]!;
+        a += len - 1;
+        break;
+      }
+    }
+  }
+  return chars;
 }
 
 /* ── 칸에 걸친 도장(색 잉크) ────────────────────────────────────────────── */
