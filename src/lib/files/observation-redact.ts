@@ -1,5 +1,5 @@
 /**
- * 관찰의견서 사본의 "운영기관" 오른쪽 칸 가리기 (2026-11-17) — 브라우저 전용.
+ * 관찰의견서 사본의 "운영기관"·"책임멘토명" 오른쪽 칸 가리기 (2026-11-17, 11-18 책임멘토명·도장) — 브라우저 전용.
  * 원본 파일·저장소는 그대로 두고, 받아 온 사본으로 새 PDF 를 만든다.
  *
  *  - PDF : pdf.js 로 쪽 글자 위치를 읽어 "운영기관"을 찾고, 그 쪽만 그림으로 그려 오른쪽 칸(표 선 기준)을 검게 칠한 뒤
@@ -8,8 +8,8 @@
  *          쪽 그림으로 PDF 를 만든다. 중첩 표 등 칸 정보가 없으면 PDF 와 같은 표 선 방식으로 찾는다.
  * 결과 상태: full = 찾은 라벨 모두 가림 · partial = 일부만 · none = 못 가림(라벨·표를 찾지 못함).
  */
-import { ensureRhwp } from '@/lib/files/hwp-render';
-import { detectRightCell, findLabelBoxes, rightCellsOf, type BlindStatus, type CellBox, type Rect, type TextBox } from '@/lib/files/observation-redact-shared';
+import { ensureRhwp, renderHwpPages } from '@/lib/files/hwp-render';
+import { REDACT_LABELS, blindStatusOf, detectRightCell, expandWithInk, findLabelBoxes, rightCellsOf, type BlindStatus, type CellBox, type Rect, type TextBox } from '@/lib/files/observation-redact-shared';
 
 export interface RedactOutcome {
   pdf: Uint8Array;
@@ -26,10 +26,11 @@ const HWP_SCALE = 2;
 const JPEG_QUALITY = 0.85;
 const PX_TO_PT = 0.75;
 
-function statusOf(found: number, covered: number): BlindStatus {
-  if (found > 0 && covered >= found) return 'full';
-  return covered > 0 ? 'partial' : 'none';
-}
+/** 항목별 집계 → 결과 상태 */
+type Tally = Map<string, { found: number; covered: number }>;
+const newTally = (): Tally => new Map(REDACT_LABELS.map((l) => [l, { found: 0, covered: 0 }]));
+const tallyStatus = (t: Tally): BlindStatus => blindStatusOf(Array.from(t.values()));
+const tallySum = (t: Tally, k: 'found' | 'covered') => Array.from(t.values()).reduce((n, v) => n + v[k], 0);
 
 function toJpeg(canvas: HTMLCanvasElement): Promise<Uint8Array> {
   return new Promise((resolve, reject) =>
@@ -50,8 +51,7 @@ export async function redactPdf(bytes: Uint8Array): Promise<RedactOutcome> {
   pdfjs.GlobalWorkerOptions.workerSrc = '/pdfjs/pdf.worker.min.js';
   const task = pdfjs.getDocument({ data: bytes.slice(), cMapUrl: '/pdfjs/cmaps/', cMapPacked: true, standardFontDataUrl: '/pdfjs/standard_fonts/', isEvalSupported: false, enableXfa: false });
   const doc = await task.promise;
-  let found = 0;
-  let covered = 0;
+  const tally = newTally();
   const imagePages = new Map<number, { jpg: Uint8Array; w: number; h: number }>();
   try {
     for (let n = 1; n <= doc.numPages; n++) {
@@ -66,9 +66,9 @@ export async function redactPdf(bytes: Uint8Array): Promise<RedactOutcome> {
         if (!fh || Math.abs(tx[1]!) > fh * 0.05) continue; // 세로·기울어진 글자는 건너뜀
         boxes.push({ text: item.str, x: tx[4]!, y: tx[5]! - fh * 0.85, w: item.width * PDF_SCALE, h: fh * 1.05 });
       }
-      const labels = findLabelBoxes(boxes);
+      const labels = REDACT_LABELS.flatMap((name) => findLabelBoxes(boxes, name).map((rect) => ({ name, rect })));
       if (labels.length === 0) continue;
-      found += labels.length;
+      for (const l of labels) tally.get(l.name)!.found += 1;
       const canvas = document.createElement('canvas');
       canvas.width = Math.ceil(vp.width);
       canvas.height = Math.ceil(vp.height);
@@ -77,9 +77,15 @@ export async function redactPdf(bytes: Uint8Array): Promise<RedactOutcome> {
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       await page.render({ canvasContext: ctx, viewport: vp }).promise;
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const hits = labels.map((l) => detectRightCell(img, l)).filter((r): r is Rect => r !== null);
+      // 모든 칸을 깨끗한 그림에서 먼저 찾고(앞서 칠한 검은 칸이 다음 칸 찾기를 방해하지 않게) 한꺼번에 칠한다
+      const hits: Rect[] = [];
+      for (const l of labels) {
+        const cell = detectRightCell(img, l.rect);
+        if (!cell) continue;
+        tally.get(l.name)!.covered += 1;
+        hits.push(expandWithInk(img, cell));
+      }
       if (hits.length === 0) continue;
-      covered += hits.length;
       for (const r of hits) blackOut(ctx, r);
       const vp1 = page.getViewport({ scale: 1 });
       imagePages.set(n - 1, { jpg: await toJpeg(canvas), w: vp1.width, h: vp1.height });
@@ -89,7 +95,9 @@ export async function redactPdf(bytes: Uint8Array): Promise<RedactOutcome> {
   } finally {
     void task.destroy();
   }
-  const status = statusOf(found, covered);
+  const status = tallyStatus(tally);
+  const covered = tallySum(tally, 'covered');
+  const found = tallySum(tally, 'found');
   if (imagePages.size === 0) return { pdf: bytes, status, covered, found };
 
   const { PDFDocument } = await import('pdf-lib');
@@ -171,7 +179,7 @@ export async function redactHwp(bytes: Uint8Array): Promise<RedactOutcome> {
     const pages0 = doc.pageCount();
     for (let p = 0; p < pages0; p++) {
       const runs = runsOf(doc.getPageTextLayout(p));
-      for (const label of findLabelBoxes(runs.map((r) => ({ ...r, cellKey: cellKeyOf(r) })))) {
+      for (const { rect: label } of REDACT_LABELS.flatMap((name) => findLabelBoxes(runs.map((r) => ({ ...r, cellKey: cellKeyOf(r) })), name).map((rect) => ({ name, rect })))) {
         const ref = labelCell(runs, label);
         if (!ref) continue;
         const lk = `${ref.sec}:${ref.para}:${ref.ctrl}:${ref.cell}`;
@@ -201,8 +209,7 @@ export async function redactHwp(bytes: Uint8Array): Promise<RedactOutcome> {
     // 2) 지운 뒤 다시 배치된 쪽을 그리고, 대상 칸(정확) 또는 표 선(대체)으로 검게 칠한다
     const { PDFDocument } = await import('pdf-lib');
     const out = await PDFDocument.create();
-    let found = 0;
-    let covered = 0;
+    const tally = newTally();
     const n = doc.pageCount();
     if (!n) throw new Error('페이지 없음');
     for (let p = 0; p < n; p++) {
@@ -213,24 +220,31 @@ export async function redactHwp(bytes: Uint8Array): Promise<RedactOutcome> {
       // rhwp 가 배율 변환을 걸어 둔 채로 끝난다 — 칠하기는 캔버스 픽셀 좌표로
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       const runs = runsOf(doc.getPageTextLayout(p));
-      for (const label of findLabelBoxes(runs.map((r) => ({ ...r, cellKey: cellKeyOf(r) })))) {
-        found += 1;
-        const ref = labelCell(runs, label);
-        const keys = ref ? labelTargets.get(`${ref.sec}:${ref.para}:${ref.ctrl}:${ref.cell}`) ?? [] : [];
-        const exact = ref
-          ? cellsOf(doc, ref, p).filter((c) => (c.pageIndex === undefined || c.pageIndex === p) && keys.includes(`${ref.sec}:${ref.para}:${ref.ctrl}:${c.cellIdx}`))
-          : [];
-        if (exact.length > 0) {
-          for (const c of exact) blackOut(ctx, { x: c.x * HWP_SCALE, y: c.y * HWP_SCALE, w: c.w * HWP_SCALE, h: c.h * HWP_SCALE });
-          covered += 1;
-          continue;
+      const labels = REDACT_LABELS.flatMap((name) => findLabelBoxes(runs.map((r) => ({ ...r, cellKey: cellKeyOf(r) })), name).map((rect) => ({ name, rect })));
+      if (labels.length > 0) {
+        // 깨끗한 쪽 그림에서 모든 칸·도장을 먼저 찾고 한꺼번에 칠한다
+        const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const hits: Rect[] = [];
+        for (const { name, rect: label } of labels) {
+          const t = tally.get(name)!;
+          t.found += 1;
+          const ref = labelCell(runs, label);
+          const keys = ref ? labelTargets.get(`${ref.sec}:${ref.para}:${ref.ctrl}:${ref.cell}`) ?? [] : [];
+          const exact = ref
+            ? cellsOf(doc, ref, p).filter((c) => (c.pageIndex === undefined || c.pageIndex === p) && keys.includes(`${ref.sec}:${ref.para}:${ref.ctrl}:${c.cellIdx}`))
+            : [];
+          if (exact.length > 0) {
+            for (const c of exact) hits.push(expandWithInk(img, { x: c.x * HWP_SCALE, y: c.y * HWP_SCALE, w: c.w * HWP_SCALE, h: c.h * HWP_SCALE }));
+            t.covered += 1;
+            continue;
+          }
+          const cell = detectRightCell(img, { x: label.x * HWP_SCALE, y: label.y * HWP_SCALE, w: label.w * HWP_SCALE, h: label.h * HWP_SCALE });
+          if (cell) {
+            hits.push(expandWithInk(img, cell));
+            t.covered += 1;
+          }
         }
-        const scaled = { x: label.x * HWP_SCALE, y: label.y * HWP_SCALE, w: label.w * HWP_SCALE, h: label.h * HWP_SCALE };
-        const hit = detectRightCell(ctx.getImageData(0, 0, canvas.width, canvas.height), scaled);
-        if (hit) {
-          blackOut(ctx, hit);
-          covered += 1;
-        }
+        for (const r of hits) blackOut(ctx, r);
       }
       const jpg = await out.embedJpg(await toJpeg(canvas));
       const w = (canvas.width / HWP_SCALE) * PX_TO_PT;
@@ -240,8 +254,23 @@ export async function redactHwp(bytes: Uint8Array): Promise<RedactOutcome> {
       canvas.height = 0;
       await new Promise((r) => setTimeout(r, 0));
     }
-    return { pdf: await out.save(), status: statusOf(found, covered), covered, found };
+    return { pdf: await out.save(), status: tallyStatus(tally), covered: tallySum(tally, 'covered'), found: tallySum(tally, 'found') };
   } finally {
     doc.free();
   }
+}
+
+/* ── 원본(가림 없음): 한글만 PDF 로 ───────────────────────────────────── */
+
+/** 한글(HWP·HWPX) → PDF(쪽 그림). 가림 없이 원본 모양 그대로 — 원본 묶음용 */
+export async function hwpToPdf(bytes: Uint8Array): Promise<Uint8Array> {
+  const pages = await renderHwpPages(bytes);
+  if (pages.length === 0) throw new Error('빈 문서');
+  const { PDFDocument } = await import('pdf-lib');
+  const out = await PDFDocument.create();
+  for (const pg of pages) {
+    const img = pg.format === 'png' ? await out.embedPng(pg.bytes) : await out.embedJpg(pg.bytes);
+    out.addPage([pg.widthPt, pg.heightPt]).drawImage(img, { x: 0, y: 0, width: pg.widthPt, height: pg.heightPt });
+  }
+  return out.save();
 }

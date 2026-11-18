@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { detectRightCell, findLabelBoxes, observationFileName, rightCellsOf, type CellBox, type ImageLike } from './observation-redact-shared';
+import { MENTOR_LABEL, blindStatusOf, detectRightCell, expandWithInk, findLabelBoxes, observationFileName, observationZipBase, rightCellsOf, type CellBox, type ImageLike } from './observation-redact-shared';
 
 /** 흰 바탕에 표 선을 그린 가짜 쪽 그림 */
 function page(w: number, h: number): ImageLike & { line: (x0: number, y0: number, x1: number, y1: number, t?: number) => void; fill: (x: number, y: number, w: number, h: number, v: number) => void } {
@@ -119,9 +119,67 @@ describe('detectRightCell', () => {
 });
 
 describe('observationFileName', () => {
-  it('번호 · 순서 · 미적용 표시', () => {
-    expect(observationFileName(3, 24, '강석우', '남준현', 'mentor', 'full')).toBe('003. 강석우멘토-남준현멘티 관찰의견서.pdf');
-    expect(observationFileName(12, 1200, '강석우', '남준현', 'mentee', 'none')).toBe('0012. 남준현멘티-강석우멘토 관찰의견서 (블라인드 미적용).pdf');
-    expect(observationFileName(1, 5, '가', '나', 'mentor', 'partial', 'docx')).toBe('001. 가멘토-나멘티 관찰의견서 (블라인드 일부 확인 필요).docx');
+  it('원본 = 멘토·멘티 이름 · 순서 / 블라인드 = 멘토 이름 없이 · 미적용 표시', () => {
+    expect(observationFileName(3, 24, '강석우', '남준현', 'mentor', 'original')).toBe('003. 강석우멘토-남준현멘티 관찰의견서.pdf');
+    expect(observationFileName(3, 24, '강석우', '남준현', 'mentee', 'original')).toBe('003. 남준현멘티-강석우멘토 관찰의견서.pdf');
+    expect(observationFileName(4, 24, '강석우', '남준현', 'mentor', 'original', 'none', 'hwp')).toBe('004. 강석우멘토-남준현멘티 관찰의견서 (PDF 변환 실패·원본).hwp');
+    expect(observationFileName(3, 24, '강석우', '남준현', 'mentor', 'blind', 'full')).toBe('003. 남준현멘티 관찰의견서.pdf');
+    expect(observationFileName(12, 1200, '강석우', '남준현', 'mentee', 'blind', 'none')).toBe('0012. 남준현멘티 관찰의견서 (블라인드 미적용).pdf');
+    expect(observationFileName(1, 5, '가', '나', 'mentor', 'blind', 'partial', 'docx')).toBe('001. 나멘티 관찰의견서 (블라인드 일부 확인 필요).docx');
+    expect(observationZipBase('B그룹', 'mentor', 'original')).toBe('B그룹 관찰의견서 원본(멘토별)');
+    expect(observationZipBase('B그룹', 'mentee', 'blind')).toBe('B그룹 관찰의견서 블라인드(멘티별)');
+  });
+});
+
+describe('책임멘토명 · 결과 상태', () => {
+  it('책임멘토명 항목을 찾는다(띄어 써도), 제목 "책임멘토 관찰 의견서"는 아님', () => {
+    expect(findLabelBoxes([{ text: '책임멘토명', x: 0, y: 0, w: 50, h: 10 }], MENTOR_LABEL)).toHaveLength(1);
+    expect(findLabelBoxes([{ text: '책임 멘토명', x: 0, y: 0, w: 55, h: 10 }], MENTOR_LABEL)).toHaveLength(1);
+    expect(findLabelBoxes([{ text: '책임멘토 관찰 의견서(양식)', x: 0, y: 0, w: 150, h: 10 }], MENTOR_LABEL)).toEqual([]);
+  });
+
+  it('좁은 칸에서 두 줄로 꺾인 "책임멘토 / 명"도 찾고, 떨어진 줄·다른 칸은 잇지 않는다', () => {
+    expect(findLabelBoxes([{ text: '책임멘토', x: 10, y: 10, w: 40, h: 10 }, { text: '명', x: 25, y: 22, w: 10, h: 10 }], MENTOR_LABEL)).toEqual([{ x: 10, y: 10, w: 40, h: 22 }]);
+    expect(findLabelBoxes([{ text: '책임멘토', x: 10, y: 10, w: 40, h: 10 }, { text: '명', x: 25, y: 40, w: 10, h: 10 }], MENTOR_LABEL)).toEqual([]);
+    expect(findLabelBoxes([{ text: '책임멘토', x: 10, y: 10, w: 40, h: 10 }, { text: '명', x: 90, y: 22, w: 10, h: 10 }], MENTOR_LABEL)).toEqual([]);
+    expect(findLabelBoxes([{ text: '책임멘토', x: 10, y: 10, w: 40, h: 10, cellKey: 'a' }, { text: '명', x: 25, y: 22, w: 10, h: 10, cellKey: 'b' }], MENTOR_LABEL)).toEqual([]);
+    // 제목 "책임멘토 관찰 의견서" 아래 "명단" 같은 낱말은 꾸밈 규칙에 걸려 제외
+    expect(findLabelBoxes([{ text: '책임멘토', x: 10, y: 10, w: 40, h: 10 }, { text: '명단 안내', x: 10, y: 22, w: 45, h: 10 }], MENTOR_LABEL)).toEqual([]);
+  });
+
+  it('두 항목을 모두 가려야 가림 완료, 하나만이면 일부, 못 찾으면 미적용', () => {
+    expect(blindStatusOf([{ found: 1, covered: 1 }, { found: 1, covered: 1 }])).toBe('full');
+    expect(blindStatusOf([{ found: 1, covered: 1 }, { found: 0, covered: 0 }])).toBe('partial');
+    expect(blindStatusOf([{ found: 2, covered: 1 }, { found: 1, covered: 1 }])).toBe('partial');
+    expect(blindStatusOf([{ found: 0, covered: 0 }, { found: 0, covered: 0 }])).toBe('none');
+    expect(blindStatusOf([{ found: 1, covered: 0 }, { found: 1, covered: 0 }])).toBe('none');
+  });
+});
+
+describe('expandWithInk — 칸에 걸친 도장', () => {
+  const ink = (p: ImageLike, x0: number, y0: number, x1: number, y1: number, rgb: [number, number, number]) => {
+    for (let y = y0; y <= y1; y++)
+      for (let x = x0; x <= x1; x++) {
+        const i = (y * p.width + x) * 4;
+        p.data[i] = rgb[0];
+        p.data[i + 1] = rgb[1];
+        p.data[i + 2] = rgb[2];
+      }
+  };
+  const blank = (): ImageLike => ({ width: 300, height: 200, data: new Uint8ClampedArray(300 * 200 * 4).fill(255) });
+  const cell = { x: 100, y: 80, w: 100, h: 30 };
+
+  it('칸 안의 빨간 도장이 칸 위로 삐져나오면 그만큼 넓힌다', () => {
+    const p = blank();
+    ink(p, 170, 60, 190, 95, [210, 40, 40]); // 칸 위(60)부터 칸 안(95)까지
+    expect(expandWithInk(p, cell)).toEqual({ x: 100, y: 60, w: 100, h: 50 });
+  });
+
+  it('칸 밖에만 있는 색 글자·연한 배경색·검정 글자는 넓히지 않는다', () => {
+    const p = blank();
+    ink(p, 10, 10, 30, 20, [30, 60, 220]); // 떨어진 파란 글자
+    ink(p, 0, 80, 99, 110, [200, 215, 250]); // 옆 라벨 칸의 연한 파란 배경
+    ink(p, 120, 85, 150, 95, [20, 20, 20]); // 칸 안 검정 글자
+    expect(expandWithInk(p, cell)).toEqual(cell);
   });
 });

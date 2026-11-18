@@ -92,15 +92,16 @@ export function ReportFilesPanel({ data }: { data: ReportFilesData }) {
 
       <Card className="border-2 border-slate-400 dark:border-slate-600">
         <CardHeader>
-          <CardTitle className="text-base">관찰의견서만 받기 (라운드 통합 · 운영기관 칸 가림)</CardTitle>
+          <CardTitle className="text-base">관찰의견서만 받기 (라운드 통합 · 원본 / 블라인드)</CardTitle>
           <p className="text-xs text-muted-foreground">
-            라운드의 관찰의견서만 <b>한 폴더</b>에 번호를 붙여 PDF 로 받습니다 — <b>멘토별</b> “001. 멘토명멘토-멘티명멘티 관찰의견서.pdf”(멘토 이름순) / <b>멘티별</b> “001. 멘티명멘티-멘토명멘토 관찰의견서.pdf”(고유번호순).
-            <br />받는 사본마다 <b>“운영기관” 오른쪽 칸을 검게 가립니다</b>. 플랫폼에 저장된 원본은 바뀌지 않습니다. 가린 쪽은 그림으로 바뀌어 복사·검색으로도 내용이 보이지 않습니다(다른 쪽은 원본 그대로).
-            <br />한글(HWP·HWPX) 관찰의견서는 이 브라우저에서 PDF 로 바꾸면서 가립니다(줄바꿈·표 위치가 원본과 조금 다를 수 있음). 스캔 이미지 PDF·표가 아닌 형식 등 칸을 찾지 못한 파일은 이름 끝에 “(블라인드 미적용)”을 붙이고 끝난 뒤 목록으로 알려 드립니다.
+            라운드의 관찰의견서만 <b>한 폴더</b>에 번호를 붙여 PDF 로 받습니다. 번호 순서 = <b>멘토별</b>(멘토 이름 → 멘티 이름순) 또는 <b>멘티별</b>(고유번호순).
+            <br />· <b>원본</b>: 올라온 PDF 그대로 — “001. 멘토명멘토-멘티명멘티 관찰의견서.pdf”. 한글(HWP·HWPX)은 이 브라우저에서 PDF 로만 바꿉니다.
+            <br />· <b>블라인드</b>: 받는 사본마다 <b>“운영기관”과 “책임멘토명” 오른쪽 칸</b>(칸에 걸친 도장 포함)을 검게 가립니다 — “001. 멘티명멘티 관찰의견서.pdf”(파일 이름에도 멘토 이름을 넣지 않음). 가린 쪽은 그림으로 바뀌어 복사·검색으로도 내용이 보이지 않습니다.
+            <br />플랫폼에 저장된 원본은 어느 쪽이든 바뀌지 않습니다. 한글 파일은 줄바꿈·표 위치가 원본과 조금 다를 수 있습니다. 칸을 찾지 못한 파일은 이름 끝에 “(블라인드 미적용)”을 붙이고 끝난 뒤 목록으로 알려 드립니다.
           </p>
         </CardHeader>
         <CardContent className="overflow-x-auto">
-          <table className="w-full min-w-[480px] text-sm">
+          <table className="w-full min-w-[560px] text-sm">
             <thead className="text-left text-xs text-muted-foreground"><tr><th className="py-1.5">라운드(사업그룹)</th><th>멘티</th><th>관찰의견서</th><th className="text-right">받기</th></tr></thead>
             <tbody>
               {data.groups.map((g) => (
@@ -110,9 +111,17 @@ export function ReportFilesPanel({ data }: { data: ReportFilesData }) {
                   <td className="tabular-nums">{g.obsCount}개</td>
                   <td className="py-2 text-right">
                     {g.obsCount > 0 ? (
-                      <div className="flex flex-wrap justify-end gap-1.5">
-                        <ObservationBundleButton order="mentor" groupId={g.id} label="멘토별 관찰의견서" />
-                        <ObservationBundleButton order="mentee" groupId={g.id} label="멘티별 관찰의견서" />
+                      <div className="flex flex-col items-end gap-1.5">
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
+                          <span className="text-[11px] font-semibold text-muted-foreground">원본</span>
+                          <ObservationBundleButton order="mentor" mode="original" groupId={g.id} label="멘토별 원본" />
+                          <ObservationBundleButton order="mentee" mode="original" groupId={g.id} label="멘티별 원본" />
+                        </div>
+                        <div className="flex flex-wrap items-center justify-end gap-1.5">
+                          <span className="text-[11px] font-semibold text-muted-foreground">블라인드</span>
+                          <ObservationBundleButton order="mentor" mode="blind" groupId={g.id} label="멘토별 블라인드" />
+                          <ObservationBundleButton order="mentee" mode="blind" groupId={g.id} label="멘티별 블라인드" />
+                        </div>
                       </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">관찰의견서 없음</span>

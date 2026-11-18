@@ -1,8 +1,8 @@
 /**
- * 관찰의견서 "운영기관" 칸 가리기 (2026-11-17) — 서버·브라우저·테스트 공용 순수 함수.
+ * 관찰의견서 "운영기관"·"책임멘토명" 칸 가리기 (2026-11-17, 11-18 책임멘토명·도장 추가) — 서버·브라우저·테스트 공용 순수 함수.
  *
  * 원본 파일은 건드리지 않는다. 브라우저가 받은 사본으로 쪽을 그림(픽셀)으로 만든 뒤
- * "운영기관" 글자가 든 칸의 **오른쪽 칸**을 검게 칠하고, 그 쪽은 그림으로만 PDF 에 넣는다
+ * 항목 이름(REDACT_LABELS)이 든 칸의 **오른쪽 칸**을 검게 칠하고(칸에 걸친 도장 같은 색 잉크까지), 그 쪽은 그림으로만 PDF 에 넣는다
  * (글자 층이 남지 않으므로 복사·검색으로 내용이 새지 않는다 — 진짜 가림).
  *
  *  - 글자 위치: PDF = pdf.js 글자 정보 / 한글 = rhwp 쪽 글자 배치(getPageTextLayout)
@@ -11,6 +11,9 @@
  */
 
 export const OPERATOR_LABEL = '운영기관';
+export const MENTOR_LABEL = '책임멘토명';
+/** 오른쪽 칸을 가릴 항목 이름 — 모두 찾아 가려야 '가림 완료' */
+export const REDACT_LABELS: readonly string[] = [OPERATOR_LABEL, MENTOR_LABEL];
 
 /** 화면(캔버스) 좌표 글자 상자 — y = 윗변 */
 export interface TextBox {
@@ -51,7 +54,8 @@ const MAX_LABEL_EXTRA = 3;
 
 /**
  * 글자 상자들에서 label(공백 무시 — "운 영 기 관"도 찾는다) 위치를 모두 찾는다.
- * 같은 줄(세로 중심이 겹침)·같은 칸의 상자만 이어 붙인다.
+ * 같은 줄(세로 중심이 겹침)·같은 칸의 상자만 이어 붙인다. 좁은 칸에서 두세 줄로 꺾인 항목 이름
+ * ("책임멘토" / "명")은 위아래로 붙은 낱말 덩어리를 이어 찾는다.
  */
 export function findLabelBoxes(boxes: TextBox[], label = OPERATOR_LABEL): Rect[] {
   const target = strip(label);
@@ -66,6 +70,8 @@ export function findLabelBoxes(boxes: TextBox[], label = OPERATOR_LABEL): Rect[]
     else lines.push([it]);
   }
   const out: Rect[] = [];
+  /** 줄마다 낱말 덩어리(글자 사이 간격 ≤ CLUSTER_GAP) — 여러 줄 항목 이름 찾기용 */
+  const clusters: { text: string; x0: number; x1: number; y0: number; y1: number; cellKey: string }[] = [];
   for (const line of lines) {
     line.sort((a, b) => a.b.x - b.b.x);
     const chars: CharBox[] = [];
@@ -78,6 +84,21 @@ export function findLabelBoxes(boxes: TextBox[], label = OPERATOR_LABEL): Rect[]
         const x1 = b.charX && b.charX.length > k + 1 ? b.x + b.charX[k + 1]! : b.x + (b.w * (k + 1)) / n;
         chars.push({ ch, x0, x1, y0: b.y, y1: b.y + b.h, src: i });
       }
+    }
+    for (let k = 0; k < chars.length; ) {
+      let e = k;
+      const hh = chars[k]!.y1 - chars[k]!.y0;
+      while (e < chars.length - 1 && chars[e + 1]!.x0 - chars[e]!.x1 <= hh * CLUSTER_GAP) e++;
+      const part = chars.slice(k, e + 1);
+      clusters.push({
+        text: part.map((c) => c.ch).join(''),
+        x0: Math.min(...part.map((c) => c.x0)),
+        x1: Math.max(...part.map((c) => c.x1)),
+        y0: Math.min(...part.map((c) => c.y0)),
+        y1: Math.max(...part.map((c) => c.y1)),
+        cellKey: line[0]!.b.cellKey ?? '',
+      });
+      k = e + 1;
     }
     const str = chars.map((c) => c.ch).join('');
     for (let at = str.indexOf(target); at >= 0; at = str.indexOf(target, at + target.length)) {
@@ -100,6 +121,37 @@ export function findLabelBoxes(boxes: TextBox[], label = OPERATOR_LABEL): Rect[]
       const y0 = Math.min(...cluster.map((c) => c.y0));
       const y1 = Math.max(...cluster.map((c) => c.y1));
       out.push({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+    }
+  }
+  // 두세 줄로 꺾인 항목 이름 — 바로 아래(줄 간격 ≤ 글자 높이 0.8)에서 가로로 겹치는 덩어리를 이어 본다
+  clusters.sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  const overlaps = (r: Rect) => out.some((o) => r.x < o.x + o.w && o.x < r.x + r.w && r.y < o.y + o.h && o.y < r.y + r.h);
+  for (const first of clusters) {
+    if (first.text.includes(target)) continue; // 한 줄에서 이미 찾음
+    const stack = [first];
+    for (let depth = 1; depth < 3; depth++) {
+      const prev = stack[stack.length - 1]!;
+      const h = prev.y1 - prev.y0;
+      const next = clusters.find(
+        (c) =>
+          c !== prev &&
+          c.cellKey === first.cellKey &&
+          c.y0 >= prev.y1 - h * 0.3 &&
+          c.y0 - prev.y1 <= h * 0.8 &&
+          Math.min(c.x1, prev.x1) - Math.max(c.x0, prev.x0) >= Math.min(c.x1 - c.x0, prev.x1 - prev.x0) * 0.3,
+      );
+      if (!next) break;
+      stack.push(next);
+      const joined = stack.map((c) => c.text).join('');
+      const at = joined.indexOf(target);
+      if (at < 0) continue;
+      const extra = joined.slice(0, at) + joined.slice(at + target.length);
+      if (extra.length > MAX_LABEL_EXTRA || !LABEL_EXTRA.test(extra)) break;
+      const x0 = Math.min(...stack.map((c) => c.x0));
+      const y0 = Math.min(...stack.map((c) => c.y0));
+      const rect = { x: x0, y: y0, w: Math.max(...stack.map((c) => c.x1)) - x0, h: Math.max(...stack.map((c) => c.y1)) - y0 };
+      if (!overlaps(rect)) out.push(rect);
+      break;
     }
   }
   return out;
@@ -218,25 +270,122 @@ export function detectRightCell(img: ImageLike, label: Rect): Rect | null {
   return { x: left, y: y0, w: right - left + 1, h: y1 - y0 + 1 };
 }
 
+/* ── 칸에 걸친 도장(색 잉크) ────────────────────────────────────────────── */
+
+/** 색이 뚜렷한 잉크(빨간 도장 등) — 검정·회색 글자와 표 선은 아님 */
+export const INK_SATURATION = 60;
+
+function isInk(img: ImageLike, x: number, y: number): boolean {
+  const i = (y * img.width + x) * 4;
+  if (img.data[i + 3]! < 128) return false;
+  const r = img.data[i]!;
+  const g = img.data[i + 1]!;
+  const b = img.data[i + 2]!;
+  const max = Math.max(r, g, b);
+  const d = max - Math.min(r, g, b);
+  // 연한 칸 배경색(파스텔)은 잉크가 아니다 — 채도 비율까지 본다
+  return d >= INK_SATURATION && d / max >= 0.35;
+}
+
+/**
+ * 가릴 칸 안에 색 잉크(도장·서명 이미지)가 있으면, 그 잉크와 이어진 부분이 칸 밖으로 삐져나온 데까지 넓힌다.
+ * 칸 높이의 2배(최소 40px)까지만 넓힌다 — 옆 칸의 다른 색 글자를 끌고 가지 않게.
+ */
+export function expandWithInk(img: ImageLike, rect: Rect): Rect {
+  const grow = Math.max(40, rect.h * 2);
+  const wx0 = Math.max(0, Math.floor(rect.x - grow));
+  const wy0 = Math.max(0, Math.floor(rect.y - grow));
+  const wx1 = Math.min(img.width - 1, Math.ceil(rect.x + rect.w + grow));
+  const wy1 = Math.min(img.height - 1, Math.ceil(rect.y + rect.h + grow));
+  const W = wx1 - wx0 + 1;
+  const seen = new Uint8Array(W * (wy1 - wy0 + 1));
+  const stack: number[] = [];
+  const rx0 = Math.max(wx0, Math.floor(rect.x));
+  const ry0 = Math.max(wy0, Math.floor(rect.y));
+  const rx1 = Math.min(wx1, Math.ceil(rect.x + rect.w) - 1);
+  const ry1 = Math.min(wy1, Math.ceil(rect.y + rect.h) - 1);
+  for (let y = ry0; y <= ry1; y++)
+    for (let x = rx0; x <= rx1; x++)
+      if (isInk(img, x, y)) {
+        seen[(y - wy0) * W + (x - wx0)] = 1;
+        stack.push(x, y);
+      }
+  if (stack.length === 0) return rect;
+  let minX = rect.x;
+  let minY = rect.y;
+  let maxX = rect.x + rect.w;
+  let maxY = rect.y + rect.h;
+  while (stack.length) {
+    const y = stack.pop()!;
+    const x = stack.pop()!;
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x + 1 > maxX) maxX = x + 1;
+    if (y + 1 > maxY) maxY = y + 1;
+    // 도장 테두리·글자 사이 틈(안티에일리어싱)을 건너도록 2px 이웃까지 본다
+    for (let dy = -2; dy <= 2; dy++)
+      for (let dx = -2; dx <= 2; dx++) {
+        const nx = x + dx;
+        const ny = y + dy;
+        if (nx < wx0 || ny < wy0 || nx > wx1 || ny > wy1) continue;
+        const k = (ny - wy0) * W + (nx - wx0);
+        if (seen[k] || !isInk(img, nx, ny)) continue;
+        seen[k] = 1;
+        stack.push(nx, ny);
+      }
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+}
+
+/* ── 가림 결과 ─────────────────────────────────────────────────────────── */
+
+export type BlindStatus = 'full' | 'partial' | 'none';
+
+/** 항목별(찾은 수·가린 수) → 결과. 항목을 하나도 못 찾았어도 그 항목 1건을 못 가린 것으로 센다 */
+export function blindStatusOf(perLabel: { found: number; covered: number }[]): BlindStatus {
+  let need = 0;
+  let done = 0;
+  for (const l of perLabel) {
+    need += Math.max(1, l.found);
+    done += Math.min(l.covered, Math.max(1, l.found));
+  }
+  if (done === 0) return 'none';
+  return done >= need ? 'full' : 'partial';
+}
+
 /* ── 묶음 이름 ─────────────────────────────────────────────────────────── */
 
 export type ObservationOrder = 'mentor' | 'mentee';
+/** original = 원본 그대로(한글만 PDF 로) · blind = 운영기관·책임멘토명 칸 가림 */
+export type ObservationMode = 'original' | 'blind';
 
-export function observationZipBase(groupName: string, order: ObservationOrder): string {
-  return `${cleanFile(groupName, '라운드')} 관찰의견서(${order === 'mentor' ? '멘토별' : '멘티별'})`;
+export function observationZipBase(groupName: string, order: ObservationOrder, mode: ObservationMode): string {
+  return `${cleanFile(groupName, '라운드')} 관찰의견서 ${mode === 'blind' ? '블라인드' : '원본'}(${order === 'mentor' ? '멘토별' : '멘티별'})`;
 }
-
-/** "001. 강석우멘토-남준현멘티 관찰의견서.pdf" (멘티별이면 멘티가 앞) */
-export type BlindStatus = 'full' | 'partial' | 'none';
 
 export const BLIND_SUFFIX: Record<BlindStatus, string> = { full: '', partial: ' (블라인드 일부 확인 필요)', none: ' (블라인드 미적용)' };
 
-export function observationFileName(index: number, total: number, mentorName: string, menteeName: string, order: ObservationOrder, status: BlindStatus, ext = 'pdf'): string {
+/**
+ * 원본: "001. 강석우멘토-남준현멘티 관찰의견서.pdf"(멘티별이면 멘티가 앞)
+ * 블라인드: "001. 남준현멘티 관찰의견서.pdf" — 파일 이름에도 멘토 이름을 남기지 않는다(번호 순서는 멘토별/멘티별 그대로)
+ */
+export function observationFileName(
+  index: number,
+  total: number,
+  mentorName: string,
+  menteeName: string,
+  order: ObservationOrder,
+  mode: ObservationMode,
+  status: BlindStatus = 'full',
+  ext = 'pdf',
+): string {
   const width = Math.max(3, String(total).length);
   const mentor = `${cleanFile(mentorName, '멘토')}멘토`;
   const mentee = `${cleanFile(menteeName, '멘티')}멘티`;
+  const no = String(index).padStart(width, '0');
+  if (mode === 'blind') return `${no}. ${mentee} 관찰의견서${BLIND_SUFFIX[status]}.${ext}`;
   const pair = order === 'mentor' ? `${mentor}-${mentee}` : `${mentee}-${mentor}`;
-  return `${String(index).padStart(width, '0')}. ${pair} 관찰의견서${BLIND_SUFFIX[status]}.${ext}`;
+  return `${no}. ${pair} 관찰의견서${status === 'none' ? ' (PDF 변환 실패·원본)' : ''}.${ext}`;
 }
 
 function cleanFile(s: string | null | undefined, fallback: string): string {
@@ -262,6 +411,7 @@ export interface ObservationBundleItem {
 
 export interface ObservationBundleManifest {
   order: ObservationOrder;
+  mode: ObservationMode;
   groupName: string;
   /** 바깥 ZIP·안쪽 폴더 이름(확장자 없음) */
   base: string;

@@ -3,9 +3,10 @@ import type JSZipType from 'jszip';
 import { observationFileName, type BlindStatus, type ObservationBundleItem, type ObservationBundleManifest } from '@/lib/files/observation-redact-shared';
 
 /**
- * 관찰의견서 묶음 조립 (2026-11-17) — 브라우저에서 실행(테스트는 Node, 가리기 함수는 주입).
- * 목록 순서대로 사본을 받아 "운영기관" 칸을 가린 PDF 로 만들고 "001. …pdf" 이름으로 한 폴더에 넣는다.
- * 가리지 못한 파일은 이름 끝에 (블라인드 미적용)/(블라인드 일부 확인 필요)를 붙이고 결과 목록에 남긴다.
+ * 관찰의견서 묶음 조립 (2026-11-17, 11-18 원본 묶음 추가) — 브라우저에서 실행(테스트는 Node, 처리 함수는 주입).
+ * 목록 순서대로 파일을 받아 "001. …pdf" 이름으로 한 폴더에 넣는다.
+ *  - blind: "운영기관"·"책임멘토명" 칸을 가린 PDF. 가리지 못한 파일은 이름 끝에 (블라인드 미적용)/(블라인드 일부 확인 필요)
+ *  - original: PDF 는 받은 그대로, 한글은 PDF 로만 바꾼다(가림 없음). 바꾸지 못한 파일은 원본을 넣고 알린다
  */
 export interface RedactorOutcome {
   pdf: Uint8Array;
@@ -14,6 +15,14 @@ export interface RedactorOutcome {
 export interface Redactors {
   pdf: (bytes: Uint8Array) => Promise<RedactorOutcome>;
   hwp: (bytes: Uint8Array) => Promise<RedactorOutcome>;
+}
+
+/** 원본 묶음 처리 — PDF 그대로, 한글만 PDF 로 */
+export function originalProcessors(hwpToPdf: (bytes: Uint8Array) => Promise<Uint8Array>): Redactors {
+  return {
+    pdf: async (bytes) => ({ pdf: bytes, status: 'full' }),
+    hwp: async (bytes) => ({ pdf: await hwpToPdf(bytes), status: 'full' }),
+  };
 }
 
 export interface ObservationBuildResult {
@@ -28,16 +37,17 @@ function extOf(name: string): string {
   return e && e !== name.toLowerCase() ? e : 'bin';
 }
 
-async function one(item: ObservationBundleItem, fetchBytes: (url: string) => Promise<Uint8Array>, redact: Redactors): Promise<{ bytes: Uint8Array; status: BlindStatus; ext: string; reason?: string }> {
+async function one(item: ObservationBundleItem, fetchBytes: (url: string) => Promise<Uint8Array>, redact: Redactors, blind: boolean): Promise<{ bytes: Uint8Array; status: BlindStatus; ext: string; reason?: string }> {
   const bytes = await fetchBytes(item.url);
   if (item.kind === 'other') return { bytes, status: 'none', ext: extOf(item.sourceName), reason: `${extOf(item.sourceName).toUpperCase()} 파일이라 PDF 로 바꾸지 못해 원본을 넣음` };
   try {
     const r = await (item.kind === 'hwp' ? redact.hwp(bytes) : redact.pdf(bytes));
-    const reason =
-      r.status === 'none'
-        ? '“운영기관” 칸을 찾지 못함(스캔 이미지·표가 아닌 형식·다른 항목명 등) — 가리지 않은 파일'
+    const reason = !blind
+      ? undefined
+      : r.status === 'none'
+        ? '“운영기관”·“책임멘토명” 칸을 찾지 못함(스캔 이미지·표가 아닌 형식·다른 항목명 등) — 가리지 않은 파일'
         : r.status === 'partial'
-          ? '“운영기관”이 여러 곳 있어 일부만 가림'
+          ? '두 항목 중 일부만 가림(한 항목을 찾지 못했거나 여러 곳에 있음) — 열어서 확인'
           : undefined;
     return { bytes: r.pdf, status: r.status, ext: 'pdf', reason };
   } catch {
@@ -64,15 +74,15 @@ export async function assembleObservationBundle(
     const item = manifest.items[i]!;
     let r: Awaited<ReturnType<typeof one>> | null = null;
     try {
-      r = await one(item, fetchBytes, redact);
+      r = await one(item, fetchBytes, redact, manifest.mode === 'blind');
     } catch {
-      const name = observationFileName(i + 1, total, item.mentorName, item.menteeName, manifest.order, 'none');
+      const name = observationFileName(i + 1, total, item.mentorName, item.menteeName, manifest.order, manifest.mode, 'none');
       problems.push({ name, reason: '파일을 받지 못함 — 묶음에 넣지 못함' });
       counts.none += 1;
       onProgress?.(i + 1, total);
       continue;
     }
-    const name = observationFileName(i + 1, total, item.mentorName, item.menteeName, manifest.order, r.status, r.ext);
+    const name = observationFileName(i + 1, total, item.mentorName, item.menteeName, manifest.order, manifest.mode, r.status, r.ext);
     dir.file(name, r.bytes);
     counts[r.status] += 1;
     if (r.reason) problems.push({ name, reason: r.reason });

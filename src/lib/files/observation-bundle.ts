@@ -5,7 +5,7 @@ import { withConvertedPdf } from '@/lib/converter/substitute';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAll, fetchAllIn } from '@/lib/supabase/paginate';
 import { compareExternalNo, partKindOf } from '@/lib/files/round-package-shared';
-import { observationZipBase, type ObservationBundleItem, type ObservationBundleManifest, type ObservationOrder } from '@/lib/files/observation-redact-shared';
+import { observationZipBase, type ObservationBundleItem, type ObservationBundleManifest, type ObservationMode, type ObservationOrder } from '@/lib/files/observation-redact-shared';
 
 /**
  * 라운드 관찰의견서 묶음 목록 (2026-11-17) — 관찰의견서만, 멘토별(멘토 이름 → 멘티 이름) 또는
@@ -19,6 +19,7 @@ export async function buildObservationBundle(
   programId: string,
   groupId: string,
   order: ObservationOrder,
+  mode: ObservationMode,
 ): Promise<{ ok: true; manifest: ObservationBundleManifest } | { ok: false; error: string }> {
   const admin = createAdminClient();
   const { data: group } = await admin.from('support_types').select('id, name, program_id').eq('id', groupId).maybeSingle();
@@ -82,8 +83,9 @@ export async function buildObservationBundle(
     ok: true,
     manifest: {
       order,
+      mode,
       groupName: group.name,
-      base: observationZipBase(group.name, order),
+      base: observationZipBase(group.name, order, mode),
       items: rows.map((r, i) => ({ mentorName: r.mentorName, menteeName: r.menteeName, sourceName: r.sourceName, kind: r.kind, url: urls[i] ?? '' })),
       notes,
     },
