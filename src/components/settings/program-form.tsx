@@ -13,6 +13,9 @@ import { useToast } from '@/hooks/use-toast';
 const FIELDS: { name: keyof ProgramRow; label: string; hint?: string; type?: string; required?: boolean }[] = [
   { name: 'name', label: '행사명', required: true },
   { name: 'contract_title', label: '용역명(정식 명칭)', hint: '매칭 리스트 엑셀 파일명 등 공식 문서명에 사용 — 비우면 행사명' },
+  { name: 'allowance_title', label: '멘토링 수당 양식 제목', hint: '수당 엑셀 첫 시트 제목 앞부분 — "{이 값} {라운드} 진출자 멘토링 수당". 비우면 용역명' },
+  { name: 'summary_title', label: '멘토링 총괄표 제목', hint: '총괄표 엑셀 맨 위 제목. 비우면 "{연도} {행사명} 멘토링 총괄표"' },
+  { name: 'report_region', label: '총괄표 권역', hint: '멘토링 총괄표의 [권역] 칸에 모든 줄 같은 값으로 들어갑니다(예: 중부권). [운영사] 칸은 발주처 기관명' },
   { name: 'client_name', label: '발주처 기관명', hint: '모든 화면·문서·알림의 {client} 에 반영', required: true },
   { name: 'client_short', label: '발주처 약칭' },
   { name: 'client_seal_name', label: '발주처 직인 명의', hint: '관찰의견서·정산서 직인 자리' },

@@ -1993,6 +1993,9 @@ export type Database = {
           rate_id: string | null;
           report_kind: string;
           report_registered_at: string | null;
+          report_topic: string | null;
+          report_topic_at: string | null;
+          report_topic_doc_path: string | null;
           result: string | null;
           round_no: number;
           settlement_id: string | null;
@@ -2021,6 +2024,9 @@ export type Database = {
           rate_id?: string | null;
           report_kind?: string;
           report_registered_at?: string | null;
+          report_topic?: string | null;
+          report_topic_at?: string | null;
+          report_topic_doc_path?: string | null;
           result?: string | null;
           round_no: number;
           settlement_id?: string | null;
@@ -2049,6 +2055,9 @@ export type Database = {
           rate_id?: string | null;
           report_kind?: string;
           report_registered_at?: string | null;
+          report_topic?: string | null;
+          report_topic_at?: string | null;
+          report_topic_doc_path?: string | null;
           result?: string | null;
           round_no?: number;
           settlement_id?: string | null;
@@ -2562,6 +2571,9 @@ export type Database = {
           client_seal_name: string | null;
           client_short: string | null;
           contract_title: string | null;
+          allowance_title: string | null;
+          summary_title: string | null;
+          report_region: string | null;
           converter_settings: Json;
           converter_last_run_at: string | null;
           converter_run_requested_at: string | null;
@@ -2602,6 +2614,9 @@ export type Database = {
           client_seal_name?: string | null;
           client_short?: string | null;
           contract_title?: string | null;
+          allowance_title?: string | null;
+          summary_title?: string | null;
+          report_region?: string | null;
           converter_settings?: Json;
           converter_last_run_at?: string | null;
           converter_run_requested_at?: string | null;
@@ -2642,6 +2657,9 @@ export type Database = {
           client_seal_name?: string | null;
           client_short?: string | null;
           contract_title?: string | null;
+          allowance_title?: string | null;
+          summary_title?: string | null;
+          report_region?: string | null;
           converter_settings?: Json;
           converter_last_run_at?: string | null;
           converter_run_requested_at?: string | null;

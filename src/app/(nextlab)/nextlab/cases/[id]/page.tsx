@@ -151,7 +151,14 @@ export default async function Page({ params }: { params: { id: string } }) {
       {/* 종결 요청 상태에서는 검수 패널을 "지금 할 일" 바로 아래에 — 스크롤 없이 승인/보완 (2026-09-24) */}
       {showReview && (
         <div id="review" className="scroll-mt-40">
-          <ClosureReviewPanel caseId={item.id} estimates={estimateProps} observationUrl={obsFile?.url ?? null} canApprove={{ ok: approval.ok, reason: approval.reason ?? '' }} canReview={hasCapability(ctx, 'review')} canRevise={canTransition('review_revision', item.status)} />
+          <ClosureReviewPanel
+            caseId={item.id}
+            estimates={estimateProps}
+            observationUrl={obsFile?.url ?? null}
+            canApprove={{ ok: approval.ok, reason: approval.reason ?? '', settledAlready: 'settledAlready' in approval ? !!approval.settledAlready : false }}
+            settledBefore={settlements
+              .filter((s) => s.status !== 'canceled')
+              .map((s) => ({ id: s.id, mentorName: s.mentorName, kind: s.kind, rounds: s.roundCount, gross: Number(s.gross), net: Number(s.net), batchTitle: s.batchTitle ?? null, batchStatus: s.batchStatus ?? null }))} canReview={hasCapability(ctx, 'review')} canRevise={canTransition('review_revision', item.status)} />
         </div>
       )}
       <CaseDetailShell item={item} history={history} predecessors={predecessors} successors={successors} branding={ctx.branding} basePath="/nextlab/cases" showLoginId>

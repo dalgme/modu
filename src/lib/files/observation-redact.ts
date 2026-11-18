@@ -119,7 +119,7 @@ export async function redactPdf(bytes: Uint8Array): Promise<RedactOutcome> {
 
 /* ── 한글(HWP·HWPX) ──────────────────────────────────────────────────── */
 
-interface LayoutRun {
+export interface LayoutRun {
   text: string;
   x: number;
   y: number;
@@ -133,16 +133,16 @@ interface LayoutRun {
   cellPath?: unknown[];
 }
 
-interface CellRef {
+export interface CellRef {
   sec: number;
   para: number;
   ctrl: number;
   cell: number;
 }
 
-const cellKeyOf = (r: LayoutRun) => (r.cellIdx === undefined ? undefined : `${r.secIdx ?? 0}:${r.parentParaIdx}:${r.controlIdx}:${r.cellIdx}:${(r.cellPath ?? []).length}`);
+export const cellKeyOf = (r: LayoutRun) => (r.cellIdx === undefined ? undefined : `${r.secIdx ?? 0}:${r.parentParaIdx}:${r.controlIdx}:${r.cellIdx}:${(r.cellPath ?? []).length}`);
 
-function runsOf(json: string): LayoutRun[] {
+export function runsOf(json: string): LayoutRun[] {
   try {
     const v = JSON.parse(json) as { runs?: LayoutRun[] };
     return Array.isArray(v.runs) ? v.runs : [];
@@ -152,7 +152,7 @@ function runsOf(json: string): LayoutRun[] {
 }
 
 /** 라벨 상자와 겹치는 첫 칸 글자(최상위 표 칸만 — 중첩 표는 null) */
-function labelCell(runs: LayoutRun[], label: Rect): CellRef | null {
+export function labelCell(runs: LayoutRun[], label: Rect): CellRef | null {
   const cx = label.x + Math.min(label.w, 4) / 2;
   const cy = label.y + label.h / 2;
   const r = runs.find((x) => x.cellIdx !== undefined && cx >= x.x - 1 && cx <= x.x + x.w + 1 && cy >= x.y - 1 && cy <= x.y + x.h + 1);
@@ -160,7 +160,7 @@ function labelCell(runs: LayoutRun[], label: Rect): CellRef | null {
   return { sec: r.secIdx ?? 0, para: r.parentParaIdx, ctrl: r.controlIdx, cell: r.cellIdx! };
 }
 
-function cellsOf(doc: { getTableCellBboxes(s: number, p: number, c: number, hint?: number | null): string }, ref: Omit<CellRef, 'cell'>, page: number): CellBox[] {
+export function cellsOf(doc: { getTableCellBboxes(s: number, p: number, c: number, hint?: number | null): string }, ref: Omit<CellRef, 'cell'>, page: number): CellBox[] {
   try {
     const v = JSON.parse(doc.getTableCellBboxes(ref.sec, ref.para, ref.ctrl, page)) as CellBox[];
     return Array.isArray(v) ? v : [];

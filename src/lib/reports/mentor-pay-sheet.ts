@@ -61,7 +61,7 @@ export function buildMentorPaySheet(
     rates: AllowanceRates;
   },
 ) {
-  const ws = wb.addWorksheet('멘토별 수당', { views: [{ state: 'frozen', xSplit: 2, ySplit: 3 }], pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '3:3' } });
+  const ws = wb.addWorksheet('멘토별 회차 수당', { views: [{ state: 'frozen', xSplit: 2, ySplit: 3 }], pageSetup: { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: '3:3' } });
   const R = o.roundCount;
   const TIME = (n: number) => 3 + n; // n = 0-based
   const FEE = (n: number) => 3 + R + n;

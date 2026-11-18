@@ -145,7 +145,10 @@ function Row({ r, canReview }: { r: ReviewQueueItem; canReview: boolean }) {
           {r.status === 'ready' && <Chip ok warn={false} label="서류 완비 · 종결 요청 전" />}
         </div>
       </td>
-      <td className="hidden px-3 py-2 text-right font-semibold tabular-nums md:table-cell">{formatKRW(r.expectedNet)}</td>
+      <td className="hidden px-3 py-2 text-right font-semibold tabular-nums md:table-cell">
+        {formatKRW(r.expectedNet)}
+        {r.settledCount > 0 && <span className="block text-[11px] font-normal text-sky-700 dark:text-sky-300">이미 정산 {formatKRW(r.settledNet)}{r.settledCount > 1 ? ` (${r.settledCount}건)` : ''}</span>}
+      </td>
       <td className="px-3 py-2 text-right">
         <Link href={`/nextlab/cases/${r.caseId}#review`} className="inline-flex h-8 items-center rounded-md border bg-background px-2.5 text-xs font-semibold hover:bg-accent">
           {canReview ? (r.status === 'revision_requested' ? '상세 보기' : '검수하기') : '상세 보기'}

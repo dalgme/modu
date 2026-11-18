@@ -47,7 +47,7 @@ describe('멘토별 수당 시트', () => {
       taxLabel: taxHeader(rule),
       rates: { online: 80000, offline: 100000 },
     });
-    const ws = wb.getWorksheet('멘토별 수당')!;
+    const ws = wb.getWorksheet('멘토별 회차 수당')!;
     // 머리글: 순번 성명 1~3회차(시간) 1~3회차(수당) 세금 실지급
     expect([1, 2, 3, 6, 9, 10].map((c) => ws.getCell(3, c).value)).toEqual(['순번', '성명', '1회차(시간)', '1회차(수당)', '기타소득세(8.8%)', '실 지급액']);
     // 가멘토: 1회차 오프라인 1시간 100,000 / 2회차 예정 / 3회차 X

@@ -34,6 +34,9 @@ export interface ReviewQueueItem {
   observationRequired: boolean;
   surveyAnswered: boolean;
   expectedNet: number;
+  /** (2026-11-18) 이 케이스에서 이미 확정된 정산(부분 정산 등) 실지급 합계·건수 — 예상액 0원이 '누락'으로 보이지 않게 */
+  settledNet: number;
+  settledCount: number;
   /** 보완 요청 사유 (revision_requested 일 때 최근 reviews.comment) */
   revisionComment: string | null;
 }
@@ -82,6 +85,12 @@ export async function listReviewQueue(programId: string, groupId: string | null)
   }
   const revisionComment = new Map<string, string>();
   for (const r of reviews ?? []) if (!revisionComment.has(r.case_id) && r.comment) revisionComment.set(r.case_id, r.comment);
+  // 이미 확정된 정산(취소 아님) — 멘토 변경·부분 정산으로 진행 회차가 먼저 정산된 케이스
+  const settledRows = await fetchAllIn<{ case_id: string; net: number }>(caseIds, (chunk, from, to) =>
+    admin.from('settlements').select('case_id, net').in('case_id', chunk).neq('status', 'canceled').range(from, to),
+  );
+  const settledByCase = new Map<string, number[]>();
+  for (const r of settledRows) settledByCase.set(r.case_id, [...(settledByCase.get(r.case_id) ?? []), Number(r.net)]);
   const logsByCase = new Map<string, typeof logs>();
   for (const l of logs) logsByCase.set(l.case_id, [...(logsByCase.get(l.case_id) ?? []), l]);
 
@@ -120,6 +129,8 @@ export async function listReviewQueue(programId: string, groupId: string | null)
       observationRequired: c.early_closure_at ? false : (obsRequired.get(c.support_type_id) ?? true),
       surveyAnswered: surveyed.has(c.id),
       expectedNet: est.reduce((s, e) => s + e.result.net, 0),
+      settledNet: (settledByCase.get(c.id) ?? []).reduce((s, x) => s + x, 0),
+      settledCount: (settledByCase.get(c.id) ?? []).length,
       revisionComment: status === 'revision_requested' ? (revisionComment.get(c.id) ?? null) : null,
     });
   }

@@ -23,6 +23,7 @@ import {
 } from '@/lib/reports/allowance-model';
 import { BOX, C, CNT, HOURS, MONEY, col, font, fx, head, medium, solid, thin } from '@/lib/excel/styled';
 import { buildMentorPaySheet, paidAmount, taxHeader, type MentorBlock } from '@/lib/reports/mentor-pay-sheet';
+import { buildAllowanceFormSheet, roundShortName } from '@/lib/reports/allowance-form-sheet';
 
 /**
  * 멘토링 수당 산출내역 엑셀 (2026-10-27) — 창경이 1기 1R 에 손으로 만든 "멘토별 수당산출내역" 을
@@ -42,7 +43,7 @@ function toRule(p: WithholdingPolicy): TaxRule {
 export async function buildAllowanceWorkbook(programId: string, groupId: string): Promise<{ ok: true; buffer: Buffer; fileName: string; rows: number } | { ok: false; error: string }> {
   const admin = createAdminClient();
   const [{ data: program }, { data: group }] = await Promise.all([
-    admin.from('programs').select('name, contract_title, operator_name, withholding_params, default_withholding_method').eq('id', programId).maybeSingle(),
+    admin.from('programs').select('name, contract_title, allowance_title, operator_name, withholding_params, default_withholding_method').eq('id', programId).maybeSingle(),
     admin.from('support_types').select('id, name, code, program_id, required_rounds, withholding_method').eq('id', groupId).maybeSingle(),
   ]);
   if (!program || !group || group.program_id !== programId) return { ok: false, error: '이 행사의 사업그룹이 아닙니다.' };
@@ -341,7 +342,27 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
   d.getColumn(K.key).hidden = true;
   d.autoFilter = { from: { row: 5, column: 1 }, to: { row: LAST, column: K.note } };
 
-  /* ───────── 멘토별 수당 (창경 1기 1R 수당표 서식) ───────── */
+  /* ───────── 멘토링 수당 (사용자 제공 수당 양식, 2026-11-18) — 멘토 1명 1줄 ───────── */
+  {
+    const grossOf = (b: MentorBlock) => b.rows.reduce((a, row) => a + row.slots.reduce((a2, _x, n) => a2 + paidAmount(logByCaseRound.get(`${row.caseId}:${n + 1}`), b.mentorId), 0), 0);
+    const paidLogs = logs.filter((l) => l.report_registered_at && !(l.group_session_id && !l.group_fee_holder));
+    const maxHours = paidLogs.reduce((m, l) => Math.max(m, (new Date(l.ended_at).getTime() - new Date(l.started_at).getTime()) / 3600000), 0);
+    const prefix = ((program.allowance_title as string | null) || (program.contract_title as string | null) || program.name).trim();
+    buildAllowanceFormSheet(wb, {
+      title: `${prefix} ${roundShortName(group.name)} 진출자 멘토링 수당`,
+      taxLabel: taxHeader(effectiveRule(ruleFor('__default__'))),
+      rows: blocks
+        .map((b) => {
+          const gross = grossOf(b);
+          return { name: b.name, gross, tax: mentorTax(gross, effectiveRule(b.rule)) };
+        })
+        .filter((r) => r.gross > 0),
+      rates,
+      maxHours,
+    });
+  }
+
+  /* ───────── 멘토별 회차 수당 (창경 1기 1R 수당표 서식 — 회차별 멘티·시간·수당) ───────── */
   buildMentorPaySheet(wb, {
     title: `${program.name} ${group.name} 멘토링 수당`,
     roundCount,
@@ -537,8 +558,8 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
     { type: 'expression', priority: 3, formulae: [`E${okRow + 1}<>0`], style: { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFFEB9C' } }, font: { color: { argb: 'FF9C5700' } } } },
   ] });
 
-  // 시트 순서: 멘토별 수당 · 총괄 · 멘토별 요약 · 회차별 상세 · 단가표
-  const order = ['멘토별 수당', '총괄', '멘토별 요약', '회차별 상세', '단가표'];
+  // 시트 순서: 멘토링 수당(양식) · 멘토별 회차 수당 · 총괄 · 멘토별 요약 · 회차별 상세 · 단가표
+  const order = ['멘토링 수당', '멘토별 회차 수당', '총괄', '멘토별 요약', '회차별 상세', '단가표'];
   wb.worksheets.forEach((ws) => { (ws as unknown as { orderNo: number }).orderNo = order.indexOf(ws.name); });
   wb.views = [{ x: 0, y: 0, width: 20000, height: 12000, firstSheet: 0, activeTab: 0, visibility: 'visible' }];
 

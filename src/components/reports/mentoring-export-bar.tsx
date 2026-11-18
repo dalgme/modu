@@ -2,10 +2,11 @@ import { FileSpreadsheet } from 'lucide-react';
 
 import { createAdminClient } from '@/lib/supabase/admin';
 import { ExcelButton } from '@/components/common/excel-button';
+import { SummaryTableButton } from '@/components/reports/summary-table-button';
 
 /**
  * 멘토링 실적 엑셀 바 (2026-10-27) — 서버 컴포넌트, 링크만.
- * ① 멘토링 수당 산출내역(라운드별, 수식·색) ② 멘티별 멘토링 현황.
+ * ① 멘토링 수당 산출내역(라운드별, 수식·색 — 첫 시트 = 멘토링 수당 양식) ② 멘티별 멘토링 현황 ③ 멘토링 총괄표(회차 1건 1줄, 2026-11-18).
  * 범위가 그룹이면 그 그룹, 행사 전체면 수당 산출내역은 라운드마다 버튼을 보인다.
  */
 export async function MentoringExportBar({ programId, groupId, groupName }: { programId: string; groupId: string | null; groupName: string | null }) {
@@ -26,6 +27,7 @@ export async function MentoringExportBar({ programId, groupId, groupName }: { pr
         ) : (
           groups.map((g) => <ExcelButton key={g.id} href={href('allowance', g.id)} label={`수당 산출내역 · ${g.name}`} title="총괄 · 멘토별 요약 · 회차별 상세 · 단가표" />)
         )}
+        <SummaryTableButton groupId={groupId} label={`멘토링 총괄표 (${groupId ? (groupName ?? '현재 그룹') : '행사 전체'})`} />
         <ExcelButton href={href('mentee', groupId ?? undefined)} label={`멘티별 멘토링 현황 (${groupId ? (groupName ?? '현재 그룹') : '행사 전체'})`} title="멘티마다 배정 멘토 · 온/오프라인 회차와 시간 · 아이템 · 운영사" />
       </div>
     </section>
