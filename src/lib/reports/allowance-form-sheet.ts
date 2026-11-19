@@ -1,6 +1,7 @@
 import type ExcelJS from 'exceljs';
 
 import { MONEY, font, fx, solid } from '@/lib/excel/styled';
+import { EXPECTED_FMT, EXPECTED_TOTAL_FMT } from '@/lib/reports/allowance-expected';
 
 /**
  * "멘토링 수당" 양식 (2026-11-18) — 사용자 제공 수당 양식 그대로: 멘토 1명 = 1줄.
@@ -8,12 +9,19 @@ import { MONEY, font, fx, solid } from '@/lib/excel/styled';
  *   → 소계(기타소득세·실 지급액 노란 칸) → 총합(= 소계 기타소득세 + 소계 실 지급액 = 수당 합계)
  *   오른쪽 표 = 시간 · 수당 (단가가 온·오프라인 같으면 "온오프라인/N시간").
  * 수당 = 보고서 등록 회차의 금액 스냅샷 합계(멘토별 회차 수당 시트와 같은 값), 세금 = 멘토 합계 기준(같은 함수).
+ * (2026-11-18) 아직 끝나지 않은 멘티의 등록된 일정(보고서 전)도 예상 수당으로 더한다 — 그 멘토의 수당·세금·실 지급액은
+ * "200,000(예상)" 으로 보이고(값은 숫자), 칸 메모에 확정·예상 금액을 나눠 적는다. 소계·총합은 "(예상 포함)".
  * 서버 조회와 분리 — allowance-workbook.ts 가 값을 넣어 호출하고, 테스트는 바로 그린다.
  */
 export interface AllowanceFormRow {
   name: string;
+  /** 확정 + 예상 */
   gross: number;
   tax: number;
+  /** gross 중 예상(보고서 전 일정) 금액 */
+  expected?: number;
+  /** 예상 일정 수 */
+  expectedRounds?: number;
 }
 
 export interface AllowanceFormInput {
@@ -79,14 +87,22 @@ export function buildAllowanceFormSheet(wb: ExcelJS.Workbook, o: AllowanceFormIn
     ws.getCell(r, 4).value = row.gross;
     ws.getCell(r, 5).value = row.tax;
     ws.getCell(r, 6).value = fx(`D${r}-E${r}`, row.gross - row.tax);
+    const exp = row.expected ?? 0;
     for (let c = 1; c <= 6; c++) {
       const cell = ws.getCell(r, c);
       cell.font = font({ size: 11 });
       cell.alignment = { horizontal: c >= 4 ? 'right' : 'center', vertical: 'middle' };
-      if (c >= 4) cell.numFmt = NUM;
+      if (c >= 4) cell.numFmt = exp > 0 ? EXPECTED_FMT : NUM;
+    }
+    if (exp > 0) {
+      ws.getCell(r, 4).note = `확정 ${(row.gross - exp).toLocaleString('ko-KR')}원 + 예상 ${exp.toLocaleString('ko-KR')}원(보고서 전 일정 ${row.expectedRounds ?? 0}회)`;
+      for (let c = 4; c <= 6; c++) ws.getCell(r, c).font = font({ size: 11, color: { argb: 'FF9C5700' } });
     }
     ws.getRow(r).height = 20;
   });
+  const expSum = o.rows.reduce((a, r) => a + (r.expected ?? 0), 0);
+  const expRounds = o.rows.reduce((a, r) => a + (r.expectedRounds ?? 0), 0);
+  const grossSum = o.rows.reduce((a, r) => a + r.gross, 0);
   const last = first + Math.max(o.rows.length, 1) - 1;
   const S = last + 1; // 소계
   const T = S + 1; // 총합
@@ -117,6 +133,7 @@ export function buildAllowanceFormSheet(wb: ExcelJS.Workbook, o: AllowanceFormIn
   }
   ws.getCell(S, 5).fill = solid(YELLOW);
   ws.getCell(S, 6).fill = solid(YELLOW);
+  if (expSum > 0) for (const [r, c] of [[S, 5], [S, 6], [T, 5]] as const) ws.getCell(r, c).numFmt = EXPECTED_TOTAL_FMT;
 
   // 표 테두리(가는 선 + 바깥 굵은 선)
   for (let r = 3; r <= T; r++) {
@@ -149,9 +166,14 @@ export function buildAllowanceFormSheet(wb: ExcelJS.Workbook, o: AllowanceFormIn
     v.alignment = { horizontal: 'right', vertical: 'middle' };
   });
 
-  const widths = [7, 12, 16, 13, 17, 13, 5, 18, 12];
+  // "(예상)"·"(예상 포함)" 이 붙으면 금액 칸이 넓어야 ### 로 보이지 않는다
+  const widths = expSum > 0 ? [7, 12, 16, 19, 22, 22, 5, 18, 12] : [7, 12, 16, 13, 17, 13, 5, 18, 12];
   widths.forEach((w, i) => (ws.getColumn(i + 1).width = w));
   ws.getCell(T + 2, 1).value = '※ 수당 = 보고서까지 등록된 회차의 금액 합계(시간당 단가 × 운영시간). 기타소득세는 멘토별 합계 기준. 주민등록번호는 플랫폼이 보관하지 않아 빈칸입니다.';
   ws.getCell(T + 2, 1).font = font({ size: 9, color: { argb: 'FF595959' } });
+  if (expSum > 0) {
+    ws.getCell(T + 3, 1).value = `※ (예상) = 멘토링이 아직 끝나지 않은 멘티의 등록된 일정(보고서 전 ${expRounds}회)을 일정대로 진행한다고 보고 더한 금액 — 확정 ${(grossSum - expSum).toLocaleString('ko-KR')}원 + 예상 ${expSum.toLocaleString('ko-KR')}원 = ${grossSum.toLocaleString('ko-KR')}원. 실제 지급은 보고서 등록·검수 후 확정됩니다(멘토별 내역은 수당 칸 메모).`;
+    ws.getCell(T + 3, 1).font = font({ size: 9, bold: true, color: { argb: 'FF9C5700' } });
+  }
   return ws;
 }

@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import { kstToday } from '@/lib/excel/sheet';
 import { C, MONEY, col, font, fx, head, solid } from '@/lib/excel/styled';
 import type { AllowanceRates, AllowanceSlot, TaxRule } from '@/lib/reports/allowance-model';
+import { EXPECTED_FMT, EXPECTED_TOTAL_FMT } from '@/lib/reports/allowance-expected';
 
 /**
  * 멘토링 수당 산출내역의 첫 시트 "멘토별 수당" (2026-11-16) — 창경이 1기 1R 에 손으로 만든 수당표와 같은 모양.
@@ -19,12 +20,44 @@ export interface MentorBlock {
 
 /* ─────────────────────────────── 멘토별 수당 시트 (2026-11-16) ─────────────────────────────── */
 
-export type PayLog = { case_id: string; round_no: number; mentor_id: string; mode: string; started_at: string; ended_at: string; report_registered_at: string | null; amount_snapshot: number; group_session_id: string | null; group_fee_holder: boolean };
+export type PayLog = {
+  case_id: string;
+  round_no: number;
+  mentor_id: string;
+  mode: string;
+  started_at: string;
+  ended_at: string;
+  report_registered_at: string | null;
+  amount_snapshot: number;
+  group_session_id: string | null;
+  group_fee_holder: boolean;
+  /** 보고서 전이지만 예상 수당으로 넣는 일정(allowance-expected.ts isExpectedRound) — 2026-11-18 */
+  expected?: boolean;
+};
 
 /** 이 멘토에게 지급되는 그 회차 금액 — 보고서 등록 + 본인 진행 회차의 금액 스냅샷(그룹멘토링 비대표 회차는 0원) */
 export function paidAmount(l: PayLog | undefined, mentorId: string): number {
   if (!l || l.mentor_id !== mentorId || !l.report_registered_at) return 0;
   return Number(l.amount_snapshot) || 0;
+}
+
+/** 예상 수당 — 보고서 전 일정 중 예상으로 넣는 회차의 금액 스냅샷(2026-11-18) */
+export function expectedAmount(l: PayLog | undefined, mentorId: string): number {
+  if (!l || !l.expected || l.mentor_id !== mentorId || l.report_registered_at) return 0;
+  return Number(l.amount_snapshot) || 0;
+}
+
+/** 확정 + 예상 */
+export function blockAmounts(b: Pick<MentorBlock, 'mentorId' | 'rows'>, logByCaseRound: Map<string, PayLog>, roundCount: number): { paid: number; expected: number } {
+  let paid = 0;
+  let expected = 0;
+  for (const row of b.rows)
+    for (let n = 1; n <= roundCount; n++) {
+      const l = logByCaseRound.get(`${row.caseId}:${n}`);
+      paid += paidAmount(l, b.mentorId);
+      expected += expectedAmount(l, b.mentorId);
+    }
+  return { paid, expected };
 }
 
 export function taxHeader(rule: TaxRule): string {
@@ -75,7 +108,7 @@ export function buildMentorPaySheet(
   t.font = font({ bold: true, size: 16 });
   t.alignment = { horizontal: 'center', vertical: 'middle' };
   ws.getRow(1).height = 30;
-  ws.getCell(2, 1).value = `생성일 ${kstToday()} · 수당은 보고서까지 등록된 회차만(회차 등록 시점 금액) · (X) = 미시행 · 기타소득세·실지급액은 멘토별 합계 기준`;
+  ws.getCell(2, 1).value = `생성일 ${kstToday()} · 수당 = 보고서까지 등록된 회차(회차 금액) + 아직 진행 중인 멘티의 등록된 일정은 "(예상)" · (X) = 미시행 · 기타소득세·실지급액은 멘토별 합계 기준`;
   ws.getCell(2, 1).font = font({ size: 9, color: { argb: 'FF595959' } });
   ws.mergeCells(2, 1, 2, NET);
 
@@ -88,6 +121,10 @@ export function buildMentorPaySheet(
   const thick = { style: 'medium' as const, color: { argb: 'FF000000' } };
   let r = 4;
   const feeTotals = Array.from({ length: R }, () => 0);
+  const expTotals = Array.from({ length: R }, () => 0);
+  /** 예상 금액 칸 — 서식(…(예상))을 일반 서식 적용 뒤에 덮어쓴다 */
+  const expectedCells: [number, number][] = [];
+  let anyExpected = false;
   let taxTotal = 0;
   let netTotal = 0;
   for (const b of o.blocks) {
@@ -95,6 +132,7 @@ export function buildMentorPaySheet(
     const rowsN = Math.max(b.rows.length, 1);
     const e = s + rowsN - 1;
     let gross = 0;
+    let blockExpected = 0;
     b.rows.forEach((row, i) => {
       const rr = s + i;
       for (let n = 0; n < R; n++) {
@@ -104,9 +142,15 @@ export function buildMentorPaySheet(
         let text = `${row.mentee}\n(X)`;
         let fill: string | null = null;
         let amount: number | null = null;
+        let expected = false;
         if (l && l.mentor_id !== b.mentorId) {
           text = `${row.mentee}\n(다른 멘토 진행)`;
           fill = PAY.other;
+        } else if (l && !l.report_registered_at && l.expected) {
+          text = `${row.mentee}\n(예상 ${l.mode === 'online' ? '온라인' : '오프라인'}/${hoursText(hoursOf(l))})`;
+          fill = PAY.plan;
+          amount = expectedAmount(l, b.mentorId);
+          expected = true;
         } else if (l && !l.report_registered_at) {
           text = `${row.mentee}\n(예정 ${l.mode === 'online' ? '온라인' : '오프라인'}/${hoursText(hoursOf(l))})`;
           fill = PAY.plan;
@@ -120,6 +164,11 @@ export function buildMentorPaySheet(
         if (fill) tc.fill = solid(fill);
         fc.value = amount === null ? '-' : amount;
         if (amount !== null && fill) fc.fill = solid(fill);
+        if (expected) {
+          expectedCells.push([rr, FEE(n)]);
+          blockExpected += amount ?? 0;
+          expTotals[n] = (expTotals[n] ?? 0) + (amount ?? 0);
+        }
         gross += amount ?? 0;
         feeTotals[n] = (feeTotals[n] ?? 0) + (amount ?? 0);
       }
@@ -167,6 +216,12 @@ export function buildMentorPaySheet(
         cell.border = { left: c === 1 ? thick : black, right: c === NET ? thick : black, top: rr === s ? thick : black, bottom: rr === e ? thick : black };
       }
     }
+    if (blockExpected > 0) {
+      anyExpected = true;
+      ws.getCell(s, TAX).numFmt = EXPECTED_FMT;
+      ws.getCell(s, NET).numFmt = EXPECTED_FMT;
+    }
+    for (const [er, ec] of expectedCells.splice(0)) ws.getCell(er, ec).numFmt = EXPECTED_FMT;
     r = e + 1;
   }
   // 합계
@@ -185,6 +240,26 @@ export function buildMentorPaySheet(
     if (c >= FEE(0)) cell.numFmt = MONEY;
   }
   ws.getRow(T).height = 24;
+  if (anyExpected) {
+    // 예상 금액이 든 회차 열·세금·실지급 합계만 "(예상 포함)"
+    for (let n = 0; n < R; n++) if ((expTotals[n] ?? 0) > 0) ws.getCell(T, FEE(n)).numFmt = EXPECTED_TOTAL_FMT;
+    ws.getCell(T, TAX).numFmt = EXPECTED_TOTAL_FMT;
+    ws.getCell(T, NET).numFmt = EXPECTED_TOTAL_FMT;
+    // 그중 예상 — 회차별 예상 금액 합계(확정 금액과 구분해 보이게)
+    const E = T + 1;
+    ws.getCell(E, 1).value = '그중 예상';
+    ws.mergeCells(E, 1, E, 2);
+    for (let n = 0; n < R; n++) ws.getCell(E, FEE(n)).value = (expTotals[n] ?? 0) > 0 ? expTotals[n]! : '-';
+    for (let c = 1; c <= NET; c++) {
+      const cell = ws.getCell(E, c);
+      cell.font = font({ size: 10, color: { argb: 'FF7F6000' } });
+      cell.fill = solid(PAY.plan);
+      cell.border = { left: c === 1 ? thick : black, right: c === NET ? thick : black, top: black, bottom: thick };
+      cell.alignment = c <= 2 ? { horizontal: 'center', vertical: 'middle' } : { horizontal: 'right', vertical: 'middle' };
+      if (c >= FEE(0)) cell.numFmt = EXPECTED_FMT;
+    }
+    ws.getRow(E).height = 20;
+  }
 
   // 오른쪽 범례 — 시간별 수당(시간당 단가 × 시간)
   head(ws.getCell(3, LEG), '시간');
@@ -192,13 +267,16 @@ export function buildMentorPaySheet(
   const combos = new Map<string, { mode: string; h: number; fee: number }>();
   for (const b of o.blocks) for (const row of b.rows) for (let n = 0; n < R; n++) {
     const l = o.logByCaseRound.get(`${row.caseId}:${n + 1}`);
-    if (!l || l.mentor_id !== b.mentorId || !l.report_registered_at || (l.group_session_id && !l.group_fee_holder)) continue;
+    if (!l || l.mentor_id !== b.mentorId || !(l.report_registered_at || l.expected) || (l.group_session_id && !l.group_fee_holder)) continue;
     const mode = l.mode === 'online' ? '온라인' : '오프라인';
     const h = hoursOf(l);
     const k = `${mode}/${h}`;
     if (!combos.has(k)) combos.set(k, { mode, h, fee: Math.round(h * (l.mode === 'online' ? o.rates.online : o.rates.offline)) });
   }
-  const legend = [{ label: '미시행', fee: null as number | null, fill: null as string | null }, ...Array.from(combos.values())
+  const legend = [
+    { label: '미시행', fee: null as number | null, fill: null as string | null },
+    ...(anyExpected ? [{ label: '예상(보고서 전)', fee: null as number | null, fill: PAY.plan as string | null }] : []),
+    ...Array.from(combos.values())
     .sort((a, b2) => (a.mode === b2.mode ? a.h - b2.h : a.mode === '온라인' ? -1 : 1))
     .map((c2) => ({ label: `${c2.mode}/${hoursText(c2.h)}`, fee: c2.fee as number | null, fill: (c2.mode === '온라인' ? PAY.on : PAY.off) as string | null }))];
   legend.forEach((g, i) => {
@@ -223,10 +301,10 @@ export function buildMentorPaySheet(
   ws.getColumn(2).width = 9;
   for (let n = 0; n < R; n++) {
     ws.getColumn(TIME(n)).width = 15;
-    ws.getColumn(FEE(n)).width = 11;
+    ws.getColumn(FEE(n)).width = anyExpected ? 20 : 11;
   }
-  ws.getColumn(TAX).width = 13;
-  ws.getColumn(NET).width = 13;
+  ws.getColumn(TAX).width = anyExpected ? 21 : 13;
+  ws.getColumn(NET).width = anyExpected ? 21 : 13;
   ws.getColumn(NET + 1).width = 3;
   ws.getColumn(LEG).width = 16;
   ws.getColumn(LEG + 1).width = 12;

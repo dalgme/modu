@@ -76,3 +76,66 @@ describe('멘토별 수당 시트', () => {
     expect(ws.getCell(6, 13).value).toBe(100000);
   });
 });
+
+describe('예상 수당(보고서 전 일정) — 2026-11-18', () => {
+  it('예상으로 넣는 일정 규칙', async () => {
+    const { isExpectedRound } = await import('./allowance-expected');
+    const open = { status: 'in_progress', outcome: null, menteeInactive: false, activeMentorId: 'm1' };
+    const plan = { mentor_id: 'm1', report_registered_at: null };
+    expect(isExpectedRound(plan, open)).toBe(true);
+    expect(isExpectedRound({ ...plan, report_registered_at: '2026-11-01' }, open)).toBe(false); // 확정 회차
+    expect(isExpectedRound(plan, { ...open, status: 'closure_requested' })).toBe(false); // 검수 단계
+    expect(isExpectedRound(plan, { ...open, outcome: 'gave_up' })).toBe(false); // 포기 표시
+    expect(isExpectedRound(plan, { ...open, menteeInactive: true })).toBe(false); // 비활성 멘티
+    expect(isExpectedRound(plan, { ...open, activeMentorId: 'm2' })).toBe(false); // 지금 담당이 아님
+    expect(isExpectedRound(plan, { ...open, status: 'reassignment_pending', activeMentorId: null })).toBe(false);
+    expect(isExpectedRound(plan, undefined)).toBe(false);
+  });
+
+  it('회차 칸 "(예상)" · 세금·실지급은 확정+예상 합계 · 그중 예상 줄', async () => {
+    const { blockAmounts, expectedAmount } = await import('./mentor-pay-sheet');
+    const { EXPECTED_FMT, EXPECTED_TOTAL_FMT } = await import('./allowance-expected');
+    const logs: PayLog[] = [
+      log({ case_id: 'c1', round_no: 1, mentor_id: 'm1', ended_at: '2026-10-10T03:00:00Z', amount_snapshot: 200000 }),
+      log({ case_id: 'c1', round_no: 2, mentor_id: 'm1', report_registered_at: null, ended_at: '2026-10-10T03:00:00Z', amount_snapshot: 200000, expected: true }),
+      log({ case_id: 'c1', round_no: 3, mentor_id: 'm1', report_registered_at: null }), // 예정이지만 예상 아님
+    ];
+    const byKey = new Map(logs.map((l) => [`${l.case_id}:${l.round_no}`, l]));
+    const blocks: MentorBlock[] = [{ no: 1, mentorId: 'm1', name: '가멘토', rule, rows: [{ caseId: 'c1', mentee: '김하나', slots: [], notes: [] }] }];
+    expect(expectedAmount(logs[1], 'm1')).toBe(200000);
+    expect(expectedAmount(logs[2], 'm1')).toBe(0);
+    expect(blockAmounts(blocks[0]!, byKey, 3)).toEqual({ paid: 200000, expected: 200000 });
+    const wb = new ExcelJS.Workbook();
+    buildMentorPaySheet(wb, {
+      title: 't',
+      roundCount: 3,
+      blocks,
+      logByCaseRound: byKey,
+      sessionMembers: new Map(),
+      taxOf: (b) => {
+        const a = blockAmounts(b, byKey, 3);
+        return mentorTax(a.paid + a.expected, rule);
+      },
+      taxLabel: taxHeader(rule),
+      rates: { online: 100000, offline: 100000 },
+    });
+    const ws = wb.getWorksheet('멘토별 회차 수당')!;
+    expect(ws.getCell(4, 4).value).toBe('김하나\n(예상 온라인/2시간)');
+    expect(ws.getCell(4, 7).value).toBe(200000);
+    expect(ws.getCell(4, 7).numFmt).toBe(EXPECTED_FMT);
+    expect(ws.getCell(4, 6).numFmt).not.toBe(EXPECTED_FMT); // 확정 회차는 일반 서식
+    expect(ws.getCell(4, 5).value).toBe('김하나\n(예정 온라인/1시간)');
+    expect(ws.getCell(4, 8).value).toBe('-');
+    const tax = mentorTax(400000, rule); // 160,000 → 32,000 + 3,200
+    expect(ws.getCell(4, 9).value).toBe(tax);
+    expect(ws.getCell(4, 9).numFmt).toBe(EXPECTED_FMT);
+    expect((ws.getCell(4, 10).value as { result: number }).result).toBe(400000 - tax);
+    // 합계(5행) — 예상 포함 표시, 그중 예상(6행)
+    expect((ws.getCell(5, 10).value as { result: number }).result).toBe(400000 - tax);
+    expect(ws.getCell(5, 10).numFmt).toBe(EXPECTED_TOTAL_FMT);
+    expect(ws.getCell(6, 1).value).toBe('그중 예상');
+    expect(ws.getCell(6, 7).value).toBe(200000);
+    expect(ws.getCell(6, 6).value).toBe('-');
+    expect(ws.getCell(5, 6).numFmt).not.toBe(EXPECTED_TOTAL_FMT); // 예상 없는 회차 열 합계는 일반 서식
+  });
+});

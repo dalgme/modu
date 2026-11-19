@@ -16,7 +16,8 @@ const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.s
 /**
  * 멘토링 실적 엑셀 (2026-10-27) — GET /api/nextlab/mentoring-export?kind=allowance|mentee|summary&group=
  *  - summary: 멘토링 총괄표 (회차 1건 1줄, 2026-11-18) — group 없으면 행사 전체
- *  - allowance: 멘토링 수당 산출내역 (총괄·멘토별 요약·회차별 상세·단가표, 수식·색) — 라운드 필수
+ *  - allowance: 멘토링 수당 산출내역 (총괄·멘토별 요약·회차별 상세·단가표, 수식·색) — 라운드 필수.
+ *               아직 끝나지 않은 멘티의 등록된 일정은 "(예상)" 금액으로 포함(기본) · &expected=0 이면 확정분만(2026-11-18)
  *  - mentee: 멘티별 멘토링 현황 (배정 멘토·온/오프라인 회차·시간·아이템·운영사) — group 없으면 행사 전체
  * group 이 없으면 현재 범위 그룹을 쓴다. 운영사·발주처.
  */
@@ -32,8 +33,8 @@ export async function GET(request: Request): Promise<Response> {
   if (kind === 'allowance' && !groupId) return NextResponse.json({ error: '수당 산출내역은 라운드(사업그룹)를 골라야 합니다.' }, { status: 400 });
 
   const built =
-    kind === 'allowance' ? await buildAllowanceWorkbook(ctx.programId, groupId!) : kind === 'summary' ? await buildSummaryTableWorkbook(ctx.programId, groupId) : await buildMenteeStatusWorkbook(ctx.programId, groupId);
+    kind === 'allowance' ? await buildAllowanceWorkbook(ctx.programId, groupId!, { includeExpected: sp.get('expected') !== '0' }) : kind === 'summary' ? await buildSummaryTableWorkbook(ctx.programId, groupId) : await buildMenteeStatusWorkbook(ctx.programId, groupId);
   if (!built.ok) return NextResponse.json({ error: built.error }, { status: 400 });
-  await recordSecurityEventSafe({ kind: 'export', severity: 'info', userId: profile.id, path: '/api/nextlab/mentoring-export', detail: { route: 'mentoring-export', kind, group_id: groupId, rows: built.rows, program_id: ctx.programId } });
+  await recordSecurityEventSafe({ kind: 'export', severity: 'info', userId: profile.id, path: '/api/nextlab/mentoring-export', detail: { route: 'mentoring-export', kind, group_id: groupId, expected: kind === 'allowance' ? sp.get('expected') !== '0' : undefined, rows: built.rows, program_id: ctx.programId } });
   return fileResponse(built.buffer, built.fileName, XLSX_TYPE);
 }

@@ -22,7 +22,9 @@ import {
   type TaxRule,
 } from '@/lib/reports/allowance-model';
 import { BOX, C, CNT, HOURS, MONEY, col, font, fx, head, medium, solid, thin } from '@/lib/excel/styled';
-import { buildMentorPaySheet, paidAmount, taxHeader, type MentorBlock } from '@/lib/reports/mentor-pay-sheet';
+import { blockAmounts, buildMentorPaySheet, taxHeader, type MentorBlock, type PayLog } from '@/lib/reports/mentor-pay-sheet';
+import { isExpectedRound } from '@/lib/reports/allowance-expected';
+import { loadInactiveMemberIds } from '@/lib/data/inactive-members';
 import { buildAllowanceFormSheet, roundShortName } from '@/lib/reports/allowance-form-sheet';
 
 /**
@@ -40,7 +42,11 @@ function toRule(p: WithholdingPolicy): TaxRule {
   return { method: 'none' };
 }
 
-export async function buildAllowanceWorkbook(programId: string, groupId: string): Promise<{ ok: true; buffer: Buffer; fileName: string; rows: number } | { ok: false; error: string }> {
+/**
+ * opts.includeExpected (기본 true, 2026-11-18): 아직 끝나지 않은 멘티의 등록된 일정(보고서 전)을 [멘토링 수당]·[멘토별 회차 수당]
+ * 시트에 "(예상)" 금액으로 더한다. false 면 보고서 등록 회차(확정분)만.
+ */
+export async function buildAllowanceWorkbook(programId: string, groupId: string, opts: { includeExpected?: boolean } = {}): Promise<{ ok: true; buffer: Buffer; fileName: string; rows: number } | { ok: false; error: string }> {
   const admin = createAdminClient();
   const [{ data: program }, { data: group }] = await Promise.all([
     admin.from('programs').select('name, contract_title, allowance_title, operator_name, withholding_params, default_withholding_method').eq('id', programId).maybeSingle(),
@@ -48,10 +54,12 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
   ]);
   if (!program || !group || group.program_id !== programId) return { ok: false, error: '이 행사의 사업그룹이 아닙니다.' };
 
-  const cases = await fetchAll<{ id: string; owner_name: string; support_type_id: string }>((f, t) =>
-    admin.from('cases').select('id, owner_name, support_type_id').eq('support_type_id', groupId).range(f, t),
+  const includeExpected = opts.includeExpected !== false;
+  const cases = await fetchAll<{ id: string; owner_name: string; support_type_id: string; status: string; mentee_id: string | null; mentoring_outcome: string | null }>((f, t) =>
+    admin.from('cases').select('id, owner_name, support_type_id, status, mentee_id, mentoring_outcome').eq('support_type_id', groupId).range(f, t),
   );
   const caseIds = cases.map((c) => c.id);
+  const caseById = new Map(cases.map((c) => [c.id, c]));
   const [assigns, logs, memberRows] = await Promise.all([
     fetchAllIn<{ case_id: string; mentor_id: string; is_active: boolean; end_kind: string | null }>(caseIds, (chunk, f, t) =>
       admin.from('mentor_assignments').select('case_id, mentor_id, is_active, end_kind').in('case_id', chunk).range(f, t),
@@ -72,8 +80,18 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
   const mentorIds = Array.from(pairs.keys());
   const users = await fetchAllIn<{ id: string; name: string }>(mentorIds, (chunk, f, t) => admin.from('users').select('id, name').in('id', chunk).range(f, t));
   const nameOf = new Map(users.map((u) => [u.id, u.name]));
-  const caseById = new Map(cases.map((c) => [c.id, c]));
-  const logByCaseRound = new Map(logs.map((l) => [`${l.case_id}:${l.round_no}`, l]));
+  // 예상 수당 대상 일정 — 진행 단계·포기/종료 표시 없음·활성 멘티·지금 담당 멘토의 보고서 전 회차
+  const inactive = includeExpected ? await loadInactiveMemberIds(programId, 'mentee') : new Set<string>();
+  const activeMentor = new Map<string, string>();
+  for (const a of assigns) if (a.is_active) activeMentor.set(a.case_id, a.mentor_id);
+  const payLogs: PayLog[] = logs.map((l) => {
+    const c = caseById.get(l.case_id);
+    const expected =
+      includeExpected &&
+      isExpectedRound(l, c ? { status: c.status, outcome: c.mentoring_outcome, menteeInactive: !!c.mentee_id && inactive.has(c.mentee_id), activeMentorId: activeMentor.get(c.id) ?? null } : undefined);
+    return { ...l, expected };
+  });
+  const logByCaseRound = new Map(payLogs.map((l) => [`${l.case_id}:${l.round_no}`, l]));
   const maxLogRound = logs.reduce((m, l) => Math.max(m, l.round_no), 0);
   const roundCount = Math.max(group.required_rounds ?? 0, maxLogRound, 1);
 
@@ -344,8 +362,7 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
 
   /* ───────── 멘토링 수당 (사용자 제공 수당 양식, 2026-11-18) — 멘토 1명 1줄 ───────── */
   {
-    const grossOf = (b: MentorBlock) => b.rows.reduce((a, row) => a + row.slots.reduce((a2, _x, n) => a2 + paidAmount(logByCaseRound.get(`${row.caseId}:${n + 1}`), b.mentorId), 0), 0);
-    const paidLogs = logs.filter((l) => l.report_registered_at && !(l.group_session_id && !l.group_fee_holder));
+    const paidLogs = payLogs.filter((l) => (l.report_registered_at || l.expected) && !(l.group_session_id && !l.group_fee_holder));
     const maxHours = paidLogs.reduce((m, l) => Math.max(m, (new Date(l.ended_at).getTime() - new Date(l.started_at).getTime()) / 3600000), 0);
     const prefix = ((program.allowance_title as string | null) || (program.contract_title as string | null) || program.name).trim();
     buildAllowanceFormSheet(wb, {
@@ -353,8 +370,10 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
       taxLabel: taxHeader(effectiveRule(ruleFor('__default__'))),
       rows: blocks
         .map((b) => {
-          const gross = grossOf(b);
-          return { name: b.name, gross, tax: mentorTax(gross, effectiveRule(b.rule)) };
+          const { paid, expected } = blockAmounts(b, logByCaseRound, roundCount);
+          const gross = paid + expected;
+          const expectedRounds = b.rows.reduce((a, row) => a + row.slots.filter((_x, n) => { const l = logByCaseRound.get(`${row.caseId}:${n + 1}`); return !!l?.expected && l.mentor_id === b.mentorId; }).length, 0);
+          return { name: b.name, gross, tax: mentorTax(gross, effectiveRule(b.rule)), expected, expectedRounds };
         })
         .filter((r) => r.gross > 0),
       rates,
@@ -373,7 +392,10 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
       for (const l of logs) if (l.group_session_id) m.set(l.group_session_id, [...(m.get(l.group_session_id) ?? []), caseById.get(l.case_id)?.owner_name ?? '-']);
       return m;
     })(),
-    taxOf: (b) => mentorTax(b.rows.reduce((a, row) => a + row.slots.reduce((a2, _x, n) => a2 + paidAmount(logByCaseRound.get(`${row.caseId}:${n + 1}`), b.mentorId), 0), 0), effectiveRule(b.rule)),
+    taxOf: (b) => {
+      const { paid, expected } = blockAmounts(b, logByCaseRound, roundCount);
+      return mentorTax(paid + expected, effectiveRule(b.rule));
+    },
     taxLabel: taxHeader(effectiveRule(ruleFor('__default__'))),
     rates,
   });
@@ -450,6 +472,14 @@ export async function buildAllowanceWorkbook(programId: string, groupId: string)
   g.getCell('B1').value = `${program.name} · ${group.name} — 멘토링 수당 산출내역`; g.getCell('B1').font = font({ bold: true, size: 15 });
   g.getCell('B2').value = `생성일 ${today} · 모든 숫자는 [회차별 상세] 시트에서 수식으로 계산됩니다. 수당은 보고서까지 등록된 회차만 계상합니다.`;
   g.getCell('B2').font = font({ size: 9, color: { argb: 'FF595959' } });
+  {
+    const exp = payLogs.filter((l) => l.expected);
+    if (exp.length) {
+      const sum = exp.reduce((a, l) => a + (Number(l.amount_snapshot) || 0), 0);
+      g.getCell('B3').value = `※ [멘토링 수당]·[멘토별 회차 수당] 시트는 아직 끝나지 않은 멘티의 등록된 일정(보고서 전) ${exp.length}회 · ${sum.toLocaleString('ko-KR')}원을 "(예상)"으로 더해 보입니다. 이 시트와 [멘토별 요약]·[회차별 상세]는 확정(보고서 등록) 기준입니다.`;
+      g.getCell('B3').font = font({ size: 9, bold: true, color: { argb: 'FF9C5700' } });
+    }
+  }
   const totalMentees = blocks.reduce((a, b) => a + b.rows.length, 0);
   const kpi: [string, string, number, string][] = [
     ['멘토', `COUNTA('멘토별 요약'!B${SR}:B${SL})`, blocks.length, '#,##0"명"'],

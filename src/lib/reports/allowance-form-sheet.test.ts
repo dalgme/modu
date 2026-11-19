@@ -55,3 +55,29 @@ describe('멘토링 수당 양식', () => {
     expect(v(ws.getCell('I6'))).toBe(300000);
   });
 });
+
+describe('멘토링 수당 양식 — 예상 수당(2026-11-18)', () => {
+  it('예상이 있는 멘토는 "(예상)" 서식 + 메모, 소계·총합은 "(예상 포함)"', async () => {
+    const { EXPECTED_FMT, EXPECTED_TOTAL_FMT } = await import('./allowance-expected');
+    const wb = new ExcelJS.Workbook();
+    const ws = buildAllowanceFormSheet(wb, {
+      title: 't',
+      taxLabel: '기타소득세(8.8%)',
+      rows: [
+        { name: '확정만', gross: 200000, tax: 17600 },
+        { name: '진행중', gross: 400000, tax: 35200, expected: 200000, expectedRounds: 1 },
+      ],
+      rates: { online: 100000, offline: 100000 },
+      maxHours: 2,
+    });
+    expect(ws.getCell(4, 4).numFmt).toBe('#,##0');
+    expect(v(ws.getCell(5, 4))).toBe(400000);
+    expect(ws.getCell(5, 4).numFmt).toBe(EXPECTED_FMT);
+    expect(ws.getCell(5, 6).numFmt).toBe(EXPECTED_FMT);
+    expect(String(ws.getCell(5, 4).note)).toContain('확정 200,000원 + 예상 200,000원');
+    expect(ws.getCell(6, 6).numFmt).toBe(EXPECTED_TOTAL_FMT); // 소계
+    expect(v(ws.getCell(7, 5))).toBe(600000); // 총합
+    expect(ws.getCell(7, 5).numFmt).toBe(EXPECTED_TOTAL_FMT);
+    expect(String(v(ws.getCell(10, 1)))).toContain('확정 400,000원 + 예상 200,000원 = 600,000원');
+  });
+});

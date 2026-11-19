@@ -14,18 +14,32 @@ export async function MentoringExportBar({ programId, groupId, groupName }: { pr
   const { data } = groupId ? { data: null } : await admin.from('support_types').select('id, name').eq('program_id', programId).order('sort_order');
   const groups = data ?? [];
   const href = (kind: 'allowance' | 'mentee', g?: string) => `/api/nextlab/mentoring-export?kind=${kind}${g ? `&group=${g}` : ''}`;
+  const confirmedOnly = (g: string) => `${href('allowance', g)}&expected=0`;
+  const linkCls = 'text-[11px] text-lime-800 underline underline-offset-2 hover:text-lime-950 dark:text-lime-300';
   return (
     <section className="flex flex-col gap-2 rounded-xl border-2 border-lime-300 bg-lime-50/40 p-3 dark:border-lime-800 dark:bg-lime-950/20">
       <div className="flex items-center gap-1.5">
         <FileSpreadsheet className="h-4 w-4 text-lime-700" />
         <h2 className="text-sm font-semibold">멘토링 실적 엑셀</h2>
-        <span className="text-xs text-muted-foreground">— 보고서까지 등록된 회차 기준, 받을 때마다 최신 데이터로 만듭니다.</span>
+        <span className="text-xs text-muted-foreground">— 받을 때마다 최신 데이터로 만듭니다. 수당 산출내역은 아직 끝나지 않은 멘티의 등록된 일정을 “200,000(예상)”처럼 함께 적습니다(확정분만 받으려면 옆 링크).</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         {groupId ? (
-          <ExcelButton href={href('allowance', groupId)} label={`멘토링 수당 산출내역 (${groupName ?? '현재 그룹'})`} title="총괄 · 멘토별 요약 · 회차별 상세 · 단가표 — 수식과 색이 들어간 엑셀" />
+          <span className="inline-flex items-center gap-1.5">
+            <ExcelButton href={href('allowance', groupId)} label={`멘토링 수당 산출내역 (${groupName ?? '현재 그룹'}) · 예상 포함`} title="확정 수당 + 아직 끝나지 않은 멘티의 등록된 일정(예상) — 수식과 색이 들어간 엑셀" />
+            <a href={confirmedOnly(groupId)} className={linkCls} title="보고서까지 등록된 회차만">
+              확정분만
+            </a>
+          </span>
         ) : (
-          groups.map((g) => <ExcelButton key={g.id} href={href('allowance', g.id)} label={`수당 산출내역 · ${g.name}`} title="총괄 · 멘토별 요약 · 회차별 상세 · 단가표" />)
+          groups.map((g) => (
+            <span key={g.id} className="inline-flex items-center gap-1.5">
+              <ExcelButton href={href('allowance', g.id)} label={`수당 산출내역 · ${g.name} · 예상 포함`} title="확정 수당 + 아직 끝나지 않은 멘티의 등록된 일정(예상)" />
+              <a href={confirmedOnly(g.id)} className={linkCls} title="보고서까지 등록된 회차만">
+                확정분만
+              </a>
+            </span>
+          ))
         )}
         <SummaryTableButton groupId={groupId} label={`멘토링 총괄표 (${groupId ? (groupName ?? '현재 그룹') : '행사 전체'})`} />
         <ExcelButton href={href('mentee', groupId ?? undefined)} label={`멘티별 멘토링 현황 (${groupId ? (groupName ?? '현재 그룹') : '행사 전체'})`} title="멘티마다 배정 멘토 · 온/오프라인 회차와 시간 · 아이템 · 운영사" />
