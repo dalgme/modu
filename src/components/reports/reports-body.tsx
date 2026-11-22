@@ -69,6 +69,8 @@ export function ReportsBody({
   caseFilterMentors,
   totalCases,
   reportFiles,
+  reportFilesCanSms = false,
+  reportFilesGroupId = null,
   scopeLabel = '행사 전체',
   roundProgress,
   generatedAt,
@@ -102,6 +104,9 @@ export function ReportsBody({
   caseFilterMentors?: { id: string; name: string }[];
   /** [보고서 파일] 탭 데이터 (2026-09-30) */
   reportFiles?: ReportFilesData;
+  /** 보고서 파일 탭 — 관찰의견서 미제출 요청 문자를 보낼 수 있는지(운영사 문자 권한) · 범위 라운드 (2026-11-22) */
+  reportFilesCanSms?: boolean;
+  reportFilesGroupId?: string | null;
   /** 개요 탭 핵심 지표 밴드 제목의 범위 (2026-10-01) */
   scopeLabel?: string;
   /** [회차별 현황] 탭 데이터 (2026-11-03) */
@@ -157,7 +162,7 @@ export function ReportsBody({
         </div>
       )}
 
-      {tab === 'files' && reportFiles && <ReportFilesPanel data={reportFiles} />}
+      {tab === 'files' && reportFiles && <ReportFilesPanel data={reportFiles} canSms={reportFilesCanSms} groupId={reportFilesGroupId} caseHrefBase={`${base}/cases`} />}
 
       {tab === 'rounds' && roundProgress && <RoundProgressPanel data={roundProgress} base={base} generatedAt={generatedAt ?? new Date().toISOString()} />}
 

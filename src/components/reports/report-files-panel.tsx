@@ -6,6 +6,8 @@ import { ObservationBundleButton } from '@/components/files/observation-bundle-b
 import { MergedReportBulkButton, MergedReportButton } from '@/components/files/merged-report-button';
 import { mergedProps } from '@/components/files/merged-report-section';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ObservationMissingPanel } from '@/components/reports/observation-missing-panel';
 
 /**
  * 리포트 [보고서 파일] 탭 (2026-09-30) — 업로드된 회차 보고서·관찰의견서를 받는 4가지 방법.
@@ -15,8 +17,9 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
  *  ④ 라운드별: 라운드 폴더 / 멘토 폴더 / 멘티 폴더 / 보고서·관찰의견서 ZIP
  * 서버 컴포넌트 — 클라이언트 버튼에는 문자열·숫자만 넘긴다(CLAUDE.md §6-10).
  */
-export function ReportFilesPanel({ data }: { data: ReportFilesData }) {
+export function ReportFilesPanel({ data, canSms = false, groupId = null, caseHrefBase = '/nextlab/cases' }: { data: ReportFilesData; canSms?: boolean; groupId?: string | null; caseHrefBase?: string }) {
   const totalFiles = data.groups.reduce((n, g) => n + g.fileCount, 0);
+  const missingTotal = data.obsMissing.rows.filter((r) => !r.outcomeLabel).length;
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-lg border border-violet-200 bg-violet-50/70 p-3 text-sm text-violet-950 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-100">
@@ -29,6 +32,9 @@ export function ReportFilesPanel({ data }: { data: ReportFilesData }) {
           <li><b>멘티별 합본 PDF</b> — 멘티마다 회차 보고서를 회차 순서대로 <b>PDF 한 개</b>로 합쳐 따로 저장해 두고 받습니다(아래 ‘멘티별 회차 보고서 합본’ · 멘티 표의 [합본 PDF])</li>
         </ol>
         <p className="mt-1 text-[11px] opacity-80">ZIP 은 이 브라우저에서 파일을 받아 묶습니다. 파일이 많으면 1~2분 걸릴 수 있으니 창을 닫지 마세요.</p>
+        <p className="mt-1 text-[11px] opacity-80">
+          멘티 수에는 회차를 한 번도 진행하지 않고 끝난 멘티(멘토링 포기·종료 표시·중도 종료·비활성화)를 넣지 않습니다{data.excludedCount > 0 ? ` — 이번 범위에서 ${data.excludedCount}명 제외` : ''}. 1회 이상 진행한 뒤 포기·종료한 멘티는 그대로 셉니다.
+        </p>
       </div>
 
       <Card className="border-2 border-emerald-300 dark:border-emerald-800">
@@ -92,7 +98,7 @@ export function ReportFilesPanel({ data }: { data: ReportFilesData }) {
 
       <Card className="border-2 border-slate-400 dark:border-slate-600">
         <CardHeader>
-          <CardTitle className="text-base">관찰의견서만 받기 (라운드 통합 · 원본 / 블라인드)</CardTitle>
+          <CardTitle className="text-base">관찰의견서 — 라운드 통합 받기(원본 / 블라인드) · 미제출 멘토 확인</CardTitle>
           <p className="text-xs text-muted-foreground">
             라운드의 관찰의견서만 <b>한 폴더</b>에 번호를 붙여 PDF 로 받습니다. 번호 순서 = <b>멘토별</b>(멘토 이름 → 멘티 이름순) 또는 <b>멘티별</b>(고유번호순).
             <br />· <b>원본</b>: 올라온 PDF 그대로 — “001. 멘토명멘토-멘티명멘티 관찰의견서.pdf”. 한글(HWP·HWPX)은 이 브라우저에서 PDF 로만 바꿉니다.
@@ -100,15 +106,31 @@ export function ReportFilesPanel({ data }: { data: ReportFilesData }) {
             <br />플랫폼에 저장된 원본은 어느 쪽이든 바뀌지 않습니다. 한글 파일은 줄바꿈·표 위치가 원본과 조금 다를 수 있습니다. 칸을 찾지 못한 파일은 이름 끝에 “(블라인드 미적용)”을 붙이고 끝난 뒤 목록으로 알려 드립니다.
           </p>
         </CardHeader>
-        <CardContent className="overflow-x-auto">
+        <CardContent>
+          <Tabs defaultValue="download">
+            <TabsList className="mb-3 h-auto flex-wrap">
+              <TabsTrigger value="download">관찰의견서 받기 (원본 / 블라인드)</TabsTrigger>
+              <TabsTrigger value="missing" className="gap-1">
+                미제출 멘토 확인 · 요청 문자
+                {missingTotal > 0 && <span className="rounded-full bg-red-600 px-1.5 text-[11px] font-bold text-white">{missingTotal}</span>}
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="download" className="overflow-x-auto">
           <table className="w-full min-w-[560px] text-sm">
-            <thead className="text-left text-xs text-muted-foreground"><tr><th className="py-1.5">라운드(사업그룹)</th><th>멘티</th><th>관찰의견서</th><th className="text-right">받기</th></tr></thead>
+            <thead className="text-left text-xs text-muted-foreground"><tr><th className="py-1.5">라운드(사업그룹)</th><th>멘티</th><th>관찰의견서</th><th>미제출</th><th className="text-right">받기</th></tr></thead>
             <tbody>
               {data.groups.map((g) => (
                 <tr key={g.id} className="border-t">
                   <td className="py-2 font-medium">{g.name}</td>
                   <td className="tabular-nums">{g.caseCount}명</td>
                   <td className="tabular-nums">{g.obsCount}개</td>
+                  <td className="tabular-nums">
+                    {(() => {
+                      const o = data.obsMissing.groups.find((x) => x.groupId === g.id);
+                      if (!o || !o.required) return <span className="text-xs text-muted-foreground">해당 없음</span>;
+                      return <span className={o.missing > 0 ? 'font-semibold text-red-600' : 'text-emerald-700'}>{o.missing}명</span>;
+                    })()}
+                  </td>
                   <td className="py-2 text-right">
                     {g.obsCount > 0 ? (
                       <div className="flex flex-col items-end gap-1.5">
@@ -131,6 +153,11 @@ export function ReportFilesPanel({ data }: { data: ReportFilesData }) {
               ))}
             </tbody>
           </table>
+            </TabsContent>
+            <TabsContent value="missing">
+              <ObservationMissingPanel data={data.obsMissing} canSms={canSms} groupId={groupId} caseHrefBase={caseHrefBase} />
+            </TabsContent>
+          </Tabs>
         </CardContent>
       </Card>
 

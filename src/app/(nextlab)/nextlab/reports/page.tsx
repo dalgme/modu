@@ -9,6 +9,7 @@ import { listLastNudges } from '@/lib/reports/delay-nudges';
 import { computeMonthlyTrend } from '@/lib/reports/trend';
 import { REPORT_TABS, ReportsBody, type ReportTab } from '@/components/reports/reports-body';
 import { loadReportFiles } from '@/lib/data/report-files';
+import { hasCapability } from '@/lib/auth/capabilities';
 import { loadRoundProgress } from '@/lib/reports/round-progress';
 
 export const dynamic = 'force-dynamic';
@@ -50,6 +51,8 @@ export default async function Page({ searchParams }: { searchParams: SP }) {
       <ReportsBody
         scopeLabel={ctx.group ? ctx.group.name : '행사 전체'}
         reportFiles={reportFiles}
+        reportFilesCanSms={hasCapability(ctx, 'sms')}
+        reportFilesGroupId={groupId}
         roundProgress={roundProgress}
         generatedAt={generatedAt}
         m={m}

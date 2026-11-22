@@ -47,6 +47,7 @@ export default async function Page({ searchParams }: { searchParams: SP }) {
       <ReportsBody
         scopeLabel={ctx.group ? ctx.group.name : '행사 전체'}
         reportFiles={reportFiles}
+        reportFilesGroupId={groupId}
         roundProgress={roundProgress}
         generatedAt={generatedAt}
         m={m}
