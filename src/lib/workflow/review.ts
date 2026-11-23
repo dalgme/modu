@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { observationRequiredFor } from '@/lib/workflow/observation-required';
+import { closureRoundBase } from '@/lib/workflow/observation-rule';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { queueNotification } from '@/lib/workflow/notifications';
 import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
@@ -48,13 +49,14 @@ export async function canApproveClosure(caseId: string): Promise<ApprovalReadine
     admin.from('settlements').select('id', { count: 'exact', head: true }).eq('case_id', caseId).neq('status', 'canceled'),
   ]);
   const rounds = logs ?? [];
-  // (2026-11-17) 중도 종결 승인된 케이스 = 등록된 회차까지로 승인(필수 회차 미달 허용·관찰의견서 면제). 등록 회차는 전부 보고서가 있어야 한다.
+  // (2026-11-17) 중도 종결 승인된 케이스 = 등록된 회차까지로 승인(필수 회차 미달 허용). 등록 회차는 전부 보고서가 있어야 한다.
+  // (2026-11-23) 관찰의견서 면제 폐지 — 중도 종결도 그룹 설정(관찰의견서 필요)이면 파일이 있어야 승인
   const earlyClosure = !!c.early_closure_at;
-  const required = earlyClosure ? Math.max(1, rounds.length) : (group?.required_rounds ?? 0);
+  const required = closureRoundBase(earlyClosure, rounds.length, group?.required_rounds ?? 0);
   const reported = rounds.filter((r) => r.report_registered_at).length;
   // 관찰의견서 = 업로드 파일만 인정 (P39 — 웹 작성 폐지, 종결 요청 게이트와 같은 기준)
   const hasObservation = !!obsFile;
-  const observationRequired = !earlyClosure && (await observationRequiredFor(c.support_type_id));
+  const observationRequired = await observationRequiredFor(c.support_type_id);
   const base = { reported, required, hasObservation, observationRequired, earlyClosure, settledAlready: (settledCount ?? 0) > 0 };
   const denied = assertTransition('review_approve', c.status);
   if (denied) return { ok: false, reason: denied, ...base };

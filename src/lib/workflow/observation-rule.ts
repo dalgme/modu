@@ -40,7 +40,18 @@ export function observationUploadGate(rounds: ObservationGateRound[], requiredRo
 /**
  * 관찰의견서 올리기·교체·삭제가 가능한 케이스 상태 (2026-09-30) — 회차 등록 가능 단계와 같다(멘토 배정·진행 중·보완 요청).
  * 종결 요청(검수 중) 이후에는 멘토가 바꿀 수 없다. 멘토 화면의 [수정 업로드]·[삭제] 버튼과 서버 게이트가 이 함수를 같이 읽는다.
+ * (2026-11-23) 중도 종결 승인 케이스는 멘토가 종결을 요청한 게 아니라 운영사가 검수 대기로 옮긴 것이라,
+ * 검수 대기(closure_requested) 중에도 관찰의견서를 올리고 바꿀 수 있다 — 중도 종결도 관찰의견서는 필수(면제 폐지).
  */
-export function observationEditable(status: string): boolean {
+export function observationEditable(status: string, earlyClosure = false): boolean {
+  if (earlyClosure && status === 'closure_requested') return true;
   return (TRANSITIONS.submit_round.from as readonly string[]).includes(status);
+}
+
+/**
+ * 관찰의견서 업로드 열림·종결 판정의 기준 회차 수 (2026-11-23) — 중도 종결 승인 케이스는 등록된 회차까지(최소 1),
+ * 그 외에는 그룹 필수 회차. 업로드 게이트·종결 준비·검수 승인·검수 대기열이 같이 읽는다.
+ */
+export function closureRoundBase(earlyClosure: boolean, registeredRounds: number, groupRequired: number): number {
+  return earlyClosure ? Math.max(1, registeredRounds) : groupRequired;
 }

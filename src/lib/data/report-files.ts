@@ -7,6 +7,7 @@ import { mergedReportStatusForCases } from '@/lib/files/merged-report';
 import type { MergedReportStatus } from '@/lib/files/merged-report-shared';
 import { loadInactiveMemberIds } from '@/lib/data/inactive-members';
 import { observationRequiredMap } from '@/lib/workflow/observation-required';
+import { closureRoundBase } from '@/lib/workflow/observation-rule';
 import { isProgressedRound } from '@/lib/workflow/force-end-rule';
 import { mentoringOutcomeLabel, normalizeMentoringOutcome } from '@/lib/workflow/mentoring-outcome';
 import { CASE_STATUS_META, isCaseStatus } from '@/types/case-status';
@@ -137,11 +138,11 @@ export async function loadReportFiles(programId: string, groupId: string | null)
     if (obs) gs.obsCount += 1;
     // 관찰의견서 대상·제출·미제출 (관찰의견서를 내는 라운드만)
     const required = obsRequired.get(c.support_type_id) ?? true;
-    if (required && !c.early_closure_at) {
+    if (required) {
       const os = obsStat.get(c.support_type_id) ?? obsStat.set(c.support_type_id, { target: 0, submitted: 0, missing: 0 }).get(c.support_type_id)!;
       os.target += 1;
       if (obs) os.submitted += 1;
-      if (isObservationMissing({ status: c.status, observationRequired: required, hasObservation: !!obs, earlyClosure: !!c.early_closure_at, countedInFiles: true })) {
+      if (isObservationMissing({ status: c.status, observationRequired: required, hasObservation: !!obs, countedInFiles: true })) {
         os.missing += 1;
         const mid = activeMentor.get(c.id) ?? null;
         missingRows.push({
@@ -152,10 +153,12 @@ export async function loadReportFiles(programId: string, groupId: string | null)
           mentorId: mid,
           mentorName: mid ? nameOf.get(mid) ?? null : null,
           mentorPhone: mid ? phoneOf.get(mid) ?? null : null,
-          statusLabel: isCaseStatus(c.status) ? CASE_STATUS_META[c.status].short : c.status,
-          outcomeLabel: mentoringOutcomeLabel(normalizeMentoringOutcome(c.mentoring_outcome), progressed.get(c.id) ?? 0),
+          statusLabel: `${c.early_closure_at ? '중도 종결 · ' : ''}${isCaseStatus(c.status) ? CASE_STATUS_META[c.status].short : c.status}`,
+          earlyClosure: !!c.early_closure_at,
+          // 중도 종결은 관찰의견서 필수라 '포기·종료 표시' 기본 제외 필터에 걸리지 않게 표시 이름을 비운다
+          outcomeLabel: c.early_closure_at ? null : mentoringOutcomeLabel(normalizeMentoringOutcome(c.mentoring_outcome), progressed.get(c.id) ?? 0),
           reportsDone: rounds.filter((r) => r.docId).length,
-          requiredRounds: g?.required_rounds ?? 0,
+          requiredRounds: closureRoundBase(!!c.early_closure_at, rounds.length, g?.required_rounds ?? 0),
         });
       }
     }

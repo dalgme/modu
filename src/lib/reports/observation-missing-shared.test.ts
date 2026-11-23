@@ -27,7 +27,7 @@ describe('보고서 파일 탭 멘티 수 — 진행 없이 끝난 멘티만 뺀
 });
 
 describe('관찰의견서 미제출', () => {
-  const base = { status: 'in_progress', observationRequired: true, hasObservation: false, earlyClosure: false, countedInFiles: true };
+  const base = { status: 'in_progress', observationRequired: true, hasObservation: false, countedInFiles: true };
   it('진행 단계 · 파일 없음 → 미제출', () => {
     expect(isObservationMissing(base)).toBe(true);
     expect(isObservationMissing({ ...base, status: 'revision_requested' })).toBe(true);
@@ -35,7 +35,8 @@ describe('관찰의견서 미제출', () => {
   it('제출함 · 관찰의견서 없는 라운드 · 중도 종결 · 검수 승인 이후 · 멘티 수에서 뺀 멘티 → 아님', () => {
     expect(isObservationMissing({ ...base, hasObservation: true })).toBe(false);
     expect(isObservationMissing({ ...base, observationRequired: false })).toBe(false);
-    expect(isObservationMissing({ ...base, earlyClosure: true })).toBe(false);
+    // 중도 종결(검수 대기)도 관찰의견서 필수 — 면제 폐지 (2026-11-23)
+    expect(isObservationMissing({ ...base, status: 'closure_requested' })).toBe(true);
     expect(isObservationMissing({ ...base, status: 'settlement_batched' })).toBe(false);
     expect(isObservationMissing({ ...base, status: 'withdrawn' })).toBe(false);
     expect(isObservationMissing({ ...base, countedInFiles: false })).toBe(false);

@@ -101,6 +101,10 @@ function decideAction(c: CaseListItem, rounds: RoundLite[], nextPlanned: RoundLi
     case 'withdrawn':
       return { key: 'inactive', label: CASE_STATUS_META[c.status].short, hint: '운영사가 처리 중입니다.', href, urgent: false };
     case 'closure_requested':
+      // (2026-11-23) 중도 종결 승인 케이스는 관찰의견서 없이 검수 대기로 올 수 있다 — 중도 종결도 관찰의견서 필수(면제 폐지)
+      if (observationRequired && !hasObservation) {
+        return { key: 'observation', label: '관찰의견서 업로드', hint: '중도 종결도 관찰의견서는 필수입니다. 진행한 회차까지의 내용으로 관찰의견서 파일을 올려야 운영사가 검수를 승인할 수 있습니다.', href: `${href}#observation`, urgent: true };
+      }
       return { key: 'wait_review', label: '운영사 검수 대기', hint: observationRequired ? '관찰의견서와 종결 요청이 접수되었습니다. 검수 결과를 기다려 주세요.' : '종결 요청이 접수되었습니다. 검수 결과를 기다려 주세요.', href, urgent: false };
     case 'revision_requested':
       return { key: 'revision', label: '보완 후 다시 종결 요청', hint: '운영사가 보완을 요청했습니다. 케이스의 보완 요청 내용을 확인하고 수정한 뒤 다시 종결을 요청하세요.', href, urgent: true };

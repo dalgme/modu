@@ -13,6 +13,8 @@ export function MentorCaseNextStep(p: {
   hasObservation: boolean;
   /** false = 관찰의견서가 필요 없는 라운드 — 문구에서 관찰의견서를 빼고 종결 요청으로 안내 */
   observationRequired?: boolean;
+  /** (2026-11-23) 멘토 중도 종결 승인 케이스 — 검수 대기 중에도 관찰의견서를 올려야 한다(면제 폐지) */
+  earlyClosure?: boolean;
   closureOk: boolean;
   closureHint: string;
   revisionNote: { comment: string | null; at: string } | null;
@@ -32,8 +34,15 @@ export function MentorCaseNextStep(p: {
       tone = 'action';
       break;
     case 'closure_requested':
-      title = '종결 요청 접수 — 운영사 검수 대기';
-      desc = `검수가 끝나면 정산이 확정되고 문자로 통보됩니다. 회차${obsReq ? '·관찰의견서' : ''}는 잠깁니다.`;
+      if (p.earlyClosure && obsReq && !p.hasObservation) {
+        title = '중도 종결 — 관찰의견서 파일을 올리세요';
+        desc = '중도 종결이 승인되어 검수 대기 중입니다. 중도 종결도 관찰의견서는 필수이며, 파일을 올려야 운영사가 검수를 승인하고 정산이 확정됩니다.';
+        anchor = '#observation';
+        tone = 'action';
+        break;
+      }
+      title = p.earlyClosure ? '중도 종결 — 운영사 검수 대기' : '종결 요청 접수 — 운영사 검수 대기';
+      desc = `검수가 끝나면 정산이 확정되고 문자로 통보됩니다. 회차${obsReq && !p.earlyClosure ? '·관찰의견서' : ''}는 잠깁니다.${p.earlyClosure && obsReq ? ' 관찰의견서는 검수 승인 전까지 수정할 수 있습니다.' : ''}`;
       break;
     case 'settlement_pending':
     case 'settlement_batched':

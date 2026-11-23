@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { observationRequiredMap } from '@/lib/workflow/observation-required';
+import { closureRoundBase } from '@/lib/workflow/observation-rule';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { fetchAllIn } from '@/lib/supabase/paginate';
 import { estimateSettlements } from '@/lib/settlement/settle';
@@ -122,11 +123,12 @@ export async function listReviewQueue(programId: string, groupId: string | null)
       enteredAt,
       reportedRounds: reported.length,
       // 승인 게이트(canApproveClosure)와 같은 기준 — 추가 회차는 별도 (P32 리뷰 #9). 중도 종결 승인 케이스는 등록된 회차까지(2026-11-17)
-      requiredRounds: c.early_closure_at ? Math.max(1, rounds.length) : (st?.required_rounds ?? 0),
+      requiredRounds: closureRoundBase(!!c.early_closure_at, rounds.length, st?.required_rounds ?? 0),
       earlyClosure: !!c.early_closure_at,
       extraRounds: extraOf.get(c.id) ?? 0,
       hasObservation: obsFile.has(c.id),
-      observationRequired: c.early_closure_at ? false : (obsRequired.get(c.support_type_id) ?? true),
+      // (2026-11-23) 중도 종결도 관찰의견서 필수 — 면제 폐지, 그룹 설정만 따른다
+      observationRequired: obsRequired.get(c.support_type_id) ?? true,
       surveyAnswered: surveyed.has(c.id),
       expectedNet: est.reduce((s, e) => s + e.result.net, 0),
       settledNet: (settledByCase.get(c.id) ?? []).reduce((s, x) => s + x, 0),

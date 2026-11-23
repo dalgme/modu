@@ -26,7 +26,7 @@ import { BundleDownloadButton } from '@/components/files/bundle-download-button'
 import { MergedReportSection, mergedProps } from '@/components/files/merged-report-section';
 import { mergedReportStatusFor } from '@/lib/files/merged-report';
 import { BusinessPlanPanel } from '@/components/files/business-plan-panel';
-import { observationEditable, observationUploadGate } from '@/lib/workflow/observation-rule';
+import { closureRoundBase, observationEditable, observationUploadGate } from '@/lib/workflow/observation-rule';
 import { ObservationForm } from '@/components/mentor/observation-form';
 import { MentorRequests } from '@/components/mentor/mentor-requests';
 import { normalizeMentorRequestKind } from '@/lib/workflow/mentor-request-kind';
@@ -86,6 +86,8 @@ export default async function Page({ params }: { params: { id: string } }) {
     listObservationHistory(item.id),
   ]);
   const merged = await mergedReportStatusFor(item.id);
+  // (2026-11-23) 중도 종결 승인 케이스 — 관찰의견서는 필수(면제 폐지). 검수 대기 중에도 올릴 수 있고 기준 회차 = 등록된 회차
+  const earlyClosure = !!(await createAdminClient().from('cases').select('early_closure_at').eq('id', item.id).maybeSingle()).data?.early_closure_at;
   // 제목의 회차 이름은 지금 들어간 그룹이 아니라 이 케이스의 그룹 기준
   const caseGroupLabel =
     item.support_type_id === ctx.supportTypeId
@@ -125,7 +127,7 @@ export default async function Page({ params }: { params: { id: string } }) {
   const reported = rounds.filter((r) => r.report_registered_at).length;
   // 관찰의견서 업로드 열림 = 계획 회차 보고서 전부 등록 (서버 uploadObservationFile 과 같은 함수)
   // 라운드 설정 '언제든지'(2기 등)면 회차 진행과 무관하게 바로 열림 (2026-11-02, 0094)
-  const obsGate = observationUploadGate(rounds, item.requiredRounds, await observationTimingFor(item.support_type_id));
+  const obsGate = observationUploadGate(rounds, closureRoundBase(earlyClosure, rounds.length, item.requiredRounds), await observationTimingFor(item.support_type_id));
   // 검수 승인(정산 확정) 이후·중도 종료 = 멘토 쪽 절차가 끝난 케이스 — 요청 버튼을 숨기고 열람 전용 안내 (2026-10-01)
   const finished = ['settlement_pending', 'settlement_batched', 'closed', 'withdrawn'].includes(item.status);
   const lastAt = (to: string) => history.filter((h) => h.to_status === to).map((h) => h.created_at).sort().pop() ?? null;
@@ -161,6 +163,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         maxRounds={maxRounds}
         hasObservation={hasObservation || !obsRequired}
         observationRequired={obsRequired}
+        earlyClosure={earlyClosure}
         closureOk={closureOk}
         closureHint={closureHint}
         revisionNote={revisionNote}
@@ -263,9 +266,14 @@ export default async function Page({ params }: { params: { id: string } }) {
               <BundleDownloadButton scope="case" id={item.id} label="보고서·관찰의견서 ZIP" />
             </div>
             <p className="text-xs text-muted-foreground">멘티당 1건 · 파일 업로드로 제출합니다. 계획된 회차의 보고서를 모두 올리면 [파일 업로드]가 열리고, 종결 요청 시 운영사에 제출됩니다.</p>
+            {earlyClosure && !hasObservation && (
+              <p className="mt-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-xs font-semibold text-red-700 dark:border-red-800 dark:bg-red-950/30 dark:text-red-200">
+                중도 종결된 멘티도 관찰의견서는 필수입니다. 진행한 회차까지의 내용으로 작성해 올려 주세요 — 올려야 운영사가 검수를 승인할 수 있습니다.
+              </p>
+            )}
           </CardHeader>
           <CardContent>
-            <ObservationForm caseId={item.id} file={obsFile ? { id: obsFile.id, name: obsFile.name, createdAt: obsFile.createdAt, updatedAt: obsFile.updatedAt } : null} history={obsHistory} editable={observationEditable(item.status)} uploadGate={obsGate} />
+            <ObservationForm caseId={item.id} file={obsFile ? { id: obsFile.id, name: obsFile.name, createdAt: obsFile.createdAt, updatedAt: obsFile.updatedAt } : null} history={obsHistory} editable={observationEditable(item.status, earlyClosure)} uploadGate={obsGate} />
           </CardContent>
         </Card>
         )}

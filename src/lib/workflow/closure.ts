@@ -12,7 +12,7 @@ import { uploadFile, moveFile, sha256Hex } from '@/lib/storage/files';
 import { queueNotification } from '@/lib/workflow/notifications';
 import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
 import { getRoundAllowance } from '@/lib/data/rounds';
-import { observationEditable, observationUploadGate } from '@/lib/workflow/observation-rule';
+import { closureRoundBase, observationEditable, observationUploadGate } from '@/lib/workflow/observation-rule';
 import { observationRequiredFor, observationTimingFor } from '@/lib/workflow/observation-required';
 import type { MentorRequestKind } from '@/lib/workflow/mentor-request-kind';
 import { missingRequiredMenteeDocs } from '@/lib/workflow/case-documents';
@@ -80,17 +80,18 @@ export async function uploadObservationFile(
   if (badName) return { ok: false, error: badName };
   const admin = createAdminClient();
   // 상태 게이트 (P31) — 웹 작성본(saveObservationDraft)과 같은 조건: 종결 요청 가능 단계(진행 중·보완 요청) + 멘토 배정 단계
-  const { data: c } = await admin.from('cases').select('id, status, support_type_id, program_id').eq('id', caseId).maybeSingle();
+  const { data: c } = await admin.from('cases').select('id, status, support_type_id, program_id, early_closure_at').eq('id', caseId).maybeSingle();
   if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
-  if (!observationEditable(c.status)) {
-    return { ok: false, error: '컨설팅 진행 중(또는 보완 요청) 단계에서만 관찰의견서를 올릴 수 있습니다.' };
+  const early = !!c.early_closure_at;
+  if (!observationEditable(c.status, early)) {
+    return { ok: false, error: '컨설팅 진행 중(또는 보완 요청·중도 종결 검수 대기) 단계에서만 관찰의견서를 올릴 수 있습니다.' };
   }
   // (2026-09-29) 계획 회차 보고서를 모두 올린 뒤에만 업로드 — 라운드 설정이 '언제든지'면 바로 (2026-11-02) · 멘토 화면 버튼 조건과 같은 함수
   const [{ data: group }, { data: logs }] = await Promise.all([
     admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle(),
     admin.from('mentoring_logs').select('round_no, report_registered_at').eq('case_id', caseId).order('round_no'),
   ]);
-  const gate = observationUploadGate(logs ?? [], group?.required_rounds ?? 0, await observationTimingFor(c.support_type_id));
+  const gate = observationUploadGate(logs ?? [], closureRoundBase(early, (logs ?? []).length, group?.required_rounds ?? 0), await observationTimingFor(c.support_type_id));
   if (!gate.ok) return { ok: false, error: gate.hint };
   const basename = staging.stagingPath.split('/').pop();
   if (!basename) return { ok: false, error: '잘못된 업로드 경로입니다.' };
@@ -137,9 +138,9 @@ export async function uploadObservationFile(
  */
 export async function deleteObservationFile(caseId: string, mentorId: string): Promise<WorkflowResult> {
   const admin = createAdminClient();
-  const { data: c } = await admin.from('cases').select('id, status, program_id').eq('id', caseId).maybeSingle();
+  const { data: c } = await admin.from('cases').select('id, status, program_id, early_closure_at').eq('id', caseId).maybeSingle();
   if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
-  if (!observationEditable(c.status)) return { ok: false, error: '컨설팅 진행 중(또는 보완 요청) 단계에서만 관찰의견서를 삭제할 수 있습니다.' };
+  if (!observationEditable(c.status, !!c.early_closure_at)) return { ok: false, error: '컨설팅 진행 중(또는 보완 요청·중도 종결 검수 대기) 단계에서만 관찰의견서를 삭제할 수 있습니다.' };
   const { data: rows } = await admin.from('documents').select('id, doc_name, storage_path').eq('case_id', caseId).eq('doc_key', 'observation_report');
   if (!rows || rows.length === 0) return { ok: false, error: '삭제할 관찰의견서가 없습니다.' };
   const { error } = await admin.from('documents').delete().in('id', rows.map((r) => r.id));
@@ -198,9 +199,9 @@ export async function checkClosureReadiness(caseId: string): Promise<{ ok: boole
   ]);
   const rounds = logs ?? [];
   const reported = rounds.filter((r) => r.report_registered_at).length;
-  // (2026-11-17) 중도 종결 승인된 케이스 = 등록된 회차까지로 종결(관찰의견서 면제)
+  // (2026-11-17) 중도 종결 승인된 케이스 = 등록된 회차까지로 종결. (2026-11-23) 관찰의견서 면제는 폐지 — 그룹 설정대로 필수
   const early = !!(c as { early_closure_at?: string | null }).early_closure_at;
-  const required = early ? Math.max(1, rounds.length) : (group?.required_rounds ?? 0);
+  const required = closureRoundBase(early, rounds.length, group?.required_rounds ?? 0);
   const base = { reported, required };
   if (assertTransition('request_closure', c.status)) return { ok: false, hint: '컨설팅 진행 중(또는 보완 요청) 단계에서만 종결을 요청할 수 있습니다.', ...base };
   if (rounds.length < required) return { ok: false, hint: `필수 회차 ${required}회 중 ${rounds.length}회 등록됨 — 회차를 모두 등록하세요.`, ...base };
@@ -209,7 +210,7 @@ export async function checkClosureReadiness(caseId: string): Promise<{ ok: boole
   const content = obs ? normalizeObservation(obs.content) : EMPTY;
   const webOk = !OBSERVATION_WEB_DISABLED && content.summary.trim().length > 0;
   // (2026-10-15) 관찰의견서가 필요 없는 그룹(예: 1기 2라운드)은 회차 보고서만으로 종결 요청
-  const obsRequired = !early && (await observationRequiredFor(c.support_type_id));
+  const obsRequired = await observationRequiredFor(c.support_type_id);
   if (obsRequired && !(webOk || !!obsFile)) return { ok: false, hint: '모든 회차 보고서가 등록되었습니다. 관찰의견서 파일을 올리면 종결을 요청할 수 있습니다.', ...base };
   const policy = (program?.closure_policy ?? {}) as { require_group_docs?: boolean };
   if (policy.require_group_docs) {
@@ -227,7 +228,7 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
   const admin = createAdminClient();
   const { data: c } = await admin
     .from('cases')
-    .select('id, status, program_id, support_type_id, business_name, owner_name, mentee_id')
+    .select('id, status, program_id, support_type_id, business_name, owner_name, mentee_id, early_closure_at')
     .eq('id', caseId)
     .maybeSingle();
   if (!c) return { ok: false, error: '케이스를 찾을 수 없습니다.' };
@@ -244,7 +245,8 @@ export async function requestClosure(caseId: string, mentorId: string): Promise<
   ]);
   if (!group) return { ok: false, error: '사업그룹을 찾을 수 없습니다.' };
   const rounds = logs ?? [];
-  const required = group.required_rounds;
+  // 중도 종결 승인 후 보완 요청으로 돌아온 케이스는 등록된 회차까지 (checkClosureReadiness 와 같은 기준, 2026-11-23)
+  const required = closureRoundBase(!!c.early_closure_at, rounds.length, group.required_rounds);
   if (rounds.length < required) {
     return { ok: false, error: `필수 회차 ${required}회를 모두 등록한 뒤 종결을 요청할 수 있습니다. (현재 ${rounds.length}회, 승인된 추가 ${allowance.approvedExtra}회)` };
   }

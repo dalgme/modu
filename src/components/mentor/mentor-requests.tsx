@@ -124,6 +124,11 @@ export function MentorRequests({
           <p className="text-xs text-muted-foreground">
             멘티와 협의해 남은 회차를 더 진행하지 않을 때 요청합니다. 운영사가 승인하면 지금까지 보고서를 올린 회차까지로 멘토링이 끝나고 [검수]로 넘어가 정산됩니다. 보고서를 아직 올리지 않은 회차는 먼저 올려 주세요(예정 회차는 승인 시 정리됩니다).
           </p>
+          {observationRequired && (
+            <p className="text-xs font-semibold text-red-700 dark:text-red-300">
+              중도 종결도 관찰의견서는 필수입니다. 진행한 회차까지의 내용으로 관찰의견서 파일을 올려 주세요 — 관찰의견서가 있어야 운영사가 검수를 승인(정산 확정)할 수 있습니다.
+            </p>
+          )}
           <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="중도 종결 사유 (운영사·발주처·멘티에게 공개)" />
           <div className="flex justify-end">
             <Button size="sm" variant="destructive" disabled={pending} onClick={() => run(() => requestWithdrawalAction(caseId, reason, 'early_closure'), '중도 종결을 요청했습니다.')}>

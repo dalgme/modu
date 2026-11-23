@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeObservationTiming, observationEditable, observationUploadGate } from './observation-rule';
+import { closureRoundBase, normalizeObservationTiming, observationEditable, observationUploadGate } from './observation-rule';
 
 const r = (n: number, reported: boolean) => ({ round_no: n, report_registered_at: reported ? '2026-09-01T00:00:00Z' : null });
 
@@ -42,5 +42,27 @@ describe('관찰의견서 제출 시점 (라운드 설정, 2026-11-02)', () => {
     expect(normalizeObservationTiming('anytime')).toBe('anytime');
     expect(normalizeObservationTiming(null)).toBe('after_rounds');
     expect(normalizeObservationTiming('x')).toBe('after_rounds');
+  });
+});
+
+describe('중도 종결 관찰의견서 (2026-11-23 면제 폐지)', () => {
+  it('중도 종결 케이스는 검수 대기 중에도 관찰의견서를 올리고 바꿀 수 있다', () => {
+    expect(observationEditable('closure_requested', true)).toBe(true);
+    expect(observationEditable('closure_requested', false)).toBe(false);
+    expect(observationEditable('settlement_pending', true)).toBe(false);
+    expect(observationEditable('in_progress', true)).toBe(true);
+  });
+  it('기준 회차 = 중도 종결이면 등록된 회차(최소 1), 아니면 그룹 필수 회차', () => {
+    expect(closureRoundBase(true, 2, 4)).toBe(2);
+    expect(closureRoundBase(true, 0, 4)).toBe(1);
+    expect(closureRoundBase(false, 2, 4)).toBe(4);
+  });
+  it('중도 종결 2회 진행(전부 보고서) — 모든 회차 후 업로드 그룹에서도 업로드가 열린다', () => {
+    const rounds = [
+      { round_no: 1, report_registered_at: 'x' },
+      { round_no: 2, report_registered_at: 'x' },
+    ];
+    expect(observationUploadGate(rounds, closureRoundBase(true, rounds.length, 4)).ok).toBe(true);
+    expect(observationUploadGate(rounds, closureRoundBase(false, rounds.length, 4)).ok).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { ClipboardCheck, Inbox, PenLine, RotateCcw, Undo2 } from 'lucide-react';
+import { ClipboardCheck, Inbox, PenLine, RotateCcw, Search, Undo2 } from 'lucide-react';
 
 import { requireNextlab } from '@/lib/auth/guards';
 import { requireContext } from '@/lib/programs/context';
@@ -33,7 +33,7 @@ function actionableMentorInput(rows: MentorInputQueueRow[]): MentorInputQueueRow
  * (P31) 운영사 검수 대기열 — 검수 대기 / 보완 요청 중. 오래된 순. 행마다 상태 칩 + 케이스 상세 #review 링크.
  * (P32) 세 번째 탭 [멘토 입력 대기] = listMentorInputQueue — 멘토가 아직 입력하지 않은 회차 보고서·관찰의견서·종결 요청을 대행으로 처리할 케이스.
  */
-export default async function Page({ searchParams }: { searchParams: { tab?: string } }) {
+export default async function Page({ searchParams }: { searchParams: { tab?: string; q?: string } }) {
   const profile = await requireNextlab();
   const ctx = await requireContext(profile);
   const tab: Tab = searchParams.tab === 'revision' ? 'revision' : searchParams.tab === 'mentor-input' ? 'mentor-input' : searchParams.tab === 'reopened' ? 'reopened' : 'pending';
@@ -42,14 +42,23 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   const mentorInput = actionableMentorInput(mentorInputAll);
   const canReview = hasCapability(ctx, 'review');
   const canViewAs = hasCapability(ctx, 'members.view_as');
-  const rows = tab === 'pending' ? queue.pending : tab === 'revision' ? queue.revision : [];
+  // (2026-11-23) 멘티·멘토 이름 검색 — 공백 무시·대소문자 무시, 멘티 이름·닉네임(소속)·멘토 이름 중 하나라도 포함
+  const q = (searchParams.q ?? '').trim().slice(0, 40);
+  const qs = q ? `&q=${encodeURIComponent(q)}` : '';
+  const hit = (...names: (string | null | undefined)[]) => !q || names.some((n) => !!n && norm(n).includes(norm(q)));
+  const pendingRows = queue.pending.filter((r) => hit(r.ownerName, r.businessName, r.mentorName));
+  const revisionRows = queue.revision.filter((r) => hit(r.ownerName, r.businessName, r.mentorName));
+  const mentorInputRows = mentorInput.filter((r) => hit(r.menteeName, r.businessName, r.mentorName));
+  const reopenedRows = reopened.filter((r) => hit(r.menteeName, r.mentorName));
+  const rows = tab === 'pending' ? pendingRows : tab === 'revision' ? revisionRows : [];
+  const shownCount = tab === 'pending' ? pendingRows.length : tab === 'revision' ? revisionRows.length : tab === 'mentor-input' ? mentorInputRows.length : reopenedRows.length;
 
   return (
     <main className="flex flex-col gap-5">
       <div>
         <h1 className="text-2xl font-semibold">종결 검수</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          {ctx.program.name}{ctx.group ? ` · ${ctx.group.name}` : ' · 행사 전체'} — 멘토가 종결을 요청한 케이스를 오래된 순으로 보여줍니다. 회차·관찰의견서·서명·만족도 칩을 확인하고 케이스 상세의 검수 패널에서 승인 또는 보완 요청하세요. [멘토 입력 대기] 탭은 멘토가 아직 등록하지 않은 회차 보고서·관찰의견서·서명·종결 요청을 모아 보여주며, 대행 로그인으로 대신 처리할 수 있습니다.
+          {ctx.program.name}{ctx.group ? ` · ${ctx.group.name}` : ' · 행사 전체'} — 멘토가 종결을 요청한 케이스를 오래된 순으로 보여줍니다. 회차·관찰의견서·만족도 칩을 확인하고 케이스 상세의 검수 패널에서 승인 또는 보완 요청하세요. [멘토 입력 대기] 탭은 멘토가 아직 등록하지 않은 회차 보고서·관찰의견서·서명·종결 요청을 모아 보여주며, 대행 로그인으로 대신 처리할 수 있습니다.
           {!canReview && ' (현재 등급은 열람만 가능합니다.)'}
         </p>
       </div>
@@ -57,16 +66,36 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         ariaLabel="검수 대기열"
         active={tab}
         items={[
-          { key: 'pending', label: '검수 대기', href: '/nextlab/review?tab=pending', icon: ClipboardCheck, count: queue.pending.length },
-          { key: 'revision', label: '보완 요청 중', href: '/nextlab/review?tab=revision', icon: Undo2, count: queue.revision.length },
-          { key: 'mentor-input', label: '멘토 입력 대기', href: MENTOR_INPUT_HREF, icon: PenLine, count: mentorInput.length },
-          { key: 'reopened', label: '되돌린 부분 정산', href: '/nextlab/review?tab=reopened', icon: RotateCcw, count: reopened.length },
+          { key: 'pending', label: '검수 대기', href: `/nextlab/review?tab=pending${qs}`, icon: ClipboardCheck, count: pendingRows.length },
+          { key: 'revision', label: '보완 요청 중', href: `/nextlab/review?tab=revision${qs}`, icon: Undo2, count: revisionRows.length },
+          { key: 'mentor-input', label: '멘토 입력 대기', href: `${MENTOR_INPUT_HREF}${qs}`, icon: PenLine, count: mentorInputRows.length },
+          { key: 'reopened', label: '되돌린 부분 정산', href: `/nextlab/review?tab=reopened${qs}`, icon: RotateCcw, count: reopenedRows.length },
         ]}
       />
+      <form method="get" action="/nextlab/review" className="flex flex-wrap items-center gap-2" role="search">
+        <input type="hidden" name="tab" value={tab} />
+        <label className="relative w-full sm:w-72">
+          <span className="sr-only">멘티·멘토 이름 검색</span>
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            name="q"
+            defaultValue={q}
+            placeholder="멘티·멘토 이름 검색"
+            className="h-9 w-full rounded-md border bg-background pl-8 pr-3 text-base sm:text-sm"
+          />
+        </label>
+        <button type="submit" className="inline-flex h-9 items-center rounded-md border bg-background px-3 text-sm font-semibold hover:bg-accent">검색</button>
+        {q && (
+          <>
+            <Link href={`/nextlab/review?tab=${tab}`} className="inline-flex h-9 items-center rounded-md px-2 text-sm text-muted-foreground hover:underline">검색 지우기</Link>
+            <span className="text-xs text-muted-foreground">“{q}” 검색 결과 {shownCount}건 (탭 숫자도 검색 결과 기준)</span>
+          </>
+        )}
+      </form>
       {tab === 'reopened' ? (
-        <ReopenedPartials rows={reopened} canResettle={canResettle} />
+        <ReopenedPartials rows={reopenedRows} canResettle={canResettle} />
       ) : tab === 'mentor-input' ? (
-        mentorInput.length === 0 ? (
+        mentorInputRows.length === 0 ? (
           <EmptyState icon={Inbox} title="멘토 입력을 기다리는 케이스가 없습니다" hint="진행일이 지났는데 보고서가 없는 회차, 관찰의견서 미작성, 종결 요청 가능 케이스가 생기면 여기에 나타납니다." />
         ) : (
           <div className="overflow-x-auto rounded-xl border bg-background">
@@ -82,13 +111,15 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
                 </tr>
               </thead>
               <tbody>
-                {mentorInput.map((r) => (
+                {mentorInputRows.map((r) => (
                   <MentorInputRow key={r.caseId} r={r} canViewAs={canViewAs} />
                 ))}
               </tbody>
             </table>
           </div>
         )
+      ) : rows.length === 0 && q ? (
+        <EmptyState icon={Search} title={`“${q}” 검색 결과가 없습니다`} hint="멘티 이름·닉네임 또는 멘토 이름 일부로 다시 검색해 보세요. 다른 탭에 있을 수도 있습니다." />
       ) : rows.length === 0 ? (
         <EmptyState icon={Inbox} title={tab === 'pending' ? '검수 대기 케이스가 없습니다' : '보완 요청 중인 케이스가 없습니다'} hint={tab === 'pending' ? '멘토가 관찰의견서를 제출하고 종결을 요청하면 여기에 나타납니다.' : '보완을 요청한 케이스는 멘토가 수정 후 다시 종결을 요청할 때까지 여기에 남습니다.'} />
       ) : (
@@ -116,6 +147,11 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
   );
 }
 
+/** 검색 비교용 — 공백 제거·소문자 */
+function norm(s: string): string {
+  return s.replace(/\s+/g, '').toLowerCase();
+}
+
 function Chip({ ok, label, warn = false }: { ok: boolean; label: string; warn?: boolean }) {
   const cls = ok ? 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200' : warn ? 'border-amber-300 bg-amber-50 text-amber-900 dark:bg-amber-950/30 dark:text-amber-100' : 'border-muted bg-muted/40 text-muted-foreground';
   return <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${cls}`}>{label}</span>;
@@ -140,7 +176,7 @@ function Row({ r, canReview }: { r: ReviewQueueItem; canReview: boolean }) {
         <div className="flex flex-wrap gap-1">
           <Chip ok={roundsOk} warn={!roundsOk} label={`회차 ${r.reportedRounds}/${r.requiredRounds}${r.extraRounds ? ` (+추가 ${r.extraRounds})` : ''}`} />
           {r.earlyClosure && <span className="rounded-full bg-red-100 px-2 py-0.5 text-[11px] font-semibold text-red-700">중도 종결 · 진행 회차까지 정산</span>}
-          {r.observationRequired ? <Chip ok={r.hasObservation} warn={!r.hasObservation} label={r.hasObservation ? '관찰의견서 있음' : '관찰의견서 없음'} /> : <Chip ok warn={false} label={r.earlyClosure ? '관찰의견서 면제(중도 종결)' : '관찰의견서 불필요 그룹'} />}
+          {r.observationRequired ? <Chip ok={r.hasObservation} warn={!r.hasObservation} label={r.hasObservation ? '관찰의견서 있음' : '관찰의견서 없음'} /> : <Chip ok warn={false} label="관찰의견서 불필요 그룹" />}
           <Chip ok={r.surveyAnswered} label={r.surveyAnswered ? '만족도 응답' : '만족도 미응답'} />
           {r.status === 'ready' && <Chip ok warn={false} label="서류 완비 · 종결 요청 전" />}
         </div>

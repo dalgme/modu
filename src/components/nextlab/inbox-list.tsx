@@ -24,7 +24,7 @@ function kindLabel(it: InboxItem): string {
 
 const GROUP_HINT: Record<InboxGroup, string> = {
   change: '승인하면 진행한 회차는 바로 정산(품의 자동)되고, 멘티는 재배정 대기로 옮겨져 다른 멘토를 배정합니다. 멘티가 요청한 멘토 변경은 케이스 상세에서 새 멘토를 골라 처리합니다.',
-  closure: '승인하면 보고서까지 올린 회차까지로 멘토링이 끝나고, 멘티가 [검수] 화면으로 넘어갑니다. 정산은 검수 승인 때 확정됩니다.',
+  closure: '승인하면 보고서까지 올린 회차까지로 멘토링이 끝나고, 멘티가 [검수] 화면으로 넘어갑니다. 중도 종결도 관찰의견서는 필수이며, 관찰의견서 파일이 있어야 검수 승인(정산 확정)이 됩니다.',
   extension: '승인하면 멘토가 승인된 회차만큼 회차를 더 등록할 수 있습니다.',
 };
 
@@ -70,7 +70,7 @@ export function InboxList({ items }: { items: InboxItem[] }) {
         : it.kind === 'extension'
           ? { title: `추가 ${it.extraRounds}회를 승인할까요?`, description: it.ownerName, impact: ['멘토가 승인된 회차만큼 회차를 더 등록할 수 있습니다.'], confirmLabel: '승인' }
           : early
-            ? { title: '중도 종결을 승인할까요?', description: `${it.ownerName} · 요청자 ${it.requesterName}`, impact: ['보고서까지 올린 회차까지로 멘토링을 끝내고 [검수] 대기로 옮깁니다.', '보고서가 없는 예정 회차는 정리됩니다.', '정산은 [검수] 화면에서 승인할 때 확정됩니다(관찰의견서 없이 승인 가능).', '멘티는 회원 명단에 「중도 종료」로 표시됩니다.'], confirmLabel: '승인 · 검수로' }
+            ? { title: '중도 종결을 승인할까요?', description: `${it.ownerName} · 요청자 ${it.requesterName}`, impact: ['보고서까지 올린 회차까지로 멘토링을 끝내고 [검수] 대기로 옮깁니다.', '보고서가 없는 예정 회차는 정리됩니다.', it.observation === 'missing' ? '관찰의견서가 아직 없습니다 — 멘토가 관찰의견서 파일을 올려야 [검수] 승인(정산 확정)을 할 수 있습니다.' : '정산은 [검수] 화면에서 승인할 때 확정됩니다.', '멘티는 회원 명단에 「중도 종료」로 표시됩니다.'], confirmLabel: '승인 · 검수로' }
             : { title: '멘토 변경을 승인할까요?', description: `${it.ownerName} · 요청자 ${it.requesterName}`, impact: ['요청한 멘토의 담당이 끝나고, 진행한 회차는 바로 부분 정산(지급 품의 자동)됩니다.', '멘티는 재배정 대기로 옮겨집니다 — 매칭 리스트에서 새 멘토를 배정하세요.'], confirmLabel: '승인 · 재배정' },
     );
     if (!ok) return;
@@ -132,6 +132,7 @@ export function InboxList({ items }: { items: InboxItem[] }) {
                     {formatDateTime(it.createdAt)} · <span className={it.status === 'pending' ? 'font-semibold text-amber-700' : ''}>{STATUS_LABEL[it.status] ?? it.status}</span>
                   </span>
                 </div>
+                {it.observation && <ObservationBadge state={it.observation} />}
                 <p className="mt-2 whitespace-pre-wrap text-sm">{it.reason}</p>
                 {it.status !== 'pending' && it.decisionNote && <p className="mt-1 text-xs text-muted-foreground">처리 메모: {it.decisionNote}</p>}
                 {it.status !== 'pending' && early && it.status === 'approved' && (
@@ -168,4 +169,15 @@ export function InboxList({ items }: { items: InboxItem[] }) {
       )}
     </div>
   );
+}
+
+/** (2026-11-23) 매칭이 끝나는 요청(멘토 변경·중도 종결)의 관찰의견서 첨부 여부 */
+function ObservationBadge({ state }: { state: 'attached' | 'missing' | 'not_required' }) {
+  const meta =
+    state === 'attached'
+      ? { label: '관찰의견서 첨부됨', cls: 'border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200' }
+      : state === 'missing'
+        ? { label: '관찰의견서 미첨부', cls: 'border-red-300 bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-200' }
+        : { label: '관찰의견서 없는 라운드', cls: 'border-muted bg-muted/40 text-muted-foreground' };
+  return <span className={`mt-1 inline-flex w-fit items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${meta.cls}`}>{meta.label}</span>;
 }

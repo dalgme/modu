@@ -5,7 +5,7 @@
  *    (멘토링 포기·종료 표시, 중도 종료(withdrawn), 비활성화) 만 뺀다.
  *    1회 이상 진행(보고서 등록 또는 회차 종료 시각 경과)한 뒤 포기·종료한 멘티는 그대로 센다.
  * ② 관찰의견서 미제출 = 관찰의견서를 내는 라운드 · ①에서 세는 멘티 · 검수 승인 전 진행 단계 ·
- *    중도 종결(관찰의견서 면제)이 아님 · 관찰의견서 파일 없음.
+ *    관찰의견서 파일 없음. (2026-11-23 중도 종결 면제 폐지 — 중도 종결 케이스도 미제출이면 대상)
  * ③ 요청 문자 문구 — 미리보기와 발송이 같은 함수(renderObservationRequest).
  */
 
@@ -30,12 +30,11 @@ export interface ObsMissingCase {
   status: string;
   observationRequired: boolean;
   hasObservation: boolean;
-  earlyClosure: boolean;
   countedInFiles: boolean;
 }
 
 export function isObservationMissing(c: ObsMissingCase): boolean {
-  return c.observationRequired && c.countedInFiles && !c.hasObservation && !c.earlyClosure && OBS_REQUEST_STATUSES.includes(c.status);
+  return c.observationRequired && c.countedInFiles && !c.hasObservation && OBS_REQUEST_STATUSES.includes(c.status);
 }
 
 /* ── 화면 데이터 ─────────────────────────────────────────────────────── */
@@ -50,6 +49,8 @@ export interface ObsMissingRow {
   mentorName: string | null;
   mentorPhone: string | null;
   statusLabel: string;
+  /** 멘토 중도 종결 승인 케이스 — 관찰의견서는 필수(2026-11-23), 포기·종료 표시 필터에 걸리지 않게 outcomeLabel 은 비운다 */
+  earlyClosure: boolean;
   /** 포기·종료 표시(1회 이상 진행 후) — '중도 포기'·'중도 종료' */
   outcomeLabel: string | null;
   reportsDone: number;

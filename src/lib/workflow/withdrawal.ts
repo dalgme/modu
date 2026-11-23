@@ -141,7 +141,7 @@ export async function decideMentorWithdrawal(requestId: string, actorId: string,
 /**
  * (2026-11-17) 중도 종결 요청 승인 — 멘토·멘티가 남은 회차를 더 진행하지 않기로 한 경우.
  *  보고서까지 등록된 회차가 1회 이상 있어야 하고, 아직 보고서가 없는 계획 회차는 정리한다.
- *  케이스 = 검수 대기(closure_requested) + early_closure_at(검수 승인 기준 회차 = 등록된 회차, 관찰의견서 면제) + 포기·종료 표시 '종료'.
+ *  케이스 = 검수 대기(closure_requested) + early_closure_at(검수 승인 기준 회차 = 등록된 회차. 관찰의견서는 2026-11-23 부터 필수 — 검수 대기 중에도 멘토가 올릴 수 있다) + 포기·종료 표시 '종료'.
  *  정산은 운영사가 [검수] 화면에서 승인할 때 확정된다(기존 검수 승인 → 품의 자동 흐름 그대로).
  */
 async function approveEarlyClosure(
