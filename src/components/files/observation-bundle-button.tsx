@@ -5,7 +5,7 @@ import type JSZipType from 'jszip';
 import { Download, EyeOff, Loader2, PenLine } from 'lucide-react';
 
 import { assembleObservationBundle, originalProcessors, type ObservationProblem } from '@/lib/files/observation-bundle-build';
-import type { BlindStatus, ObservationBundleManifest } from '@/lib/files/observation-redact-shared';
+import { BLIND_CHECK_LIST_NAME, BLIND_STATUS_LABEL, blindCheckListText, type BlindStatus, type ObservationBundleManifest } from '@/lib/files/observation-redact-shared';
 import { ManualBlindDialog } from '@/components/files/manual-blind-dialog';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -41,13 +41,16 @@ export function ObservationBundleButton({ order, mode, groupId, label }: { order
   /** 직접 가린 PDF 를 ZIP 안의 같은 번호 파일과 바꾼다 */
   const applyFix = async (p: Problem, pdf: Uint8Array) => {
     if (!report || !p.fix) return;
+    // 원본과 같은 번호·이름 그대로 — 같은 이름의 파일을 직접 가린 PDF 로 바꾼다
     report.zip.remove(`${report.base}/${p.name}`);
     report.zip.folder(report.base)!.file(p.fix.fixedName, pdf);
-    const prev: BlindStatus = p.name.includes('일부 확인 필요') ? 'partial' : 'none';
+    const prev: BlindStatus = p.status === 'partial' ? 'partial' : 'none';
+    const problems = report.problems.map((x) => (x === p ? { ...x, name: p.fix!.fixedName, fixed: true, fix: { ...p.fix!, pdf } } : x));
+    report.zip.file(BLIND_CHECK_LIST_NAME, blindCheckListText(report.base, problems));
     setReport({
       ...report,
       counts: p.fixed ? report.counts : { ...report.counts, [prev]: report.counts[prev] - 1, full: report.counts.full + 1 },
-      problems: report.problems.map((x) => (x === p ? { ...x, name: p.fix!.fixedName, fixed: true, fix: { ...p.fix!, pdf } } : x)),
+      problems,
     });
     setEditing(null);
     toast({ title: '가렸습니다. [고친 묶음 다시 받기]로 새 ZIP 을 받으세요.' });
@@ -122,7 +125,8 @@ export function ObservationBundleButton({ order, mode, groupId, label }: { order
             {report && report.problems.length > 0 && (
               <div className="rounded-lg border border-red-300 bg-red-50/70 p-3 dark:border-red-800 dark:bg-red-950/30">
                 <p className="font-semibold text-red-900 dark:text-red-100">
-                  직접 확인이 필요한 파일 {report.problems.length - fixedCount}개{fixedCount > 0 ? ` · 직접 가림 ${fixedCount}개` : ''} — 파일 이름 끝에 표시했습니다
+                  직접 확인이 필요한 파일 {report.problems.length - fixedCount}개{fixedCount > 0 ? ` · 직접 가림 ${fixedCount}개` : ''}
+                  {report.blind ? ` — 파일 이름은 원본과 같은 번호·이름 그대로이고, 이 목록은 ZIP 안 「${BLIND_CHECK_LIST_NAME}」에도 들어 있습니다` : ' — 파일 이름 끝에 표시했습니다'}
                 </p>
                 <p className="mt-0.5 text-xs text-red-900/80 dark:text-red-100/80">
                   {report.blind
@@ -133,6 +137,9 @@ export function ObservationBundleButton({ order, mode, groupId, label }: { order
                   {report.problems.map((p) => (
                     <li key={p.fix?.fixedName ?? p.name} className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="min-w-0 flex-1">
+                        {report.blind && !p.fixed && p.status && (
+                          <span className={`mr-1 rounded px-1 py-0.5 text-[10px] font-semibold ${p.status === 'partial' ? 'bg-amber-100 text-amber-900' : 'bg-red-100 text-red-800'}`}>{BLIND_STATUS_LABEL[p.status]}</span>
+                        )}
                         <b className={p.fixed ? 'text-emerald-800 dark:text-emerald-300' : undefined}>{p.name}</b> — {p.fixed ? '직접 가림 완료' : p.reason}
                       </span>
                       {p.fix && (

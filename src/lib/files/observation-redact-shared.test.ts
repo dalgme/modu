@@ -123,9 +123,11 @@ describe('observationFileName', () => {
     expect(observationFileName(3, 24, '강석우', '남준현', 'mentor', 'original')).toBe('003. 강석우멘토-남준현멘티 관찰의견서.pdf');
     expect(observationFileName(3, 24, '강석우', '남준현', 'mentee', 'original')).toBe('003. 남준현멘티-강석우멘토 관찰의견서.pdf');
     expect(observationFileName(4, 24, '강석우', '남준현', 'mentor', 'original', 'none', 'hwp')).toBe('004. 강석우멘토-남준현멘티 관찰의견서 (PDF 변환 실패·원본).hwp');
-    expect(observationFileName(3, 24, '강석우', '남준현', 'mentor', 'blind', 'full')).toBe('003. 남준현멘티 관찰의견서.pdf');
-    expect(observationFileName(12, 1200, '강석우', '남준현', 'mentee', 'blind', 'none')).toBe('0012. 남준현멘티 관찰의견서 (블라인드 미적용).pdf');
-    expect(observationFileName(1, 5, '가', '나', 'mentor', 'blind', 'partial', 'docx')).toBe('001. 나멘티 관찰의견서 (블라인드 일부 확인 필요).docx');
+    // 블라인드도 원본과 같은 번호·이름 — 가림 결과는 이름에 붙이지 않는다 (2026-11-24)
+    expect(observationFileName(3, 24, '강석우', '남준현', 'mentor', 'blind', 'full')).toBe('003. 강석우멘토-남준현멘티 관찰의견서.pdf');
+    expect(observationFileName(12, 1200, '강석우', '남준현', 'mentee', 'blind', 'none')).toBe('0012. 남준현멘티-강석우멘토 관찰의견서.pdf');
+    expect(observationFileName(1, 5, '가', '나', 'mentor', 'blind', 'partial', 'docx')).toBe('001. 가멘토-나멘티 관찰의견서.docx');
+    expect(observationFileName(7, 24, '강석우', '남준현', 'mentee', 'blind', 'none')).toBe(observationFileName(7, 24, '강석우', '남준현', 'mentee', 'original', 'full'));
     expect(observationZipBase('B그룹', 'mentor', 'original')).toBe('B그룹 관찰의견서 원본(멘토별)');
     expect(observationZipBase('B그룹', 'mentee', 'blind')).toBe('B그룹 관찰의견서 블라인드(멘티별)');
   });

@@ -455,11 +455,28 @@ export function observationZipBase(groupName: string, order: ObservationOrder, m
   return `${cleanFile(groupName, '라운드')} 관찰의견서 ${mode === 'blind' ? '블라인드' : '원본'}(${order === 'mentor' ? '멘토별' : '멘티별'})`;
 }
 
-export const BLIND_SUFFIX: Record<BlindStatus, string> = { full: '', partial: ' (블라인드 일부 확인 필요)', none: ' (블라인드 미적용)' };
+/** 블라인드 확인 목록의 상태 이름 */
+export const BLIND_STATUS_LABEL: Record<BlindStatus, string> = { full: '가림 완료', partial: '일부 확인 필요', none: '블라인드 미적용' };
+
+/** ZIP 맨 위(폴더 밖)에 넣는 확인 목록 파일 이름 */
+export const BLIND_CHECK_LIST_NAME = '블라인드 확인 필요 목록.txt';
+
+/** 확인 목록 내용 — 번호·파일 이름·상태·이유 (직접 가린 파일은 '직접 가림 완료') */
+export function blindCheckListText(base: string, problems: { name: string; reason: string; status?: BlindStatus; fixed?: boolean }[]): string {
+  const open = problems.filter((p) => !p.fixed);
+  const lines = [
+    `${base} — 블라인드 확인이 필요한 파일 ${open.length}개${problems.length > open.length ? ` (직접 가림 ${problems.length - open.length}개)` : ''}`,
+    '아래 파일은 폴더 안에서 같은 이름으로 들어 있습니다. 열어서 "운영기관"·"책임멘토명" 칸이 가려졌는지 확인하고 직접 수정해 주세요.',
+    '',
+    ...problems.map((p) => `${p.name}\t${p.fixed ? '직접 가림 완료' : `${p.status ? BLIND_STATUS_LABEL[p.status] : '확인 필요'} — ${p.reason}`}`),
+  ];
+  return `\ufeff${lines.join('\r\n')}\r\n`;
+}
 
 /**
- * 원본: "001. 강석우멘토-남준현멘티 관찰의견서.pdf"(멘티별이면 멘티가 앞)
- * 블라인드: "001. 남준현멘티 관찰의견서.pdf" — 파일 이름에도 멘토 이름을 남기지 않는다(번호 순서는 멘토별/멘티별 그대로)
+ * "001. 강석우멘토-남준현멘티 관찰의견서.pdf"(멘티별이면 멘티가 앞) — 원본·블라인드 같은 이름·같은 번호 (2026-11-24 사용자 요청).
+ * 블라인드에서 가리지 못했거나 일부만 가린 파일은 이름을 바꾸지 않고 별도 목록(결과 창 + ZIP 안 확인 목록)으로 알린다.
+ * 원본 묶음에서 한글을 PDF 로 바꾸지 못한 파일만 "(PDF 변환 실패·원본)" 표시.
  */
 export function observationFileName(
   index: number,
@@ -475,9 +492,8 @@ export function observationFileName(
   const mentor = `${cleanFile(mentorName, '멘토')}멘토`;
   const mentee = `${cleanFile(menteeName, '멘티')}멘티`;
   const no = String(index).padStart(width, '0');
-  if (mode === 'blind') return `${no}. ${mentee} 관찰의견서${BLIND_SUFFIX[status]}.${ext}`;
   const pair = order === 'mentor' ? `${mentor}-${mentee}` : `${mentee}-${mentor}`;
-  return `${no}. ${pair} 관찰의견서${status === 'none' ? ' (PDF 변환 실패·원본)' : ''}.${ext}`;
+  return `${no}. ${pair} 관찰의견서${mode === 'original' && status === 'none' ? ' (PDF 변환 실패·원본)' : ''}.${ext}`;
 }
 
 function cleanFile(s: string | null | undefined, fallback: string): string {
