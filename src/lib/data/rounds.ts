@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { loadCaseExtension } from '@/lib/workflow/extension';
+import type { CaseExtension } from '@/lib/workflow/extension-rule';
 import { createCaseScopedSignedUrl } from '@/lib/storage/files';
 import { downloadNamesForCase } from '@/lib/files/download-name';
 import type { Tables } from '@/types/database';
@@ -65,17 +67,20 @@ export async function listRounds(caseId: string): Promise<RoundItem[]> {
   return out;
 }
 
-/** 케이스의 승인된 추가 회차 합 + 대기 중 요청 수 */
-export async function getRoundAllowance(caseId: string): Promise<{ approvedExtra: number; pendingRequests: number }> {
+/**
+ * 케이스의 승인된 추가 회차 합 + 대기 중 요청 수.
+ * (2026-11-25) extensionRounds = 라운드 연장(예: 1기 3라운드) 선정 시 더 열리는 회차 칸 수 — 회차 상한 = 필수 + approvedExtra + extensionRounds.
+ */
+export async function getRoundAllowance(caseId: string): Promise<{ approvedExtra: number; pendingRequests: number; extensionRounds: number; extension: CaseExtension }> {
   const admin = createAdminClient();
-  const { data } = await admin.from('round_extension_requests').select('extra_rounds, status').eq('case_id', caseId);
+  const [{ data }, extension] = await Promise.all([admin.from('round_extension_requests').select('extra_rounds, status').eq('case_id', caseId), loadCaseExtension(caseId)]);
   let approvedExtra = 0;
   let pendingRequests = 0;
   for (const r of data ?? []) {
     if (r.status === 'approved') approvedExtra += r.extra_rounds;
     if (r.status === 'pending') pendingRequests += 1;
   }
-  return { approvedExtra, pendingRequests };
+  return { approvedExtra, pendingRequests, extensionRounds: extension.extraRounds, extension };
 }
 
 export async function getObservationReport(caseId: string): Promise<Tables<'observation_reports'> | null> {

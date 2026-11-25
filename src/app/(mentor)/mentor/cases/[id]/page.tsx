@@ -27,6 +27,7 @@ import { MergedReportSection, mergedProps } from '@/components/files/merged-repo
 import { mergedReportStatusFor } from '@/lib/files/merged-report';
 import { BusinessPlanPanel } from '@/components/files/business-plan-panel';
 import { closureRoundBase, observationEditable, observationUploadGate } from '@/lib/workflow/observation-rule';
+import { hoursText, minutesOf } from '@/lib/workflow/extension-rule';
 import { ObservationForm } from '@/components/mentor/observation-form';
 import { MentorRequests } from '@/components/mentor/mentor-requests';
 import { normalizeMentorRequestKind } from '@/lib/workflow/mentor-request-kind';
@@ -115,7 +116,10 @@ export default async function Page({ params }: { params: { id: string } }) {
   ];
   const myEstimate = estimates[0] ?? null;
 
-  const maxRounds = item.requiredRounds + allowance.approvedExtra;
+  // (2026-11-25) 라운드 연장(예: 1기 3라운드) 선정 케이스는 추가 시간 수만큼 회차 칸이 더 열린다
+  const maxRounds = item.requiredRounds + allowance.approvedExtra + allowance.extensionRounds;
+  const ext = allowance.extension;
+  const usedMinutes = rounds.reduce((sum, r) => sum + minutesOf(r.started_at, r.ended_at), 0);
   const roundsEditable = canTransition('submit_round', item.status);
   // 관찰의견서 = 업로드 파일만 인정 (2026-09-30 웹 작성 폐지)
   const hasObservation = !!obsFile;
@@ -164,6 +168,7 @@ export default async function Page({ params }: { params: { id: string } }) {
         hasObservation={hasObservation || !obsRequired}
         observationRequired={obsRequired}
         earlyClosure={earlyClosure}
+        extensionHint={ext.active && ext.capMinutes !== null && ext.capMinutes - usedMinutes > 0 && rounds.length < maxRounds ? `${ext.label} 추가 멘토링 ${hoursText(ext.capMinutes - usedMinutes)}을 진행하세요` : null}
         closureOk={closureOk}
         closureHint={closureHint}
         revisionNote={revisionNote}
@@ -233,6 +238,12 @@ export default async function Page({ params }: { params: { id: string } }) {
                 {allowance.approvedExtra > 0 && ` · 추가 ${allowance.approvedExtra}회 승인`}
               </span>
             </CardTitle>
+            {ext.active && (
+              <p className="rounded-md bg-white/20 px-2 py-1 text-sm font-semibold text-white">
+                ★ {ext.label} 선정 멘티 — 멘토링 {allowance.extensionRounds}시간 추가(회차 {allowance.extensionRounds}칸 추가), 모든 회차를 합쳐 {ext.capMinutes ? hoursText(ext.capMinutes) : '-'}까지 · 지금 {hoursText(usedMinutes)} 등록
+                {ext.capMinutes !== null && ` · 남은 ${hoursText(Math.max(0, ext.capMinutes - usedMinutes))}`}
+              </p>
+            )}
             <p className="text-xs text-white/90">
               {finished
                 ? '절차가 끝난 멘티입니다 — 회차 일정·보고서는 열람과 [미리보기]·[다운로드]만 할 수 있습니다.'

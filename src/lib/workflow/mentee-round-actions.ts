@@ -10,6 +10,7 @@ import { logAudit } from '@/lib/workflow/audit';
 import { createCase } from '@/lib/workflow/cases';
 import { menteeLabel } from '@/lib/utils/labels';
 import { CASE_STATUS_META, type CaseStatus } from '@/types/case-status';
+import { extensionSelectBlock, extensionUsed, groupExtensionOf, minutesOf } from '@/lib/workflow/extension-rule';
 import { menteeRoundAddBlock, menteeRoundRemovalBlock, type MenteeRoundCaseFacts } from '@/lib/workflow/mentee-round-rule';
 
 /**
@@ -32,7 +33,21 @@ export interface MenteeRoundItem {
   on: boolean;
 }
 
-type Loaded = { ok: true; rounds: MenteeRoundItem[]; name: string } | { ok: false; error: string };
+/** (2026-11-25) 라운드 연장 선정 칩 — 연장 기능이 있는 라운드(예: 1기 2라운드 → '1기 3라운드')에 진행 케이스가 있을 때 */
+export interface MenteeExtensionItem {
+  caseId: string;
+  groupName: string;
+  label: string;
+  selected: boolean;
+  extraHours: number;
+  totalHours: number | null;
+  /** 지금까지 등록된 회차 운영시간 합계(분) */
+  usedMinutes: number;
+  /** 누르면 막히는 사유(선정: 중도 종료 / 해제: 추가 회차 사용) */
+  block: string | null;
+}
+
+type Loaded = { ok: true; rounds: MenteeRoundItem[]; extensions: MenteeExtensionItem[]; name: string } | { ok: false; error: string };
 type Result = { ok: true; message: string } | { ok: false; error: string };
 
 async function operatorCtx(): Promise<{ id: string; programId: string } | { error: string }> {
@@ -91,8 +106,8 @@ export async function getMenteeRoundsAction(userId: string): Promise<Loaded> {
   if (!who) return { ok: false, error: '이 행사의 멘티가 아닙니다.' };
   const admin = createAdminClient();
   const [{ data: groups }, { data: cases }] = await Promise.all([
-    admin.from('support_types').select('id, name, status, sort_order').eq('program_id', op.programId).order('sort_order').order('created_at'),
-    admin.from('cases').select('id, support_type_id, status, created_at').eq('program_id', op.programId).eq('mentee_id', userId).order('created_at', { ascending: false }),
+    admin.from('support_types').select('*').eq('program_id', op.programId).order('sort_order').order('created_at'),
+    admin.from('cases').select('*').eq('program_id', op.programId).eq('mentee_id', userId).order('created_at', { ascending: false }),
   ]);
   const caseIds = (cases ?? []).map((c) => c.id);
   const [facts, { data: asg }] = await Promise.all([
@@ -122,7 +137,28 @@ export async function getMenteeRoundsAction(userId: string): Promise<Loaded> {
       on: !!open,
     };
   });
-  return { ok: true, rounds, name: who.name };
+  // 라운드 연장 선정 칩 (2026-11-25)
+  const extensions: MenteeExtensionItem[] = [];
+  for (const g of (groups ?? []) as (Record<string, unknown> & { id: string; name: string; required_rounds?: number })[]) {
+    const cfg = groupExtensionOf(g as never);
+    if (!cfg.label) continue;
+    const open = (cases ?? []).find((c) => c.support_type_id === g.id && c.status !== 'withdrawn') as (Record<string, unknown> & { id: string; status: string; extension_selected_at?: string | null }) | undefined;
+    if (!open) continue;
+    const [{ data: logs }, { data: ext }] = await Promise.all([
+      admin.from('mentoring_logs').select('started_at, ended_at').eq('case_id', open.id),
+      admin.from('round_extension_requests').select('extra_rounds').eq('case_id', open.id).eq('status', 'approved'),
+    ]);
+    const usedMinutes = (logs ?? []).reduce((sum, l) => sum + minutesOf(l.started_at, l.ended_at), 0);
+    const selected = !!open.extension_selected_at;
+    const baseRounds = Number(g.required_rounds ?? 0) + (ext ?? []).reduce((sum, r) => sum + Number(r.extra_rounds ?? 0), 0);
+    const block = selected
+      ? extensionUsed({ roundCount: (logs ?? []).length, baseRounds, totalMinutes: usedMinutes, group: cfg })
+        ? `${cfg.label} 추가 회차가 이미 등록돼 있어 해제할 수 없습니다(추가 회차를 삭제한 뒤 해제).`
+        : null
+      : extensionSelectBlock(open.status);
+    extensions.push({ caseId: open.id, groupName: g.name, label: cfg.label, selected, extraHours: cfg.extraHours, totalHours: cfg.totalHours, usedMinutes, block });
+  }
+  return { ok: true, rounds, extensions, name: who.name };
 }
 
 /** 라운드 추가 — 이 멘티의 가장 최근 케이스에서 멘티 정보(이름·닉네임·연락처·아이템·프로필)를 복사해 새 케이스 */

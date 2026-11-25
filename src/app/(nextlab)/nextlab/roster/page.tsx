@@ -1,3 +1,4 @@
+import { loadCaseExtensions } from '@/lib/workflow/extension';
 import { pastMentorLabel } from '@/lib/workflow/past-mentor';
 import Link from 'next/link';
 import { Briefcase, Building2, Download, GraduationCap, Link2, Network, UserPlus, UserX, Users } from 'lucide-react';
@@ -132,6 +133,8 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
     const rankByCase = new Map(ranks.map((r) => [r.case_id, r.rank]));
     const rankByMentee = new Map<string, number>();
     const progress: Record<string, MenteeProgressItem[]> = {};
+    // (2026-11-25) 라운드 연장(예: 1기 3라운드) 선정 표시
+    const extByCase = await loadCaseExtensions(cases.filter((c) => c.extension_selected_at).map((c) => c.id));
     for (const c of cases) {
       if (!c.mentee_id) continue;
       const rk = rankByCase.get(c.id);
@@ -152,6 +155,7 @@ export default async function Page({ searchParams }: { searchParams: { tab?: str
         outcome: normalizeMentoringOutcome(c.mentoring_outcome),
         progressedRounds: c.roundsProgressed,
         surveyEnabled: c.surveyEnabled,
+        extensionLabel: extByCase.get(c.id)?.active ? extByCase.get(c.id)!.label : null,
       });
     }
     const outcomeCases = mentoringCasesByMentee(cases);

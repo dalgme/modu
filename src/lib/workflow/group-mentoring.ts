@@ -8,6 +8,7 @@ import { actingNote } from '@/lib/auth/impersonation';
 import { logAudit } from '@/lib/workflow/audit';
 import { TRANSITIONS } from '@/lib/workflow/transitions';
 import { getRoundAllowance } from '@/lib/data/rounds';
+import { checkExtensionHours } from '@/lib/workflow/extension';
 import { firstEmptyRoundNo } from '@/lib/workflow/round-slots';
 import { isGroupMatchingPublished } from '@/lib/matching/visibility';
 import { menteeLabel } from '@/lib/utils/labels';
@@ -160,7 +161,7 @@ export async function loadMentorGroupMentoring(mentorId: string, programId: stri
     for (const c of myCases) {
       const [{ data: rows }, allowance] = await Promise.all([admin.from('mentoring_logs').select('round_no').eq('case_id', c.id), getRoundAllowance(c.id)]);
       const next = firstEmptyRoundNo((rows ?? []).map((r) => r.round_no));
-      const max = g.required_rounds + allowance.approvedExtra;
+      const max = g.required_rounds + allowance.approvedExtra + allowance.extensionRounds;
       const blocked = !SUBMIT_FROM.has(c.status) ? '지금 단계에서는 회차를 등록할 수 없습니다.' : next > max ? `회차를 모두 등록했습니다 (${max}회).` : null;
       options.push({ caseId: c.id, menteeName: caseName.get(c.id) ?? '-', nextRoundNo: next, maxRounds: max, blocked });
     }
@@ -265,10 +266,12 @@ export async function createGroupSession(input: ScheduleInput & { mentorId: stri
     if (!SUBMIT_FROM.has(c.status)) return { ok: false, error: `${name}: 지금 단계에서는 회차를 등록할 수 없습니다.` };
     const [{ data: rows }, allowance] = await Promise.all([admin.from('mentoring_logs').select('round_no').eq('case_id', c.id), getRoundAllowance(c.id)]);
     const roundNo = firstEmptyRoundNo((rows ?? []).map((r) => r.round_no));
-    const max = group.required_rounds + allowance.approvedExtra;
+    const max = group.required_rounds + allowance.approvedExtra + allowance.extensionRounds;
     if (roundNo > max) return { ok: false, error: `${name}: 회차를 모두 등록했습니다 (${max}회).` };
     const cap = await capError(c.id, name, t.day, input.mode, full, rate.dailyCapAmount, null);
     if (cap) return { ok: false, error: cap };
+    // 라운드 연장(예: 1기 3라운드) 선정 멘티의 총 시간 상한 (2026-11-25)
+    { const hrs = await checkExtensionHours(c.id, t.started, t.ended); if (hrs) return { ok: false, error: `${name}: ${hrs}` }; }
     plan.push({ c, roundNo, isExtra: roundNo > group.required_rounds });
   }
   if (await mentorOverlap(input.mentorId, t.day, t.started, t.ended, null)) return { ok: false, error: '같은 시간대에 이미 등록된 회차가 있습니다. 시간을 확인하세요.' };
@@ -371,6 +374,7 @@ export async function updateGroupSession(input: ScheduleInput & { sessionId: str
   for (const l of logs) {
     const cap = await capError(l.caseId, l.name, t.day, input.mode, full, rate.dailyCapAmount, session.id);
     if (cap) return { ok: false, error: cap };
+    { const hrs = await checkExtensionHours(l.caseId, t.started, t.ended, l.id); if (hrs) return { ok: false, error: `${l.name}: ${hrs}` }; }
   }
   if (await mentorOverlap(input.mentorId, t.day, t.started, t.ended, session.id)) return { ok: false, error: '같은 시간대에 이미 등록된 회차가 있습니다. 시간을 확인하세요.' };
   const patch = { mode: input.mode, started_at: t.started.toISOString(), ended_at: t.ended.toISOString(), place: input.place?.trim() || null };

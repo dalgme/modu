@@ -2,7 +2,8 @@ import { requireMentor } from '@/lib/auth/guards';
 import { getImpersonation } from '@/lib/auth/impersonation';
 import { requireContext } from '@/lib/programs/context';
 import { markAssignmentsConfirmed } from '@/lib/matching/auto-match';
-import { listMentorEndedCases } from '@/lib/data/cases';
+import { listMentorHistory } from '@/lib/data/mentor-history';
+import { MentorHistorySection } from '@/components/mentor/mentor-history-section';
 import { loadMentorDashboard } from '@/lib/data/role-dashboard';
 import { MentorDashboardV2 } from '@/components/mentor/mentor-dashboard-v2';
 import { BundleDownloadButton } from '@/components/files/bundle-download-button';
@@ -24,9 +25,10 @@ export default async function Page() {
   // 멘토가 그룹(기수)을 골라 들어왔으면 그 그룹의 멘티만, [행사 전체]로 들어왔으면 전체 (2026-10-29 — 2기 화면에 1기 멘티가 섞이던 문제)
   // 담당 멘티 목록은 dash.cases(할 일 카드)로 통합 — 옛 '담당 멘티 전체' 목록 조회는 제거
   const groupId = ctx.supportTypeId ?? null;
-  const [dash, endedCases] = await Promise.all([
+  // (2026-11-25) 끝난 담당(종결·중도 종료·멘토 변경·운영사 종료)도 사라지지 않게 — 내 회차·정산 상태 목록
+  const [dash, history] = await Promise.all([
     loadMentorDashboard(profile.id, ctx.programId, groupId, '/mentor/cases'),
-    listMentorEndedCases(profile.id, ctx.programId, groupId),
+    listMentorHistory(profile.id, ctx.programId, groupId),
   ]);
   // 들어간 그룹이 매칭 공개 전이면 담당 멘티가 비어 보이는 이유를 알려 준다 (P54)
   const groupHidden = groupId ? !(await isGroupMatchingPublished(groupId)) : false;
@@ -73,7 +75,8 @@ export default async function Page() {
       )}
       <OpenSurveysCard surveys={openSurveys} />
       <MentorOnboarding items={onboarding} />
-      <MentorDashboardV2 name={profile.name} data={dash} endedCases={endedCases} basePath="/mentor/cases" branding={ctx.branding} guideHref="/mentor/guide" scheduleHref="/mentor/schedule" settlementsHref="/mentor/settlements" />
+      <MentorDashboardV2 name={profile.name} data={dash} basePath="/mentor/cases" branding={ctx.branding} guideHref="/mentor/guide" scheduleHref="/mentor/schedule" settlementsHref="/mentor/settlements" />
+      <MentorHistorySection items={history} basePath="/mentor/cases" settlementsHref="/mentor/settlements" />
       {/* ③ 내 폴더(멘토명/멘티명/보고서·관찰의견서) 전체 ZIP (2026-09-30) */}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/30 px-4 py-3 text-sm">
         <span className="text-muted-foreground">담당했던 멘티의 회차 보고서·관찰의견서를 &quot;멘토명/멘티명&quot; 폴더로 한 번에 받습니다.</span>

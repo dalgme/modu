@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
-import { Lock } from 'lucide-react';
+import { Lock, Sparkles } from 'lucide-react';
 
-import { addMenteeRoundAction, getMenteeRoundsAction, removeMenteeRoundAction, type MenteeRoundItem } from '@/lib/workflow/mentee-round-actions';
+import { addMenteeRoundAction, getMenteeRoundsAction, removeMenteeRoundAction, type MenteeExtensionItem, type MenteeRoundItem } from '@/lib/workflow/mentee-round-actions';
+import { setCaseExtensionAction } from '@/lib/workflow/extension-actions';
+import { hoursText } from '@/lib/workflow/extension-rule';
 import { useConfirm } from '@/components/common/confirm-dialog';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -16,6 +18,7 @@ import { cn } from '@/lib/utils';
  */
 export function MenteeRoundControls({ userId, name }: { userId: string; name: string }) {
   const [rounds, setRounds] = useState<MenteeRoundItem[] | null>(null);
+  const [extensions, setExtensions] = useState<MenteeExtensionItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const { confirm, dialog } = useConfirm();
@@ -27,6 +30,7 @@ export function MenteeRoundControls({ userId, name }: { userId: string; name: st
       const r = await getMenteeRoundsAction(userId);
       if (r.ok) {
         setRounds(r.rounds);
+        setExtensions(r.extensions ?? []);
         setError(null);
       } else setError(r.error);
     } catch {
@@ -72,6 +76,42 @@ export function MenteeRoundControls({ userId, name }: { userId: string; name: st
     });
   };
 
+  /** (2026-11-25) 라운드 연장 선정 — 예: 1기 2라운드 멘티 중 '1기 3라운드' 진출자 */
+  const toggleExtension = async (x: MenteeExtensionItem) => {
+    if (x.block) {
+      toast({ title: x.block, variant: 'destructive' });
+      return;
+    }
+    const ok = x.selected
+      ? await confirm({
+          title: `${name} · ${x.label} 선정 해제`,
+          description: `${x.groupName} 케이스의 ${x.label} 선정을 해제합니다.`,
+          impact: ['추가 회차를 등록할 수 없게 됩니다', '선정으로 다시 연 케이스는 정산 상태에 맞는 단계로 되돌립니다'],
+          confirmLabel: '선정 해제',
+          severity: 'danger',
+        })
+      : await confirm({
+          title: `${name} · ${x.label} 선정`,
+          description: `${x.groupName}의 연장으로 멘토링 ${x.extraHours}시간을 더 진행합니다(새 라운드·새 케이스를 만들지 않음).`,
+          impact: [
+            `멘토가 회차를 ${x.extraHours}칸 더 등록할 수 있고, 모든 회차를 합쳐 ${x.totalHours ?? '-'}시간까지 (지금 ${hoursText(x.usedMinutes)})`,
+            '시간당 수당·보고서 기준은 이 라운드 설정 그대로',
+            '검수·정산이 끝난 케이스는 진행 중으로 다시 열립니다 — 이미 확정된 정산·품의는 그대로이고, 추가 회차는 검수 승인 때 따로 정산됩니다',
+            '담당 멘토에게 자동 문자는 가지 않습니다 — 필요하면 문자 발송으로 안내하세요',
+          ],
+          confirmLabel: `${x.label} 선정`,
+        });
+    if (!ok) return;
+    start(async () => {
+      const res = await setCaseExtensionAction(x.caseId, !x.selected);
+      toast(res.ok ? { title: res.message } : { title: res.error, variant: 'destructive' });
+      if (res.ok) {
+        await load();
+        router.refresh();
+      }
+    });
+  };
+
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border bg-background p-3 text-xs">
       {dialog}
@@ -100,8 +140,32 @@ export function MenteeRoundControls({ userId, name }: { userId: string; name: st
           ))}
         </div>
       )}
+      {extensions.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1 border-t pt-1.5">
+          {extensions.map((x) => (
+            <button
+              key={x.caseId}
+              type="button"
+              disabled={pending}
+              onClick={() => void toggleExtension(x)}
+              title={x.block ?? (x.selected ? `${x.label} 선정됨 — 누르면 선정 해제` : `${x.groupName} 멘티를 ${x.label}로 선정 (멘토링 ${x.extraHours}시간 추가)`)}
+              className={cn(
+                'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold disabled:opacity-60',
+                x.selected ? 'border-violet-500 bg-violet-100 text-violet-900 dark:bg-violet-950 dark:text-violet-200' : 'border-dashed border-violet-400 text-violet-700',
+                x.block && 'cursor-not-allowed',
+              )}
+            >
+              {x.block ? <Lock className="h-3 w-3" /> : <Sparkles className="h-3 w-3" />}
+              {x.label}
+              <span className="font-normal">
+                {x.selected ? `· 선정 · ${hoursText(x.usedMinutes)}/${x.totalHours ?? '-'}시간` : `· ${x.groupName} 연장 +${x.extraHours}시간`}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
       <span className="text-[10px] text-muted-foreground">
-        파란 칩 = 등록된 라운드. 누르면 추가하거나 뺄 수 있습니다. 회차·서류·정산이 있는 라운드(자물쇠)는 뺄 수 없습니다.
+        보라 칩 = 라운드 연장 선정(예: 1기 3라운드 — 별도 라운드 없이 같은 케이스에서 멘토링 시간 추가). 파란 칩 = 등록된 라운드. 누르면 추가하거나 뺄 수 있습니다. 회차·서류·정산이 있는 라운드(자물쇠)는 뺄 수 없습니다.
       </span>
     </div>
   );

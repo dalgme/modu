@@ -9,6 +9,7 @@ import { logAudit } from '@/lib/workflow/audit';
 import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
 import { resolveRate, kstDate, type ConsultingMode } from '@/lib/settlement/rates';
 import { getRoundAllowance, photoDocKey, reportDocKey } from '@/lib/data/rounds';
+import { checkExtensionHours } from '@/lib/workflow/extension';
 import { renderRoundReport } from '@/lib/documents/round-report';
 import type { WorkflowResult } from '@/lib/workflow/cases';
 import { roundReportFileName } from '@/lib/workflow/round-report-name';
@@ -136,12 +137,15 @@ export async function submitRound(input: RoundInput): Promise<RoundResult> {
   if (!group) return { ok: false, error: '사업그룹을 찾을 수 없습니다.' };
   // 그룹 종료일 이후 일정은 등록 불가 (P30) — 운영사가 종료일을 늘리거나 승계 개설로 이어간다
   if (group.ends_on && day > group.ends_on) return { ok: false, error: `그룹 종료일(${group.ends_on}) 이후 일정은 등록할 수 없습니다. 운영사에 문의하세요.` };
-  const maxRounds = group.required_rounds + allowance.approvedExtra;
+  // (2026-11-25) 라운드 연장(예: 1기 3라운드) 선정 케이스는 추가 시간 수만큼 회차 칸이 더 열린다
+  const maxRounds = group.required_rounds + allowance.approvedExtra + allowance.extensionRounds;
   // 비어 있는 가장 앞 번호 (2026-09-30) — 보고서 등록 회차를 개별 삭제하면 그 자리가 비고, 다음 등록이 그 자리를 채운다
   const roundNo = firstEmptyRoundNo((existingRows ?? []).map((r) => r.round_no));
   if (roundNo > maxRounds) {
-    return { ok: false, error: `이 그룹은 ${group.required_rounds}회(승인된 추가 ${allowance.approvedExtra}회 포함 최대 ${maxRounds}회)까지 등록할 수 있습니다. 추가 회차가 필요하면 요청하세요.` };
+    return { ok: false, error: `이 그룹은 ${group.required_rounds}회(승인된 추가 ${allowance.approvedExtra}회${allowance.extensionRounds ? `·${allowance.extension.label} 추가 ${allowance.extensionRounds}회` : ''} 포함 최대 ${maxRounds}회)까지 등록할 수 있습니다. 추가 회차가 필요하면 요청하세요.` };
   }
+  // 연장 선정 케이스 = 모든 회차 운영시간 합계 ≤ 총 시간 상한(예: 15시간)
+  { const capErr = await checkExtensionHours(c.id, started, ended); if (capErr) return { ok: false, error: capErr }; }
 
   // 7) 단가 스냅샷 + 한도 설정
   // (2026-10-01) 회차 등록 횟수 제한(멘토 1일 건수·멘티 1일 회차)은 적용하지 않는다 — 금액 상한·시간 겹침만 검증
@@ -301,7 +305,7 @@ export async function registerRoundReport(input: RoundReportInput): Promise<Work
   });
   if (!v.ok) return v;
   const isExtra = log.round_no > group.required_rounds;
-  const allowanceExceeded = log.round_no > group.required_rounds + allowance.approvedExtra;
+  const allowanceExceeded = log.round_no > group.required_rounds + allowance.approvedExtra + allowance.extensionRounds;
 
   // 첨부를 먼저 옮기고 documents 행을 만든다 — 전부 성공했을 때만 report_registered_at 을 기록한다 (P31).
   // 실패하면 옮긴 파일·만든 행을 되돌린다(등록됐는데 첨부가 없는 반쪽 상태 방지).
@@ -546,6 +550,7 @@ export async function updatePlannedRound(input: {
   { const spanErr = roundSpanError(started, ended); if (spanErr) return { ok: false, error: spanErr }; }
   if (!isWholeHours(started, ended)) return { ok: false, error: HOURLY_ONLY_ERROR };
   if (started.getTime() > Date.now() + PLAN_MAX_FUTURE_MS) return { ok: false, error: '60일 이후의 일정으로는 변경할 수 없습니다.' };
+  { const capErr = await checkExtensionHours(log.case_id, started, ended, log.id); if (capErr) return { ok: false, error: capErr }; }
   const day = kstDate(started);
 
   // (2026-10-01) 회차 등록 횟수 제한(멘토 1일 건수·멘티 1일 회차)은 적용하지 않는다 — 금액 상한·시간 겹침만 검증
@@ -707,6 +712,8 @@ export async function validateRoundSchedule(input: {
   const admin = createAdminClient();
   const { started, ended } = input;
   { const spanErr = roundSpanError(started, ended); if (spanErr) return { ok: false, error: spanErr }; }
+  // 연장 선정 케이스의 총 시간 상한 — 보고서 등록 재검증·운영사 정정도 같은 규칙 (2026-11-25)
+  { const capErr = await checkExtensionHours(input.caseId, started, ended, input.excludeLogId); if (capErr) return { ok: false, error: capErr }; }
   const day = kstDate(started);
   const rate = await resolveRate(input.programId, input.supportTypeId, input.mode, day);
   if (!rate) return { ok: false, error: noRateError(day) };

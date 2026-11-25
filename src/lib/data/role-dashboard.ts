@@ -6,6 +6,8 @@ import { CASE_STATUS_META, type CaseStatus } from '@/types/case-status';
 import { menteeLabel } from '@/lib/utils/labels';
 import { mentoringOutcomeLabel, normalizeMentoringOutcome } from '@/lib/workflow/mentoring-outcome';
 import { observationRequiredMap } from '@/lib/workflow/observation-required';
+import { loadCaseExtensions } from '@/lib/workflow/extension';
+import { hoursText, minutesOf, type CaseExtension } from '@/lib/workflow/extension-rule';
 
 /**
  * 멘토·멘티 대시보드 "다음 할 일" 데이터 (P28) — 케이스별 회차 상태를 한 번에 읽어
@@ -93,7 +95,7 @@ async function loadLogs(caseIds: string[]): Promise<LogRow[]> {
   return (data ?? []) as LogRow[];
 }
 
-function decideAction(c: CaseListItem, rounds: RoundLite[], nextPlanned: RoundLite | null, reportPending: RoundLite[], hasObservation: boolean, href: string, observationRequired = true): MentorCaseTodo['action'] {
+function decideAction(c: CaseListItem, rounds: RoundLite[], nextPlanned: RoundLite | null, reportPending: RoundLite[], hasObservation: boolean, href: string, observationRequired = true, ext: CaseExtension | null = null, baseRounds = 0): MentorCaseTodo['action'] {
   const done = rounds.filter((r) => r.reported).length;
   switch (c.status) {
     case 'registered':
@@ -129,6 +131,14 @@ function decideAction(c: CaseListItem, rounds: RoundLite[], nextPlanned: RoundLi
   if (done < c.requiredRounds) {
     return { key: 'plan_next', label: `${done + 1}회차 일정 등록`, hint: `필수 ${c.requiredRounds}회 중 ${done}회 이행. 다음 회차 일정을 등록하세요.`, href: `${href}#rounds`, urgent: false };
   }
+  // (2026-11-25) 라운드 연장(예: 1기 3라운드) 선정 멘티 — 남은 추가 시간·회차 칸이 있으면 추가 회차 등록을 먼저 안내
+  if (ext?.active && ext.capMinutes !== null) {
+    const used = rounds.reduce((sum, r) => sum + minutesOf(r.startedAt, r.endedAt), 0);
+    const remain = ext.capMinutes - used;
+    if (remain > 0 && rounds.length < baseRounds + ext.extraRounds) {
+      return { key: 'plan_next', label: `${ext.label} 추가 멘토링 등록`, hint: `${ext.label} 선정 멘티입니다. 멘토링을 ${hoursText(remain)} 더 진행할 수 있습니다(모두 합쳐 ${hoursText(ext.capMinutes)}까지). 다음 회차 일정을 등록하세요.`, href: `${href}#rounds`, urgent: true };
+    }
+  }
   // 관찰의견서가 필요 없는 라운드(예: 1기 2라운드, observation_required=false)는 이 단계를 건너뛰고 바로 종결 요청 (2026-11-11)
   if (!observationRequired) {
     return { key: 'closure', label: '종결 요청', hint: '필수 회차 보고서를 모두 등록했습니다. [종결 요청]을 누르면 운영사 검수 후 정산이 확정됩니다.', href: `${href}#requests`, urgent: true };
@@ -154,6 +164,7 @@ export async function loadMentorDashboard(mentorId: string, programId: string, s
     // 라운드별 관찰의견서 제출 여부 (P53) — 필요 없는 라운드는 '관찰의견서 업로드' 할 일을 띄우지 않는다
     observationRequiredMap(cases.map((c) => c.support_type_id)),
   ]);
+  const extByCase = await loadCaseExtensions(ids);
   const extraByCase = new Map<string, number>();
   for (const r of extRows ?? []) extraByCase.set(r.case_id, (extraByCase.get(r.case_id) ?? 0) + Number(r.extra_rounds ?? 0));
   const hasObs = new Set((obs ?? []).map((o) => o.case_id));
@@ -174,7 +185,7 @@ export async function loadMentorDashboard(mentorId: string, programId: string, s
       statusLabel: CASE_STATUS_META[c.status].short,
       roundsDone: c.roundsDone,
       requiredRounds: c.requiredRounds,
-      extraRounds: extraByCase.get(c.id) ?? 0,
+      extraRounds: (extraByCase.get(c.id) ?? 0) + (extByCase.get(c.id)?.extraRounds ?? 0),
       menteePhone: c.phone || null,
       menteeEmail: c.email,
       item: c.item,
@@ -183,7 +194,7 @@ export async function loadMentorDashboard(mentorId: string, programId: string, s
       hasObservation: hasObs.has(c.id),
       outcome: normalizeMentoringOutcome(c.mentoring_outcome),
       outcomeLabel: mentoringOutcomeLabel(normalizeMentoringOutcome(c.mentoring_outcome), c.roundsProgressed),
-      action: decideAction(c, rows, nextPlanned, reportPending, hasObs.has(c.id), href, obsRequired.get(c.support_type_id) ?? true),
+      action: decideAction(c, rows, nextPlanned, reportPending, hasObs.has(c.id), href, obsRequired.get(c.support_type_id) ?? true, extByCase.get(c.id) ?? null, c.requiredRounds + (extraByCase.get(c.id) ?? 0)),
     };
   });
   const ORDER: Record<MentorActionKey, number> = { report: 0, revision: 1, plan_first: 2, observation: 3, closure: 4, upcoming: 5, plan_next: 6, wait_review: 7, settled: 8, inactive: 9 };

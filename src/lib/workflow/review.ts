@@ -2,6 +2,7 @@ import 'server-only';
 
 import { observationRequiredFor } from '@/lib/workflow/observation-required';
 import { closureRoundBase } from '@/lib/workflow/observation-rule';
+import { loadCaseExtension } from '@/lib/workflow/extension';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { queueNotification } from '@/lib/workflow/notifications';
 import { assertTransition, TRANSITIONS } from '@/lib/workflow/transitions';
@@ -44,10 +45,11 @@ export async function canApproveClosure(caseId: string): Promise<ApprovalReadine
   const [{ data: group }, { data: program }, { data: logs }, { data: obsFile }, { count: settledCount }] = await Promise.all([
     admin.from('support_types').select('required_rounds').eq('id', c.support_type_id).maybeSingle(),
     admin.from('programs').select('closure_policy').eq('id', c.program_id).maybeSingle(),
-    admin.from('mentoring_logs').select('round_no, report_registered_at').eq('case_id', caseId).order('round_no'),
+    admin.from('mentoring_logs').select('round_no, report_registered_at, settlement_id').eq('case_id', caseId).order('round_no'),
     admin.from('documents').select('id').eq('case_id', caseId).eq('doc_key', 'observation_report').maybeSingle(),
     admin.from('settlements').select('id', { count: 'exact', head: true }).eq('case_id', caseId).neq('status', 'canceled'),
   ]);
+  const extension = await loadCaseExtension(caseId);
   const rounds = logs ?? [];
   // (2026-11-17) 중도 종결 승인된 케이스 = 등록된 회차까지로 승인(필수 회차 미달 허용). 등록 회차는 전부 보고서가 있어야 한다.
   // (2026-11-23) 관찰의견서 면제 폐지 — 중도 종결도 그룹 설정(관찰의견서 필요)이면 파일이 있어야 승인
@@ -64,6 +66,10 @@ export async function canApproveClosure(caseId: string): Promise<ApprovalReadine
   const unreported = rounds.filter((r) => !r.report_registered_at).map((r) => r.round_no);
   if (unreported.length > 0) return { ok: false, reason: `보고서가 없는 회차(${unreported.join('·')}회차)가 있습니다. 멘토에게 보완을 요청하세요.`, ...base };
   if (observationRequired && !hasObservation) return { ok: false, reason: '관찰의견서 파일이 아직 등록되지 않았습니다.', ...base };
+  // (2026-11-25) 라운드 연장(예: 1기 3라운드)으로 다시 연 케이스 — 정산 안 된 추가 회차 보고서가 있어야 검수한다(빈 승인으로 단계만 넘어가는 것 방지)
+  if (extension.active && (settledCount ?? 0) > 0 && !rounds.some((r) => r.report_registered_at && !r.settlement_id)) {
+    return { ok: false, reason: `${extension.label} 추가 회차의 보고서가 등록되면 검수할 수 있습니다.`, ...base };
+  }
   const policy = (program?.closure_policy ?? {}) as { require_group_docs?: boolean };
   if (policy.require_group_docs) {
     const missing = await missingRequiredMenteeDocs(caseId);
@@ -115,7 +121,16 @@ export async function reviewClosure(caseId: string, actorId: string, result: 'ap
 
   // T7: 정산 스냅샷 먼저(실패 시 중단) → 상태 전이.
   // 활성 멘토 closure + 교체 이력 멘토의 미정산 회차 partial 을 함께 확정한다 (P30 — 이전 멘토 회차가 영구 미정산으로 남던 문제).
-  const snap = await createSettlementSnapshot({ caseId, mentorId: assign.mentor_id, kind: 'closure', actorId, note: comment.trim() || undefined });
+  // (2026-11-25) 이 멘토의 종결 정산이 이미 있으면(라운드 연장으로 다시 연 케이스) 추가 회차는 부분 정산으로 — 종결 정산은 멘토당 1건
+  const { data: priorClosure } = await admin.from('settlements').select('id').eq('case_id', caseId).eq('mentor_id', assign.mentor_id).eq('kind', 'closure').neq('status', 'canceled').maybeSingle();
+  const extensionLabel = priorClosure ? (await loadCaseExtension(caseId)).label : null;
+  const snap = await createSettlementSnapshot({
+    caseId,
+    mentorId: assign.mentor_id,
+    kind: priorClosure ? 'partial' : 'closure',
+    actorId,
+    note: priorClosure ? [`${extensionLabel} 추가 회차 정산`, comment.trim()].filter(Boolean).join(' · ') : comment.trim() || undefined,
+  });
   if (!snap.ok) return { ok: false, error: `정산 확정 실패: ${snap.error}` };
   const createdIds: string[] = snap.settlementId ? [snap.settlementId] : [];
   const leftover = await settleLeftoverMentors(caseId, actorId, assign.mentor_id, '종결 검수 승인(이전 멘토 회차)');

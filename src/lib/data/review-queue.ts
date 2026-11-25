@@ -63,7 +63,7 @@ export async function listReviewQueue(programId: string, groupId: string | null)
   const caseIds = list.map((c) => c.id);
 
   const [logs, history, { data: obsFiles }, { data: responses }, { data: assigns }, { data: extra }, { data: reviews }] = await Promise.all([
-    fetchAllIn<{ case_id: string; report_registered_at: string | null }>(caseIds, (chunk, from, to) => admin.from('mentoring_logs').select('case_id, report_registered_at').in('case_id', chunk).range(from, to)),
+    fetchAllIn<{ case_id: string; report_registered_at: string | null; settlement_id: string | null }>(caseIds, (chunk, from, to) => admin.from('mentoring_logs').select('case_id, report_registered_at, settlement_id').in('case_id', chunk).range(from, to)),
     fetchAllIn<{ case_id: string; to_status: string; created_at: string }>(caseIds, (chunk, from, to) => admin.from('case_status_history').select('case_id, to_status, created_at').in('case_id', chunk).in('to_status', ['closure_requested', 'revision_requested']).order('created_at', { ascending: false }).range(from, to)),
     admin.from('documents').select('case_id').in('case_id', caseIds).eq('doc_key', 'observation_report'),
     admin.from('survey_responses').select('case_id').in('case_id', caseIds),
@@ -106,6 +106,8 @@ export async function listReviewQueue(programId: string, groupId: string | null)
     const reported = rounds.filter((r) => r.report_registered_at);
     // 진행 중 케이스는 승인 게이트(canApproveClosure)와 같은 조건 — 필수 회차 이상 · 전부 보고서 · 관찰의견서 파일 — 일 때만 'ready' 로 싣는다
     if (c.status === 'in_progress' && !(rounds.length >= (st?.required_rounds ?? 0) && (st?.required_rounds ?? 0) > 0 && reported.length === rounds.length && (obsFile.has(c.id) || obsRequired.get(c.support_type_id) === false))) continue;
+    // (2026-11-25) 이미 정산된 회차뿐인 진행 중 케이스(라운드 연장으로 다시 연 케이스 등)는 새 보고서가 생길 때까지 '서류 완비'로 싣지 않는다 — 승인 게이트와 같은 규칙
+    if (c.status === 'in_progress' && (settledByCase.get(c.id)?.length ?? 0) > 0 && !rounds.some((r) => r.report_registered_at && !r.settlement_id)) continue;
     const status = c.status === 'in_progress' ? 'ready' : (c.status as 'closure_requested' | 'revision_requested');
     const enteredAt = status === 'ready' ? c.updated_at : (entered.get(`${c.id}:${status}`) ?? c.updated_at);
     const est = await estimateSettlements(c.id);

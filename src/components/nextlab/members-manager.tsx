@@ -794,6 +794,8 @@ export interface MenteeProgressItem {
   progressedRounds?: number;
   /** (2026-11-03) 이 라운드의 만족도 설문 사용 여부 */
   surveyEnabled?: boolean;
+  /** (2026-11-25) 라운드 연장 선정(예: '1기 3라운드') — 선정된 케이스만 */
+  extensionLabel?: string | null;
 }
 
 /** [만족도 생성] / 진행중 / 완료 표시 (P20) */
@@ -1094,6 +1096,11 @@ export function MembersManager({
                                 <Link href={`/nextlab/cases/${p.caseId}`} className={cn('font-medium hover:underline', p.withdrawn && 'text-destructive')}>{p.withdrawn ? '중도 종료' : p.statusLabel}</Link>
                                 <RoundDots done={p.roundsDone} required={p.requiredRounds} />
                                 <MentoringOutcomeBadge outcome={p.outcome} progressedRounds={p.progressedRounds ?? 0} />
+                                {p.extensionLabel && (
+                                  <span className="rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-semibold text-violet-800 dark:bg-violet-950 dark:text-violet-200" title="라운드 연장 선정 — 같은 케이스에서 멘토링 시간 추가">
+                                    {p.extensionLabel} 선정
+                                  </span>
+                                )}
                                 {p.mentorName && (
                                   <span className="text-muted-foreground">
                                     · <MentorName id={p.mentorId} name={p.mentorName} count={p.mentorActiveCount} className="text-[11px]" />

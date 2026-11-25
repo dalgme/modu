@@ -15,6 +15,8 @@ export function MentorCaseNextStep(p: {
   observationRequired?: boolean;
   /** (2026-11-23) 멘토 중도 종결 승인 케이스 — 검수 대기 중에도 관찰의견서를 올려야 한다(면제 폐지) */
   earlyClosure?: boolean;
+  /** (2026-11-25) 라운드 연장 선정 멘티의 남은 추가 멘토링 안내 — 남은 시간·회차 칸이 있을 때만 문구 */
+  extensionHint?: string | null;
   closureOk: boolean;
   closureHint: string;
   revisionNote: { comment: string | null; at: string } | null;
@@ -79,6 +81,11 @@ export function MentorCaseNextStep(p: {
         title = `${p.reported + 1}회차 일정을 등록하세요`;
         desc = `필수 ${p.required}회 중 ${p.reported}회 이행(보고서 기준)${p.maxRounds > p.required ? ` · 추가 회차 승인으로 최대 ${p.maxRounds}회` : ''}.`;
         anchor = '#rounds';
+      } else if (p.extensionHint) {
+        title = p.extensionHint;
+        desc = '[N차 예정 등록]으로 추가 회차 일정을 등록하고, 멘토링 후 보고서를 올리세요. 다 마치면 [종결 요청]을 누릅니다(추가 회차는 검수 승인 때 따로 정산됩니다).';
+        anchor = '#rounds';
+        tone = 'action';
       } else if (obsReq && !p.hasObservation) {
         title = '관찰의견서 파일을 올리세요';
         desc = '필수 회차를 모두 이행했습니다. 관찰의견서 파일(멘티당 1건)을 [파일 업로드]로 올리면 종결을 요청할 수 있습니다.';

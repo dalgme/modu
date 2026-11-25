@@ -296,6 +296,9 @@ export type Database = {
           created_at: string;
           created_by: string;
           early_closure_at: string | null;
+          extension_selected_at: string | null;
+          extension_selected_by: string | null;
+          extension_prev_status: string | null;
           email: string | null;
           employee_count: number | null;
           id: string;
@@ -327,6 +330,9 @@ export type Database = {
           created_at?: string;
           created_by: string;
           early_closure_at?: string | null;
+          extension_selected_at?: string | null;
+          extension_selected_by?: string | null;
+          extension_prev_status?: string | null;
           email?: string | null;
           employee_count?: number | null;
           id?: string;
@@ -358,6 +364,9 @@ export type Database = {
           created_at?: string;
           created_by?: string;
           early_closure_at?: string | null;
+          extension_selected_at?: string | null;
+          extension_selected_by?: string | null;
+          extension_prev_status?: string | null;
           email?: string | null;
           employee_count?: number | null;
           id?: string;
@@ -3590,6 +3599,9 @@ export type Database = {
           mentoring_budget: number | null;
           observation_required?: boolean;
           observation_upload_timing?: string;
+          extension_label?: string | null;
+          extension_extra_hours?: number;
+          extension_total_hours?: number | null;
           matching_published?: boolean;
           matching_published_at?: string | null;
           max_mentees_per_mentor: number;
@@ -3618,6 +3630,9 @@ export type Database = {
           mentoring_budget?: number | null;
           observation_required?: boolean;
           observation_upload_timing?: string;
+          extension_label?: string | null;
+          extension_extra_hours?: number;
+          extension_total_hours?: number | null;
           matching_published?: boolean;
           matching_published_at?: string | null;
           max_mentees_per_mentor?: number;
@@ -3646,6 +3661,9 @@ export type Database = {
           mentoring_budget?: number | null;
           observation_required?: boolean;
           observation_upload_timing?: string;
+          extension_label?: string | null;
+          extension_extra_hours?: number;
+          extension_total_hours?: number | null;
           matching_published?: boolean;
           matching_published_at?: string | null;
           max_mentees_per_mentor?: number;
