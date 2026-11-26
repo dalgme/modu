@@ -7,7 +7,7 @@ import { contextOrNull } from '@/lib/programs/context';
 import { denyUnless } from '@/lib/auth/capabilities';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logAudit } from '@/lib/workflow/audit';
-import { EXTENSION_REOPEN_STATUSES, extensionSelectBlock, extensionUsed, groupExtensionOf, hoursText, minutesOf } from '@/lib/workflow/extension-rule';
+import { EXTENSION_REOPEN_STATUSES, extensionSelectBlock, extensionUsed, groupExtensionOf, hoursText, mentorChangedSinceSelection, minutesOf } from '@/lib/workflow/extension-rule';
 
 /**
  * 라운드 연장 선정·해제 (2026-11-25) — 회원 명단 > 멘티 [정보 수정] > 라운드 선택의 "1기 3라운드" 칩.
@@ -79,10 +79,11 @@ export async function setCaseExtensionAction(caseId: string, selected: boolean):
 
   // 해제
   if (!c.extension_selected_at) return { ok: true, message: `${label} 선정자가 아닙니다.` };
-  const [{ data: logs }, { data: ext }, { data: sets }] = await Promise.all([
-    admin.from('mentoring_logs').select('id, started_at, ended_at, settlement_id').eq('case_id', c.id),
+  const [{ data: logs }, { data: ext }, { data: sets }, { data: assigns }] = await Promise.all([
+    admin.from('mentoring_logs').select('id, mentor_id, started_at, ended_at, settlement_id').eq('case_id', c.id),
     admin.from('round_extension_requests').select('extra_rounds').eq('case_id', c.id).eq('status', 'approved'),
     admin.from('settlements').select('status').eq('case_id', c.id).neq('status', 'canceled'),
+    admin.from('mentor_assignments').select('id, mentor_id, assigned_at, ended_at, is_active, end_kind').eq('case_id', c.id),
   ]);
   const rows = logs ?? [];
   const baseRounds = Number((g as { required_rounds?: number } | null)?.required_rounds ?? 0) + (ext ?? []).reduce((s, r) => s + Number(r.extra_rounds ?? 0), 0);
@@ -93,8 +94,8 @@ export async function setCaseExtensionAction(caseId: string, selected: boolean):
   // 다시 연 케이스였고 정산 안 된 회차가 없으면 정산 상태에 맞는 단계로 되돌린다
   let back: string | null = null;
   const prev = c.extension_prev_status ?? null;
-  // (진행 중으로 연 뒤 추가 회차 없이 종결 요청·보완 요청으로 간 경우도 같다 — 검수할 새 회차가 없어 그대로 두면 멈춘다)
-  if (prev && EXTENSION_REOPEN_STATUSES.includes(prev) && ['in_progress', 'closure_requested', 'revision_requested'].includes(c.status) && rows.every((l) => l.settlement_id)) {
+  // (진행 중으로 연 뒤 추가 회차 없이 종결 요청·보완 요청·재배정 대기(멘토 변경)로 간 경우도 같다 — 검수할 새 회차가 없어 그대로 두면 멈춘다)
+  if (prev && EXTENSION_REOPEN_STATUSES.includes(prev) && ['in_progress', 'closure_requested', 'revision_requested', 'reassignment_pending'].includes(c.status) && rows.every((l) => l.settlement_id)) {
     const st = (sets ?? []).map((s) => s.status);
     if (st.length > 0 && st.every((s) => s === 'confirmed' || s === 'paid')) back = 'closed';
     else if (st.includes('batched')) back = 'settlement_batched';
@@ -110,7 +111,23 @@ export async function setCaseExtensionAction(caseId: string, selected: boolean):
   if (error) return { ok: false, error: `해제 저장에 실패했습니다: ${error.message}` };
   if (!upd || upd.length === 0) return { ok: false, error: '그사이 케이스 단계가 바뀌었습니다. 다시 열어 주세요.' };
   if (back) {
-    if (back === 'closed') await admin.from('mentor_assignments').update({ is_active: false, ended_at: now, ended_by: actor.id, end_kind: 'case_closed' } as never).eq('case_id', c.id).eq('is_active', true);
+    // (2026-11-26) 선정 뒤 멘토를 바꿨는데 새 멘토가 아무 회차도 하지 않았다면 — 새 배정은 회수로 끝내고 이전 멘토 배정을 선정 전 모습으로 되돌린다.
+    // 이전 멘토의 정산은 처음부터 건드리지 않았으므로 그대로 이어진다(품의 확인 → 종결).
+    const allAssigns = assigns ?? [];
+    const active = allAssigns.find((a) => a.is_active);
+    const changed = mentorChangedSinceSelection(allAssigns, c.extension_selected_at);
+    const prior = changed
+      ? allAssigns
+          .filter((a) => !a.is_active && a.ended_at && new Date(a.ended_at).getTime() > new Date(c.extension_selected_at ?? 0).getTime() && rows.some((l) => l.mentor_id === a.mentor_id))
+          .sort((x, y) => new Date(y.ended_at ?? 0).getTime() - new Date(x.ended_at ?? 0).getTime())[0]
+      : undefined;
+    if (changed && prior && (!active || !rows.some((l) => l.mentor_id === active.mentor_id))) {
+      if (active) await admin.from('mentor_assignments').update({ is_active: false, ended_at: now, ended_by: actor.id, end_kind: 'recalled', end_reason: `${label} 선정 해제 — 이전 멘토로 복귀` } as never).eq('id', active.id);
+      if (back === 'closed') await admin.from('mentor_assignments').update({ end_kind: 'case_closed' } as never).eq('id', prior.id);
+      else await admin.from('mentor_assignments').update({ is_active: true, ended_at: null, ended_by: null, end_kind: null } as never).eq('id', prior.id);
+    } else if (back === 'closed') {
+      await admin.from('mentor_assignments').update({ is_active: false, ended_at: now, ended_by: actor.id, end_kind: 'case_closed' } as never).eq('case_id', c.id).eq('is_active', true);
+    }
     await admin.from('case_status_history').insert({ case_id: c.id, from_status: c.status as never, to_status: back as never, changed_by: actor.id, note: `${label} 선정 해제 — 선정 전 단계로` });
   }
   await logAudit(admin, {

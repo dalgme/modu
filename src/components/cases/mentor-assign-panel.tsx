@@ -203,7 +203,7 @@ export function MentorAssignPanel({
                   <RefreshCw className="h-4 w-4" /> ① 멘토 재배정 (즉시 교체)
                 </span>
                 <span className="text-xs leading-relaxed text-muted-foreground">
-                  지금 바로 다른 멘토로 교체합니다. 진행한 회차는 그대로 두고 <b>잔여 회차를 새 멘토가 승계</b>합니다.
+                  지금 바로 다른 멘토로 교체합니다. 진행한 회차는 그대로 두고 <b>잔여 회차를 새 멘토가 승계</b>합니다. 이전 멘토의 확정 정산(품의·지급 포함)은 되돌리지 않고, 정산 안 된 보고서 회차만 부분 정산됩니다.
                 </span>
                 <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-400">
                   {reassignable ? '누르면 새 멘토 선택 창이 열립니다 →' : '이 단계에서는 사용할 수 없습니다'}

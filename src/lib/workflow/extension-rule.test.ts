@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { caseExtensionOf, EXTENSION_REOPEN_STATUSES, extensionHoursError, extensionSelectBlock, extensionUsed, groupExtensionOf, hoursText, minutesOf } from './extension-rule';
+import { caseExtensionOf, EXTENSION_REOPEN_STATUSES, extensionHoursError, extensionSelectBlock, extensionUsed, groupExtensionOf, hoursText, mentorChangedSinceSelection, minutesOf } from './extension-rule';
 import { mentorHistoryStatus } from '@/lib/data/mentor-history-shared';
 
 const group = groupExtensionOf({ extension_label: '1기 3라운드', extension_extra_hours: 3, extension_total_hours: 15 });
@@ -45,5 +45,20 @@ describe('멘토 끝난 멘토링 내역 상태', () => {
     expect(mentorHistoryStatus(['paid', 'confirmed'])).toBe('confirmed');
     expect(mentorHistoryStatus(['paid', 'batched'])).toBe('batched');
     expect(mentorHistoryStatus(['batched', 'pending'])).toBe('pending');
+  });
+});
+
+describe('연장 선정 뒤 멘토 변경 판정', () => {
+  const sel = '2026-11-25T03:00:00Z';
+  it('선정 전 배정만 있으면 변경 아님(선정 때 되살린 종결 배정 포함)', () => {
+    expect(mentorChangedSinceSelection([{ assigned_at: '2026-09-01T00:00:00Z', ended_at: null, is_active: true }], sel)).toBe(false);
+  });
+  it('선정 뒤 새 배정이 생기거나 기존 배정이 끝나면 변경', () => {
+    expect(mentorChangedSinceSelection([
+      { assigned_at: '2026-09-01T00:00:00Z', ended_at: '2026-11-26T01:00:00+00:00', is_active: false },
+      { assigned_at: '2026-11-26T01:00:00+00:00', ended_at: null, is_active: true },
+    ], sel)).toBe(true);
+    expect(mentorChangedSinceSelection([{ assigned_at: '2026-09-01T00:00:00Z', ended_at: '2026-11-26T01:00:00Z', is_active: false }], sel)).toBe(true);
+    expect(mentorChangedSinceSelection([{ assigned_at: '2026-11-26T01:00:00Z', ended_at: null, is_active: true }], null)).toBe(false);
   });
 });

@@ -71,7 +71,7 @@ export function InboxList({ items }: { items: InboxItem[] }) {
           ? { title: `추가 ${it.extraRounds}회를 승인할까요?`, description: it.ownerName, impact: ['멘토가 승인된 회차만큼 회차를 더 등록할 수 있습니다.'], confirmLabel: '승인' }
           : early
             ? { title: '중도 종결을 승인할까요?', description: `${it.ownerName} · 요청자 ${it.requesterName}`, impact: ['보고서까지 올린 회차까지로 멘토링을 끝내고 [검수] 대기로 옮깁니다.', '보고서가 없는 예정 회차는 정리됩니다.', it.observation === 'missing' ? '관찰의견서가 아직 없습니다 — 멘토가 관찰의견서 파일을 올려야 [검수] 승인(정산 확정)을 할 수 있습니다.' : '정산은 [검수] 화면에서 승인할 때 확정됩니다.', '멘티는 회원 명단에 「중도 종료」로 표시됩니다.'], confirmLabel: '승인 · 검수로' }
-            : { title: '멘토 변경을 승인할까요?', description: `${it.ownerName} · 요청자 ${it.requesterName}`, impact: ['요청한 멘토의 담당이 끝나고, 진행한 회차는 바로 부분 정산(지급 품의 자동)됩니다.', '멘티는 재배정 대기로 옮겨집니다 — 매칭 리스트에서 새 멘토를 배정하세요.'], confirmLabel: '승인 · 재배정' },
+            : { title: '멘토 변경을 승인할까요?', description: `${it.ownerName} · 요청자 ${it.requesterName}`, impact: ['요청한 멘토의 담당이 끝나고, 아직 정산 안 된 진행 회차는 바로 부분 정산(지급 품의 자동)됩니다 — 이미 확정된 정산은 되돌리지 않고 그대로 둡니다.', '멘티는 재배정 대기로 옮겨집니다 — 매칭 리스트에서 새 멘토를 배정하세요.'], confirmLabel: '승인 · 재배정' },
     );
     if (!ok) return;
     start(async () => {

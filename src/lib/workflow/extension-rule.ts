@@ -77,3 +77,18 @@ export function extensionSelectBlock(status: string): string | null {
   if (status === 'withdrawn') return '중도 종료된 케이스는 선정할 수 없습니다.';
   return null;
 }
+
+/**
+ * (2026-11-26) 연장 선정 뒤 멘토가 바뀌었는가 — 배정이 선정 시각 이후에 시작됐거나 끝났으면 바뀐 것.
+ * 멘토 변경 시 이전 멘토의 확정 정산(품의 진행·정산 완료 포함)은 그대로 두므로, 이런 케이스는 선정 해제로 단계를 되돌리지 않는다
+ * (되돌리면 새 멘토 배정이 종결 처리되거나 이전 멘토 정산 흐름과 어긋난다).
+ */
+export function mentorChangedSinceSelection(
+  assignments: { assigned_at: string | null; ended_at: string | null; is_active: boolean }[],
+  selectedAt: string | null | undefined,
+): boolean {
+  if (!selectedAt) return false;
+  const t = new Date(selectedAt).getTime();
+  return assignments.some((a) => (a.assigned_at && new Date(a.assigned_at).getTime() > t) || (!a.is_active && a.ended_at && new Date(a.ended_at).getTime() > t));
+}
+

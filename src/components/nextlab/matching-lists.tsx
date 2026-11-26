@@ -480,7 +480,7 @@ export function MentorMatchList({ rows, groups, currentGroupId = null, caseHrefB
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>멘토 재배정</DialogTitle>
-            <DialogDescription>{reassign?.menteeLabel} 멘티({reassign?.groupName})를 다른 멘토로 교체합니다. 진행한 회차는 그대로 두고 잔여 회차를 새 멘토가 승계합니다. 괄호 안 숫자는 이 그룹에서 현재 담당 중인 멘티 수이며, 라운드별 정원(매칭 규칙)을 넘거나 다른 그룹에만 지정된 멘토는 선택할 수 없습니다.</DialogDescription>
+            <DialogDescription>{reassign?.menteeLabel} 멘티({reassign?.groupName})를 다른 멘토로 교체합니다. 진행한 회차는 그대로 두고 잔여 회차를 새 멘토가 승계합니다. 이전 멘토의 확정 정산(품의·지급 포함)은 되돌리지 않고, 정산 안 된 보고서 회차만 부분 정산됩니다. 괄호 안 숫자는 이 그룹에서 현재 담당 중인 멘티 수이며, 라운드별 정원(매칭 규칙)을 넘거나 다른 그룹에만 지정된 멘토는 선택할 수 없습니다.</DialogDescription>
           </DialogHeader>
           {/* (P31) Radix Select 대신 수동 검색과 같은 검색형 리스트 — 폰에서 긴 드롭다운 대신 검색·탭 */}
           {reassign && (

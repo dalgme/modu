@@ -80,7 +80,7 @@ export function CaseEndPanel({
       decision === 'approved'
         ? early
           ? { title: '중도 종결 승인', description: '멘토의 중도 종결 요청을 승인합니다.', impact: ['보고서까지 올린 회차까지로 멘토링을 끝내고 [검수] 대기로 옮깁니다.', '보고서가 없는 예정 회차는 정리됩니다.', '정산은 [검수]에서 승인할 때 확정됩니다.', '중도 종결도 관찰의견서는 필수 — 관찰의견서 파일이 있어야 검수 승인이 됩니다(멘토는 검수 대기 중에도 올릴 수 있습니다).'], confirmLabel: '승인 · 검수로', severity: 'danger', children: reasonBox('승인 메모', false) }
-          : { title: '멘토 변경 승인', description: '멘토의 멘토 변경 요청을 승인합니다.', impact: [settleLine, '케이스는 재배정 대기가 되고 새 멘토를 배정하면 잔여 회차를 이어갑니다.', '이 멘토의 계획(미보고) 회차는 정리됩니다.'], confirmLabel: '승인 · 재배정', severity: 'danger', children: reasonBox('승인 메모', false) }
+          : { title: '멘토 변경 승인', description: '멘토의 멘토 변경 요청을 승인합니다.', impact: [settleLine, '케이스는 재배정 대기가 되고 새 멘토를 배정하면 잔여 회차를 이어갑니다.', '이 멘토의 계획(미보고) 회차는 정리됩니다.', '이미 확정된 이 멘토의 정산(품의·지급 포함)은 되돌리지 않고 그대로 둡니다.'], confirmLabel: '승인 · 재배정', severity: 'danger', children: reasonBox('승인 메모', false) }
         : { title: '요청 반려', description: `멘토의 ${early ? '중도 종결' : '멘토 변경'} 요청을 반려합니다. 멘토는 계속 담당합니다.`, confirmLabel: '반려', children: reasonBox('반려 사유', true) },
     );
     if (!ok) return;
